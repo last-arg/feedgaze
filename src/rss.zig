@@ -12,7 +12,7 @@ const Datetime = datetime.Datetime;
 const timezones = datetime.timezones;
 
 // TODO: add sample-all.rss file with all fields present
-// TODO: quite alot of feed use these fields
+// TODO: quite alot of feeds use these fields
 // <sy:updatePeriod>hourly</sy:updatePeriod>
 // <sy:updateFrequency>1</sy:updateFrequency>
 // has something to do with attributes in xml element
@@ -139,9 +139,6 @@ pub const Feed = struct {
                         if (item_title) |value| {
                             item.*.title = value;
                         } else if (item_description) |value| {
-                            // TODO: remove/avoid html tags
-                            // Probably need to allocate string
-                            // https://www.rssboard.org/rss-encoding-examples
                             const max_len: usize = 30;
                             const len = if (value.len > max_len) max_len else value.len;
                             item.*.title = value[0..len];
@@ -174,7 +171,11 @@ pub const Feed = struct {
                 .character_data => |value| {
                     // warn("character_data: {s}\n", .{value});
 
-                    // TODO: don't always get whole string.
+                    // TODO: string handling for description (and others where needed).
+                    // [ ] might only get partial string
+                    // [ ] whole text or part of text might be wrapped in CDATA
+                    // [ ] string might contain html(xml) elements
+                    // https://www.rssboard.org/rss-encoding-examples
                     switch (state) {
                         .channel => {
                             switch (channel_field) {
@@ -255,7 +256,6 @@ const State = union(enum) {
     item,
 };
 
-// TODO?: separate channel and item fields?
 const ChannelField = enum {
     title,
     link,

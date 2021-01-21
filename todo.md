@@ -1,7 +1,4 @@
 # Initial
-[ ] sqlite
-  [ ] Use zig translate-c
-  [ ] [zig-sqlite](https://github.com/vrischmann/zig-sqlite)
 [ ] HTTP(S) request
   [?] HTTP (plain secure)? use https only?
   [ ] HTTPS

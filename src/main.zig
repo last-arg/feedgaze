@@ -32,6 +32,15 @@ pub fn main() anyerror!void {
     std.log.info("Main run", .{});
 }
 
+pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
+    @setEvalBranchQuota(10000);
+
+    db.exec(query, args) catch |err| {
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}
+
 test "add feed" {
     var allocator = testing.allocator;
     var location_raw: []const u8 = "./test/sample-rss-2.xml";
@@ -61,9 +70,13 @@ test "add feed" {
     var db_feed = Feed.init(allocator, &db);
 
     const feed_id = try addFeed(db_feed, rss_feed, location);
-    l.warn("feed_id: {}", .{feed_id});
 
-    try db_feed_update.insert(rss_feed, feed_id);
+    try insert(&db, Table.feed_update.insert, .{
+        feed_id,
+        rss_feed.info.ttl,
+        rss_feed.info.last_build_date,
+        rss_feed.info.last_build_date_utc,
+    });
     {
         const updates = try db_feed_update.selectAll();
         defer db_feed_update.allocator.free(updates);
@@ -106,18 +119,6 @@ pub const FeedUpdate = struct {
         last_update: i64,
     };
 
-    pub fn insert(feed_update: Self, rss_feed: rss.Feed, feed_id: usize) !void {
-        feed_update.db.exec(Table.feed_update.insert, .{
-            feed_id,
-            rss_feed.info.ttl,
-            rss_feed.info.last_build_date,
-            rss_feed.info.last_build_date_utc,
-        }) catch |err| {
-            l.warn("Failed to insert new link. ERR: {s}\n", .{feed_update.db.getDetailedError().message});
-            return err;
-        };
-    }
-
     pub fn selectAll(feed_update: Self) ![]Raw {
         var stmt = try feed_update.db.prepare(Table.feed_update.selectAll);
         defer stmt.deinit();
@@ -133,22 +134,26 @@ pub const FeedUpdate = struct {
 pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
     for (feed_items) |it| {
         if (it.guid) |_| {
-            try db_item.insertQuery(
+            try insert(
+                db_item.db,
                 Table.item.insert ++ Table.item.on_conflict_guid,
-                it,
-                feed_id,
+                .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
             );
         } else if (it.link) |_| {
-            try db_item.insertQuery(
+            try insert(
+                db_item.db,
                 Table.item.insert ++ Table.item.on_conflict_link,
-                it,
-                feed_id,
+                .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
             );
         } else if (it.pub_date != null and try db_item.hasItem(it, feed_id)) {
             // Updates row if it matches feed_id and pub_date_utc
             try db_item.update(it, feed_id);
         } else {
-            try db_item.insertQuery(Table.item.insert, it, feed_id);
+            try insert(
+                db_item.db,
+                Table.item.insert,
+                .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
+            );
         }
     }
 }
@@ -201,26 +206,6 @@ const Item = struct {
         };
     }
 
-    pub fn insertQuery(
-        item: Self,
-        comptime query: []const u8,
-        rss_item: rss.Item,
-        feed_id: usize,
-    ) !void {
-        @setEvalBranchQuota(10000);
-        item.db.exec(query, .{
-            feed_id,
-            rss_item.title,
-            rss_item.link,
-            rss_item.guid,
-            rss_item.pub_date,
-            rss_item.pub_date_utc,
-        }) catch |err| {
-            l.warn("Failed to insert new link. ERR: {s}\n", .{item.db.getDetailedError().message});
-            return err;
-        };
-    }
-
     pub fn deinitRaw(link: Self, raw: ?Raw) void {
         if (raw) |r| {
             link.allocator.free(r.title);
@@ -257,8 +242,8 @@ const Item = struct {
 };
 
 // location has to be absolute
-pub fn getLocalFileContents(allocator: *Allocator, location: []const u8) ![]const u8 {
-    const local_file = try std.fs.openFileAbsolute(location, .{});
+pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]const u8 {
+    const local_file = try std.fs.openFileAbsolute(abs_location, .{});
     defer local_file.close();
     var file_stat = try local_file.stat();
 
@@ -295,7 +280,13 @@ pub fn addFeed(feed: Feed, rss_feed: rss.Feed, location_raw: []const u8) !usize 
             try feed.updateId(rss_feed, f.id);
         }
     } else {
-        try feed.insert(rss_feed);
+        try insert(feed.db, Table.feed.insert, .{
+            rss_feed.info.title,
+            rss_feed.info.link,
+            rss_feed.info.location,
+            rss_feed.info.pub_date,
+            rss_feed.info.pub_date_utc,
+        });
     }
     const id = blk: {
         if (over_write) break :blk feed_result.?.id;
@@ -373,20 +364,6 @@ pub const Feed = struct {
         };
     }
 
-    pub fn insert(feed: Self, feed_rss: rss.Feed) !void {
-        const db = feed.db;
-        db.exec(Table.feed.insert, .{
-            feed_rss.info.title,
-            feed_rss.info.link,
-            feed_rss.info.location,
-            feed_rss.info.pub_date,
-            feed_rss.info.pub_date_utc,
-        }) catch |err| {
-            l.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
-            return err;
-        };
-    }
-
     pub fn updateId(feed: Self, feed_rss: rss.Feed, id: usize) !void {
         const db = feed.db;
         db.exec(Table.feed.update_id, .{
@@ -442,7 +419,8 @@ fn dbSetup(db: *sql.Db) !void {
         }
     }
 
-    try Setting.insert(db, 1);
+    const version: usize = 1;
+    try insert(db, Table.setting.insert, .{version});
 }
 
 pub fn verifyDbTables(db: *sql.Db) bool {
@@ -483,12 +461,6 @@ const Setting = struct {
     pub fn select(allocator: *Allocator, db: *sql.Db) !?Setting {
         return db.oneAlloc(Setting, allocator, Table.setting.select, .{}, .{}) catch |err| {
             l.warn("Failed to get setting. ERR: {s}\n", .{db.getDetailedError().message});
-            return err;
-        };
-    }
-    pub fn insert(db: *sql.Db, version: usize) !void {
-        db.exec(Table.setting.insert, .{version}) catch |err| {
-            l.warn("Failed to insert new link. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
