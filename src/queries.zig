@@ -1,3 +1,4 @@
+// TODO?: put default values into contants?
 pub const Table = struct {
     pub const item = struct {
         pub const create =
@@ -86,14 +87,13 @@ pub const Table = struct {
         ;
     };
     // TODO fields:
-    // 		ttl ?
     // 		skip_days ?
     // 		skip_hours ?
     pub const feed_update = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed_update (
             \\  feed_id INTEGER UNIQUE,
-            \\  update_interval INTEGER DEFAULT 600,
+            \\  update_interval INTEGER DEFAULT 6000,
             \\  ttl INTEGER DEFAULT NULL,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
@@ -101,12 +101,19 @@ pub const Table = struct {
         ;
         pub const insert =
             \\INSERT INTO feed_update
-            \\  (feed_id, update_interval, ttl)
+            \\  (feed_id, ttl)
             \\VALUES (
-            \\  ?{usize},
             \\  ?{usize},
             \\  ?
             \\)
+        ;
+        pub const selectAll =
+            \\SELECT
+            \\  feed_id,
+            \\  update_interval,
+            \\  ttl,
+            \\  last_update
+            \\FROM feed_update;
         ;
         pub const on_conflict =
             \\ON CONFLICT(feed_id) DO UPDATE SET

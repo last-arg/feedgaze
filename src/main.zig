@@ -45,6 +45,11 @@ test "add feed" {
         .db = &db,
     };
 
+    var db_feed_update = FeedUpdate{
+        .allocator = allocator,
+        .db = &db,
+    };
+
     var location = try makeFilePath(allocator, location_raw);
     defer allocator.free(location);
 
@@ -59,7 +64,16 @@ test "add feed" {
     const feed_id = try addFeed(db_feed, rss_feed, location);
     l.warn("feed_id: {}", .{feed_id});
 
-    // try addFeedUpdate(db_feed, rss_feed, feed_id);
+    try db_feed_update.insert(rss_feed, feed_id);
+    {
+        const updates = try db_feed_update.selectAll();
+        defer db_feed_update.allocator.free(updates);
+        testing.expect(1 == updates.len);
+        for (updates) |u| {
+            testing.expect(feed_id == u.feed_id);
+        }
+    }
+
     try addFeedItems(db_item, rss_feed.items, feed_id);
 
     {
@@ -81,9 +95,39 @@ test "add feed" {
     testing.expectEqual(rss_feed.items.len, items_count);
 }
 
-pub fn addFeedUpdate(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
-    //
-}
+pub const FeedUpdate = struct {
+    const Self = @This();
+    allocator: *Allocator,
+    db: *sql.Db,
+
+    const Raw = struct {
+        feed_id: usize,
+        update_interval: usize,
+        ttl: ?usize,
+        last_update: i64,
+    };
+
+    pub fn insert(feed_update: Self, rss_feed: rss.Feed, feed_id: usize) !void {
+        feed_update.db.exec(Table.feed_update.insert, .{
+            feed_id,
+            rss_feed.info.ttl,
+        }) catch |err| {
+            logger.warn("Failed to insert new link. ERR: {s}\n", .{feed_update.db.getDetailedError().message});
+            return err;
+        };
+    }
+
+    pub fn selectAll(feed_update: Self) ![]Raw {
+        var stmt = try feed_update.db.prepare(Table.feed_update.selectAll);
+        defer stmt.deinit();
+        return stmt.all(Raw, feed_update.allocator, .{}, .{}) catch |err| {
+            logger.warn("FeedUpdate.selectAll() failed. ERR: {s}\n", .{
+                feed_update.db.getDetailedError().message,
+            });
+            return err;
+        };
+    }
+};
 
 pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
     for (feed_items) |it| {
@@ -118,7 +162,8 @@ const Item = struct {
         link: []const u8,
         pub_date: []const u8,
         created_at: []const u8,
-        // TODO: add guid
+        // TODO: add guid: ?[]const u8
+        // TODO: add pub_date_utc: ?i64
         feed_id: usize,
         id: usize,
     };
