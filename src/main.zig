@@ -62,6 +62,30 @@ pub fn main() anyerror!void {
             return error.UnknownArgument;
         }
     }
+    try printAllItems(&db, allocator);
+}
+
+pub fn printAllItems(db: *sql.Db, allocator: *Allocator) !void {
+    const Result = struct {
+        title: []const u8,
+        link: ?[]const u8,
+    };
+    // NOTE: in case of desc pub_date_utc null values got to the end of list
+    const query =
+        \\select title, link from item
+        \\order by pub_date_utc DESC, created_at ASC
+    ;
+    var stmt = try db.prepare(query);
+    defer stmt.deinit();
+    const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
+        l.warn("ERR: {s}\nFailed query:\n{}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+    const writer = std.io.getStdOut().writer();
+    for (all_items) |item| {
+        const link = item.link orelse "<no-link>";
+        try writer.print("{s}: {s}\n", .{ item.title, link });
+    }
 }
 
 // Using arena allocator so all memory will be freed by arena allocator
