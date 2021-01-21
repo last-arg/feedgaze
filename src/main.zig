@@ -27,6 +27,7 @@ pub const log_level = std.log.Level.info;
 // TODO: implement downloading a file
 // TODO: see if there is good way to detect local file path or url
 
+const default_db_location = "./tmp/test.db";
 pub fn main() anyerror!void {
     std.log.info("Main run", .{});
     const base_allocator = std.heap.page_allocator;
@@ -35,7 +36,13 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    // TODO: database creation/connection
+    const abs_location = try makeFilePath(allocator, default_db_location);
+    const db_file = try std.fs.createFileAbsolute(
+        abs_location,
+        .{ .read = true, .truncate = false },
+    );
+
+    // TODO: replace with sqlite file database
     var db = try memoryDb();
     try dbSetup(&db);
 
@@ -62,7 +69,8 @@ pub fn cliAddFeed(db: *sql.Db, allocator: *Allocator, location_raw: []const u8) 
     var location = try makeFilePath(allocator, location_raw);
     var contents = try getLocalFileContents(allocator, location);
     var rss_feed = try rss.Feed.init(allocator, location, contents);
-    const feed_id = try addFeed(db, rss_feed, location);
+
+    const feed_id = try addFeed(db, rss_feed);
 
     try insert(db, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
         feed_id,
@@ -126,7 +134,7 @@ test "add feed" {
 
     var db_feed = Feed.init(allocator, &db);
 
-    const feed_id = try addFeed(db_feed, rss_feed, location);
+    const feed_id = try addFeed(db_feed, rss_feed);
 
     try insert(&db, Table.feed_update.insert, .{
         feed_id,
@@ -269,9 +277,7 @@ pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]
     return try local_file.reader().readAllAlloc(allocator, file_stat.size);
 }
 
-pub fn addFeed(db: *sql.Db, rss_feed: rss.Feed, location_raw: []const u8) !usize {
-    errdefer l.err("Failed to add feed '{s}'", .{location_raw});
-
+pub fn addFeed(db: *sql.Db, rss_feed: rss.Feed) !usize {
     try insert(db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
         rss_feed.info.title,
         rss_feed.info.link,
