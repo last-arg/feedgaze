@@ -4,7 +4,7 @@
   [ ] HTTPS
 [ ] Feeds
   [ ] RSS
-    - Spec: https://www.rssboard.org/rss-specification
+    [ ] Add some extended modules' support
   [ ] Atom
   [?] Json feed?
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
@@ -15,6 +15,12 @@
   [ ] Web browser - later
  
 # Future (Maybe)
+[ ] Image (icon/logo)
+  [ ] download or just save link
+  [ ] if save:
+    [?] save to database?
+    [?] save to file?
+  [ ] If image missing from feed try to get site's icon
 [ ] (Popular) Sites that don't support feeds (twitter, instagram, soundcloud).
   [ ] Let user defined 'feed' area?
 [ ] Mark feeds to use OS notification system on new link(s)

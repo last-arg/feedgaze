@@ -8,6 +8,7 @@ const print = std.debug.print;
 const assert = std.debug.assert;
 const mem = std.mem;
 const fmt = std.fmt;
+const process = std.process;
 const testing = std.testing;
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
@@ -25,25 +26,66 @@ pub const log_level = std.log.Level.info;
 // TODO?: PRAGMA schema.user_version = integer ;
 // TODO: implement downloading a file
 // TODO: see if there is good way to detect local file path or url
-// TODO: if feed.info.image_url == null get site's icon
-// TODO: save image to database or file
 
 pub fn main() anyerror!void {
     std.log.info("Main run", .{});
+    const base_allocator = std.heap.page_allocator;
+    // const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    // TODO: database creation/connection
+    var db = try memoryDb();
+    try dbSetup(&db);
+
+    var iter = process.args();
+    _ = iter.skip();
+
+    while (iter.next(allocator)) |arg_err| {
+        const arg = try arg_err;
+        if (mem.eql(u8, "add", arg)) {
+            if (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                try cliAddFeed(&db, allocator, value);
+            } else {
+                l.err("Subcommand add missing feed location", .{});
+            }
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+}
+
+// Using arena allocator so all memory will be freed by arena allocator
+pub fn cliAddFeed(db: *sql.Db, allocator: *Allocator, location_raw: []const u8) !void {
+    var location = try makeFilePath(allocator, location_raw);
+    var contents = try getLocalFileContents(allocator, location);
+    var rss_feed = try rss.Feed.init(allocator, location, contents);
+    const feed_id = try addFeed(db, rss_feed, location);
+
+    try insert(db, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
+        feed_id,
+        rss_feed.info.ttl,
+        rss_feed.info.last_build_date,
+        rss_feed.info.last_build_date_utc,
+    });
+
+    try addFeedItems(db, rss_feed.items, feed_id);
 }
 
 pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    @setEvalBranchQuota(10000);
+    @setEvalBranchQuota(2000);
 
     db.exec(query, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
 
 pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
     db.exec(Table.item.update, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
@@ -51,7 +93,7 @@ pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
 // Non-alloc select query that returns one or none rows
 pub fn one(comptime T: type, db: *sql.Db, comptime query: []const u8, args: anytype) !?T {
     return db.one(T, query, .{}, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
@@ -101,10 +143,10 @@ test "add feed" {
         }
     }
 
-    try addFeedItems(db_item, rss_feed.items, feed_id);
+    try addFeedItems(&db, rss_feed.items, feed_id);
 
     {
-        try addFeedItems(db_item, rss_feed.items, feed_id);
+        try addFeedItems(&db, rss_feed.items, feed_id);
         // var items = try db_item.selectAll();
         // defer {
         //     for (items) |it| {
@@ -146,23 +188,25 @@ pub const FeedUpdate = struct {
     }
 };
 
-pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
+pub fn addFeedItems(db: *sql.Db, feed_items: []rss.Item, feed_id: usize) !void {
     for (feed_items) |it| {
         if (it.guid) |_| {
             try insert(
-                db_item.db,
+                db,
                 Table.item.insert ++ Table.item.on_conflict_guid,
                 .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
             );
         } else if (it.link) |_| {
             try insert(
-                db_item.db,
+                db,
                 Table.item.insert ++ Table.item.on_conflict_link,
                 .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
             );
-        } else if (it.pub_date != null and try db_item.hasItem(it, feed_id)) {
+        } else if (it.pub_date != null and
+            try one(bool, db, Table.item.has_item, .{ feed_id, it.pub_date_utc }) != null)
+        {
             // Updates row if it matches feed_id and pub_date_utc
-            try update(db_item.db, Table.item.update, .{
+            try update(db, Table.item.update, .{
                 // set column values
                 it.title, it.link,         it.guid,
                 // where
@@ -170,7 +214,7 @@ pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void
             });
         } else {
             try insert(
-                db_item.db,
+                db,
                 Table.item.insert,
                 .{ feed_id, it.title, it.link, it.guid, it.pub_date, it.pub_date_utc },
             );
@@ -193,19 +237,6 @@ const Item = struct {
         feed_id: usize,
         id: usize,
     };
-
-    pub fn hasItem(item: Self, rss_item: rss.Item, feed_id: usize) !bool {
-        const result = item.db.one(
-            usize,
-            Table.item.has_item,
-            .{},
-            .{ feed_id, rss_item.pub_date_utc },
-        ) catch |err| {
-            l.err("Failed query '{}'. ERR: {}", .{ Table.item.count_all, err });
-            return err;
-        };
-        return result != null;
-    }
 
     pub fn deinitRaw(link: Self, raw: ?Raw) void {
         if (raw) |r| {
@@ -238,61 +269,24 @@ pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]
     return try local_file.reader().readAllAlloc(allocator, file_stat.size);
 }
 
-pub fn addFeed(feed: Feed, rss_feed: rss.Feed, location_raw: []const u8) !usize {
+pub fn addFeed(db: *sql.Db, rss_feed: rss.Feed, location_raw: []const u8) !usize {
     errdefer l.err("Failed to add feed '{s}'", .{location_raw});
 
-    var over_write = false;
-    const feed_result = try feed.selectLocation(rss_feed.info.location);
-    defer feed.deinitRaw(feed_result);
-    if (feed_result) |f| {
-        try std.io.getStdOut().writeAll("Feed already exists\n");
-        const changes_fmt =
-            \\
-            \\       | Current -> New
-            \\ Title | {s} -> {s}
-            \\ Link  | {s} -> {s}
-            \\
-            \\
-        ;
-        var changes_buf: [1024]u8 = undefined;
-        const changes = try fmt.bufPrint(&changes_buf, changes_fmt, .{
-            f.title, rss_feed.info.title,
-            f.link,  rss_feed.info.link,
-        });
-        try std.io.getStdOut().writeAll(changes);
-        try std.io.getStdOut().writeAll("Do you want to overwrite existing feed data (n/y)?\n");
-        var read_buf: [32]u8 = undefined;
-        var bytes = try std.io.getStdIn().read(&read_buf);
-        over_write = 'y' == std.ascii.toLower(read_buf[0]);
-        if (over_write) {
-            try update(feed.db, Table.feed.update_id, .{
-                rss_feed.info.title,
-                rss_feed.info.link,
-                rss_feed.info.pub_date,
-                rss_feed.info.pub_date_utc,
-                f.id,
-            });
-        }
-    } else {
-        try insert(feed.db, Table.feed.insert, .{
-            rss_feed.info.title,
-            rss_feed.info.link,
-            rss_feed.info.location,
-            rss_feed.info.pub_date,
-            rss_feed.info.pub_date_utc,
-        });
-    }
-    const id = blk: {
-        if (over_write) break :blk feed_result.?.id;
+    try insert(db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
+        rss_feed.info.title,
+        rss_feed.info.link,
+        rss_feed.info.location,
+        rss_feed.info.pub_date,
+        rss_feed.info.pub_date_utc,
+    });
 
-        const id_opt = try one(
-            usize,
-            feed.db,
-            "SELECT id FROM feed WHERE location = ?",
-            .{rss_feed.info.location},
-        );
-        break :blk id_opt.?;
-    };
+    // Just inserted feed, it has to exist
+    const id = (try one(
+        usize,
+        db,
+        Table.feed.select_id ++ Table.feed.where_location,
+        .{rss_feed.info.location},
+    )).?;
     return id;
 }
 
@@ -353,10 +347,6 @@ pub const Feed = struct {
             return err;
         };
     }
-
-    // pub fn deinit(feed: Self) void {
-    //     //
-    // }
 };
 
 pub fn memoryDb() !sql.Db {

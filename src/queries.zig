@@ -126,11 +126,12 @@ pub const Table = struct {
             \\  last_update
             \\FROM feed_update;
         ;
-        pub const on_conflict =
-            \\ON CONFLICT(feed_id) DO UPDATE SET
+        pub const on_conflict_feed_id =
+            \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = excluded.update_interval,
             \\  ttl = excluded.ttl,
             \\  last_update = (strftime('%s', 'now'))
+            \\WHERE last_build_date_utc != excluded.last_build_date_utc
         ;
     };
     pub const feed = struct {
@@ -153,7 +154,15 @@ pub const Table = struct {
             \\  ?{[]const u8},
             \\  ?,
             \\  ?
-            \\);
+            \\)
+        ;
+        pub const on_conflict_location =
+            \\ ON CONFLICT(location) DO UPDATE SET
+            \\   title = excluded.title,
+            \\   link = excluded.link,
+            \\   pub_date = excluded.pub_date,
+            \\   pub_date_utc = excluded.pub_date_utc
+            \\WHERE pub_date_utc != excluded.pub_date_utc
         ;
         pub const select =
             \\SELECT
@@ -162,6 +171,11 @@ pub const Table = struct {
             \\  location,
             \\  id,
             \\  pub_date_utc
+            \\FROM feed
+        ;
+        pub const select_id =
+            \\SELECT
+            \\  id
             \\FROM feed
         ;
         pub const where_location =

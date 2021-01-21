@@ -1,7 +1,7 @@
 .PHONY: test
 
 dev:
-	watchexec -w src/ -e zig zig build run
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_inbox add ./test/sample-rss-2.xml'
 
 test:
 	watchexec -c -r  -w src/ -e zig zig build test
