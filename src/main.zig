@@ -336,9 +336,9 @@ pub const Feed = struct {
     pub fn select(feed: Self) !?Raw {
         const db = feed.db;
         const allocator = feed.allocator;
-        return db.oneAlloc(Raw, allocator, Query.select.feed, .{}, .{}) catch |err| {
+        return db.oneAlloc(Raw, allocator, Table.feed.select, .{}, .{}) catch |err| {
             logger.warn("Failed query `{s}`. ERR: {s}\n", .{
-                Query.select.feed,
+                Table.feed.select,
                 db.getDetailedError().message,
             });
             return err;
@@ -360,12 +360,12 @@ pub const Feed = struct {
         return db.oneAlloc(
             Raw,
             allocator,
-            Query.select.feed_location,
+            Table.feed.select_location,
             .{},
             .{location},
         ) catch |err| {
             logger.warn("Failed query `{s}`. ERR: {s}\n", .{
-                Query.select.feed,
+                Table.feed.select_location,
                 db.getDetailedError().message,
             });
             return err;
@@ -374,7 +374,7 @@ pub const Feed = struct {
 
     pub fn insert(feed: Self, feed_rss: rss.Feed) !void {
         const db = feed.db;
-        db.exec(Query.insert.feed, .{
+        db.exec(Table.feed.insert, .{
             feed_rss.info.title,
             feed_rss.info.link,
             feed_rss.info.location,
@@ -388,7 +388,7 @@ pub const Feed = struct {
 
     pub fn updateId(feed: Self, feed_rss: rss.Feed, id: usize) !void {
         const db = feed.db;
-        db.exec(Query.update.feed_id, .{
+        db.exec(Table.feed.update_id, .{
             feed_rss.info.title,
             feed_rss.info.link,
             feed_rss.info.pub_date,
@@ -480,13 +480,13 @@ const Setting = struct {
     version: usize,
 
     pub fn select(allocator: *Allocator, db: *sql.Db) !?Setting {
-        return db.oneAlloc(Setting, allocator, Query.select.setting, .{}, .{}) catch |err| {
+        return db.oneAlloc(Setting, allocator, Table.setting.select, .{}, .{}) catch |err| {
             logger.warn("Failed to get setting. ERR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
     pub fn insert(db: *sql.Db, version: usize) !void {
-        db.exec(Query.insert.setting, .{version}) catch |err| {
+        db.exec(Table.setting.insert, .{version}) catch |err| {
             logger.warn("Failed to insert new link. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };

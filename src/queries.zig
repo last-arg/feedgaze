@@ -85,6 +85,14 @@ pub const Table = struct {
             \\  version INTEGER NOT NULL DEFAULT 1
             \\);
         ;
+        pub const insert =
+            \\INSERT INTO setting (version) VALUES (?{usize});
+        ;
+        pub const select =
+            \\SELECT
+            \\  version
+            \\FROM setting;
+        ;
     };
     // TODO fields:
     // 		skip_days ?
@@ -134,81 +142,33 @@ pub const Table = struct {
             \\  created_at TEXT DEFAULT CURRENT_TIMESTAMP
             \\);
         ;
-    };
-};
-
-pub const Query = struct {
-    pub const insert = .{
-        // TODO: use UPSERT instead
-        // Or something else that keeps row at one
-        .setting =
-        \\INSERT INTO setting (version) VALUES (?{usize});
-        ,
-        .feed =
-        \\INSERT INTO feed (title, link, location, pub_date, pub_date_utc)
-        \\VALUES (
-        \\  ?{[]const u8},
-        \\  ?{[]const u8},
-        \\  ?{[]const u8},
-        \\  ?,
-        \\  ?
-        \\);
-        ,
-        .item =
-        \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
-        \\VALUES (
-        \\  ?{usize},
-        \\  ?{[]const u8},
-        \\  ?,
-        \\  ?,
-        \\  ?,
-        \\  ?
-        \\)
-        \\ON CONFLICT(guid,link,pub_date_utc)
-        // \\WHERE guid IS NULL
-        \\DO UPDATE SET
-        \\  title='New_Title',
-        \\  link = excluded.link,
-        \\  pub_date = excluded.pub_date,
-        \\  pub_date_utc = excluded.pub_date_utc
-        // \\WHERE link IS NOT NULL AND guid IS NOT NULL
-        \\WHERE ((title is not null OR link is not null)
-        \\AND excluded.pub_date_utc != pub_date_utc
-        \\AND excluded.feed_id = feed_id)
-        \\OR (title is null AND link is null AND excluded.feed_id = feed_id AND excluded.pub_date_utc = pub_date_utc)
-    };
-    pub const update = .{
-        .feed_id =
-        \\UPDATE feed SET
-        \\  title = ?{[]const u8},
-        \\  link = ?{[]const u8},
-        \\  pub_date = ?,
-        \\  pub_date_utc = ?
-        \\WHERE id = ?{usize}
-    };
-    pub const select = .{
-        .feed =
-        \\SELECT
-        \\  title,
-        \\  link,
-        \\  location,
-        \\  id,
-        \\  pub_date_utc
-        \\FROM feed;
-        ,
-        .feed_location =
-        \\SELECT
-        \\  title,
-        \\  link,
-        \\  location,
-        \\  id,
-        \\  pub_date_utc
-        \\FROM feed
-        \\WHERE location = ?{[]const u8}
-        ,
-        .setting =
-        \\SELECT
-        \\  version
-        \\FROM setting;
+        pub const insert =
+            \\INSERT INTO feed (title, link, location, pub_date, pub_date_utc)
+            \\VALUES (
+            \\  ?{[]const u8},
+            \\  ?{[]const u8},
+            \\  ?{[]const u8},
+            \\  ?,
+            \\  ?
+            \\);
+        ;
+        pub const select_location =
+            \\SELECT
+            \\  title,
+            \\  link,
+            \\  location,
+            \\  id,
+            \\  pub_date_utc
+            \\FROM feed
+            \\WHERE location = ?{[]const u8}
+        ;
+        pub const update_id =
+            \\UPDATE feed SET
+            \\  title = ?{[]const u8},
+            \\  link = ?{[]const u8},
+            \\  pub_date = ?,
+            \\  pub_date_utc = ?
+            \\WHERE id = ?{usize}
+        ;
     };
 };
