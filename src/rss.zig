@@ -10,29 +10,14 @@ const l = std.log;
 const datetime = @import("datetime");
 const Datetime = datetime.Datetime;
 const timezones = datetime.timezones;
-const Weekday = datetime.Weekday;
 
 // TODO: add sample-all.rss file with all fields present
-
-pub fn stringToWeekday(str: []const u8) ?Weekday {
-    inline for (@typeInfo(Weekday).Enum.fields) |field| {
-        if (std.ascii.eqlIgnoreCase(str, field.name)) {
-            return @field(Weekday, field.name);
-        }
-    }
-    return null;
-}
-
-test "stringToWeekday" {
-    {
-        var result = stringToWeekday("Tuesday");
-        testing.expectEqual(Weekday.Tuesday, result.?);
-    }
-    {
-        var result = stringToWeekday("wrongday");
-        testing.expect(null == result);
-    }
-}
+// TODO: quite alot of feed use these fields
+// <sy:updatePeriod>hourly</sy:updatePeriod>
+// <sy:updateFrequency>1</sy:updateFrequency>
+// has something to do with attributes in xml element
+// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+// TODO: elements text or part of text might be wrapped by CDATA
 
 pub const Feed = struct {
     const Self = @This();
@@ -50,8 +35,6 @@ pub const Feed = struct {
         image_url: ?[]const u8 = null,
         last_build_date: ?[]const u8 = null, // last time rss file was generated
         ttl: ?u32 = null, // in minutes until cache refresh
-        skip_hours: ?[]u8 = null, // valid values: 0 .. 23
-        skip_days: ?[]Weekday = null,
     };
 
     // location and contents memory isn't owned by Feed struct.
@@ -83,12 +66,6 @@ pub const Feed = struct {
         const allocator = feed.allocator;
         var items = try ArrayList(Item).initCapacity(allocator, 10);
         errdefer items.deinit();
-
-        var skip_days = ArrayList(Weekday).init(allocator);
-        errdefer skip_days.deinit();
-
-        var skip_hours = ArrayList(u8).init(allocator);
-        errdefer skip_hours.deinit();
 
         var state: State = .channel;
         var channel_field: ChannelField = ._ignore;
@@ -129,18 +106,6 @@ pub const Feed = struct {
                                 if (mem.eql(u8, "url", tag)) {
                                     channel_field = .image_url;
                                 }
-                            } else if (mem.eql(u8, "skipDays", tag)) {
-                                channel_field = .skip_days;
-                            } else if (channel_field == .skip_days) {
-                                if (mem.eql(u8, "day", tag)) {
-                                    channel_field = .day;
-                                }
-                            } else if (mem.eql(u8, "skipHours", tag)) {
-                                channel_field = .skip_hours;
-                            } else if (channel_field == .skip_hours) {
-                                if (mem.eql(u8, "hour", tag)) {
-                                    channel_field = .hour;
-                                }
                             } else {
                                 channel_field = ._ignore;
                             }
@@ -170,8 +135,8 @@ pub const Feed = struct {
                             item.*.title = value;
                         } else if (item_description) |value| {
                             // TODO: remove/avoid html tags
-                            // if I want to continue from html tag end might have to
-                            // allocate string
+                            // Probably need to allocate string
+                            // https://www.rssboard.org/rss-encoding-examples
                             const max_len: usize = 30;
                             const len = if (value.len > max_len) max_len else value.len;
                             item.*.title = value[0..len];
@@ -227,16 +192,7 @@ pub const Feed = struct {
                                     l.warn("value: {s}", .{value});
                                     info.ttl = try std.fmt.parseInt(u32, value, 10);
                                 },
-                                .day => {
-                                    if (stringToWeekday(value)) |weekday| {
-                                        try skip_days.append(weekday);
-                                    }
-                                },
-                                .hour => {
-                                    const hour = try std.fmt.parseInt(u8, value, 10);
-                                    try skip_hours.append(hour);
-                                },
-                                ._ignore, .image, .skip_days, .skip_hours => {},
+                                ._ignore, .image => {},
                             }
                         },
                         .item => {
@@ -269,19 +225,11 @@ pub const Feed = struct {
         info.link = info_link.?;
         info.title = info_title.?;
         feed.info = info;
-        if (skip_days.items.len > 0) {
-            feed.info.skip_days = skip_days.toOwnedSlice();
-        }
-        if (skip_hours.items.len > 0) {
-            feed.info.skip_hours = skip_hours.toOwnedSlice();
-        }
         feed.items = items.toOwnedSlice();
     }
 
     pub fn deinit(feed: @This()) void {
         feed.allocator.free(feed.items);
-        if (feed.info.skip_days) |skip_days| feed.allocator.free(skip_days);
-        if (feed.info.skip_hours) |skip_hours| feed.allocator.free(skip_hours);
     }
 };
 
@@ -311,10 +259,6 @@ const ChannelField = enum {
     ttl,
     image,
     image_url,
-    skip_days,
-    day,
-    skip_hours,
-    hour,
     _ignore,
 };
 
@@ -338,7 +282,6 @@ test "rss" {
     std.testing.expectEqualStrings("Liftoff News", feed.info.title);
     // Description is used as title
     std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
-    testing.expect(null == feed.info.skip_days);
     defer feed.deinit();
 }
 

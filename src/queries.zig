@@ -94,9 +94,6 @@ pub const Table = struct {
             \\FROM setting;
         ;
     };
-    // TODO fields:
-    // 		skip_days ?
-    // 		skip_hours ?
     pub const feed_update = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed_update (
