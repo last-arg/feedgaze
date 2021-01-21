@@ -351,12 +351,12 @@ pub const Feed = struct {
         return db.oneAlloc(
             Raw,
             allocator,
-            Table.feed.select_location,
+            Table.feed.select ++ Table.feed.where_location,
             .{},
             .{location},
         ) catch |err| {
             l.warn("Failed query `{s}`. ERR: {s}\n", .{
-                Table.feed.select_location,
+                Table.feed.select ++ Table.feed.where_location,
                 db.getDetailedError().message,
             });
             return err;

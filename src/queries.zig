@@ -1,4 +1,6 @@
 // TODO?: put default values into contants?
+// TODO: if concatenating queries have to remove semicolons
+// and add spaces to end or beginning
 pub const Table = struct {
     pub const item = struct {
         pub const create =
@@ -153,7 +155,7 @@ pub const Table = struct {
             \\  ?
             \\);
         ;
-        pub const select_location =
+        pub const select =
             \\SELECT
             \\  title,
             \\  link,
@@ -161,7 +163,9 @@ pub const Table = struct {
             \\  id,
             \\  pub_date_utc
             \\FROM feed
-            \\WHERE location = ?{[]const u8}
+        ;
+        pub const where_location =
+            \\ WHERE location = ?{[]const u8}
         ;
         pub const update_id =
             \\UPDATE feed SET
