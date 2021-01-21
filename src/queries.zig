@@ -101,14 +101,18 @@ pub const Table = struct {
             \\  update_interval INTEGER DEFAULT 6000,
             \\  ttl INTEGER DEFAULT NULL,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
+            \\  last_build_date TEXT DEFAULT NULL,
+            \\  last_build_date_utc INTEGER DEFAULT NULL,
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
             \\);
         ;
         pub const insert =
             \\INSERT INTO feed_update
-            \\  (feed_id, ttl)
+            \\  (feed_id, ttl, last_build_date, last_build_date_utc)
             \\VALUES (
             \\  ?{usize},
+            \\  ?,
+            \\  ?,
             \\  ?
             \\)
         ;

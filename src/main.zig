@@ -111,6 +111,8 @@ pub const FeedUpdate = struct {
         feed_update.db.exec(Table.feed_update.insert, .{
             feed_id,
             rss_feed.info.ttl,
+            rss_feed.info.last_build_date,
+            rss_feed.info.last_build_date_utc,
         }) catch |err| {
             logger.warn("Failed to insert new link. ERR: {s}\n", .{feed_update.db.getDetailedError().message});
             return err;

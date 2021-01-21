@@ -34,6 +34,7 @@ pub const Feed = struct {
         pub_date_utc: ?i64 = null,
         image_url: ?[]const u8 = null,
         last_build_date: ?[]const u8 = null, // last time rss file was generated
+        last_build_date_utc: ?i64 = null, // last time rss file was generated
         ttl: ?u32 = null, // in minutes until cache refresh
     };
 
@@ -53,6 +54,10 @@ pub const Feed = struct {
     pub fn datesToTimestamp(feed: *Self) !void {
         if (feed.info.pub_date) |str| {
             feed.info.pub_date_utc = try pubDateToTimestamp(str);
+        }
+
+        if (feed.info.last_build_date) |str| {
+            feed.info.last_build_date_utc = try pubDateToTimestamp(str);
         }
 
         for (feed.items) |*it| {
