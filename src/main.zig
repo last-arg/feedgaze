@@ -11,7 +11,6 @@ const fmt = std.fmt;
 const testing = std.testing;
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
-const logger = std.log;
 const l = std.log;
 usingnamespace @import("queries.zig");
 
@@ -114,7 +113,7 @@ pub const FeedUpdate = struct {
             rss_feed.info.last_build_date,
             rss_feed.info.last_build_date_utc,
         }) catch |err| {
-            logger.warn("Failed to insert new link. ERR: {s}\n", .{feed_update.db.getDetailedError().message});
+            l.warn("Failed to insert new link. ERR: {s}\n", .{feed_update.db.getDetailedError().message});
             return err;
         };
     }
@@ -123,7 +122,7 @@ pub const FeedUpdate = struct {
         var stmt = try feed_update.db.prepare(Table.feed_update.selectAll);
         defer stmt.deinit();
         return stmt.all(Raw, feed_update.allocator, .{}, .{}) catch |err| {
-            logger.warn("FeedUpdate.selectAll() failed. ERR: {s}\n", .{
+            l.warn("FeedUpdate.selectAll() failed. ERR: {s}\n", .{
                 feed_update.db.getDetailedError().message,
             });
             return err;
@@ -197,7 +196,7 @@ const Item = struct {
             feed_id,
             rss_item.pub_date_utc,
         }) catch |err| {
-            logger.warn("Item.update() failed. ERR: {s}\n", .{item.db.getDetailedError().message});
+            l.warn("Item.update() failed. ERR: {s}\n", .{item.db.getDetailedError().message});
             return err;
         };
     }
@@ -217,7 +216,7 @@ const Item = struct {
             rss_item.pub_date,
             rss_item.pub_date_utc,
         }) catch |err| {
-            logger.warn("Failed to insert new link. ERR: {s}\n", .{item.db.getDetailedError().message});
+            l.warn("Failed to insert new link. ERR: {s}\n", .{item.db.getDetailedError().message});
             return err;
         };
     }
@@ -267,7 +266,7 @@ pub fn getLocalFileContents(allocator: *Allocator, location: []const u8) ![]cons
 }
 
 pub fn addFeed(feed: Feed, rss_feed: rss.Feed, location_raw: []const u8) !usize {
-    errdefer logger.err("Failed to add feed '{s}'", .{location_raw});
+    errdefer l.err("Failed to add feed '{s}'", .{location_raw});
 
     var over_write = false;
     const feed_result = try feed.selectLocation(rss_feed.info.location);
@@ -339,7 +338,7 @@ pub const Feed = struct {
         const db = feed.db;
         const allocator = feed.allocator;
         return db.oneAlloc(Raw, allocator, Table.feed.select, .{}, .{}) catch |err| {
-            logger.warn("Failed query `{s}`. ERR: {s}\n", .{
+            l.warn("Failed query `{s}`. ERR: {s}\n", .{
                 Table.feed.select,
                 db.getDetailedError().message,
             });
@@ -366,7 +365,7 @@ pub const Feed = struct {
             .{},
             .{location},
         ) catch |err| {
-            logger.warn("Failed query `{s}`. ERR: {s}\n", .{
+            l.warn("Failed query `{s}`. ERR: {s}\n", .{
                 Table.feed.select_location,
                 db.getDetailedError().message,
             });
@@ -383,7 +382,7 @@ pub const Feed = struct {
             feed_rss.info.pub_date,
             feed_rss.info.pub_date_utc,
         }) catch |err| {
-            logger.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
+            l.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
@@ -397,7 +396,7 @@ pub const Feed = struct {
             feed_rss.info.pub_date_utc,
             id,
         }) catch |err| {
-            logger.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
+            l.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
@@ -453,7 +452,7 @@ pub fn verifyDbTables(db: *sql.Db) bool {
         if (@hasField(decl.data.Type, "create")) {
             assert(decl.name.len < max_len);
             const row = db.one([max_len:0]u8, select_table, .{}, .{decl.name}) catch |err| {
-                logger.warn("{s}\n", .{db.getDetailedError().message});
+                l.warn("{s}\n", .{db.getDetailedError().message});
                 return false;
             };
             if (row) |name| {
@@ -483,13 +482,13 @@ const Setting = struct {
 
     pub fn select(allocator: *Allocator, db: *sql.Db) !?Setting {
         return db.oneAlloc(Setting, allocator, Table.setting.select, .{}, .{}) catch |err| {
-            logger.warn("Failed to get setting. ERR: {s}\n", .{db.getDetailedError().message});
+            l.warn("Failed to get setting. ERR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
     pub fn insert(db: *sql.Db, version: usize) !void {
         db.exec(Table.setting.insert, .{version}) catch |err| {
-            logger.warn("Failed to insert new link. ERROR: {s}\n", .{db.getDetailedError().message});
+            l.warn("Failed to insert new link. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
