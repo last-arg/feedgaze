@@ -41,6 +41,13 @@ pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
     };
 }
 
+pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
+    db.exec(Table.item.update, args) catch |err| {
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}
+
 test "add feed" {
     var allocator = testing.allocator;
     var location_raw: []const u8 = "./test/sample-rss-2.xml";
@@ -147,7 +154,12 @@ pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void
             );
         } else if (it.pub_date != null and try db_item.hasItem(it, feed_id)) {
             // Updates row if it matches feed_id and pub_date_utc
-            try db_item.update(it, feed_id);
+            try update(db_item.db, Table.item.update, .{
+                // set column values
+                it.title, it.link,         it.guid,
+                // where
+                feed_id,  it.pub_date_utc,
+            });
         } else {
             try insert(
                 db_item.db,
@@ -185,25 +197,6 @@ const Item = struct {
             return err;
         };
         return result != null;
-    }
-
-    pub fn update(
-        item: Self,
-        rss_item: rss.Item,
-        feed_id: usize,
-    ) !void {
-        item.db.exec(Table.item.update, .{
-            // set column values
-            rss_item.title,
-            rss_item.link,
-            rss_item.guid,
-            // where
-            feed_id,
-            rss_item.pub_date_utc,
-        }) catch |err| {
-            l.warn("Item.update() failed. ERR: {s}\n", .{item.db.getDetailedError().message});
-            return err;
-        };
     }
 
     pub fn deinitRaw(link: Self, raw: ?Raw) void {
@@ -277,7 +270,13 @@ pub fn addFeed(feed: Feed, rss_feed: rss.Feed, location_raw: []const u8) !usize 
         var bytes = try std.io.getStdIn().read(&read_buf);
         over_write = 'y' == std.ascii.toLower(read_buf[0]);
         if (over_write) {
-            try feed.updateId(rss_feed, f.id);
+            try update(feed.db, Table.feed.update_id, .{
+                rss_feed.info.title,
+                rss_feed.info.link,
+                rss_feed.info.pub_date,
+                rss_feed.info.pub_date_utc,
+                f.id,
+            });
         }
     } else {
         try insert(feed.db, Table.feed.insert, .{
@@ -360,20 +359,6 @@ pub const Feed = struct {
                 Table.feed.select_location,
                 db.getDetailedError().message,
             });
-            return err;
-        };
-    }
-
-    pub fn updateId(feed: Self, feed_rss: rss.Feed, id: usize) !void {
-        const db = feed.db;
-        db.exec(Table.feed.update_id, .{
-            feed_rss.info.title,
-            feed_rss.info.link,
-            feed_rss.info.pub_date,
-            feed_rss.info.pub_date_utc,
-            id,
-        }) catch |err| {
-            l.warn("Failed to insert new feed. ERROR: {s}\n", .{db.getDetailedError().message});
             return err;
         };
     }
