@@ -48,6 +48,14 @@ pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
     };
 }
 
+// Non-alloc select query that returns one or none rows
+pub fn one(comptime T: type, db: *sql.Db, comptime query: []const u8, args: anytype) !?T {
+    return db.one(T, query, .{}, args) catch |err| {
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}
+
 test "add feed" {
     var allocator = testing.allocator;
     var location_raw: []const u8 = "./test/sample-rss-2.xml";
@@ -110,8 +118,8 @@ test "add feed" {
         // }
     }
 
-    const items_count = try db_item.countAll();
-    testing.expectEqual(rss_feed.items.len, items_count);
+    const items_count = try one(usize, &db, Table.item.count_all, .{});
+    testing.expectEqual(rss_feed.items.len, items_count.?);
 }
 
 pub const FeedUpdate = struct {
@@ -208,19 +216,6 @@ const Item = struct {
         }
     }
 
-    pub fn countAll(item: Self) !usize {
-        // There is always return value
-        return (item.db.one(
-            usize,
-            Table.item.count_all,
-            .{},
-            .{},
-        ) catch |err| {
-            l.err("Failed query '{}'. ERR: {}", .{ Table.item.count_all, err });
-            return err;
-        }).?;
-    }
-
     pub fn selectAll(item: Self) ![]Raw {
         var all_items = ArrayList(Raw).init(item.allocator);
         errdefer all_items.deinit();
@@ -290,7 +285,12 @@ pub fn addFeed(feed: Feed, rss_feed: rss.Feed, location_raw: []const u8) !usize 
     const id = blk: {
         if (over_write) break :blk feed_result.?.id;
 
-        const id_opt = try feed.oneLocationId(rss_feed.info.location);
+        const id_opt = try one(
+            usize,
+            feed.db,
+            "SELECT id FROM feed WHERE location = ?",
+            .{rss_feed.info.location},
+        );
         break :blk id_opt.?;
     };
     return id;
@@ -334,15 +334,6 @@ pub const Feed = struct {
             });
             return err;
         };
-    }
-
-    pub fn oneLocationId(feed: Self, location: []const u8) !?usize {
-        return try feed.db.one(
-            usize,
-            "SELECT id FROM feed WHERE location = ?",
-            .{},
-            .{location},
-        );
     }
 
     pub fn selectLocation(feed: Self, location: []const u8) !?Raw {
@@ -409,20 +400,11 @@ fn dbSetup(db: *sql.Db) !void {
 }
 
 pub fn verifyDbTables(db: *sql.Db) bool {
-    const max_len = 128;
-    const select_table = "SELECT name FROM sqlite_master WHERE type='table' AND name=? ;";
+    const select_table = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
     inline for (@typeInfo(Table).Struct.decls) |decl| {
         if (@hasField(decl.data.Type, "create")) {
-            assert(decl.name.len < max_len);
-            const row = db.one([max_len:0]u8, select_table, .{}, .{decl.name}) catch |err| {
-                l.warn("{s}\n", .{db.getDetailedError().message});
-                return false;
-            };
-            if (row) |name| {
-                if (!mem.eql(u8, decl.name, mem.spanZ(&name))) {
-                    return false;
-                }
-            }
+            const row = one(usize, db, select_table, .{decl.name});
+            if (row == null) return false;
             break;
         }
     }
