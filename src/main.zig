@@ -20,6 +20,9 @@ pub const log_level = std.log.Level.info;
 // Sqlite
 // Do upsert with update and insert:
 // https://stackoverflow.com/questions/15277373/sqlite-upsert-update-or-insert/38463024#38463024
+// TODO: find domain's rss feeds
+// 		html link application+xml
+// 		for popular platforms can guess url. wordpress: /feed/
 // TODO?: PRAGMA schema.user_version = integer ;
 // TODO: implement downloading a file
 // TODO: see if there is good way to detect local file path or url
@@ -56,6 +59,7 @@ test "add feed" {
     const feed_id = try addFeed(db_feed, rss_feed, location);
     l.warn("feed_id: {}", .{feed_id});
 
+    // try addFeedUpdate(db_feed, rss_feed, feed_id);
     try addFeedItems(db_item, rss_feed.items, feed_id);
 
     {
@@ -75,6 +79,10 @@ test "add feed" {
 
     const items_count = try db_item.countAll();
     testing.expectEqual(rss_feed.items.len, items_count);
+}
+
+pub fn addFeedUpdate(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
+    //
 }
 
 pub fn addFeedItems(db_item: Item, feed_items: []rss.Item, feed_id: usize) !void {
@@ -382,13 +390,9 @@ fn dbSetup(db: *sql.Db) !void {
     _ = try db.pragma(usize, .{}, "foreign_keys", .{"1"});
 
     inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasField(decl.data.Var, "create")) {
-            inline for (std.meta.fields(decl.data.Var)) |field| {
-                if (comptime mem.eql(u8, "create", field.name)) {
-                    try db.exec(field.default_value.?, .{});
-                    break; // NOTE: This break crashes the compiler
-                }
-            }
+        if (@hasDecl(decl.data.Type, "create")) {
+            const sql_create = @field(decl.data.Type, "create");
+            try db.exec(sql_create, .{});
         }
     }
 
@@ -399,22 +403,18 @@ pub fn verifyDbTables(db: *sql.Db) bool {
     const max_len = 128;
     const select_table = "SELECT name FROM sqlite_master WHERE type='table' AND name=? ;";
     inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasField(decl.data.Var, "create")) {
-            inline for (std.meta.fields(decl.data.Var)) |field| {
-                if (comptime mem.eql(u8, "create", field.name)) {
-                    assert(field.name.len < max_len);
-                    const row = db.one([max_len:0]u8, select_table, .{}, .{field.name}) catch |err| {
-                        logger.warn("{s}\n", .{db.getDetailedError().message});
-                        return false;
-                    };
-                    if (row) |name| {
-                        if (!mem.eql(u8, field.name, mem.spanZ(&name))) {
-                            return false;
-                        }
-                    }
-                    break;
+        if (@hasField(decl.data.Type, "create")) {
+            assert(decl.name.len < max_len);
+            const row = db.one([max_len:0]u8, select_table, .{}, .{decl.name}) catch |err| {
+                logger.warn("{s}\n", .{db.getDetailedError().message});
+                return false;
+            };
+            if (row) |name| {
+                if (!mem.eql(u8, decl.name, mem.spanZ(&name))) {
+                    return false;
                 }
             }
+            break;
         }
     }
 
