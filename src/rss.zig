@@ -17,7 +17,6 @@ const timezones = datetime.timezones;
 // <sy:updateFrequency>1</sy:updateFrequency>
 // has something to do with attributes in xml element
 // xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
-// TODO: elements text or part of text might be wrapped by CDATA
 
 pub const Feed = struct {
     const Self = @This();
@@ -303,34 +302,26 @@ pub fn rssStringToTimezone(str: []const u8) *const datetime.Timezone {
     if (mem.eql(u8, "EST", str)) {
         return &timezones.EST;
     } else if (mem.eql(u8, "EDT", str)) {
-        // result = datetime.Timezone.create("EDT", -240);
         return &timezones.America.Anguilla;
     } else if (mem.eql(u8, "CST", str)) {
         return &timezones.CST6CDT;
     } else if (mem.eql(u8, "CDT", str)) {
-        // result = datetime.Timezone.create("CDT", -300);
         return &timezones.US.Eastern;
     } else if (mem.eql(u8, "MST", str)) {
         return &timezones.MST;
     } else if (mem.eql(u8, "MDT", str)) {
-        // result = datetime.Timezone.create("MDT", -360);
         return &timezones.US.Central;
     } else if (mem.eql(u8, "PST", str)) {
         return &timezones.PST8PDT;
     } else if (mem.eql(u8, "PDT", str)) {
-        // result = datetime.Timezone.create("PDT", -420);
         return &timezones.US.Mountain;
     } else if (mem.eql(u8, "A", str)) {
-        // result = datetime.Timezone.create("A", -60);
         return &timezones.Atlantic.Cape_Verde;
     } else if (mem.eql(u8, "M", str)) {
-        // result = datetime.Timezone.create("M", -720);
         return &timezones.Etc.GMTp12;
     } else if (mem.eql(u8, "N", str)) {
-        // result = datetime.Timezone.create("N", 60);
         return &timezones.CET;
     } else if (mem.eql(u8, "Y", str)) {
-        // result = datetime.Timezone.create("Y", 720);
         return &timezones.NZ;
     }
     return &timezones.UTC;
