@@ -42,7 +42,7 @@ pub fn main() anyerror!void {
         .{ .read = true, .truncate = false },
     );
 
-    // TODO: replace with sqlite file database
+    // TODO: replace memory db with file db
     var db = try memoryDb();
     try dbSetup(&db);
 
@@ -70,10 +70,10 @@ pub fn printAllItems(db: *sql.Db, allocator: *Allocator) !void {
         title: []const u8,
         link: ?[]const u8,
     };
-    // NOTE: in case of desc pub_date_utc null values got to the end of list
+    // NOTE: in case of DESC pub_date_utc null values got to the end of table
     const query =
-        \\select title, link from item
-        \\order by pub_date_utc DESC, created_at ASC
+        \\SELECT title, link FROM item
+        \\ORDER BY pub_date_utc DESC, created_at ASC
     ;
     var stmt = try db.prepare(query);
     defer stmt.deinit();

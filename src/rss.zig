@@ -80,8 +80,11 @@ pub const Feed = struct {
         var item_title: ?[]const u8 = null;
         var item_description: ?[]const u8 = null;
 
-        var info: Info = undefined;
-        info.location = location;
+        var info = Info{
+            .title = undefined,
+            .link = undefined,
+            .location = location,
+        };
         var info_title: ?[]const u8 = null;
         var info_link: ?[]const u8 = null;
 
@@ -105,6 +108,10 @@ pub const Feed = struct {
                             } else if (mem.eql(u8, "item", tag)) {
                                 state = .item;
                                 item = try items.addOne();
+                                item.link = null;
+                                item.pub_date = null;
+                                item.pub_date_utc = null;
+                                item.guid = null;
                             } else if (mem.eql(u8, "image", tag)) {
                                 channel_field = .image;
                             } else if (channel_field == .image) {
@@ -146,6 +153,7 @@ pub const Feed = struct {
                             // Reset old data incase addOne() keeps old data
                             item.*.link = null;
                             item.*.pub_date = null;
+                            item.*.pub_date_utc = null;
                             item.*.guid = null;
                             _ = items.pop();
                         }
@@ -245,7 +253,7 @@ pub const Feed = struct {
 // Source field would be used only if there is no link field.
 pub const Item = struct {
     title: []const u8,
-    link: ?[]const u8,
+    link: ?[]const u8 = null,
     pub_date: ?[]const u8 = null,
     pub_date_utc: ?i64 = null,
     guid: ?[]const u8 = null,
@@ -290,35 +298,42 @@ test "rss" {
     defer feed.deinit();
 }
 
-pub fn rssStringToTimeZone(str: []const u8) datetime.Timezone {
+pub fn rssStringToTimezone(str: []const u8) *const datetime.Timezone {
     // This default case covers UT, GMT and Z timezone values.
-    var result = timezones.UTC;
     if (mem.eql(u8, "EST", str)) {
-        result = timezones.EST;
+        return &timezones.EST;
     } else if (mem.eql(u8, "EDT", str)) {
-        result = datetime.Timezone.create("EDT", -240);
+        // result = datetime.Timezone.create("EDT", -240);
+        return &timezones.America.Anguilla;
     } else if (mem.eql(u8, "CST", str)) {
-        result = timezones.CST6CDT;
+        return &timezones.CST6CDT;
     } else if (mem.eql(u8, "CDT", str)) {
-        result = datetime.Timezone.create("CDT", -300);
+        // result = datetime.Timezone.create("CDT", -300);
+        return &timezones.US.Eastern;
     } else if (mem.eql(u8, "MST", str)) {
-        result = timezones.MST;
+        return &timezones.MST;
     } else if (mem.eql(u8, "MDT", str)) {
-        result = datetime.Timezone.create("MDT", -360);
+        // result = datetime.Timezone.create("MDT", -360);
+        return &timezones.US.Central;
     } else if (mem.eql(u8, "PST", str)) {
-        result = timezones.PST8PDT;
+        return &timezones.PST8PDT;
     } else if (mem.eql(u8, "PDT", str)) {
-        result = datetime.Timezone.create("PDT", -420);
+        // result = datetime.Timezone.create("PDT", -420);
+        return &timezones.US.Mountain;
     } else if (mem.eql(u8, "A", str)) {
-        result = datetime.Timezone.create("A", -60);
+        // result = datetime.Timezone.create("A", -60);
+        return &timezones.Atlantic.Cape_Verde;
     } else if (mem.eql(u8, "M", str)) {
-        result = datetime.Timezone.create("M", -720);
+        // result = datetime.Timezone.create("M", -720);
+        return &timezones.Etc.GMTp12;
     } else if (mem.eql(u8, "N", str)) {
-        result = datetime.Timezone.create("N", 60);
+        // result = datetime.Timezone.create("N", 60);
+        return &timezones.CET;
     } else if (mem.eql(u8, "Y", str)) {
-        result = datetime.Timezone.create("Y", 720);
+        // result = datetime.Timezone.create("Y", 720);
+        return &timezones.NZ;
     }
-    return result;
+    return &timezones.UTC;
 }
 
 pub fn pubDateToDateTime(str: []const u8) !Datetime {
@@ -365,25 +380,25 @@ pub fn pubDateToDateTime(str: []const u8) !Datetime {
     const second_str = time_iter.next() orelse return error.InvalidPubDate;
     const second = try fmt.parseInt(u8, second_str, 10);
 
+    // Timezone default to UTC
+    var result = try Datetime.create(year, month, day, hour, minute, second, 0, null);
+
     // timezone
-    const timezone_str = iter.next() orelse return error.InvalidPubDate;
-    const timezone = blk: {
-        const tz_str = timezone_str;
-        if (tz_str[0] == '+' or tz_str[0] == '-') {
-            const tz_hours = try fmt.parseInt(i16, tz_str[1..3], 10);
-            const tz_minutes = try fmt.parseInt(i16, tz_str[3..5], 10);
-            var total_minutes = (tz_hours * 60) + tz_minutes;
-            if (tz_str[0] == '-') {
-                total_minutes = -total_minutes;
-            }
-            break :blk datetime.Timezone.create(tz_str, total_minutes);
+    // NOTE: dates with timezone format +/-NNNN will be turned into UTC
+    const tz_str = iter.next() orelse return error.InvalidPubDate;
+    if (tz_str[0] == '+' or tz_str[0] == '-') {
+        const tz_hours = try fmt.parseInt(i16, tz_str[1..3], 10);
+        const tz_minutes = try fmt.parseInt(i16, tz_str[3..5], 10);
+        var total_minutes = (tz_hours * 60) + tz_minutes;
+        if (tz_str[0] == '-') {
+            total_minutes = -total_minutes;
         }
+        result = result.shiftMinutes(-total_minutes);
+    } else {
+        result.zone = rssStringToTimezone(tz_str);
+    }
 
-        // Incase invalid value function defaults to UTC
-        break :blk rssStringToTimeZone(tz_str);
-    };
-
-    return try Datetime.create(year, month, day, hour, minute, second, 0, &timezone);
+    return result;
 }
 
 pub fn pubDateToTimestamp(str: []const u8) !i64 {
@@ -407,18 +422,28 @@ test "rss time to sqlite time" {
     }
 
     {
+        // dates with timezone format +/-NNNN will be turned into UTC
         const date_str = "Wed, 01 Oct 2002 01:00:00 +0200";
+        const date = try pubDateToDateTime(date_str);
+        expect(2002 == date.date.year);
+        expect(9 == date.date.month);
+        expect(30 == date.date.day);
+        expect(23 == date.time.hour);
+        expect(0 == date.time.minute);
+        expect(0 == date.time.second);
+        expect(date.zone.offset == 0);
+    }
+
+    {
+        // dates with timezone format +/-NNNN will be turned into UTC
+        const date_str = "Wed, 01 Oct 2002 01:00:00 -0200";
         const date = try pubDateToDateTime(date_str);
         expect(2002 == date.date.year);
         expect(10 == date.date.month);
         expect(1 == date.date.day);
-        expect(1 == date.time.hour);
+        expect(3 == date.time.hour);
         expect(0 == date.time.minute);
         expect(0 == date.time.second);
-        expect(date.zone.offset == 120);
-        const date_shift = date.shiftTimezone(&timezones.UTC);
-        expect(9 == date_shift.date.month);
-        expect(30 == date_shift.date.day);
-        expect(23 == date_shift.time.hour);
+        expect(date.zone.offset == 0);
     }
 }
