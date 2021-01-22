@@ -13,6 +13,10 @@
   [ ] CLI - initial
   [ ] TUI - NotCurses
   [ ] Web browser - later
+[ ] Zig
+  [ ] Async
+    - https://github.com/kprotty/zap
+    - https://github.com/lithdew/pike
  
 # Future (Maybe)
 [ ] Image (icon/logo)

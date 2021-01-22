@@ -8,3 +8,6 @@ test:
 
 test-rss:
 	watchexec -c -w src/ -e zig 'zig build test -- src/rss.zig'
+
+test-http:
+	watchexec -c -w src/ -e zig 'zig build test -- src/http.zig'

@@ -4,3 +4,15 @@
 [submodule "lib/zig-datetime"]
 	path = lib/zig-datetime
 	url = https://github.com/frmdstryr/zig-datetime
+[submodule "requestz"]
+	path = requestz
+	url = https://github.com/ducdetronquito/requestz
+[submodule "lib/requestz"]
+	path = lib/requestz
+	url = https://github.com/ducdetronquito/requestz
+[submodule "lib/hzzp"]
+	path = lib/hzzp
+	url = https://github.com/truemedian/hzzp
+[submodule "lib/zig-bearssl"]
+	path = lib/zig-bearssl
+	url = https://github.com/MasterQ32/zig-bearssl

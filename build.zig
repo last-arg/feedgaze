@@ -20,7 +20,9 @@ pub fn build(b: *Builder) void {
     exe.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
     exe.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
     exe.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
-
+    exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
+    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
     exe.install();
 
     const run_cmd = exe.run();
@@ -47,6 +49,9 @@ pub fn build(b: *Builder) void {
     file_test.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
     file_test.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
     file_test.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
+    file_test.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    file_test.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/bearssl.zig" });
+    @import("lib/zig-bearssl/bearssl.zig").linkBearSSL("./lib/zig-bearssl", file_test, target);
 
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&file_test.step);
