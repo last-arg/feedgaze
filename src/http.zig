@@ -3,6 +3,7 @@ const mem = std.mem;
 const ascii = std.ascii;
 const Allocator = std.mem.Allocator;
 const l = std.log;
+const gzip = std.compress.gzip;
 const hzzp = @import("hzzp");
 const FixedBufferStream = std.io.FixedBufferStream;
 const client = hzzp.base.client;
@@ -41,10 +42,18 @@ const FeedResponse = struct {
     url: Url,
     cache_control_max_age: ?usize = null, // s-maxage or max-age, if available ignore expires
     expires_utc: ?i64 = null,
+    // Owns the memory
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
+    // Owns the memory
     body: ?[]const u8 = null,
     // TODO: content_type: <enum>,
+};
+
+const Encoding = enum {
+    none,
+    gzip,
+    deflate,
 };
 
 pub fn httpsRequest(allocator: *Allocator, url: []const u8) !FeedResponse {
@@ -86,15 +95,21 @@ pub fn httpsRequest(allocator: *Allocator, url: []const u8) !FeedResponse {
     var client_reader = ssl_reader;
     var client_writer = ssl_writer;
 
-    var request_buf: [100 * 1024]u8 = undefined;
+    // TODO: figure out header buffer (size)
+    var request_buf: [60 * 1024]u8 = undefined;
     var head_client = client.create(&request_buf, client_reader, client_writer);
 
     try head_client.writeStatusLine("GET", path);
+    try head_client.writeHeaderValue("Accept-Encoding", "gzip");
     try head_client.writeHeaderValue("Connection", "close");
     try head_client.writeHeaderValue("Host", host);
     try head_client.writeHeaderValue("Accept", "application/rss+xml, text/xml, application/atom+xml");
     try head_client.finishHeaders();
     try ssl_stream.flush();
+
+    var content_encoding = Encoding.none;
+
+    var content_len: usize = 0;
 
     while (try head_client.next()) |event| {
         switch (event) {
@@ -124,15 +139,27 @@ pub fn httpsRequest(allocator: *Allocator, url: []const u8) !FeedResponse {
                         }
                     }
                 } else if (ascii.eqlIgnoreCase("etag", header.name)) {
-                    feed_resp.etag = header.value;
+                    feed_resp.etag = try allocator.dupe(u8, header.value);
+                    errdefer allocator.free(feed_resp.etag);
                 } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
                     feed_resp.last_modified_utc = try dateStrToTimeStamp(header.value);
                 } else if (ascii.eqlIgnoreCase("expires", header.name)) {
                     feed_resp.expires_utc = try dateStrToTimeStamp(header.value);
                 } else if (ascii.eqlIgnoreCase("content-length", header.name)) {
                     const body_len = try std.fmt.parseInt(usize, header.value, 10);
-                    // TODO: set body_arr capacity
-                    // Content-length only if status 200
+                    content_len = body_len;
+                } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
+                    var it = mem.split(header.value, ",");
+                    while (it.next()) |val_raw| {
+                        // TODO: content can be compressed multiple times
+                        // Content-Type: gzip, deflate
+                        const val = mem.trimLeft(u8, val_raw, " \r\n\t");
+                        if (ascii.startsWithIgnoreCase(val, "gzip")) {
+                            content_encoding = .gzip;
+                        } else if (ascii.startsWithIgnoreCase(val, "deflate")) {
+                            content_encoding = .deflate;
+                        }
+                    }
                 }
                 std.debug.print("{s}: {s}\n", .{ header.name, header.value });
             },
@@ -146,11 +173,25 @@ pub fn httpsRequest(allocator: *Allocator, url: []const u8) !FeedResponse {
         }
     }
 
-    var read_buffer: [1024 * 1024]u8 = undefined;
-    while (try client_reader.readUntilDelimiterOrEof(&read_buffer, '\r')) |chunk| {
-        // std.debug.print("{s}", .{chunk});
+    switch (content_encoding) {
+        .none => {
+            l.warn("No compression", .{});
+            var body = try ssl_reader.readAllAlloc(allocator, content_len);
+            errdefer allocator.free(body);
+            feed_resp.body = body;
+        },
+        .gzip => {
+            l.warn("Decompressin gzip", .{});
+            var compress = try gzip.gzipStream(allocator, client_reader);
+            defer compress.deinit();
+            var reader = compress.reader();
+
+            var body = try reader.readAllAlloc(allocator, std.math.maxInt(usize));
+            errdefer allocator.free(body);
+            feed_resp.body = body;
+        },
+        .deflate => @panic("TODO: deflate decompress"),
     }
-    std.debug.print("\n", .{});
 
     return feed_resp;
 }
@@ -166,7 +207,12 @@ test "download" {
     {
         const input = "https://news.xbox.com/en-us/feed/";
         const resp = try httpsRequest(allocator, input);
-        std.debug.warn("{}\n", .{resp});
+        defer {
+            if (resp.body) |body| allocator.free(body);
+            if (resp.etag) |etag| allocator.free(etag);
+        }
+        l.warn("{s}\n", .{resp.etag});
+        std.debug.warn("{s}\n", .{resp.body.?[0..200]});
     }
 }
 
