@@ -52,16 +52,36 @@ pub const Feed = struct {
 
     pub fn datesToTimestamp(feed: *Self) !void {
         if (feed.info.pub_date) |str| {
-            feed.info.pub_date_utc = try pubDateToTimestamp(str);
+            if (pubDateToTimestamp(str)) |date| {
+                feed.info.pub_date_utc = date;
+            } else |err| switch (err) {
+                error.InvalidFormat => {
+                    l.warn("Skipping invalid RSS date: '{s}'", .{str});
+                },
+                else => return err,
+            }
         }
 
         if (feed.info.last_build_date) |str| {
-            feed.info.last_build_date_utc = try pubDateToTimestamp(str);
+            if (pubDateToTimestamp(str)) |date| {
+                feed.info.last_build_date_utc = date;
+            } else |err| switch (err) {
+                error.InvalidFormat => {
+                    l.warn("Skipping invalid RSS date: '{s}'", .{str});
+                },
+                else => return err,
+            }
         }
 
         for (feed.items) |*it| {
             if (it.pub_date) |str| {
-                it.pub_date_utc = try pubDateToTimestamp(str);
+                it.pub_date_utc = pubDateToTimestamp(str) catch |err| switch (err) {
+                    error.InvalidFormat => {
+                        l.warn("Skipping invalid RSS date: '{s}'", .{str});
+                        continue;
+                    },
+                    else => return err,
+                };
             }
         }
     }

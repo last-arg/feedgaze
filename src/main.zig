@@ -143,7 +143,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
         // const url_or_err = Http.makeUrl(obj.location);
         // const url_or_err = Http.makeUrl("https://lobste.rs");
         const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        // const url_or_err = Http.makeUrl("https://hnrss.org/frontpage");
+        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
@@ -172,6 +172,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
             const resp = try Http.makeRequest(allocator, req);
             if (resp.body) |b| {
                 l.warn("#len: {}#", .{b.len});
+                // l.warn("#len: {s}#", .{b[0..100]});
             }
 
             // No new content if body is null
@@ -287,10 +288,15 @@ const Http = struct {
         // TODO: content_type: <enum>,
     };
 
-    const Encoding = enum {
+    const ContentEncoding = enum {
         none,
         gzip,
         deflate,
+    };
+
+    const TransferEncoding = enum {
+        none,
+        chunked,
     };
 
     pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
@@ -329,20 +335,20 @@ const Http = struct {
         var client_reader = ssl_reader;
         var client_writer = ssl_writer;
 
-        // TODO: figure out header's max buffer size
         var request_buf: [std.mem.page_size]u8 = undefined;
         var head_client = client.create(&request_buf, client_reader, client_writer);
 
         try head_client.writeStatusLine("GET", path);
         // TODO: etag and last-modified
-        try head_client.writeHeaderValue("Accept-Encoding", "gzip");
+        // try head_client.writeHeaderValue("Accept-Encoding", "gzip, deflate");
         try head_client.writeHeaderValue("Connection", "close");
         try head_client.writeHeaderValue("Host", host);
         try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
         try head_client.finishHeaders();
         try ssl_stream.flush();
 
-        var content_encoding = Encoding.none;
+        var content_encoding = ContentEncoding.none;
+        var transfer_encoding = TransferEncoding.none;
 
         var content_len: usize = std.math.maxInt(usize);
 
@@ -392,6 +398,10 @@ const Http = struct {
                     } else if (ascii.eqlIgnoreCase("content-length", header.name)) {
                         const body_len = try std.fmt.parseInt(usize, header.value, 10);
                         content_len = body_len;
+                    } else if (ascii.eqlIgnoreCase("transfer-encoding", header.name)) {
+                        if (ascii.eqlIgnoreCase("chunked", header.value)) {
+                            transfer_encoding = .chunked;
+                        }
                     } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
                         var it = mem.split(header.value, ",");
                         while (it.next()) |val_raw| {
@@ -407,40 +417,87 @@ const Http = struct {
                     }
                 },
                 .head_done => {
-                    if (content_len != std.math.maxInt(usize)) {
-                        try output.ensureCapacity(content_len);
-                    }
-
                     std.debug.print("---\n", .{});
+                    break;
                 },
                 .skip => {},
-                .payload => |payload| {
-                    // l.warn("PAYLOAD len: {} | final: {}", .{ payload.data.len, payload.final });
-                    try output.appendSlice(payload.data);
-                    if (payload.final) break;
+                .payload => unreachable,
+                .end => {
+                    std.debug.print("<empty body>\nNothing to parse\n", .{});
+                    return feed_resp;
                 },
-                .end => std.debug.print("<empty body>", .{}),
             }
         }
 
-        switch (content_encoding) {
+        switch (transfer_encoding) {
             .none => {
-                l.warn("No compression", .{});
-                feed_resp.body = output.toOwnedSlice();
-            },
-            .gzip => {
-                l.warn("Decompress gzip", .{});
-                defer output.deinit();
-                const reader = std.io.fixedBufferStream(output.items).reader();
+                l.warn("Transfer encoding none", .{});
+                const len = std.math.maxInt(usize);
+                switch (content_encoding) {
+                    .none => {
+                        l.warn("No compression", .{});
+                        feed_resp.body = try client_reader.readAllAlloc(allocator, len);
+                    },
+                    .gzip => {
+                        l.warn("Decompress gzip", .{});
+                        l.warn("output.len: {}", .{output.items.len});
 
-                var stream = try gzip.gzipStream(allocator, reader);
-                defer stream.deinit();
+                        var stream = try gzip.gzipStream(allocator, client_reader);
+                        defer stream.deinit();
 
-                var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-                errdefer allocator.free(body);
-                feed_resp.body = body;
+                        feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
+                    },
+                    .deflate => {
+                        l.warn("Decompress deflate", .{});
+                        l.warn("output.len: {}", .{output.items.len});
+
+                        var window_slice = try allocator.alloc(u8, 32 * 1024);
+                        defer allocator.free(window_slice);
+
+                        var stream = std.compress.deflate.inflateStream(client_reader, window_slice);
+                        feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
+                    },
+                }
             },
-            .deflate => @panic("TODO: deflate decompress"),
+            .chunked => {
+                // @continue
+                // TODO: parse response chunks myself
+                // Try using gzip/deflate reader
+                @panic("TODO: chunked");
+                // switch (content_encoding) {
+                //     .none => {
+                //         l.warn("No compression", .{});
+                //         feed_resp.body = output.toOwnedSlice();
+                //     },
+                //     .gzip => {
+                //         l.warn("Decompress gzip", .{});
+                //         l.warn("output.len: {}", .{output.items.len});
+                //         defer output.deinit();
+                //         const reader = std.io.fixedBufferStream(output.items).reader();
+
+                //         var stream = try gzip.gzipStream(allocator, reader);
+                //         defer stream.deinit();
+
+                //         var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+                //         errdefer allocator.free(body);
+                //         feed_resp.body = body;
+                //     },
+                //     .deflate => {
+                //         l.warn("Decompress deflate", .{});
+                //         l.warn("output.len: {}", .{output.items.len});
+                //         defer output.deinit();
+                //         const reader = std.io.fixedBufferStream(output.items).reader();
+
+                //         var window_slice = try allocator.alloc(u8, 32 * 1024);
+                //         defer allocator.free(window_slice);
+
+                //         var stream = std.compress.deflate.inflateStream(reader, window_slice);
+                //         var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+                //         errdefer allocator.free(body);
+                //         feed_resp.body = body;
+                //     },
+                // }
+            },
         }
 
         return feed_resp;
