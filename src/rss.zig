@@ -100,7 +100,7 @@ pub const Feed = struct {
                                 channel_field = .link;
                             } else if (mem.eql(u8, "pubDate", tag)) {
                                 channel_field = .pub_date;
-                            } else if (mem.eql(u8, "last_build_date", tag)) {
+                            } else if (mem.eql(u8, "lastBuildDate", tag)) {
                                 channel_field = .last_build_date;
                             } else if (mem.eql(u8, "ttl", tag)) {
                                 channel_field = .ttl;

@@ -42,6 +42,11 @@ pub const Table = struct {
             \\  count(feed_id)
             \\FROM item
         ;
+        pub const select_feed_latest =
+            \\SELECT pub_date_utc FROM item
+            \\WHERE feed_id = ? AND pub_date_utc IS NOT NULL
+            \\ORDER BY pub_date_utc DESC LIMIT 1;
+        ;
         pub const on_conflict_guid =
             \\ON CONFLICT(guid) DO UPDATE SET
             \\  title = excluded.title,
@@ -69,7 +74,7 @@ pub const Table = struct {
             \\  AND guid IS NULL
             \\  AND link IS NULL
         ;
-        pub const update =
+        pub const update_without_guid_and_link =
             \\UPDATE item SET
             \\  title = ?{[]const u8},
             \\  link = ?,
@@ -97,41 +102,77 @@ pub const Table = struct {
         ;
     };
     pub const feed_update = struct {
+        // TODO: move last_build_date* fields to feed table
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed_update (
             \\  feed_id INTEGER UNIQUE,
-            \\  update_interval INTEGER DEFAULT 6000,
+            \\  update_interval INTEGER DEFAULT 600,
             \\  ttl INTEGER DEFAULT NULL,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
-            \\  last_build_date TEXT DEFAULT NULL,
-            \\  last_build_date_utc INTEGER DEFAULT NULL,
+            \\  cache_control_max_age INTEGER DEFAULT NULL,
+            \\  expires_utc INTEGER DEFAULT NULL,
+            \\  last_modified_utc INTEGER DEFAULT NULL,
+            \\  etag TEXT DEFAULT NULL,
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
             \\);
         ;
+        // TODO: insert other fields
         pub const insert =
             \\INSERT INTO feed_update
-            \\  (feed_id, ttl, last_build_date, last_build_date_utc)
+            \\  (feed_id, ttl)
             \\VALUES (
             \\  ?{usize},
-            \\  ?,
-            \\  ?,
             \\  ?
             \\)
         ;
+
+        pub const update_all =
+            \\UPDATE feed_update SET last_update = strftime('%s', 'now')
+        ;
+        pub const update_id =
+            \\UPDATE feed_update SET
+            \\  ttl = ?,
+            \\  cache_control_max_age = ?,
+            \\  expires_utc = ?,
+            \\  last_modified_utc = ?,
+            \\  etag = ?
+            \\WHERE feed_id = ?
+        ;
         pub const selectAll =
             \\SELECT
+            \\  etag,
             \\  feed_id,
             \\  update_interval,
             \\  ttl,
-            \\  last_update
+            \\  last_update,
+            \\  expires_utc,
+            \\  last_modified_utc,
+            \\  cache_control_max_age
             \\FROM feed_update;
         ;
+        pub const selectAllWithLocation =
+            \\SELECT
+            \\  feed.location as location,
+            \\  etag,
+            \\  feed_id,
+            \\  update_interval,
+            \\  ttl,
+            \\  last_update,
+            \\  expires_utc,
+            \\  last_modified_utc,
+            \\  cache_control_max_age,
+            \\  feed.pub_date_utc as pub_date_utc,
+            \\  feed.last_build_date_utc as last_build_date_utc
+            \\FROM feed_update
+            \\LEFT JOIN feed ON feed_update.feed_id = feed.id;
+        ;
+
         pub const on_conflict_feed_id =
             \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = excluded.update_interval,
             \\  ttl = excluded.ttl,
             \\  last_update = (strftime('%s', 'now'))
-            \\WHERE last_build_date_utc != excluded.last_build_date_utc
+            // \\WHERE last_build_date_utc != excluded.last_build_date_utc
         ;
     };
     pub const feed = struct {
@@ -143,15 +184,19 @@ pub const Table = struct {
             \\  location TEXT NOT NULL UNIQUE,
             \\  pub_date TEXT DEFAULT NULL,
             \\  pub_date_utc INTEGER DEFAULT NULL,
+            \\  last_build_date TEXT DEFAULT NULL,
+            \\  last_build_date_utc INTEGER DEFAULT NULL,
             \\  created_at TEXT DEFAULT CURRENT_TIMESTAMP
             \\);
         ;
         pub const insert =
-            \\INSERT INTO feed (title, link, location, pub_date, pub_date_utc)
+            \\INSERT INTO feed (title, link, location, pub_date, pub_date_utc, last_build_date, last_build_date_utc)
             \\VALUES (
             \\  ?{[]const u8},
             \\  ?{[]const u8},
             \\  ?{[]const u8},
+            \\  ?,
+            \\  ?,
             \\  ?,
             \\  ?
             \\)
@@ -173,6 +218,11 @@ pub const Table = struct {
             \\  pub_date_utc
             \\FROM feed
         ;
+        pub const select_location =
+            \\SELECT
+            \\  location
+            \\FROM feed
+        ;
         pub const select_id =
             \\SELECT
             \\  id
@@ -181,12 +231,17 @@ pub const Table = struct {
         pub const where_location =
             \\ WHERE location = ?{[]const u8}
         ;
+        pub const where_id =
+            \\ WHERE id = ?{usize}
+        ;
         pub const update_id =
             \\UPDATE feed SET
             \\  title = ?{[]const u8},
             \\  link = ?{[]const u8},
             \\  pub_date = ?,
-            \\  pub_date_utc = ?
+            \\  pub_date_utc = ?,
+            \\  last_build_date = ?,
+            \\  last_build_date_utc = ?
             \\WHERE id = ?{usize}
         ;
     };
