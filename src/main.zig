@@ -134,11 +134,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
 
     for (indexes.items) |i| {
         const obj = feed_updates[i];
-        // const url_or_err = Http.makeUrl(obj.location);
-        const url_or_err = http.makeUrl("https://lobste.rs");
-        // const url_or_err = Http.makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js"); // chunked + deflate
-        // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+        const url_or_err = http.makeUrl(obj.location);
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});

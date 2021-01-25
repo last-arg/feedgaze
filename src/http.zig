@@ -81,7 +81,6 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var head_client = client.create(&request_buf, client_reader, client_writer);
 
     try head_client.writeStatusLine("GET", path);
-
     try head_client.writeHeaderValue("Accept-Encoding", "gzip");
     try head_client.writeHeaderValue("Connection", "close");
     try head_client.writeHeaderValue("Host", host);
@@ -314,4 +313,11 @@ pub fn makeUrl(url_str: []const u8) !Url {
         .domain = domain_all,
         .path = path,
     };
+}
+
+test "http" {
+    // const url_or_err = http.makeUrl("https://lobste.rs");
+    // const url_or_err = http.makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js"); // chunked + deflate
+    // const url_or_err = http.makeUrl("https://news.xbox.com/en-us/feed/");
+    // const url_or_err = http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 }
