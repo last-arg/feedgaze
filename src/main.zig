@@ -141,9 +141,9 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
     for (indexes.items) |i| {
         const obj = feed_updates[i];
         // const url_or_err = Http.makeUrl(obj.location);
-        const url_or_err = Http.makeUrl("https://lobste.rs");
+        // const url_or_err = Http.makeUrl("https://lobste.rs");
         // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+        const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
@@ -173,6 +173,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
             if (resp.body) |b| {
                 l.warn("#len: {}#", .{b.len});
                 l.warn("#len: {s}#", .{b[0..100]});
+                return;
             }
 
             // No new content if body is null
@@ -340,7 +341,7 @@ const Http = struct {
 
         try head_client.writeStatusLine("GET", path);
         // TODO: etag and last-modified
-        // try head_client.writeHeaderValue("Accept-Encoding", "gzip, deflate");
+        try head_client.writeHeaderValue("Accept-Encoding", "gzip, deflate");
         try head_client.writeHeaderValue("Connection", "close");
         try head_client.writeHeaderValue("Host", host);
         try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
@@ -462,62 +463,82 @@ const Http = struct {
                 errdefer output.deinit();
                 // const r = try client_reader.readAllAlloc(allocator, std.math.maxInt(usize));
                 // l.warn("{s}", .{r});
-                while (true) {
-                    const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
-                    if (hex_str == null) return error.InvalidChunk;
-                    if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
 
-                    var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
-                    if (chunk_len == 0) break;
-                    try output.ensureCapacity(output.items.len + chunk_len);
-                    while (chunk_len > 0) {
-                        const read_size = if (chunk_len > request_buf.len)
-                            request_buf.len
-                        else
-                            chunk_len;
-                        const size = try client_reader.read(request_buf[0..read_size]);
-                        chunk_len -= size;
-                        output.appendSliceAssumeCapacity(request_buf[0..size]);
-                    }
-                    if ((try client_reader.readByte()) != '\r' or
-                        (try client_reader.readByte()) != '\n') return error.InvalidChunk;
+                switch (content_encoding) {
+                    .none => {
+                        l.warn("No compression", .{});
+                        while (true) {
+                            const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
+                            if (hex_str == null) return error.InvalidChunk;
+                            if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
+
+                            var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
+                            if (chunk_len == 0) break;
+                            try output.ensureCapacity(output.items.len + chunk_len);
+                            while (chunk_len > 0) {
+                                const read_size = if (chunk_len > request_buf.len)
+                                    request_buf.len
+                                else
+                                    chunk_len;
+                                const size = try client_reader.read(request_buf[0..read_size]);
+                                chunk_len -= size;
+                                output.appendSliceAssumeCapacity(request_buf[0..size]);
+                            }
+                            if ((try client_reader.readByte()) != '\r' or
+                                (try client_reader.readByte()) != '\n') return error.InvalidChunk;
+                        }
+
+                        feed_resp.body = output.toOwnedSlice();
+                    },
+                    .gzip => {
+                        l.warn("Decompress gzip", .{});
+
+                        while (true) {
+                            const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
+                            if (hex_str == null) return error.InvalidChunk;
+                            if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
+
+                            var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
+                            if (chunk_len == 0) break;
+                            try output.ensureCapacity(output.items.len + chunk_len);
+                            while (chunk_len > 0) {
+                                const read_size = if (chunk_len > request_buf.len)
+                                    request_buf.len
+                                else
+                                    chunk_len;
+                                const size = try client_reader.read(request_buf[0..read_size]);
+                                chunk_len -= size;
+                                try output.appendSlice(request_buf[0..size]);
+                            }
+                            if ((try client_reader.readByte()) != '\r' or
+                                (try client_reader.readByte()) != '\n') return error.InvalidChunk;
+                        }
+
+                        const reader = std.io.fixedBufferStream(output.toOwnedSlice()).reader();
+
+                        var stream = try gzip.gzipStream(allocator, reader);
+                        defer stream.deinit();
+                        const gzip_reader = stream.reader();
+
+                        var body = try gzip_reader.readAllAlloc(allocator, std.math.maxInt(usize));
+                        errdefer allocator.free(body);
+
+                        feed_resp.body = body;
+                    },
+                    .deflate => {
+                        l.warn("Decompress deflate", .{});
+                        // defer output.deinit();
+                        // const reader = std.io.fixedBufferStream(output.items).reader();
+
+                        // var window_slice = try allocator.alloc(u8, 32 * 1024);
+                        // defer allocator.free(window_slice);
+
+                        // var stream = std.compress.deflate.inflateStream(reader, window_slice);
+                        // var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+                        // errdefer allocator.free(body);
+                        // feed_resp.body = body;
+                    },
                 }
-
-                feed_resp.body = output.toOwnedSlice();
-
-                // switch (content_encoding) {
-                //     .none => {
-                //         l.warn("No compression", .{});
-                //         feed_resp.body = output.toOwnedSlice();
-                //     },
-                //     .gzip => {
-                //         l.warn("Decompress gzip", .{});
-                //         l.warn("output.len: {}", .{output.items.len});
-                //         defer output.deinit();
-                //         const reader = std.io.fixedBufferStream(output.items).reader();
-
-                //         var stream = try gzip.gzipStream(allocator, reader);
-                //         defer stream.deinit();
-
-                //         var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-                //         errdefer allocator.free(body);
-                //         feed_resp.body = body;
-                //     },
-                //     .deflate => {
-                //         l.warn("Decompress deflate", .{});
-                //         l.warn("output.len: {}", .{output.items.len});
-                //         defer output.deinit();
-                //         const reader = std.io.fixedBufferStream(output.items).reader();
-
-                //         var window_slice = try allocator.alloc(u8, 32 * 1024);
-                //         defer allocator.free(window_slice);
-
-                //         var stream = std.compress.deflate.inflateStream(reader, window_slice);
-                //         var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-                //         errdefer allocator.free(body);
-                //         feed_resp.body = body;
-                //     },
-                // }
             },
         }
 
