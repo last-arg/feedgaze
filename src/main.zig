@@ -141,9 +141,10 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
     for (indexes.items) |i| {
         const obj = feed_updates[i];
         // const url_or_err = Http.makeUrl(obj.location);
-        // const url_or_err = Http.makeUrl("https://lobste.rs");
+        const url_or_err = Http.makeUrl("https://lobste.rs");
+        // const url_or_err = Http.makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js"); // chunked + deflate
         // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
@@ -166,7 +167,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                     date.time.minute,
                     date.time.second,
                 });
-                req.last_modified_utc = date_str;
+                req.last_modified = date_str;
             }
 
             const resp = try Http.makeRequest(allocator, req);
@@ -275,7 +276,7 @@ const Http = struct {
     const FeedRequest = struct {
         url: Url,
         etag: ?[]const u8 = null,
-        last_modified_utc: ?[]const u8 = null,
+        last_modified: ?[]const u8 = null,
     };
 
     const FeedResponse = struct {
@@ -292,7 +293,6 @@ const Http = struct {
     const ContentEncoding = enum {
         none,
         gzip,
-        deflate,
     };
 
     const TransferEncoding = enum {
@@ -340,11 +340,16 @@ const Http = struct {
         var head_client = client.create(&request_buf, client_reader, client_writer);
 
         try head_client.writeStatusLine("GET", path);
-        // TODO: etag and last-modified
-        try head_client.writeHeaderValue("Accept-Encoding", "gzip, deflate");
+
+        try head_client.writeHeaderValue("Accept-Encoding", "gzip");
         try head_client.writeHeaderValue("Connection", "close");
         try head_client.writeHeaderValue("Host", host);
         try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
+        if (req.etag) |etag| {
+            try head_client.writeHeaderValue("If-None-Match", etag);
+        } else if (req.last_modified) |time| {
+            try head_client.writeHeaderValue("If-Modified-Since", time);
+        }
         try head_client.finishHeaders();
         try ssl_stream.flush();
 
@@ -388,10 +393,10 @@ const Http = struct {
                         errdefer allocator.free(feed_resp.etag);
                     } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
                         feed_resp.last_modified_utc = try dateStrToTimeStamp(header.value);
-                    } else if (ascii.eqlIgnoreCase("expires", header.name) and
-                        !mem.eql(u8, "0", header.value))
-                    {
-                        feed_resp.expires_utc = try dateStrToTimeStamp(header.value);
+                    } else if (ascii.eqlIgnoreCase("expires", header.name)) {
+                        feed_resp.expires_utc = dateStrToTimeStamp(header.value) catch |_| {
+                            continue;
+                        };
                     } else if (ascii.eqlIgnoreCase("content-length", header.name)) {
                         const body_len = try std.fmt.parseInt(usize, header.value, 10);
                         content_len = body_len;
@@ -402,13 +407,9 @@ const Http = struct {
                     } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
                         var it = mem.split(header.value, ",");
                         while (it.next()) |val_raw| {
-                            // TODO: content can be compressed multiple times
-                            // Content-Type: gzip, deflate
                             const val = mem.trimLeft(u8, val_raw, " \r\n\t");
                             if (ascii.startsWithIgnoreCase(val, "gzip")) {
                                 content_encoding = .gzip;
-                            } else if (ascii.startsWithIgnoreCase(val, "deflate")) {
-                                content_encoding = .deflate;
                             }
                         }
                     }
@@ -443,21 +444,9 @@ const Http = struct {
 
                         feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
                     },
-                    .deflate => {
-                        l.warn("Decompress deflate", .{});
-
-                        var window_slice = try allocator.alloc(u8, 32 * 1024);
-                        defer allocator.free(window_slice);
-
-                        var stream = std.compress.deflate.inflateStream(client_reader, window_slice);
-                        feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
-                    },
                 }
             },
             .chunked => {
-                // @continue
-                // TODO: parse response chunks myself
-                // Try using gzip/deflate reader
                 l.warn("Parse chunked response", .{});
                 var output = ArrayList(u8).init(allocator);
                 errdefer output.deinit();
@@ -524,19 +513,6 @@ const Http = struct {
                         errdefer allocator.free(body);
 
                         feed_resp.body = body;
-                    },
-                    .deflate => {
-                        l.warn("Decompress deflate", .{});
-                        // defer output.deinit();
-                        // const reader = std.io.fixedBufferStream(output.items).reader();
-
-                        // var window_slice = try allocator.alloc(u8, 32 * 1024);
-                        // defer allocator.free(window_slice);
-
-                        // var stream = std.compress.deflate.inflateStream(reader, window_slice);
-                        // var body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
-                        // errdefer allocator.free(body);
-                        // feed_resp.body = body;
                     },
                 }
             },
