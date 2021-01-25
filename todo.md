@@ -2,6 +2,7 @@
 [ ] HTTP(S) request
   [?] HTTP (plain secure)? use https only?
   [ ] HTTPS
+  [ ] Implement redirect
 [ ] Feeds
   [ ] RSS
     [ ] Add some extended modules' support

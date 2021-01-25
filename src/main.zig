@@ -142,8 +142,8 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
         const obj = feed_updates[i];
         // const url_or_err = Http.makeUrl(obj.location);
         // const url_or_err = Http.makeUrl("https://lobste.rs");
-        const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+        // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
+        const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
@@ -172,7 +172,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
             const resp = try Http.makeRequest(allocator, req);
             if (resp.body) |b| {
                 l.warn("#len: {}#", .{b.len});
-                // l.warn("#len: {s}#", .{b[0..100]});
+                l.warn("#len: {s}#", .{b[0..100]});
             }
 
             // No new content if body is null
@@ -352,15 +352,11 @@ const Http = struct {
 
         var content_len: usize = std.math.maxInt(usize);
 
-        var output = try std.ArrayList(u8).initCapacity(allocator, 10000);
-        errdefer output.deinit();
-
         while (try head_client.next()) |event| {
             switch (event) {
                 .status => |status| {
                     std.debug.print("<HTTP Status {}>\n", .{status.code});
                     if (status.code == 304) {
-                        output.deinit();
                         return feed_resp;
                     } else if (status.code != 200) {
                         return error.InvalidStatusCode;
@@ -440,7 +436,6 @@ const Http = struct {
                     },
                     .gzip => {
                         l.warn("Decompress gzip", .{});
-                        l.warn("output.len: {}", .{output.items.len});
 
                         var stream = try gzip.gzipStream(allocator, client_reader);
                         defer stream.deinit();
@@ -449,7 +444,6 @@ const Http = struct {
                     },
                     .deflate => {
                         l.warn("Decompress deflate", .{});
-                        l.warn("output.len: {}", .{output.items.len});
 
                         var window_slice = try allocator.alloc(u8, 32 * 1024);
                         defer allocator.free(window_slice);
@@ -463,7 +457,29 @@ const Http = struct {
                 // @continue
                 // TODO: parse response chunks myself
                 // Try using gzip/deflate reader
-                @panic("TODO: chunked");
+                l.warn("Parse chunked response", .{});
+                var output = ArrayList(u8).init(allocator);
+                errdefer output.deinit();
+                while (true) {
+                    const len_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
+                    assert(len_str != null);
+                    assert((try client_reader.readByte()) == '\n');
+                    var chunk_len = try std.fmt.parseUnsigned(usize, len_str.?, 16);
+                    if (chunk_len == 0) break;
+                    try output.ensureCapacity(output.items.len + chunk_len);
+                    l.warn("chunk_len: {}", .{chunk_len});
+                    while (chunk_len > 0) {
+                        const size = try client_reader.read(&request_buf);
+                        const buf_len = if (size > chunk_len) chunk_len else size;
+                        chunk_len -= buf_len;
+                        output.appendSliceAssumeCapacity(request_buf[0..buf_len]);
+                        // l.warn("|start|{s}|end|", .{request_buf[0..buf_len]});
+                    }
+                    // break;
+                }
+
+                feed_resp.body = output.toOwnedSlice();
+
                 // switch (content_encoding) {
                 //     .none => {
                 //         l.warn("No compression", .{});
