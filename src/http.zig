@@ -25,8 +25,10 @@ pub const FeedResponse = struct {
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
     // Owns the memory
+    // TODO?: make into enum?
+    content_type: ?[]const u8 = null,
+    // Owns the memory
     body: ?[]const u8 = null,
-    // TODO: content_type: <enum>,
 };
 
 pub const ContentEncoding = enum {
@@ -139,6 +141,9 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 } else if (ascii.eqlIgnoreCase("content-length", header.name)) {
                     const body_len = try fmt.parseInt(usize, header.value, 10);
                     content_len = body_len;
+                } else if (ascii.eqlIgnoreCase("content-type", header.name)) {
+                    const len = mem.indexOfScalar(u8, header.value, ';') orelse header.value.len;
+                    feed_resp.content_type = header.value[0..len];
                 } else if (ascii.eqlIgnoreCase("transfer-encoding", header.name)) {
                     if (ascii.eqlIgnoreCase("chunked", header.value)) {
                         transfer_encoding = .chunked;
