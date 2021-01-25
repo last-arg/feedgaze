@@ -141,9 +141,9 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
     for (indexes.items) |i| {
         const obj = feed_updates[i];
         // const url_or_err = Http.makeUrl(obj.location);
-        // const url_or_err = Http.makeUrl("https://lobste.rs");
+        const url_or_err = Http.makeUrl("https://lobste.rs");
         // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
-        const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+        // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
@@ -335,7 +335,7 @@ const Http = struct {
         var client_reader = ssl_reader;
         var client_writer = ssl_writer;
 
-        var request_buf: [std.mem.page_size]u8 = undefined;
+        var request_buf: [std.mem.page_size * 2]u8 = undefined;
         var head_client = client.create(&request_buf, client_reader, client_writer);
 
         try head_client.writeStatusLine("GET", path);
@@ -460,22 +460,27 @@ const Http = struct {
                 l.warn("Parse chunked response", .{});
                 var output = ArrayList(u8).init(allocator);
                 errdefer output.deinit();
+                // const r = try client_reader.readAllAlloc(allocator, std.math.maxInt(usize));
+                // l.warn("{s}", .{r});
                 while (true) {
-                    const len_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
-                    assert(len_str != null);
-                    assert((try client_reader.readByte()) == '\n');
-                    var chunk_len = try std.fmt.parseUnsigned(usize, len_str.?, 16);
+                    const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
+                    if (hex_str == null) return error.InvalidChunk;
+                    if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
+
+                    var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
                     if (chunk_len == 0) break;
                     try output.ensureCapacity(output.items.len + chunk_len);
-                    l.warn("chunk_len: {}", .{chunk_len});
                     while (chunk_len > 0) {
-                        const size = try client_reader.read(&request_buf);
-                        const buf_len = if (size > chunk_len) chunk_len else size;
-                        chunk_len -= buf_len;
-                        output.appendSliceAssumeCapacity(request_buf[0..buf_len]);
-                        // l.warn("|start|{s}|end|", .{request_buf[0..buf_len]});
+                        const read_size = if (chunk_len > request_buf.len)
+                            request_buf.len
+                        else
+                            chunk_len;
+                        const size = try client_reader.read(request_buf[0..read_size]);
+                        chunk_len -= size;
+                        output.appendSliceAssumeCapacity(request_buf[0..size]);
                     }
-                    // break;
+                    if ((try client_reader.readByte()) != '\r' or
+                        (try client_reader.readByte()) != '\n') return error.InvalidChunk;
                 }
 
                 feed_resp.body = output.toOwnedSlice();
