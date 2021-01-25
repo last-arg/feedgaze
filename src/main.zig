@@ -1,8 +1,8 @@
 const std = @import("std");
 const sql = @import("sqlite");
 const datetime = @import("datetime");
+const http = @import("http.zig");
 const Datetime = datetime.Datetime;
-const ascii = std.ascii;
 const timezones = datetime.timezones;
 const rss = @import("rss.zig");
 const print = std.debug.print;
@@ -13,11 +13,6 @@ const process = std.process;
 const testing = std.testing;
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
-const bearssl = @import("zig-bearssl");
-const gzip = std.compress.gzip;
-const hzzp = @import("hzzp");
-const client = hzzp.base.client;
-const Headers = hzzp.Headers;
 const l = std.log;
 usingnamespace @import("queries.zig");
 
@@ -111,7 +106,6 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
     const current_time = std.time.timestamp();
 
     for (feed_updates) |obj, i| {
-        l.warn("{}", .{obj.pub_date_utc});
         const check_date: i64 = blk: {
             if (obj.ttl) |min| {
                 // Uses ttl, last_build_date_utc || last_update
@@ -135,26 +129,23 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
         try indexes.append(i);
     }
 
-    // Set all feed_update rows last_update to datetime now
+    // Set all feed_update rows last_update to now
     try update(db, Table.feed_update.update_all, .{});
 
     for (indexes.items) |i| {
         const obj = feed_updates[i];
         // const url_or_err = Http.makeUrl(obj.location);
-        const url_or_err = Http.makeUrl("https://lobste.rs");
+        const url_or_err = http.makeUrl("https://lobste.rs");
         // const url_or_err = Http.makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js"); // chunked + deflate
         // const url_or_err = Http.makeUrl("https://news.xbox.com/en-us/feed/");
         // const url_or_err = Http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
 
         if (url_or_err) |url| {
             l.warn("Feed's HTTP request", .{});
-            var req = Http.FeedRequest{ .url = url };
-            // optional:
+            var req = http.FeedRequest{ .url = url };
             if (obj.etag) |etag| {
-                // If-None-Match: etag
                 req.etag = etag;
             } else if (obj.last_modified_utc) |last_modified_utc| {
-                // If-Modified-Since
                 const date = Datetime.fromTimestamp(last_modified_utc);
                 var date_buf: [29]u8 = undefined;
                 const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
@@ -170,19 +161,14 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                 req.last_modified = date_str;
             }
 
-            const resp = try Http.makeRequest(allocator, req);
-            if (resp.body) |b| {
-                l.warn("#len: {}#", .{b.len});
-                l.warn("#len: {s}#", .{b[0..100]});
-                return;
-            }
+            const resp = try http.makeRequest(allocator, req);
 
             // No new content if body is null
             if (resp.body == null) continue;
 
             const body = resp.body.?;
 
-            const rss_feed = try rss.Feed.init(allocator, "this_url", body);
+            const rss_feed = try rss.Feed.init(allocator, obj.location, body);
             try update(db, Table.feed_update.update_id, .{
                 rss_feed.info.ttl,
                 resp.cache_control_max_age,
@@ -270,310 +256,6 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
         }
     }
 }
-
-const Http = struct {
-    const dateStrToTimeStamp = @import("rss.zig").pubDateToTimestamp;
-    const FeedRequest = struct {
-        url: Url,
-        etag: ?[]const u8 = null,
-        last_modified: ?[]const u8 = null,
-    };
-
-    const FeedResponse = struct {
-        cache_control_max_age: ?usize = null, // s-maxage or max-age, if available ignore expires
-        expires_utc: ?i64 = null,
-        // Owns the memory
-        etag: ?[]const u8 = null,
-        last_modified_utc: ?i64 = null,
-        // Owns the memory
-        body: ?[]const u8 = null,
-        // TODO: content_type: <enum>,
-    };
-
-    const ContentEncoding = enum {
-        none,
-        gzip,
-    };
-
-    const TransferEncoding = enum {
-        none,
-        chunked,
-    };
-
-    pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
-        const cert = @embedFile("../mozilla_certs.pem");
-        const host = try std.cstr.addNullByte(allocator, req.url.domain);
-        defer allocator.free(host);
-        const port = 443;
-        const path = req.url.path;
-
-        var feed_resp = FeedResponse{};
-
-        const tcp_conn = try std.net.tcpConnectToHost(allocator, host, port);
-        defer tcp_conn.close();
-
-        var tcp_reader = tcp_conn.reader();
-        var tcp_writer = tcp_conn.writer();
-
-        var trust_anchor = bearssl.TrustAnchorCollection.init(allocator);
-        defer trust_anchor.deinit();
-        try trust_anchor.appendFromPEM(cert);
-
-        var x509 = bearssl.x509.Minimal.init(trust_anchor);
-        var ssl_client = bearssl.Client.init(x509.getEngine());
-        ssl_client.relocate();
-        try ssl_client.reset(host, false);
-
-        var ssl_stream = bearssl.initStream(
-            ssl_client.getEngine(),
-            &tcp_reader,
-            &tcp_writer,
-        );
-
-        var ssl_reader = ssl_stream.reader();
-        var ssl_writer = ssl_stream.writer();
-
-        var client_reader = ssl_reader;
-        var client_writer = ssl_writer;
-
-        var request_buf: [std.mem.page_size * 2]u8 = undefined;
-        var head_client = client.create(&request_buf, client_reader, client_writer);
-
-        try head_client.writeStatusLine("GET", path);
-
-        try head_client.writeHeaderValue("Accept-Encoding", "gzip");
-        try head_client.writeHeaderValue("Connection", "close");
-        try head_client.writeHeaderValue("Host", host);
-        try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
-        if (req.etag) |etag| {
-            try head_client.writeHeaderValue("If-None-Match", etag);
-        } else if (req.last_modified) |time| {
-            try head_client.writeHeaderValue("If-Modified-Since", time);
-        }
-        try head_client.finishHeaders();
-        try ssl_stream.flush();
-
-        var content_encoding = ContentEncoding.none;
-        var transfer_encoding = TransferEncoding.none;
-
-        var content_len: usize = std.math.maxInt(usize);
-
-        while (try head_client.next()) |event| {
-            switch (event) {
-                .status => |status| {
-                    std.debug.print("<HTTP Status {}>\n", .{status.code});
-                    if (status.code == 304) {
-                        return feed_resp;
-                    } else if (status.code != 200) {
-                        return error.InvalidStatusCode;
-                    }
-                },
-                .header => |header| {
-                    std.debug.print("{s}: {s}\n", .{ header.name, header.value });
-                    if (ascii.eqlIgnoreCase("cache-control", header.name)) {
-                        var it = mem.split(header.value, ",");
-                        while (it.next()) |v_raw| {
-                            const v = mem.trimLeft(u8, v_raw, " \r\n\t");
-                            if (feed_resp.cache_control_max_age == null and
-                                ascii.startsWithIgnoreCase(v, "max-age"))
-                            {
-                                const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-                                const nr = v[eq_index + 1 ..];
-                                feed_resp.cache_control_max_age =
-                                    try std.fmt.parseInt(usize, nr, 10);
-                            } else if (ascii.startsWithIgnoreCase(v, "s-maxage")) {
-                                const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-                                const nr = v[eq_index + 1 ..];
-                                feed_resp.cache_control_max_age =
-                                    try std.fmt.parseInt(usize, nr, 10);
-                            }
-                        }
-                    } else if (ascii.eqlIgnoreCase("etag", header.name)) {
-                        feed_resp.etag = try allocator.dupe(u8, header.value);
-                        errdefer allocator.free(feed_resp.etag);
-                    } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
-                        feed_resp.last_modified_utc = try dateStrToTimeStamp(header.value);
-                    } else if (ascii.eqlIgnoreCase("expires", header.name)) {
-                        feed_resp.expires_utc = dateStrToTimeStamp(header.value) catch |_| {
-                            continue;
-                        };
-                    } else if (ascii.eqlIgnoreCase("content-length", header.name)) {
-                        const body_len = try std.fmt.parseInt(usize, header.value, 10);
-                        content_len = body_len;
-                    } else if (ascii.eqlIgnoreCase("transfer-encoding", header.name)) {
-                        if (ascii.eqlIgnoreCase("chunked", header.value)) {
-                            transfer_encoding = .chunked;
-                        }
-                    } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
-                        var it = mem.split(header.value, ",");
-                        while (it.next()) |val_raw| {
-                            const val = mem.trimLeft(u8, val_raw, " \r\n\t");
-                            if (ascii.startsWithIgnoreCase(val, "gzip")) {
-                                content_encoding = .gzip;
-                            }
-                        }
-                    }
-                },
-                .head_done => {
-                    std.debug.print("---\n", .{});
-                    break;
-                },
-                .skip => {},
-                .payload => unreachable,
-                .end => {
-                    std.debug.print("<empty body>\nNothing to parse\n", .{});
-                    return feed_resp;
-                },
-            }
-        }
-
-        switch (transfer_encoding) {
-            .none => {
-                l.warn("Transfer encoding none", .{});
-                const len = std.math.maxInt(usize);
-                switch (content_encoding) {
-                    .none => {
-                        l.warn("No compression", .{});
-                        feed_resp.body = try client_reader.readAllAlloc(allocator, len);
-                    },
-                    .gzip => {
-                        l.warn("Decompress gzip", .{});
-
-                        var stream = try gzip.gzipStream(allocator, client_reader);
-                        defer stream.deinit();
-
-                        feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
-                    },
-                }
-            },
-            .chunked => {
-                l.warn("Parse chunked response", .{});
-                var output = ArrayList(u8).init(allocator);
-                errdefer output.deinit();
-                // const r = try client_reader.readAllAlloc(allocator, std.math.maxInt(usize));
-                // l.warn("{s}", .{r});
-
-                switch (content_encoding) {
-                    .none => {
-                        l.warn("No compression", .{});
-                        while (true) {
-                            const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
-                            if (hex_str == null) return error.InvalidChunk;
-                            if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
-
-                            var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
-                            if (chunk_len == 0) break;
-                            try output.ensureCapacity(output.items.len + chunk_len);
-                            while (chunk_len > 0) {
-                                const read_size = if (chunk_len > request_buf.len)
-                                    request_buf.len
-                                else
-                                    chunk_len;
-                                const size = try client_reader.read(request_buf[0..read_size]);
-                                chunk_len -= size;
-                                output.appendSliceAssumeCapacity(request_buf[0..size]);
-                            }
-                            if ((try client_reader.readByte()) != '\r' or
-                                (try client_reader.readByte()) != '\n') return error.InvalidChunk;
-                        }
-
-                        feed_resp.body = output.toOwnedSlice();
-                    },
-                    .gzip => {
-                        l.warn("Decompress gzip", .{});
-
-                        while (true) {
-                            const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
-                            if (hex_str == null) return error.InvalidChunk;
-                            if ((try client_reader.readByte()) != '\n') return error.InvalidChunk;
-
-                            var chunk_len = try std.fmt.parseUnsigned(usize, hex_str.?[0..], 16);
-                            if (chunk_len == 0) break;
-                            try output.ensureCapacity(output.items.len + chunk_len);
-                            while (chunk_len > 0) {
-                                const read_size = if (chunk_len > request_buf.len)
-                                    request_buf.len
-                                else
-                                    chunk_len;
-                                const size = try client_reader.read(request_buf[0..read_size]);
-                                chunk_len -= size;
-                                try output.appendSlice(request_buf[0..size]);
-                            }
-                            if ((try client_reader.readByte()) != '\r' or
-                                (try client_reader.readByte()) != '\n') return error.InvalidChunk;
-                        }
-
-                        const reader = std.io.fixedBufferStream(output.toOwnedSlice()).reader();
-
-                        var stream = try gzip.gzipStream(allocator, reader);
-                        defer stream.deinit();
-                        const gzip_reader = stream.reader();
-
-                        var body = try gzip_reader.readAllAlloc(allocator, std.math.maxInt(usize));
-                        errdefer allocator.free(body);
-
-                        feed_resp.body = body;
-                    },
-                }
-            },
-        }
-
-        return feed_resp;
-    }
-
-    const Url = struct {
-        domain: []const u8,
-        path: []const u8,
-    };
-
-    // https://www.whogohost.com/host/knowledgebase/308/Valid-Domain-Name-Characters.html
-    // https://stackoverflow.com/a/53875771
-    // NOTE: urls with port will error
-    // NOTE: https://localhost will error
-    pub fn makeUrl(url_str: []const u8) !Url {
-        // Actually url.len must atleast be 10 or there abouts
-        const url = blk: {
-            if (mem.eql(u8, "http", url_str[0..4])) {
-                var it = mem.split(url_str, "://");
-                // protocol
-                _ = it.next() orelse return error.InvalidUrl;
-                break :blk it.rest();
-            }
-            break :blk url_str;
-        };
-
-        const slash_index = mem.indexOfScalar(u8, url, '/') orelse url.len;
-        const domain_all = url[0..slash_index];
-        const dot_index = mem.lastIndexOfScalar(u8, domain_all, '.') orelse return error.InvalidDomain;
-        const domain = domain_all[0..dot_index];
-        const domain_ext = domain_all[dot_index + 1 ..];
-
-        if (!ascii.isAlNum(domain[0])) return error.InvalidDomain;
-        if (!ascii.isAlNum(domain[domain.len - 1])) return error.InvalidDomain;
-        if (!ascii.isAlpha(domain_ext[0])) return error.InvalidDomainExtension;
-
-        const domain_rest = domain[1 .. domain.len - 2];
-        const domain_ext_rest = domain_ext[1..];
-
-        for (domain_rest) |char| {
-            if (!ascii.isAlNum(char) and char != '-' and char != '.') {
-                return error.InvalidDomain;
-            }
-        }
-
-        for (domain_ext_rest) |char| {
-            if (!ascii.isAlNum(char) and char != '-') {
-                return error.InvalidDomainExtension;
-            }
-        }
-
-        const path = if (url[slash_index..].len == 0) "/" else url[slash_index..];
-        return Url{
-            .domain = domain_all,
-            .path = path,
-        };
-    }
-};
 
 pub fn select(comptime T: type, allocator: *Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
     return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
