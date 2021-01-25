@@ -192,7 +192,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                     obj.feed_id,
                 });
 
-                // add items: get newest feed's item pub_date
+                // get newest feed's item pub_date
                 const latest_item_date = try one(
                     i64,
                     db,
@@ -200,23 +200,12 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                     .{obj.feed_id},
                 );
 
-                if (latest_item_date) |latest_date| {
-                    const len = blk: {
-                        for (rss_feed.items) |item, idx| {
-                            if (item.pub_date_utc) |item_date| {
-                                if (item_date <= latest_date) {
-                                    break :blk idx;
-                                }
-                            }
-                        }
-                        break :blk 0;
-                    };
-                    if (len > 0) {
-                        try addFeedItems(db, rss_feed.items[0..len], obj.feed_id);
-                    }
-                } else {
-                    try addFeedItems(db, rss_feed.items, obj.feed_id);
-                }
+                const items = if (latest_item_date) |latest_date|
+                    newestFeedItems(rss_feed.items, latest_date)
+                else
+                    rss_feed.items;
+
+                try addFeedItems(db, items, obj.feed_id);
             }
         } else |_| {
             l.warn("Check local file feed", .{});
@@ -230,27 +219,52 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
             };
             defer allocator.free(contents);
 
-            var feed = try rss.Feed.init(allocator, obj.location, contents);
-            defer feed.deinit();
-            const need_update = feed.info.pub_date_utc == null or
-                !std.meta.eql(feed.info.pub_date_utc, obj.pub_date_utc);
+            var rss_feed = try rss.Feed.init(allocator, obj.location, contents);
+            defer rss_feed.deinit();
+            const need_update = rss_feed.info.pub_date_utc == null or
+                !std.meta.eql(rss_feed.info.pub_date_utc, obj.pub_date_utc);
             if (need_update) {
                 l.warn("Update local feed", .{});
                 try update(db, Table.feed.update_id, .{
-                    feed.info.title,
-                    feed.info.link,
-                    feed.info.pub_date,
-                    feed.info.pub_date_utc,
-                    feed.info.last_build_date,
-                    feed.info.last_build_date_utc,
+                    rss_feed.info.title,
+                    rss_feed.info.link,
+                    rss_feed.info.pub_date,
+                    rss_feed.info.pub_date_utc,
+                    rss_feed.info.last_build_date,
+                    rss_feed.info.last_build_date_utc,
                     // where
                     obj.feed_id,
                 });
 
-                try addFeedItems(db, feed.items, obj.feed_id);
+                // get newest feed's item pub_date
+                const latest_item_date = try one(
+                    i64,
+                    db,
+                    Table.item.select_feed_latest,
+                    .{obj.feed_id},
+                );
+
+                const items = if (latest_item_date) |latest_date|
+                    newestFeedItems(rss_feed.items, latest_date)
+                else
+                    rss_feed.items;
+
+                try addFeedItems(db, items, obj.feed_id);
             }
         }
     }
+}
+
+pub fn newestFeedItems(items: []rss.Item, timestamp: i64) []rss.Item {
+    for (items) |item, idx| {
+        if (item.pub_date_utc) |item_date| {
+            if (item_date <= timestamp) {
+                return items[0..idx];
+            }
+        }
+    }
+
+    return items;
 }
 
 pub fn select(comptime T: type, allocator: *Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
