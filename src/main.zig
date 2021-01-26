@@ -17,6 +17,9 @@ const l = std.log;
 usingnamespace @import("queries.zig");
 
 pub const log_level = std.log.Level.info;
+const g = struct {
+    const max_items_per_feed = 10;
+};
 
 // Sqlite
 // Do upsert with update and insert:
@@ -44,7 +47,9 @@ pub fn main() anyerror!void {
     );
 
     // TODO: replace memory db with file db
-    var db = try memoryDb();
+    // var db = try memoryDb();
+    // const db_loc: [:0]const u8 = "/media/hdd/code/feed_inbox/tmp/test.db";
+    var db = try createDb("/media/hdd/code/feed_inbox/tmp/test.db");
     try dbSetup(&db);
 
     var iter = process.args();
@@ -59,12 +64,13 @@ pub fn main() anyerror!void {
             } else {
                 l.err("Subcommand add missing feed location", .{});
             }
-            if (mem.eql(u8, "update", arg)) {
-                const ids = try updateFeeds(allocator, &db);
-                // TODO: check for updates
-            } else {
-                return error.UnknownArgument;
-            }
+        } else if (mem.eql(u8, "update", arg)) {
+            const ids = try updateFeeds(allocator, &db);
+        } else if (mem.eql(u8, "clean", arg)) {
+            try cleanItems(&db, allocator);
+        } else {
+            l.err("Unknown argument: {s}", .{arg});
+            return error.UnknownArgument;
         }
         try printAllItems(&db, allocator);
     }
@@ -80,7 +86,7 @@ test "does feed need update" {
 
     try cliAddFeed(&db, allocator, input);
 
-    try updateFeeds(allocator, &db);
+    // try updateFeeds(allocator, &db);
 }
 
 pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
@@ -281,7 +287,10 @@ pub fn selectAll(
     comptime query: []const u8,
     opts: anytype,
 ) ![]T {
-    var stmt = try db.prepare(query);
+    var stmt = db.prepare(query) catch |err| {
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        return err;
+    };
     defer stmt.deinit();
     return stmt.all(T, allocator, .{}, opts) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
@@ -306,26 +315,92 @@ pub fn printAllItems(db: *sql.Db, allocator: *Allocator) !void {
         return err;
     };
     const writer = std.io.getStdOut().writer();
-    for (all_items) |item| {
-        const link = item.link orelse "<no-link>";
-        try writer.print("{s}: {s}\n", .{ item.title, link });
+    try writer.print("count: {}\n", .{all_items.len});
+
+    // for (all_items) |item| {
+    //     const link = item.link orelse "<no-link>";
+    //     try writer.print("{s}\n{s}\n\n", .{ item.title, link });
+    // }
+}
+
+pub fn cleanItems(db: *sql.Db, allocator: *Allocator) !void {
+    const query =
+        \\select
+        \\  feed_id, count(feed_id) as count
+        \\from item
+        \\group by feed_id
+        \\having count(feed_id) > ?{usize}
+    ;
+
+    const DbResult = struct {
+        feed_id: usize,
+        count: usize,
+    };
+
+    const results = try selectAll(DbResult, allocator, db, query, .{@as(usize, g.max_items_per_feed)});
+
+    const DbDelResult = struct {
+        id: usize,
+        feed_id: usize,
+        created_at: i64,
+        pub_date_utc: ?i64,
+    };
+
+    const del_query =
+        \\delete from item
+        \\where id in (select id
+        \\from item
+        \\where feed_id = ?
+        \\order by pub_date_utc ASC, created_at desc LIMIT ?)
+    ;
+    for (results) |r| {
+        try delete(db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
     }
 }
 
 // Using arena allocator so all memory will be freed by arena allocator
 pub fn cliAddFeed(db: *sql.Db, allocator: *Allocator, location_raw: []const u8) !void {
-    var location = try makeFilePath(allocator, location_raw);
-    var contents = try getLocalFileContents(allocator, location);
-    var rss_feed = try rss.Feed.init(allocator, location, contents);
+    const url_or_err = http.makeUrl(location_raw);
 
-    const feed_id = try addFeed(db, rss_feed);
+    if (url_or_err) |url| {
+        var req = http.FeedRequest{ .url = url };
+        const resp = try http.makeRequest(allocator, req);
 
-    try insert(db, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
-        feed_id,
-        rss_feed.info.ttl,
-    });
+        if (resp.body == null) {
+            l.warn("Http response body is missing from request to '{}'", .{location_raw});
+            return;
+        }
 
-    try addFeedItems(db, rss_feed.items, feed_id);
+        const body = resp.body.?;
+
+        var rss_feed = try rss.Feed.init(allocator, location_raw, body);
+
+        const feed_id = try addFeed(db, rss_feed);
+
+        try insert(db, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
+            feed_id,
+            rss_feed.info.ttl,
+            resp.cache_control_max_age,
+            resp.expires_utc,
+            resp.last_modified_utc,
+            resp.etag,
+        });
+
+        try addFeedItems(db, rss_feed.items, feed_id);
+    } else |_| {
+        const location = try makeFilePath(allocator, location_raw);
+        const contents = try getLocalFileContents(allocator, location);
+
+        var rss_feed = try rss.Feed.init(allocator, location, contents);
+
+        const feed_id = try addFeed(db, rss_feed);
+
+        try insert(db, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
+            feed_id, rss_feed.info.ttl, null, null, null, null,
+        });
+
+        try addFeedItems(db, rss_feed.items, feed_id);
+    }
 }
 
 pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
@@ -338,6 +413,13 @@ pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
 }
 
 pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
+    db.exec(query, args) catch |err| {
+        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}
+
+pub fn delete(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
     db.exec(query, args) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
@@ -448,7 +530,8 @@ pub const FeedUpdate = struct {
 };
 
 pub fn addFeedItems(db: *sql.Db, feed_items: []rss.Item, feed_id: usize) !void {
-    for (feed_items) |it| {
+    const len = std.math.min(feed_items.len, g.max_items_per_feed);
+    for (feed_items[0..len]) |it| {
         if (it.guid) |_| {
             try insert(
                 db,
@@ -621,10 +704,10 @@ pub fn memoryDb() !sql.Db {
     return db;
 }
 
-pub fn tmpDb() !sql.Db {
+pub fn createDb(abs_loc: [:0]const u8) !sql.Db {
     var db: sql.Db = undefined;
     try db.init(.{
-        .mode = sql.Db.Mode{ .File = "/media/hdd/code/feed_inbox/tmp/test.db" },
+        .mode = sql.Db.Mode{ .File = abs_loc },
         .open_flags = .{
             .write = true,
             .create = true,

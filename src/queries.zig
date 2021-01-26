@@ -12,7 +12,7 @@ pub const Table = struct {
             \\  guid TEXT UNIQUE DEFAULT NULL,
             \\  pub_date TEXT DEFAULT NULL,
             \\  pub_date_utc INTEGER DEFAULT NULL,
-            \\  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            \\  created_at INTEGER DEFAULT (strftime('%s', 'now')),
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
             \\);
         ;
@@ -116,12 +116,15 @@ pub const Table = struct {
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
             \\);
         ;
-        // TODO: insert other fields
         pub const insert =
             \\INSERT INTO feed_update
-            \\  (feed_id, ttl)
+            \\  (feed_id, ttl, cache_control_max_age, expires_utc, last_modified_utc, etag)
             \\VALUES (
             \\  ?{usize},
+            \\  ?,
+            \\  ?,
+            \\  ?,
+            \\  ?,
             \\  ?
             \\)
         ;
@@ -166,11 +169,14 @@ pub const Table = struct {
             \\FROM feed_update
             \\LEFT JOIN feed ON feed_update.feed_id = feed.id;
         ;
-
         pub const on_conflict_feed_id =
             \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = excluded.update_interval,
             \\  ttl = excluded.ttl,
+            \\  cache_control_max_age = excluded.cache_control_max_age,
+            \\  expires_utc = excluded.expires_utc,
+            \\  last_modified_utc = excluded.last_modified_utc,
+            \\  etag = excluded.etag,
             \\  last_update = (strftime('%s', 'now'))
             // \\WHERE last_build_date_utc != excluded.last_build_date_utc
         ;
