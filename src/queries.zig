@@ -13,7 +13,7 @@ pub const Table = struct {
             \\  pub_date TEXT DEFAULT NULL,
             \\  pub_date_utc INTEGER DEFAULT NULL,
             \\  created_at INTEGER DEFAULT (strftime('%s', 'now')),
-            \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
             \\);
         ;
         pub const insert =
@@ -113,7 +113,7 @@ pub const Table = struct {
             \\  expires_utc INTEGER DEFAULT NULL,
             \\  last_modified_utc INTEGER DEFAULT NULL,
             \\  etag TEXT DEFAULT NULL,
-            \\  FOREIGN KEY(feed_id) REFERENCES feed(id)
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
             \\);
         ;
         pub const insert =

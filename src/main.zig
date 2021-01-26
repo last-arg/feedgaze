@@ -9,6 +9,7 @@ const print = std.debug.print;
 const assert = std.debug.assert;
 const mem = std.mem;
 const fmt = std.fmt;
+const ascii = std.ascii;
 const process = std.process;
 const testing = std.testing;
 const ArrayList = std.ArrayList;
@@ -68,6 +69,13 @@ pub fn main() anyerror!void {
             const ids = try updateFeeds(allocator, &db);
         } else if (mem.eql(u8, "clean", arg)) {
             try cleanItems(&db, allocator);
+        } else if (mem.eql(u8, "delete", arg)) {
+            if (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                try deleteFeed(&db, allocator, value);
+            } else {
+                l.err("Subcommand delete missing argument location", .{});
+            }
         } else {
             l.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
@@ -321,6 +329,68 @@ pub fn printAllItems(db: *sql.Db, allocator: *Allocator) !void {
     //     const link = item.link orelse "<no-link>";
     //     try writer.print("{s}\n{s}\n\n", .{ item.title, link });
     // }
+}
+
+pub fn deleteFeed(
+    db: *sql.Db,
+    allocator: *Allocator,
+    location: []const u8,
+) !void {
+    const query =
+        \\SELECT location, id FROM feed WHERE location LIKE ?
+    ;
+    const DbResult = struct {
+        location: []const u8,
+        id: usize,
+    };
+
+    const search_term = try fmt.allocPrint(allocator, "%{s}%", .{"e"});
+    defer allocator.free(search_term);
+
+    const del_query =
+        \\DELETE FROM feed WHERE id = ?
+    ;
+    const stdout = std.io.getStdOut();
+    const results = try selectAll(DbResult, allocator, db, query, .{search_term});
+    if (results.len == 0) {
+        try stdout.writer().print("Found no matches for '{s}' to delete.\n", .{location});
+        return;
+    }
+    try stdout.writer().print("Found {} result(s):\n\n", .{results.len});
+    for (results) |result, i| {
+        try stdout.writer().print("{}. {s}\n", .{ i + 1, result.location });
+    }
+    try stdout.writer().print("\n", .{});
+    try stdout.writer().print("Enter 'q' to quit.\n", .{});
+    // TODO: need flush stdin before or after reading it
+    const stdin = std.io.getStdIn();
+    var buf: [32]u8 = undefined;
+
+    var delete_nr: usize = 0;
+    while (true) {
+        try stdout.writer().print("Enter number you want to delete? ", .{});
+        const bytes = try stdin.read(&buf);
+        if (buf[0] == '\n') break;
+
+        if (bytes == 2 and buf[0] == 'q') return;
+
+        if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
+            if (nr >= 1 and nr <= results.len) {
+                delete_nr = nr;
+                break;
+            }
+            try stdout.writer().print("Entered number out of range. Try again.\n", .{});
+            continue;
+        } else |_| {
+            try stdout.writer().print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
+        }
+    }
+
+    if (delete_nr > 0) {
+        const result = results[delete_nr - 1];
+        try delete(db, del_query, .{result.id});
+        try stdout.writer().print("Deleted feed '{s}'\n", .{result.location});
+    }
 }
 
 pub fn cleanItems(db: *sql.Db, allocator: *Allocator) !void {
