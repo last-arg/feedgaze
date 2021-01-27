@@ -250,5 +250,16 @@ pub const Table = struct {
             \\  last_build_date_utc = ?
             \\WHERE id = ?{usize}
         ;
+        pub const update_where_id =
+            \\UPDATE feed SET
+            \\  title = ?{[]const u8},
+            \\  link = ?{[]const u8},
+            \\  location = ?{[]const u8},
+            \\  pub_date = ?,
+            \\  pub_date_utc = ?,
+            \\  last_build_date = ?,
+            \\  last_build_date_utc = ?
+            \\WHERE id = ?{usize}
+        ;
     };
 };

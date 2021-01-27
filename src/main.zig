@@ -66,7 +66,7 @@ pub fn main() anyerror!void {
                 l.err("Subcommand add missing feed location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
-            const ids = try updateFeeds(allocator, &db);
+            try updateFeeds(allocator, &db);
         } else if (mem.eql(u8, "clean", arg)) {
             try cleanItems(&db, allocator);
         } else if (mem.eql(u8, "delete", arg)) {
@@ -143,11 +143,9 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
         try indexes.append(i);
     }
 
-    // Set all feed_update rows last_update to now
-    try update(db, Table.feed_update.update_all, .{});
-
     for (indexes.items) |i| {
         const obj = feed_updates[i];
+        if (true) continue;
         const url_or_err = http.makeUrl(obj.location);
 
         if (url_or_err) |url| {
@@ -171,7 +169,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                 req.last_modified = date_str;
             }
 
-            const resp = try http.makeRequest(allocator, req);
+            const resp = try http.resolveRequest(allocator, req);
 
             // No new content if body is null
             if (resp.body == null) continue;
@@ -179,6 +177,7 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
             const body = resp.body.?;
 
             const rss_feed = try rss.Feed.init(allocator, obj.location, body);
+            // TODO: update last_updat field
             try update(db, Table.feed_update.update_id, .{
                 rss_feed.info.ttl,
                 resp.cache_control_max_age,
@@ -194,10 +193,16 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                 !std.meta.eql(obj.last_build_date_utc, rss_feed.info.last_build_date_utc);
 
             if (has_changed) {
+                const location: []const u8 = try fmt.allocPrint(allocator, "{s}://{s}{s}", .{
+                    resp.url.protocol,
+                    resp.url.domain,
+                    resp.url.path,
+                });
                 // feed update
-                try update(db, Table.feed.update_id, .{
+                try update(db, Table.feed.update_where_id, .{
                     rss_feed.info.title,
                     rss_feed.info.link,
+                    location,
                     rss_feed.info.pub_date,
                     rss_feed.info.pub_date_utc,
                     rss_feed.info.last_build_date,
@@ -239,6 +244,18 @@ pub fn updateFeeds(allocator: *Allocator, db: *sql.Db) !void {
                 !std.meta.eql(rss_feed.info.pub_date_utc, obj.pub_date_utc);
             if (need_update) {
                 l.warn("Update local feed", .{});
+                try update(db, Table.feed.update_id, .{
+                    rss_feed.info.title,
+                    rss_feed.info.link,
+                    rss_feed.info.pub_date,
+                    rss_feed.info.pub_date_utc,
+                    rss_feed.info.last_build_date,
+                    rss_feed.info.last_build_date_utc,
+                    // where
+                    obj.feed_id,
+                });
+
+                // feed update
                 try update(db, Table.feed.update_id, .{
                     rss_feed.info.title,
                     rss_feed.info.link,
@@ -434,7 +451,7 @@ pub fn cliAddFeed(db: *sql.Db, allocator: *Allocator, location_raw: []const u8) 
 
     if (url_or_err) |url| {
         var req = http.FeedRequest{ .url = url };
-        const resp = try http.makeRequest(allocator, req);
+        const resp = try http.resolveRequest(allocator, req);
 
         if (resp.body == null) {
             l.warn("Http response body is missing from request to '{}'", .{location_raw});

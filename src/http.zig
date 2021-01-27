@@ -19,6 +19,7 @@ pub const FeedRequest = struct {
 };
 
 pub const FeedResponse = struct {
+    url: Url,
     cache_control_max_age: ?usize = null, // s-maxage or max-age, if available ignore expires
     expires_utc: ?i64 = null,
     // Owns the memory
@@ -42,6 +43,15 @@ pub const TransferEncoding = enum {
     chunked,
 };
 
+pub fn resolveRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
+    var resp = try makeRequest(allocator, req);
+    while (resp.location) |location| {
+        const new_req = FeedRequest{ .url = try makeUrl(location) };
+        resp = try makeRequest(allocator, new_req);
+    }
+    return resp;
+}
+
 pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     const cert = @embedFile("../mozilla_certs.pem");
     const host = try std.cstr.addNullByte(allocator, req.url.domain);
@@ -49,7 +59,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     const port = 443;
     const path = req.url.path;
 
-    var feed_resp = FeedResponse{};
+    var feed_resp = FeedResponse{ .url = req.url };
 
     const tcp_conn = try std.net.tcpConnectToHost(allocator, host, port);
     defer tcp_conn.close();
@@ -83,10 +93,9 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
     try head_client.writeStatusLine("GET", path);
     // try head_client.writeHeaderValue("Accept-Encoding", "gzip");
-    // try head_client.writeHeaderValue("Connection", "close");
+    try head_client.writeHeaderValue("Connection", "close");
     try head_client.writeHeaderValue("Host", host);
     try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
-    // try head_client.writeHeaderValue("User-Agent", "test_app");
     if (req.etag) |etag| {
         try head_client.writeHeaderValue("If-None-Match", etag);
     } else if (req.last_modified) |time| {
@@ -154,8 +163,8 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                         transfer_encoding = .chunked;
                     }
                 } else if (ascii.eqlIgnoreCase("location", header.name)) {
-                    l.warn("loc: {s}", .{header.value});
-                    feed_resp.location = header.value;
+                    feed_resp.location = try allocator.dupe(u8, header.value);
+                    errdefer allocator.free(feed_resp.location);
                 } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
                     var it = mem.split(header.value, ",");
                     while (it.next()) |val_raw| {
@@ -168,9 +177,9 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
             },
             .head_done => {
                 std.debug.print("---\n", .{});
-                // if (status_code == 301) {
-                //     return feed_resp;
-                // }
+                if (status_code == 301) {
+                    return feed_resp;
+                }
                 break;
             },
             .skip => {},
@@ -187,7 +196,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
     switch (transfer_encoding) {
         .none => {
-            l.warn("Transfer encoding none", .{});
+            l.warn("Body response", .{});
             switch (content_encoding) {
                 .none => {
                     l.warn("No compression", .{});
@@ -199,7 +208,6 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     try array_list.resize(content_len);
                     var read_index: usize = 0;
                     while (true) {
-                        l.warn("start loop", .{});
                         const bytes = try client_reader.read(array_list.items[read_index..]);
                         read_index += bytes;
                         if (read_index == content_len) break;
@@ -210,6 +218,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 .gzip => {
                     l.warn("Decompress gzip", .{});
 
+                    // TODO: might have redo it like .none part
                     var stream = try gzip.gzipStream(allocator, client_reader);
                     defer stream.deinit();
 
@@ -218,7 +227,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
             }
         },
         .chunked => {
-            l.warn("Parse chunked response", .{});
+            l.warn("Chunked response", .{});
             var output = ArrayList(u8).init(allocator);
             errdefer output.deinit();
 
@@ -272,9 +281,9 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                             (try client_reader.readByte()) != '\n') return error.InvalidChunk;
                     }
 
-                    const reader = std.io.fixedBufferStream(output.toOwnedSlice()).reader();
+                    const gzip_buf = std.io.fixedBufferStream(output.toOwnedSlice()).reader();
 
-                    var stream = try gzip.gzipStream(allocator, reader);
+                    var stream = try gzip.gzipStream(allocator, gzip_buf);
                     defer stream.deinit();
                     const gzip_reader = stream.reader();
 
@@ -358,7 +367,5 @@ test "http" {
     // l.warn("rand: {}", .{r.random.int(u8)});
 
     const req = FeedRequest{ .url = url };
-    const resp = try makeRequest(allocator, req);
-    if (resp.body) |body| l.warn("{s}", .{body});
-    if (resp.location) |location| l.warn("{s}", .{location});
+    const resp = try resolveRequest(allocator, req);
 }

@@ -222,7 +222,6 @@ pub const Feed = struct {
                                     info.last_build_date = value;
                                 },
                                 .ttl => {
-                                    l.warn("value: {s}", .{value});
                                     info.ttl = try std.fmt.parseInt(u32, value, 10);
                                 },
                                 ._ignore, .image => {},

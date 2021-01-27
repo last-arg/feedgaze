@@ -1,8 +1,9 @@
 .PHONY: test
 
 dev:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_inbox delete lob'
+	# watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_inbox delete lob'
 	# watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_inbox add https://lobste.rs/'
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_inbox update'
 
 test:
 	watchexec -c -r  -w src/ -e zig zig build test
