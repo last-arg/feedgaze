@@ -120,6 +120,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 } else if (status.code == 301) {
                     status_code = status.code;
                 } else if (status.code != 200) {
+                    l.err("HTTP status code {d} not handled", .{status.code});
                     return error.InvalidStatusCode;
                 }
             },
