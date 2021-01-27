@@ -11,7 +11,7 @@ test-rss:
 	watchexec -c -w src/ -e zig 'zig build test -- src/rss.zig'
 
 test-http:
-	watchexec -c -w src/ -e zig 'zig build test -- src/http.zig'
+	watchexec -c -r -w src/ -e zig 'zig build test -- src/http.zig'
 
 db:
 	./zig-cache/bin/feed_inbox add https://lobste.rs

@@ -29,6 +29,7 @@ pub const FeedResponse = struct {
     content_type: ?[]const u8 = null,
     // Owns the memory
     body: ?[]const u8 = null,
+    location: ?[]const u8 = null,
 };
 
 pub const ContentEncoding = enum {
@@ -81,10 +82,11 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var head_client = client.create(&request_buf, client_reader, client_writer);
 
     try head_client.writeStatusLine("GET", path);
-    try head_client.writeHeaderValue("Accept-Encoding", "gzip");
-    try head_client.writeHeaderValue("Connection", "close");
+    // try head_client.writeHeaderValue("Accept-Encoding", "gzip");
+    // try head_client.writeHeaderValue("Connection", "close");
     try head_client.writeHeaderValue("Host", host);
     try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
+    // try head_client.writeHeaderValue("User-Agent", "test_app");
     if (req.etag) |etag| {
         try head_client.writeHeaderValue("If-None-Match", etag);
     } else if (req.last_modified) |time| {
@@ -98,12 +100,16 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
     var content_len: usize = std.math.maxInt(usize);
 
+    var status_code: u16 = 0;
+
     while (try head_client.next()) |event| {
         switch (event) {
             .status => |status| {
                 std.debug.print("<HTTP Status {}>\n", .{status.code});
                 if (status.code == 304) {
                     return feed_resp;
+                } else if (status.code == 301) {
+                    status_code = status.code;
                 } else if (status.code != 200) {
                     return error.InvalidStatusCode;
                 }
@@ -147,6 +153,9 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     if (ascii.eqlIgnoreCase("chunked", header.value)) {
                         transfer_encoding = .chunked;
                     }
+                } else if (ascii.eqlIgnoreCase("location", header.name)) {
+                    l.warn("loc: {s}", .{header.value});
+                    feed_resp.location = header.value;
                 } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
                     var it = mem.split(header.value, ",");
                     while (it.next()) |val_raw| {
@@ -159,10 +168,16 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
             },
             .head_done => {
                 std.debug.print("---\n", .{});
+                // if (status_code == 301) {
+                //     return feed_resp;
+                // }
                 break;
             },
             .skip => {},
             .payload => unreachable,
+            // .payload => |payload| {
+            //     l.warn("{s}", .{payload});
+            // },
             .end => {
                 std.debug.print("<empty body>\nNothing to parse\n", .{});
                 return feed_resp;
@@ -173,11 +188,24 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     switch (transfer_encoding) {
         .none => {
             l.warn("Transfer encoding none", .{});
-            const len = std.math.maxInt(usize);
             switch (content_encoding) {
                 .none => {
                     l.warn("No compression", .{});
-                    feed_resp.body = try client_reader.readAllAlloc(allocator, len);
+
+                    if (content_len == std.math.maxInt(usize)) return error.NoContentLength;
+
+                    var array_list = std.ArrayList(u8).init(allocator);
+                    defer array_list.deinit();
+                    try array_list.resize(content_len);
+                    var read_index: usize = 0;
+                    while (true) {
+                        l.warn("start loop", .{});
+                        const bytes = try client_reader.read(array_list.items[read_index..]);
+                        read_index += bytes;
+                        if (read_index == content_len) break;
+                    }
+
+                    feed_resp.body = array_list.toOwnedSlice();
                 },
                 .gzip => {
                     l.warn("Decompress gzip", .{});
@@ -185,7 +213,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     var stream = try gzip.gzipStream(allocator, client_reader);
                     defer stream.deinit();
 
-                    feed_resp.body = try stream.reader().readAllAlloc(allocator, len);
+                    feed_resp.body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
                 },
             }
         },
@@ -263,6 +291,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 }
 
 pub const Url = struct {
+    protocol: []const u8,
     domain: []const u8,
     path: []const u8,
 };
@@ -272,16 +301,13 @@ pub const Url = struct {
 // NOTE: urls with port will error
 // NOTE: https://localhost will error
 pub fn makeUrl(url_str: []const u8) !Url {
-    // Actually url.len must atleast be 10 or there abouts
-    const url = blk: {
-        if (mem.eql(u8, "http", url_str[0..4])) {
-            var it = mem.split(url_str, "://");
-            // protocol
-            _ = it.next() orelse return error.InvalidUrl;
-            break :blk it.rest();
-        }
-        break :blk url_str;
-    };
+    // Actual url.len must atleast be 10 or there abouts
+    if (!mem.eql(u8, "http", url_str[0..4])) return error.InvalidUrl;
+
+    var it = mem.split(url_str, "://");
+    const protocol = it.next() orelse return error.InvalidUrl;
+
+    const url = it.rest();
 
     const slash_index = mem.indexOfScalar(u8, url, '/') orelse url.len;
     const domain_all = url[0..slash_index];
@@ -310,14 +336,29 @@ pub fn makeUrl(url_str: []const u8) !Url {
 
     const path = if (url[slash_index..].len == 0) "/" else url[slash_index..];
     return Url{
+        .protocol = protocol,
         .domain = domain_all,
         .path = path,
     };
 }
 
 test "http" {
-    // const url_or_err = http.makeUrl("https://lobste.rs");
-    // const url_or_err = http.makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js"); // chunked + deflate
-    // const url_or_err = http.makeUrl("https://news.xbox.com/en-us/feed/");
-    // const url_or_err = http.makeUrl("https://feeds.feedburner.com/eclipse/fnews");
+    const testing = std.testing;
+    const rand = std.rand;
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+    const url = makeUrl("http://google.com/") catch unreachable;
+    // const url = makeUrl("http://lobste.rs") catch unreachable;
+    // const url = makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js") catch unreachable; // chunked + deflate
+    // const url = makeUrl("https://news.xbox.com/en-us/feed/") catch unreachable;
+    // const url = makeUrl("https://feeds.feedburner.com/eclipse/fnews") catch unreachable;
+
+    // var r = rand.DefaultPrng.init(@intCast(u64, std.time.milliTimestamp()));
+    // l.warn("rand: {}", .{r.random.int(u8)});
+
+    const req = FeedRequest{ .url = url };
+    const resp = try makeRequest(allocator, req);
+    if (resp.body) |body| l.warn("{s}", .{body});
+    if (resp.location) |location| l.warn("{s}", .{location});
 }

@@ -362,7 +362,7 @@ pub fn deleteFeed(
     }
     try stdout.writer().print("\n", .{});
     try stdout.writer().print("Enter 'q' to quit.\n", .{});
-    // TODO: need flush stdin before or after reading it
+    // TODO: flush stdin before or after reading it
     const stdin = std.io.getStdIn();
     var buf: [32]u8 = undefined;
 
