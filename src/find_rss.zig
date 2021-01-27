@@ -7,17 +7,9 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const l = std.log;
 
-// can find rss link inside html
-// <link rel="alternate" type="application/rss+xml" title="RSS Feed" href="https://www.sourcedomain.com/feed/" />
-//
-// In HTML 5 link element can appear in body
-// https://webmasters.stackexchange.com/questions/55130/can-i-use-link-tags-in-the-body-of-an-html-document
-//
+// How to find Rss links in html:
 // https://developer.mozilla.org/en-US/docs/Archive/RSS/Getting_Started/Syndicating
-
-// https://tfrommen.de/how-to-detect-wordpress-websites/
-// wordpress sites feed is located in <url>/feed/
-// However, with the release of WordPress 4.4, the REST API started to send a Link header containing the URL of the REST API endpoint, which is <*/wp-json/>; rel="https://api.w.org/".
+// https://webmasters.stackexchange.com/questions/55130/can-i-use-link-tags-in-the-body-of-an-html-document
 
 const Tag = enum {
     none,
