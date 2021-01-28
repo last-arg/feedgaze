@@ -17,6 +17,10 @@ const timezones = datetime.timezones;
 // <sy:updateFrequency>1</sy:updateFrequency>
 // has something to do with attributes in xml element
 // xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+//
+// TODO: add atom feed parsing
+// https://validator.w3.org/feed/docs/atom.html
+// https://tools.ietf.org/html/rfc4287#section-1.1
 
 pub const Feed = struct {
     const Self = @This();
