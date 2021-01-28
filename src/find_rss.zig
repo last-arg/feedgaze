@@ -7,22 +7,15 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const l = std.log;
 
-// How to find Rss links in html:
-// https://developer.mozilla.org/en-US/docs/Archive/RSS/Getting_Started/Syndicating
-// https://webmasters.stackexchange.com/questions/55130/can-i-use-link-tags-in-the-body-of-an-html-document
-//
-// TODO: find atom feed
-// <link href="atom.xml" type="application/atom+xml" rel="alternate" title="Sitewide Atom feed" />
-
-const Tag = enum {
-    none,
-    title,
-    link_or_a,
-};
-
 pub const Page = struct {
     title: ?[]const u8 = null,
     links: []Link,
+};
+
+const Link = struct {
+    href: []const u8,
+    media_type: MediaType = .unknown,
+    title: ?[]const u8 = null,
 };
 
 const MediaType = enum {
@@ -31,10 +24,10 @@ const MediaType = enum {
     unknown,
 };
 
-const Link = struct {
-    href: []const u8,
-    media_type: MediaType = .unknown,
-    title: ?[]const u8 = null,
+const Tag = enum {
+    none,
+    title,
+    link_or_a,
 };
 
 pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
@@ -74,6 +67,7 @@ pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
                     .link_or_a => {
                         const valid_rel = link_rel != null and mem.eql(u8, "alternate", link_rel.?);
                         const valid_type = link_type != null;
+
                         if (valid_rel and valid_type) {
                             if (link_href) |href| {
                                 var is_duplicate = blk: {
