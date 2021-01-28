@@ -12,6 +12,15 @@ const Headers = hzzp.Headers;
 const l = std.log;
 const dateStrToTimeStamp = @import("rss.zig").pubDateToTimestamp;
 
+// 1. insert url
+// 2. valid url. return response
+// 3. redirected. go to step 1
+// 4. returned content-type == "text/html"
+//   - parse html for rss links
+//   - if one link/url found go to step 1
+//   - more than one link ask which link/url to add and go to step 1
+// 5. Not valid feed url and failed to find a valid feed url.
+
 pub const FeedRequest = struct {
     url: Url,
     etag: ?[]const u8 = null,
@@ -25,9 +34,7 @@ pub const FeedResponse = struct {
     // Owns the memory
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
-    // Owns the memory
-    // TODO?: make into enum?
-    content_type: ?[]const u8 = null,
+    content_type: ContentType = .unknown,
     // Owns the memory
     body: ?[]const u8 = null,
     location: ?[]const u8 = null,
@@ -43,9 +50,16 @@ pub const TransferEncoding = enum {
     chunked,
 };
 
+pub const ContentType = enum {
+    unknown,
+    xml,
+    html,
+};
+
 pub fn resolveRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var resp = try makeRequest(allocator, req);
     while (resp.location) |location| {
+        l.warn("Redirecting to {s}", .{location});
         const new_req = FeedRequest{ .url = try makeUrl(location) };
         resp = try makeRequest(allocator, new_req);
     }
@@ -92,10 +106,10 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var head_client = client.create(&request_buf, client_reader, client_writer);
 
     try head_client.writeStatusLine("GET", path);
-    // try head_client.writeHeaderValue("Accept-Encoding", "gzip");
+    try head_client.writeHeaderValue("Accept-Encoding", "gzip");
     try head_client.writeHeaderValue("Connection", "close");
     try head_client.writeHeaderValue("Host", host);
-    try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml");
+    try head_client.writeHeaderValue("Accept", "application/rss+xml, application/atom+xml, text/xml, application/xml, text/html");
     if (req.etag) |etag| {
         try head_client.writeHeaderValue("If-None-Match", etag);
     } else if (req.last_modified) |time| {
@@ -158,7 +172,16 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     content_len = body_len;
                 } else if (ascii.eqlIgnoreCase("content-type", header.name)) {
                     const len = mem.indexOfScalar(u8, header.value, ';') orelse header.value.len;
-                    feed_resp.content_type = header.value[0..len];
+                    const value = header.value[0..len];
+                    if (ascii.eqlIgnoreCase("text/html", value)) {
+                        feed_resp.content_type = .html;
+                    } else if (ascii.eqlIgnoreCase("application/rss+xml", value) or
+                        ascii.eqlIgnoreCase("application/atom+xml", value) or
+                        ascii.eqlIgnoreCase("application/xml", value) or
+                        ascii.eqlIgnoreCase("text/xml", value))
+                    {
+                        feed_resp.content_type = .xml;
+                    }
                 } else if (ascii.eqlIgnoreCase("transfer-encoding", header.name)) {
                     if (ascii.eqlIgnoreCase("chunked", header.value)) {
                         transfer_encoding = .chunked;
