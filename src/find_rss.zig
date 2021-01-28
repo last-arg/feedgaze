@@ -10,6 +10,9 @@ const l = std.log;
 // How to find Rss links in html:
 // https://developer.mozilla.org/en-US/docs/Archive/RSS/Getting_Started/Syndicating
 // https://webmasters.stackexchange.com/questions/55130/can-i-use-link-tags-in-the-body-of-an-html-document
+//
+// TODO: find atom feed
+// <link href="atom.xml" type="application/atom+xml" rel="alternate" title="Sitewide Atom feed" />
 
 const Tag = enum {
     none,
@@ -17,15 +20,23 @@ const Tag = enum {
     link_or_a,
 };
 
-const Page = struct {
+pub const Page = struct {
     title: ?[]const u8 = null,
-    rss_links: []Link,
+    links: []Link,
+};
+
+const MediaType = enum {
+    atom,
+    rss,
+    unknown,
 };
 
 const Link = struct {
     href: []const u8,
+    media_type: MediaType = .unknown,
     title: ?[]const u8 = null,
 };
+
 pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
     // Remove first brackets from html '<!doctype html>'
     var start_index = mem.indexOfScalar(u8, contents, '>') orelse return error.InvalidHtml;
@@ -62,7 +73,7 @@ pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
                 switch (active_tab) {
                     .link_or_a => {
                         const valid_rel = link_rel != null and mem.eql(u8, "alternate", link_rel.?);
-                        const valid_type = link_type != null and mem.eql(u8, "application/rss+xml", link_type.?);
+                        const valid_type = link_type != null;
                         if (valid_rel and valid_type) {
                             if (link_href) |href| {
                                 var is_duplicate = blk: {
@@ -74,9 +85,18 @@ pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
                                     break :blk false;
                                 };
                                 if (!is_duplicate) {
+                                    const media_type = blk: {
+                                        if (mem.eql(u8, "application/rss+xml", link_type.?)) {
+                                            break :blk MediaType.rss;
+                                        } else if (mem.eql(u8, "application/atom+xml", link_type.?)) {
+                                            break :blk MediaType.atom;
+                                        }
+                                        break :blk MediaType.unknown;
+                                    };
                                     try links.append(Link{
                                         .href = href,
                                         .title = link_title,
+                                        .media_type = media_type,
                                     });
                                 }
                             }
@@ -129,7 +149,7 @@ pub fn findFeedLinks(allocator: *Allocator, contents: []const u8) !Page {
 
     return Page{
         .title = page_title,
-        .rss_links = links.toOwnedSlice(),
+        .links = links.toOwnedSlice(),
     };
 }
 
@@ -140,5 +160,6 @@ test "parse html" {
     const allocator = &arena.allocator;
     const html = @embedFile("../test/lobste.rs.html");
     const page = try findFeedLinks(allocator, html);
-    expect(4 == page.rss_links.len);
+    expect(4 == page.links.len);
+    expect(MediaType.rss == page.links[0].media_type);
 }
