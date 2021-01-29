@@ -14,7 +14,7 @@ test-rss:
 test-http:
 	watchexec -c -r -w src/ -e zig 'zig build test -- src/http.zig'
 
-test-find:
+test-parse:
 	watchexec -c -r -w src/ -e zig 'zig build test -- src/parse.zig'
 
 db:
