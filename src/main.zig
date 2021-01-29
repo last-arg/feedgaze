@@ -472,7 +472,7 @@ test "active" {
     // try cliAddFeed(&db, allocator, input);
     // try updateFeeds(allocator, &db);
 
-    // const page = try parse.findFeedLinks(allocator, @embedFile("../test/lobste.rs.html"));
+    // const page = try parse.Html.parseLinks(allocator, @embedFile("../test/lobste.rs.html"));
 
     const url_str = "https://www.thecrazyprogrammer.com/feed";
     // const url = try http.makeUrl(url_str);
@@ -514,7 +514,7 @@ pub fn cliHandleResponse(allocator: *Allocator, resp: http.FeedResponse) !http.F
         .html => {
             l.warn("Find links from html", .{});
             l.warn("LINKS {s}", .{resp.body.?});
-            const page = try parse.findFeedLinks(allocator, resp.body.?);
+            const page = try parse.Html.parseLinks(allocator, resp.body.?);
 
             var parse_link: parse.Link = undefined;
             if (page.links.len == 0) {
