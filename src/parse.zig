@@ -219,7 +219,7 @@ pub const Feed = struct {
     // Atom: updated (required)
     // Rss: pubDate (optional)
     updated_raw: ?[]const u8 = null,
-    // TODO: update_utc: i64,
+    timestamp: ?i64 = null,
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
@@ -392,11 +392,19 @@ pub const Atom = struct {
             }
         }
 
+        const timestamp = blk: {
+            if (feed_date_raw) |date| {
+                const date_utc = try parseDateToUtc(date);
+                break :blk @floatToInt(i64, date_utc.toSeconds());
+            }
+            break :blk null;
+        };
         var result = Feed{
             .title = feed_title orelse return error.InvalidAtomFeed,
             .id = feed_id,
             .link = feed_link,
             .updated_raw = feed_date_raw,
+            .timestamp = timestamp,
             .items = entries.toOwnedSlice(),
         };
 
@@ -404,7 +412,6 @@ pub const Atom = struct {
     }
 
     // Atom timestamp: http://www.faqs.org/rfcs/rfc3339.html
-    // Datetime examples:
     pub fn parseDateToUtc(raw: []const u8) !Datetime {
         const date_raw = "2003-12-13T18:30:02Z";
 
@@ -466,6 +473,7 @@ test "Atom.parse" {
     testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
 
     expect(2 == result.items.len);
+    expect(1355423402 == result.timestamp.?);
     // TODO: test feed items
     // l.warn("items.len: {}", .{result.items.len});
 }
@@ -559,6 +567,7 @@ pub const Rss = struct {
         var item_field: ItemField = ._ignore;
 
         var item_title: ?[]const u8 = null;
+        var item_desc_start_ptr: ?[*]const u8 = null;
         var item_description: ?[]const u8 = null;
         var item_link: ?[]const u8 = null;
         var item_guid: ?[]const u8 = null;
@@ -591,7 +600,9 @@ pub const Rss = struct {
                                 state = .item;
                                 item_title = null;
                                 item_description = null;
+                                item_desc_start_ptr = null;
                                 item_guid = null;
+                                item_link = null;
                                 item_pub_date = null;
                             } else {
                                 channel_field = ._ignore;
@@ -622,8 +633,21 @@ pub const Rss = struct {
                                 break :blk value;
                             } else if (item_description) |value| {
                                 const max_len: usize = 30;
-                                const len = if (value.len > max_len) max_len else value.len;
-                                break :blk value[0..len];
+                                if (item_desc_start_ptr) |ptr| {
+                                    const start_ptr = @ptrToInt(ptr);
+                                    const end_ptr = @ptrToInt(value[value.len - 1 ..].ptr);
+                                    const content_ptr = @ptrToInt(contents.ptr);
+                                    const start_index = start_ptr - content_ptr;
+                                    const end_index = index: {
+                                        const end = end_ptr - content_ptr;
+                                        const len = end - start_index + 1;
+                                        if (len > max_len) {
+                                            break :index start_index + max_len;
+                                        }
+                                        break :index end + 1;
+                                    };
+                                    break :blk contents[start_index..end_index];
+                                }
                             }
                             return error.InvalidRssFeed;
                         };
@@ -696,6 +720,9 @@ pub const Rss = struct {
                                     item_guid = value;
                                 },
                                 .description => {
+                                    if (item_desc_start_ptr == null) {
+                                        item_desc_start_ptr = value.ptr;
+                                    }
                                     item_description = value;
                                 },
                                 ._ignore => {},
@@ -707,17 +734,124 @@ pub const Rss = struct {
         }
 
         const date_raw = feed_pub_date orelse feed_build_date;
-        // TODO: parse date
-        // const date_utc = date_raw;
+        const timestamp = blk: {
+            if (date_raw) |date| {
+                const date_utc = try parseDateToUtc(date);
+                break :blk @floatToInt(i64, date_utc.toSeconds());
+            }
+            break :blk null;
+        };
         const result = Feed{
             .title = feed_title orelse return error.InvalidRssFeed,
             .id = null,
             .link = feed_link,
             .updated_raw = date_raw,
             .items = items.toOwnedSlice(),
+            .timestamp = timestamp,
         };
 
         return result;
+    }
+
+    pub fn pubDateToTimestamp(str: []const u8) !i64 {
+        const datetime_raw = try Rss.parseDateToUtc(str);
+        const date_time_utc = datetime_raw.shiftTimezone(&timezones.UTC);
+        return @intCast(i64, date_time_utc.toTimestamp());
+    }
+
+    pub fn parseDateToUtc(str: []const u8) !Datetime {
+        var iter = mem.split(str, " ");
+
+        // Skip: don't care about day of week
+        _ = iter.next();
+
+        // Day of month
+        const day_str = iter.next() orelse return error.InvalidPubDate;
+        const day = try fmt.parseInt(u8, day_str, 10);
+
+        // month
+        const month_str = iter.next() orelse return error.InvalidPubDate;
+        const month = @enumToInt(try datetime.Month.parseAbbr(month_str));
+
+        // year
+        // year can also be 2 digits
+        const year_str = iter.next() orelse return error.InvalidPubDate;
+        const year = blk: {
+            const y = try fmt.parseInt(u16, year_str, 10);
+            if (y < 100) {
+                // If year is 2 numbers long
+                const last_two_digits = datetime.Date.now().year - 2000;
+                if (y <= last_two_digits) {
+                    break :blk 2000 + y;
+                }
+                break :blk 1900 + y;
+            }
+
+            break :blk y;
+        };
+
+        // time
+        const time_str = iter.next() orelse return error.InvalidPubDate;
+        var time_iter = mem.split(time_str, ":");
+        // time: hour
+        const hour_str = time_iter.next() orelse return error.InvalidPubDate;
+        const hour = try fmt.parseInt(u8, hour_str, 10);
+        // time: minute
+        const minute_str = time_iter.next() orelse return error.InvalidPubDate;
+        const minute = try fmt.parseInt(u8, minute_str, 10);
+        // time: second
+        const second_str = time_iter.next() orelse return error.InvalidPubDate;
+        const second = try fmt.parseInt(u8, second_str, 10);
+
+        // Timezone default to UTC
+        var result = try Datetime.create(year, month, day, hour, minute, second, 0, null);
+
+        // timezone
+        // NOTE: dates with timezone format +/-NNNN will be turned into UTC
+        const tz_str = iter.next() orelse return error.InvalidPubDate;
+        if (tz_str[0] == '+' or tz_str[0] == '-') {
+            const tz_hours = try fmt.parseInt(i16, tz_str[1..3], 10);
+            const tz_minutes = try fmt.parseInt(i16, tz_str[3..5], 10);
+            var total_minutes = (tz_hours * 60) + tz_minutes;
+            if (tz_str[0] == '-') {
+                total_minutes = -total_minutes;
+            }
+            result = result.shiftMinutes(-total_minutes);
+        } else {
+            result.zone = stringToTimezone(tz_str);
+        }
+
+        return result;
+    }
+
+    pub fn stringToTimezone(str: []const u8) *const datetime.Timezone {
+        // This default case covers UT, GMT and Z timezone values.
+        if (mem.eql(u8, "EST", str)) {
+            return &timezones.EST;
+        } else if (mem.eql(u8, "EDT", str)) {
+            return &timezones.America.Anguilla;
+        } else if (mem.eql(u8, "CST", str)) {
+            return &timezones.CST6CDT;
+        } else if (mem.eql(u8, "CDT", str)) {
+            return &timezones.US.Eastern;
+        } else if (mem.eql(u8, "MST", str)) {
+            return &timezones.MST;
+        } else if (mem.eql(u8, "MDT", str)) {
+            return &timezones.US.Central;
+        } else if (mem.eql(u8, "PST", str)) {
+            return &timezones.PST8PDT;
+        } else if (mem.eql(u8, "PDT", str)) {
+            return &timezones.US.Mountain;
+        } else if (mem.eql(u8, "A", str)) {
+            return &timezones.Atlantic.Cape_Verde;
+        } else if (mem.eql(u8, "M", str)) {
+            return &timezones.Etc.GMTp12;
+        } else if (mem.eql(u8, "N", str)) {
+            return &timezones.CET;
+        } else if (mem.eql(u8, "Y", str)) {
+            return &timezones.NZ;
+        }
+        return &timezones.UTC;
     }
 };
 
@@ -730,116 +864,24 @@ test "rss" {
     std.testing.expectEqualStrings("Liftoff News", feed.title);
     std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
     std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
+    expect(1055214000 == feed.timestamp.?);
     expect(6 == feed.items.len);
+    // for (feed.items) |item| {
+    //     l.warn("title: {s}", .{item.title});
+    //     const id = item.id orelse "<no id>";
+    //     l.warn("guid: {s}", .{id});
+    //     const link = item.link orelse "<no link>";
+    //     l.warn("link: {s}", .{link});
+    //     l.warn("updated_raw: {s}", .{item.updated_raw.?});
+    // }
     // Description is used as title
-    // std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
+    std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
 }
 
-pub fn rssStringToTimezone(str: []const u8) *const datetime.Timezone {
-    // This default case covers UT, GMT and Z timezone values.
-    if (mem.eql(u8, "EST", str)) {
-        return &timezones.EST;
-    } else if (mem.eql(u8, "EDT", str)) {
-        return &timezones.America.Anguilla;
-    } else if (mem.eql(u8, "CST", str)) {
-        return &timezones.CST6CDT;
-    } else if (mem.eql(u8, "CDT", str)) {
-        return &timezones.US.Eastern;
-    } else if (mem.eql(u8, "MST", str)) {
-        return &timezones.MST;
-    } else if (mem.eql(u8, "MDT", str)) {
-        return &timezones.US.Central;
-    } else if (mem.eql(u8, "PST", str)) {
-        return &timezones.PST8PDT;
-    } else if (mem.eql(u8, "PDT", str)) {
-        return &timezones.US.Mountain;
-    } else if (mem.eql(u8, "A", str)) {
-        return &timezones.Atlantic.Cape_Verde;
-    } else if (mem.eql(u8, "M", str)) {
-        return &timezones.Etc.GMTp12;
-    } else if (mem.eql(u8, "N", str)) {
-        return &timezones.CET;
-    } else if (mem.eql(u8, "Y", str)) {
-        return &timezones.NZ;
-    }
-    return &timezones.UTC;
-}
-
-pub fn pubDateToDateTime(str: []const u8) !Datetime {
-    var iter = mem.split(str, " ");
-
-    // Skip: don't care about day of week
-    _ = iter.next();
-
-    // Day of month
-    const day_str = iter.next() orelse return error.InvalidPubDate;
-    const day = try fmt.parseInt(u8, day_str, 10);
-
-    // month
-    const month_str = iter.next() orelse return error.InvalidPubDate;
-    const month = @enumToInt(try datetime.Month.parseAbbr(month_str));
-
-    // year
-    // year can also be 2 digits
-    const year_str = iter.next() orelse return error.InvalidPubDate;
-    const year = blk: {
-        const y = try fmt.parseInt(u16, year_str, 10);
-        if (y < 100) {
-            // If year is 2 numbers long
-            const last_two_digits = datetime.Date.now().year - 2000;
-            if (y <= last_two_digits) {
-                break :blk 2000 + y;
-            }
-            break :blk 1900 + y;
-        }
-
-        break :blk y;
-    };
-
-    // time
-    const time_str = iter.next() orelse return error.InvalidPubDate;
-    var time_iter = mem.split(time_str, ":");
-    // time: hour
-    const hour_str = time_iter.next() orelse return error.InvalidPubDate;
-    const hour = try fmt.parseInt(u8, hour_str, 10);
-    // time: minute
-    const minute_str = time_iter.next() orelse return error.InvalidPubDate;
-    const minute = try fmt.parseInt(u8, minute_str, 10);
-    // time: second
-    const second_str = time_iter.next() orelse return error.InvalidPubDate;
-    const second = try fmt.parseInt(u8, second_str, 10);
-
-    // Timezone default to UTC
-    var result = try Datetime.create(year, month, day, hour, minute, second, 0, null);
-
-    // timezone
-    // NOTE: dates with timezone format +/-NNNN will be turned into UTC
-    const tz_str = iter.next() orelse return error.InvalidPubDate;
-    if (tz_str[0] == '+' or tz_str[0] == '-') {
-        const tz_hours = try fmt.parseInt(i16, tz_str[1..3], 10);
-        const tz_minutes = try fmt.parseInt(i16, tz_str[3..5], 10);
-        var total_minutes = (tz_hours * 60) + tz_minutes;
-        if (tz_str[0] == '-') {
-            total_minutes = -total_minutes;
-        }
-        result = result.shiftMinutes(-total_minutes);
-    } else {
-        result.zone = rssStringToTimezone(tz_str);
-    }
-
-    return result;
-}
-
-pub fn pubDateToTimestamp(str: []const u8) !i64 {
-    const datetime_raw = try pubDateToDateTime(str);
-    const date_time_utc = datetime_raw.shiftTimezone(&timezones.UTC);
-    return @intCast(i64, date_time_utc.toTimestamp());
-}
-
-test "rss time to sqlite time" {
+test "Rss.parseDateToUtc" {
     {
         const date_str = "Tue, 03 Jun 2003 09:39:21 GMT";
-        const date = try pubDateToDateTime(date_str);
+        const date = try Rss.parseDateToUtc(date_str);
         expect(2003 == date.date.year);
         expect(6 == date.date.month);
         expect(3 == date.date.day);
@@ -852,7 +894,7 @@ test "rss time to sqlite time" {
     {
         // dates with timezone format +/-NNNN will be turned into UTC
         const date_str = "Wed, 01 Oct 2002 01:00:00 +0200";
-        const date = try pubDateToDateTime(date_str);
+        const date = try Rss.parseDateToUtc(date_str);
         expect(2002 == date.date.year);
         expect(9 == date.date.month);
         expect(30 == date.date.day);
@@ -865,7 +907,7 @@ test "rss time to sqlite time" {
     {
         // dates with timezone format +/-NNNN will be turned into UTC
         const date_str = "Wed, 01 Oct 2002 01:00:00 -0200";
-        const date = try pubDateToDateTime(date_str);
+        const date = try Rss.parseDateToUtc(date_str);
         expect(2002 == date.date.year);
         expect(10 == date.date.month);
         expect(1 == date.date.day);
