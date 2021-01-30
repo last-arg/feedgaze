@@ -209,7 +209,11 @@ test "Html.parse" {
     expect(Html.MediaType.rss == page.links[0].media_type);
 }
 
-// Based on Atom spec/rfc
+// TODO?: add field interval (ttl/)
+// <sy:updatePeriod>hourly</sy:updatePeriod>
+// <sy:updateFrequency>1</sy:updateFrequency>
+// has something to do with attributes in xml element
+// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
 pub const Feed = struct {
     // Atom: required
     // Rss: required
