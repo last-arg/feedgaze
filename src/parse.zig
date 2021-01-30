@@ -198,7 +198,7 @@ pub const Html = struct {
     }
 };
 
-test "parse html links" {
+test "Html.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
@@ -238,6 +238,8 @@ pub const Feed = struct {
         // Atom: updated (requried)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
+        // TODO: add
+        timestamp: ?i64 = null,
     };
 };
 
@@ -314,13 +316,19 @@ pub const Atom = struct {
                         },
                         .entry => {
                             if (mem.eql(u8, "entry", tag)) {
-                                // TODO: parse date
-                                // const date_utc = parseDate(date_raw) catch |_| null;
+                                const timestamp = blk: {
+                                    if (date_raw) |date| {
+                                        const date_utc = try parseDateToUtc(date);
+                                        break :blk @floatToInt(i64, date_utc.toSeconds());
+                                    }
+                                    break :blk null;
+                                };
                                 const entry = Feed.Item{
                                     .title = title orelse return error.InvalidAtomFeed,
                                     .id = id,
                                     .link = link_href,
                                     .updated_raw = date_raw,
+                                    .timestamp = timestamp,
                                 };
                                 try entries.append(entry);
                                 state = .feed;
@@ -476,6 +484,7 @@ test "Atom.parse" {
     expect(1355423402 == result.timestamp.?);
     // TODO: test feed items
     // l.warn("items.len: {}", .{result.items.len});
+    expect(null != result.items[0].updated_raw);
 }
 
 test "Atom.parseDateToUtc" {
@@ -652,8 +661,13 @@ pub const Rss = struct {
                             return error.InvalidRssFeed;
                         };
 
-                        // TODO: handle and parse date
-                        // const date_utc = item_pub_date;
+                        const timestamp = blk: {
+                            if (item_pub_date) |date| {
+                                const date_utc = try parseDateToUtc(date);
+                                break :blk @floatToInt(i64, date_utc.toSeconds());
+                            }
+                            break :blk null;
+                        };
                         const item = Feed.Item{
                             .title = title,
                             .id = item_guid,
@@ -678,12 +692,6 @@ pub const Rss = struct {
                 },
                 .character_data => |value| {
                     // warn("character_data: {s}\n", .{value});
-
-                    // TODO: string handling for description (and others where needed).
-                    // [ ] might only get partial string
-                    // [ ] whole text or part of text might be wrapped in CDATA
-                    // [ ] string might contain html(xml) elements
-                    // https://www.rssboard.org/rss-encoding-examples
                     switch (state) {
                         .channel => {
                             switch (channel_field) {
@@ -855,7 +863,7 @@ pub const Rss = struct {
     }
 };
 
-test "rss" {
+test "Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
@@ -875,6 +883,7 @@ test "rss" {
     //     l.warn("updated_raw: {s}", .{item.updated_raw.?});
     // }
     // Description is used as title
+    expect(null != feed.items[0].updated_raw);
     std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
 }
 
