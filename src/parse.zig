@@ -525,3 +525,353 @@ test "Atom.parseDateToUtc" {
         expect(0 == dt.zone.offset);
     }
 }
+
+pub const Rss = struct {
+    const State = enum {
+        channel,
+        item,
+    };
+
+    const ChannelField = enum {
+        title,
+        link,
+        pub_date,
+        last_build_date,
+        ttl,
+        _ignore,
+    };
+
+    const ItemField = enum {
+        title,
+        description,
+        link,
+        pub_date,
+        guid,
+        _ignore,
+    };
+
+    pub fn parse(allocator: *Allocator, contents: []const u8) !Feed {
+        var items = try ArrayList(Feed.Item).initCapacity(allocator, 10);
+        defer items.deinit();
+
+        var state: State = .channel;
+        var channel_field: ChannelField = ._ignore;
+        var item_field: ItemField = ._ignore;
+
+        var item_title: ?[]const u8 = null;
+        var item_description: ?[]const u8 = null;
+        var item_link: ?[]const u8 = null;
+        var item_guid: ?[]const u8 = null;
+        var item_pub_date: ?[]const u8 = null;
+
+        var feed_title: ?[]const u8 = null;
+        var feed_link: ?[]const u8 = null;
+        var feed_pub_date: ?[]const u8 = null;
+        var feed_build_date: ?[]const u8 = null;
+        var feed_ttl: ?u32 = null;
+
+        var xml_parser = xml.Parser.init(contents);
+        while (xml_parser.next()) |event| {
+            switch (event) {
+                .open_tag => |tag| {
+                    // warn("open_tag: {s}\n", .{tag});
+                    switch (state) {
+                        .channel => {
+                            if (mem.eql(u8, "title", tag)) {
+                                channel_field = .title;
+                            } else if (mem.eql(u8, "link", tag)) {
+                                channel_field = .link;
+                            } else if (mem.eql(u8, "pubDate", tag)) {
+                                channel_field = .pub_date;
+                            } else if (mem.eql(u8, "lastBuildDate", tag)) {
+                                channel_field = .last_build_date;
+                            } else if (mem.eql(u8, "ttl", tag)) {
+                                channel_field = .ttl;
+                            } else if (mem.eql(u8, "item", tag)) {
+                                state = .item;
+                                item_title = null;
+                                item_description = null;
+                                item_guid = null;
+                                item_pub_date = null;
+                            } else {
+                                channel_field = ._ignore;
+                            }
+                        },
+                        .item => {
+                            if (mem.eql(u8, "title", tag)) {
+                                item_field = .title;
+                            } else if (mem.eql(u8, "link", tag)) {
+                                item_field = .link;
+                            } else if (mem.eql(u8, "pubDate", tag)) {
+                                item_field = .pub_date;
+                            } else if (mem.eql(u8, "description", tag)) {
+                                item_field = .description;
+                            } else if (mem.eql(u8, "guid", tag)) {
+                                item_field = .guid;
+                            } else {
+                                item_field = ._ignore;
+                            }
+                        },
+                    }
+                },
+                .close_tag => |tag| {
+                    // warn("close_tag: {s}\n", .{str});
+                    if (mem.eql(u8, "item", tag)) {
+                        const title = blk: {
+                            if (item_title) |value| {
+                                break :blk value;
+                            } else if (item_description) |value| {
+                                const max_len: usize = 30;
+                                const len = if (value.len > max_len) max_len else value.len;
+                                break :blk value[0..len];
+                            }
+                            return error.InvalidRssFeed;
+                        };
+
+                        // TODO: handle and parse date
+                        // const date_utc = item_pub_date;
+                        const item = Feed.Item{
+                            .title = title,
+                            .id = item_guid,
+                            .link = item_link,
+                            .updated_raw = item_pub_date,
+                        };
+                        try items.append(item);
+
+                        state = .channel;
+                    }
+                },
+                .attribute => |attr| {
+                    // warn("attribute\n", .{});
+                    // warn("\tname: {s}\n", .{attr.name});
+                    // warn("\traw_value: {s}\n", .{attr.raw_value});
+                },
+                .comment => |str| {
+                    // warn("comment: {s}\n", .{str});
+                },
+                .processing_instruction => |str| {
+                    // warn("processing_instruction: {s}\n", .{str});
+                },
+                .character_data => |value| {
+                    // warn("character_data: {s}\n", .{value});
+
+                    // TODO: string handling for description (and others where needed).
+                    // [ ] might only get partial string
+                    // [ ] whole text or part of text might be wrapped in CDATA
+                    // [ ] string might contain html(xml) elements
+                    // https://www.rssboard.org/rss-encoding-examples
+                    switch (state) {
+                        .channel => {
+                            switch (channel_field) {
+                                .title => {
+                                    feed_title = value;
+                                },
+                                .link => {
+                                    feed_link = value;
+                                },
+                                .pub_date => {
+                                    feed_pub_date = value;
+                                },
+                                .last_build_date => {
+                                    feed_build_date = value;
+                                },
+                                .ttl => {
+                                    feed_ttl = try std.fmt.parseInt(u32, value, 10);
+                                },
+                                ._ignore => {},
+                            }
+                        },
+                        .item => {
+                            switch (item_field) {
+                                .title => {
+                                    item_title = value;
+                                },
+                                .link => {
+                                    item_link = value;
+                                },
+                                .pub_date => {
+                                    item_pub_date = value;
+                                },
+                                .guid => {
+                                    item_guid = value;
+                                },
+                                .description => {
+                                    item_description = value;
+                                },
+                                ._ignore => {},
+                            }
+                        },
+                    }
+                },
+            }
+        }
+
+        const date_raw = feed_pub_date orelse feed_build_date;
+        // TODO: parse date
+        // const date_utc = date_raw;
+        const result = Feed{
+            .title = feed_title orelse return error.InvalidRssFeed,
+            .id = null,
+            .link = feed_link,
+            .updated_raw = date_raw,
+            .items = items.toOwnedSlice(),
+        };
+
+        return result;
+    }
+};
+
+test "rss" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+    const contents = @embedFile("../test/sample-rss-2.xml");
+    var feed = try Rss.parse(allocator, contents);
+    std.testing.expectEqualStrings("Liftoff News", feed.title);
+    std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
+    std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
+    expect(6 == feed.items.len);
+    // Description is used as title
+    // std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
+}
+
+pub fn rssStringToTimezone(str: []const u8) *const datetime.Timezone {
+    // This default case covers UT, GMT and Z timezone values.
+    if (mem.eql(u8, "EST", str)) {
+        return &timezones.EST;
+    } else if (mem.eql(u8, "EDT", str)) {
+        return &timezones.America.Anguilla;
+    } else if (mem.eql(u8, "CST", str)) {
+        return &timezones.CST6CDT;
+    } else if (mem.eql(u8, "CDT", str)) {
+        return &timezones.US.Eastern;
+    } else if (mem.eql(u8, "MST", str)) {
+        return &timezones.MST;
+    } else if (mem.eql(u8, "MDT", str)) {
+        return &timezones.US.Central;
+    } else if (mem.eql(u8, "PST", str)) {
+        return &timezones.PST8PDT;
+    } else if (mem.eql(u8, "PDT", str)) {
+        return &timezones.US.Mountain;
+    } else if (mem.eql(u8, "A", str)) {
+        return &timezones.Atlantic.Cape_Verde;
+    } else if (mem.eql(u8, "M", str)) {
+        return &timezones.Etc.GMTp12;
+    } else if (mem.eql(u8, "N", str)) {
+        return &timezones.CET;
+    } else if (mem.eql(u8, "Y", str)) {
+        return &timezones.NZ;
+    }
+    return &timezones.UTC;
+}
+
+pub fn pubDateToDateTime(str: []const u8) !Datetime {
+    var iter = mem.split(str, " ");
+
+    // Skip: don't care about day of week
+    _ = iter.next();
+
+    // Day of month
+    const day_str = iter.next() orelse return error.InvalidPubDate;
+    const day = try fmt.parseInt(u8, day_str, 10);
+
+    // month
+    const month_str = iter.next() orelse return error.InvalidPubDate;
+    const month = @enumToInt(try datetime.Month.parseAbbr(month_str));
+
+    // year
+    // year can also be 2 digits
+    const year_str = iter.next() orelse return error.InvalidPubDate;
+    const year = blk: {
+        const y = try fmt.parseInt(u16, year_str, 10);
+        if (y < 100) {
+            // If year is 2 numbers long
+            const last_two_digits = datetime.Date.now().year - 2000;
+            if (y <= last_two_digits) {
+                break :blk 2000 + y;
+            }
+            break :blk 1900 + y;
+        }
+
+        break :blk y;
+    };
+
+    // time
+    const time_str = iter.next() orelse return error.InvalidPubDate;
+    var time_iter = mem.split(time_str, ":");
+    // time: hour
+    const hour_str = time_iter.next() orelse return error.InvalidPubDate;
+    const hour = try fmt.parseInt(u8, hour_str, 10);
+    // time: minute
+    const minute_str = time_iter.next() orelse return error.InvalidPubDate;
+    const minute = try fmt.parseInt(u8, minute_str, 10);
+    // time: second
+    const second_str = time_iter.next() orelse return error.InvalidPubDate;
+    const second = try fmt.parseInt(u8, second_str, 10);
+
+    // Timezone default to UTC
+    var result = try Datetime.create(year, month, day, hour, minute, second, 0, null);
+
+    // timezone
+    // NOTE: dates with timezone format +/-NNNN will be turned into UTC
+    const tz_str = iter.next() orelse return error.InvalidPubDate;
+    if (tz_str[0] == '+' or tz_str[0] == '-') {
+        const tz_hours = try fmt.parseInt(i16, tz_str[1..3], 10);
+        const tz_minutes = try fmt.parseInt(i16, tz_str[3..5], 10);
+        var total_minutes = (tz_hours * 60) + tz_minutes;
+        if (tz_str[0] == '-') {
+            total_minutes = -total_minutes;
+        }
+        result = result.shiftMinutes(-total_minutes);
+    } else {
+        result.zone = rssStringToTimezone(tz_str);
+    }
+
+    return result;
+}
+
+pub fn pubDateToTimestamp(str: []const u8) !i64 {
+    const datetime_raw = try pubDateToDateTime(str);
+    const date_time_utc = datetime_raw.shiftTimezone(&timezones.UTC);
+    return @intCast(i64, date_time_utc.toTimestamp());
+}
+
+test "rss time to sqlite time" {
+    {
+        const date_str = "Tue, 03 Jun 2003 09:39:21 GMT";
+        const date = try pubDateToDateTime(date_str);
+        expect(2003 == date.date.year);
+        expect(6 == date.date.month);
+        expect(3 == date.date.day);
+        expect(9 == date.time.hour);
+        expect(39 == date.time.minute);
+        expect(21 == date.time.second);
+        expect(date.zone.offset == 0);
+    }
+
+    {
+        // dates with timezone format +/-NNNN will be turned into UTC
+        const date_str = "Wed, 01 Oct 2002 01:00:00 +0200";
+        const date = try pubDateToDateTime(date_str);
+        expect(2002 == date.date.year);
+        expect(9 == date.date.month);
+        expect(30 == date.date.day);
+        expect(23 == date.time.hour);
+        expect(0 == date.time.minute);
+        expect(0 == date.time.second);
+        expect(date.zone.offset == 0);
+    }
+
+    {
+        // dates with timezone format +/-NNNN will be turned into UTC
+        const date_str = "Wed, 01 Oct 2002 01:00:00 -0200";
+        const date = try pubDateToDateTime(date_str);
+        expect(2002 == date.date.year);
+        expect(10 == date.date.month);
+        expect(1 == date.date.day);
+        expect(3 == date.time.hour);
+        expect(0 == date.time.minute);
+        expect(0 == date.time.second);
+        expect(date.zone.offset == 0);
+    }
+}
