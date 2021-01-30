@@ -14,7 +14,8 @@ const Datetime = datetime.Datetime;
 const timezones = datetime.timezones;
 const l = std.log;
 
-// TODO: decode html entities
+// TODO: decode html entities in Rss, Html, Atom
+
 pub const Html = struct {
     pub const Page = struct {
         title: ?[]const u8 = null,
@@ -238,7 +239,6 @@ pub const Feed = struct {
         // Atom: updated (requried)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
-        // TODO: add
         timestamp: ?i64 = null,
     };
 };
@@ -256,10 +256,6 @@ pub const Atom = struct {
         updated,
         ignore,
     };
-
-    // text contructs can have type text(default), html, xhtml
-    // In case of html and xhtml have to decode
-    // TODO: decode text entities
 
     // Atom feed parsing:
     // https://tools.ietf.org/html/rfc4287
