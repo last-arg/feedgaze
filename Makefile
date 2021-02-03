@@ -8,8 +8,8 @@ dev:
 test:
 	watchexec -c -r  -w src/ -e zig zig build test
 
-test-rss:
-	watchexec -c -w src/ -e zig 'zig build test -- src/rss.zig'
+test-db:
+	watchexec -c -w src/ -e zig 'zig build test -- src/db.zig'
 
 test-http:
 	watchexec -c -r -w src/ -e zig 'zig build test -- src/http.zig'

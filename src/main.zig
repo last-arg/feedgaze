@@ -23,17 +23,8 @@ const g = struct {
     const max_items_per_feed = 10;
 };
 
-// Sqlite
-// Do upsert with update and insert:
-// https://stackoverflow.com/questions/15277373/sqlite-upsert-update-or-insert/38463024#38463024
-// TODO: find domain's rss feeds
-// 		html link application+xml
-// 		for popular platforms can guess url. wordpress: /feed/
-// TODO?: PRAGMA schema.user_version = integer ;
-// TODO: implement downloading a file
 // TODO: see if there is good way to detect local file path or url
 
-const default_db_location = "./tmp/test.db";
 pub fn main() anyerror!void {
     std.log.info("Main run", .{});
     const base_allocator = std.heap.page_allocator;
@@ -287,31 +278,6 @@ pub fn newestFeedItems(items: []rss.Item, timestamp: i64) []rss.Item {
     }
 
     return items;
-}
-
-pub fn select(comptime T: type, allocator: *Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
-    return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-pub fn selectAll(
-    comptime T: type,
-    allocator: *Allocator,
-    db: *sql.Db,
-    comptime query: []const u8,
-    opts: anytype,
-) ![]T {
-    var stmt = db.prepare(query) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-    defer stmt.deinit();
-    return stmt.all(T, allocator, .{}, opts) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
 }
 
 pub fn printFeeds(db: *sql.Db, allocator: *Allocator) !void {
@@ -629,37 +595,6 @@ pub fn cliAddFeed(db: *sql.Db, allocator: *Allocator, location_raw: []const u8) 
     }
 }
 
-pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    @setEvalBranchQuota(2000);
-
-    db.exec(query, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    db.exec(query, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-pub fn delete(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    db.exec(query, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-// Non-alloc select query that returns one or none rows
-pub fn one(comptime T: type, db: *sql.Db, comptime query: []const u8, args: anytype) !?T {
-    return db.one(T, query, .{}, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
 pub const FeedUpdate = struct {
     const Self = @This();
     allocator: *Allocator,
@@ -850,62 +785,6 @@ pub const Feed = struct {
         };
     }
 };
-
-pub fn memoryDb() !sql.Db {
-    var db: sql.Db = undefined;
-    try db.init(.{
-        .mode = sql.Db.Mode.Memory,
-        .open_flags = .{
-            .write = true,
-            .create = true,
-        },
-        // .threading_mode = .SingleThread,
-    });
-    return db;
-}
-
-pub fn createDb(abs_loc: [:0]const u8) !sql.Db {
-    var db: sql.Db = undefined;
-    try db.init(.{
-        .mode = sql.Db.Mode{ .File = abs_loc },
-        .open_flags = .{
-            .write = true,
-            .create = true,
-        },
-        .threading_mode = .MultiThread,
-    });
-    return db;
-}
-
-fn dbSetup(db: *sql.Db) !void {
-    _ = try db.pragma(usize, .{}, "foreign_keys", .{"1"});
-
-    inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasDecl(decl.data.Type, "create")) {
-            const sql_create = @field(decl.data.Type, "create");
-            db.exec(sql_create, .{}) catch |err| {
-                l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, sql_create });
-                return err;
-            };
-        }
-    }
-
-    const version: usize = 1;
-    try insert(db, Table.setting.insert, .{version});
-}
-
-pub fn verifyDbTables(db: *sql.Db) bool {
-    const select_table = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
-    inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasField(decl.data.Type, "create")) {
-            const row = one(usize, db, select_table, .{decl.name});
-            if (row == null) return false;
-            break;
-        }
-    }
-
-    return true;
-}
 
 pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
     if (std.fs.path.isAbsolute(path)) {

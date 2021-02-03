@@ -185,23 +185,19 @@ pub const Table = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed(
             \\  id INTEGER PRIMARY KEY,
-            \\  title TEXT NOT NULL,
-            \\  link TEXT NOT NULL,
             \\  location TEXT NOT NULL UNIQUE,
-            \\  pub_date TEXT DEFAULT NULL,
-            \\  pub_date_utc INTEGER DEFAULT NULL,
-            \\  last_build_date TEXT DEFAULT NULL,
-            \\  last_build_date_utc INTEGER DEFAULT NULL,
-            \\  created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            \\  title TEXT NOT NULL,
+            \\  link TEXT DEFAULT NULL,
+            \\  updated_raw TEXT DEFAULT NULL,
+            \\  updated_timestamp INTEGER DEFAULT NULL,
+            \\  added_at INTEGER DEFAULT (strftime('%s', 'now'))
             \\);
         ;
         pub const insert =
-            \\INSERT INTO feed (title, link, location, pub_date, pub_date_utc, last_build_date, last_build_date_utc)
+            \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
             \\VALUES (
             \\  ?{[]const u8},
             \\  ?{[]const u8},
-            \\  ?{[]const u8},
-            \\  ?,
             \\  ?,
             \\  ?,
             \\  ?
@@ -211,27 +207,24 @@ pub const Table = struct {
             \\ ON CONFLICT(location) DO UPDATE SET
             \\   title = excluded.title,
             \\   link = excluded.link,
-            \\   pub_date = excluded.pub_date,
-            \\   pub_date_utc = excluded.pub_date_utc
-            \\WHERE pub_date_utc != excluded.pub_date_utc
+            \\   updated_raw = excluded.updated_raw,
+            \\   updated_timestamp = excluded.updated_timestamp
+            \\WHERE updated_timestamp != excluded.updated_timestamp
+        ;
+        pub const delete_where_location =
+            \\delete from feed where location = ?
+        ;
+        pub const delete_where_id =
+            \\delete from feed where id = ?
         ;
         pub const select =
             \\SELECT
             \\  title,
-            \\  link,
             \\  location,
+            \\  link,
+            \\  updated_raw,
             \\  id,
-            \\  pub_date_utc
-            \\FROM feed
-        ;
-        pub const select_location =
-            \\SELECT
-            \\  location
-            \\FROM feed
-        ;
-        pub const select_id =
-            \\SELECT
-            \\  id
+            \\  updated_timestamp
             \\FROM feed
         ;
         pub const where_location =
@@ -240,25 +233,12 @@ pub const Table = struct {
         pub const where_id =
             \\ WHERE id = ?{usize}
         ;
-        pub const update_id =
-            \\UPDATE feed SET
-            \\  title = ?{[]const u8},
-            \\  link = ?{[]const u8},
-            \\  pub_date = ?,
-            \\  pub_date_utc = ?,
-            \\  last_build_date = ?,
-            \\  last_build_date_utc = ?
-            \\WHERE id = ?{usize}
-        ;
         pub const update_where_id =
             \\UPDATE feed SET
             \\  title = ?{[]const u8},
-            \\  link = ?{[]const u8},
-            \\  location = ?{[]const u8},
-            \\  pub_date = ?,
-            \\  pub_date_utc = ?,
-            \\  last_build_date = ?,
-            \\  last_build_date_utc = ?
+            \\  link = ?,
+            \\  updated_raw = ?,
+            \\  updated_timestamp = ?
             \\WHERE id = ?{usize}
         ;
     };
