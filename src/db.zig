@@ -138,7 +138,7 @@ pub fn delete(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
 pub const Db = struct {
     const Self = @This();
     allocator: *Allocator,
-    sql_db: *sql.Db,
+    conn: *sql.Db,
 
     pub const FeedInsert = struct {
         title: []const u8,
@@ -166,7 +166,7 @@ pub const Db = struct {
     };
 
     pub fn insertFeed(db: *Self, data: FeedInsert) !void {
-        try insert(db.sql_db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
+        try insert(db.conn, Table.feed.insert ++ Table.feed.on_conflict_location, .{
             data.title,
             data.location,
             data.link,
@@ -179,7 +179,7 @@ pub const Db = struct {
         return try select(
             FeedSelect,
             db.allocator,
-            db.sql_db,
+            db.conn,
             Table.feed.select ++ Table.feed.where_location,
             .{location},
         );
@@ -189,22 +189,22 @@ pub const Db = struct {
         return try select(
             FeedSelect,
             db.allocator,
-            db.sql_db,
+            db.conn,
             Table.feed.select ++ Table.feed.where_id,
             .{id},
         );
     }
 
     pub fn deleteFeedWhereLocation(db: *Self, location: []const u8) !void {
-        try delete(db.sql_db, Table.feed.delete_where_location, .{location});
+        try delete(db.conn, Table.feed.delete_where_location, .{location});
     }
 
     pub fn deleteFeedWhereId(db: *Self, id: usize) !void {
-        try delete(db.sql_db, Table.feed.delete_where_id, .{id});
+        try delete(db.conn, Table.feed.delete_where_id, .{id});
     }
 
     pub fn updateFeedWhereId(db: *Self, data: FeedUpdate) !void {
-        try update(db.sql_db, Table.feed.update_where_id, .{
+        try update(db.conn, Table.feed.update_where_id, .{
             data.title,
             data.link,
             data.updated_raw,
@@ -247,18 +247,18 @@ test "feed: insert, select, delete" {
 
     var db_conn = try createMemory();
     try setup(&db_conn);
-    var db = Db{ .sql_db = &db_conn, .allocator = allocator };
+    var db = Db{ .conn = &db_conn, .allocator = allocator };
 
-    var row_count = try count(db.sql_db, "select count(*) from feed");
+    var row_count = try count(db.conn, "select count(*) from feed");
     expect(0 == row_count);
 
     try db.insertFeed(test_feed_insert_1);
     try db.insertFeed(test_feed_insert_1);
-    row_count = try count(db.sql_db, "select count(*) from feed");
+    row_count = try count(db.conn, "select count(*) from feed");
     expect(1 == row_count);
 
     try db.insertFeed(test_feed_insert_2);
-    row_count = try count(db.sql_db, "select count(*) from feed");
+    row_count = try count(db.conn, "select count(*) from feed");
     expect(2 == row_count);
 
     var feed_1 = try db.selectFeedWhereLocation(test_feed_insert_1.location);
@@ -275,12 +275,12 @@ test "feed: insert, select, delete" {
     testing.expectEqualStrings(test_feed_update_1.title, feed_1.?.title);
 
     try db.deleteFeedWhereLocation(test_feed_insert_1.location);
-    row_count = try count(db.sql_db, "select count(*) from feed");
+    row_count = try count(db.conn, "select count(*) from feed");
     expect(1 == row_count);
 
     const feed_2 = try db.selectFeedWhereId(2);
     testing.expectEqualStrings(test_feed_insert_2.location, feed_2.?.location);
     try db.deleteFeedWhereId(feed_2.?.id);
-    row_count = try count(db.sql_db, "select count(*) from feed");
+    row_count = try count(db.conn, "select count(*) from feed");
     expect(0 == row_count);
 }
