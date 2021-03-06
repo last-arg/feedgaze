@@ -107,7 +107,6 @@ pub const Table = struct {
             \\CREATE TABLE IF NOT EXISTS feed_update (
             \\  feed_id INTEGER UNIQUE,
             \\  update_interval INTEGER DEFAULT 600,
-            \\  ttl INTEGER DEFAULT NULL,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
             \\  cache_control_max_age INTEGER DEFAULT NULL,
             \\  expires_utc INTEGER DEFAULT NULL,
@@ -118,10 +117,9 @@ pub const Table = struct {
         ;
         pub const insert =
             \\INSERT INTO feed_update
-            \\  (feed_id, ttl, cache_control_max_age, expires_utc, last_modified_utc, etag)
+            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
             \\VALUES (
             \\  ?{usize},
-            \\  ?,
             \\  ?,
             \\  ?,
             \\  ?,
@@ -134,7 +132,6 @@ pub const Table = struct {
         ;
         pub const update_id =
             \\UPDATE feed_update SET
-            \\  ttl = ?,
             \\  cache_control_max_age = ?,
             \\  expires_utc = ?,
             \\  last_modified_utc = ?,
@@ -146,7 +143,6 @@ pub const Table = struct {
             \\  etag,
             \\  feed_id,
             \\  update_interval,
-            \\  ttl,
             \\  last_update,
             \\  expires_utc,
             \\  last_modified_utc,
@@ -159,7 +155,6 @@ pub const Table = struct {
             \\  etag,
             \\  feed_id,
             \\  update_interval,
-            \\  ttl,
             \\  last_update,
             \\  expires_utc,
             \\  last_modified_utc,
@@ -172,7 +167,6 @@ pub const Table = struct {
         pub const on_conflict_feed_id =
             \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = excluded.update_interval,
-            \\  ttl = excluded.ttl,
             \\  cache_control_max_age = excluded.cache_control_max_age,
             \\  expires_utc = excluded.expires_utc,
             \\  last_modified_utc = excluded.last_modified_utc,
@@ -225,6 +219,11 @@ pub const Table = struct {
             \\  updated_raw,
             \\  id,
             \\  updated_timestamp
+            \\FROM feed
+        ;
+        pub const select_id =
+            \\SELECT
+            \\  id
             \\FROM feed
         ;
         pub const where_location =

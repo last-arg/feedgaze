@@ -28,7 +28,7 @@ pub fn create(abs_loc: [:0]const u8) !sql.Db {
             .write = true,
             .create = true,
         },
-        .threading_mode = .MultiThread,
+        // .threading_mode = .MultiThread,
     });
     return db;
 }
@@ -211,6 +211,16 @@ pub const Db = struct {
             data.updated_timestamp,
             data.id,
         });
+    }
+
+    // TODO: test this fn
+    pub fn getFeedId(db: *Self, location: []const u8) !?usize {
+        return try one(
+            usize,
+            db.conn,
+            Table.feed.select_id ++ Table.feed.where_location,
+            .{location},
+        );
     }
 };
 

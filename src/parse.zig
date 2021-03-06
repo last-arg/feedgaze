@@ -224,7 +224,7 @@ pub const Feed = struct {
     // Atom: updated (required)
     // Rss: pubDate (optional)
     updated_raw: ?[]const u8 = null,
-    timestamp: ?i64 = null,
+    updated_timestamp: ?i64 = null,
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
@@ -243,7 +243,7 @@ pub const Feed = struct {
         // Atom: updated (requried)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
-        timestamp: ?i64 = null,
+        updated_timestamp: ?i64 = null,
     };
 };
 
@@ -316,7 +316,7 @@ pub const Atom = struct {
                         },
                         .entry => {
                             if (mem.eql(u8, "entry", tag)) {
-                                const timestamp = blk: {
+                                const updated_timestamp = blk: {
                                     if (date_raw) |date| {
                                         const date_utc = try parseDateToUtc(date);
                                         break :blk @floatToInt(i64, date_utc.toSeconds());
@@ -328,7 +328,7 @@ pub const Atom = struct {
                                     .id = id,
                                     .link = link_href,
                                     .updated_raw = date_raw,
-                                    .timestamp = timestamp,
+                                    .updated_timestamp = updated_timestamp,
                                 };
                                 try entries.append(entry);
                                 state = .feed;
@@ -400,7 +400,7 @@ pub const Atom = struct {
             }
         }
 
-        const timestamp = blk: {
+        const updated_timestamp = blk: {
             if (feed_date_raw) |date| {
                 const date_utc = try parseDateToUtc(date);
                 break :blk @floatToInt(i64, date_utc.toSeconds());
@@ -412,14 +412,14 @@ pub const Atom = struct {
             .id = feed_id,
             .link = feed_link,
             .updated_raw = feed_date_raw,
-            .timestamp = timestamp,
+            .updated_timestamp = updated_timestamp,
             .items = entries.toOwnedSlice(),
         };
 
         return result;
     }
 
-    // Atom timestamp: http://www.faqs.org/rfcs/rfc3339.html
+    // Atom updated_timestamp: http://www.faqs.org/rfcs/rfc3339.html
     pub fn parseDateToUtc(raw: []const u8) !Datetime {
         const date_raw = "2003-12-13T18:30:02Z";
 
@@ -481,7 +481,7 @@ test "Atom.parse" {
     testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
 
     expect(2 == result.items.len);
-    expect(1355423402 == result.timestamp.?);
+    expect(1355423402 == result.updated_timestamp.?);
     // TODO: test feed items
     // l.warn("items.len: {}", .{result.items.len});
     expect(null != result.items[0].updated_raw);
@@ -661,7 +661,7 @@ pub const Rss = struct {
                             return error.InvalidRssFeed;
                         };
 
-                        const timestamp = blk: {
+                        const updated_timestamp = blk: {
                             if (item_pub_date) |date| {
                                 const date_utc = try parseDateToUtc(date);
                                 break :blk @floatToInt(i64, date_utc.toSeconds());
@@ -673,6 +673,7 @@ pub const Rss = struct {
                             .id = item_guid,
                             .link = item_link,
                             .updated_raw = item_pub_date,
+                            .updated_timestamp = updated_timestamp,
                         };
                         try items.append(item);
 
@@ -742,7 +743,7 @@ pub const Rss = struct {
         }
 
         const date_raw = feed_pub_date orelse feed_build_date;
-        const timestamp = blk: {
+        const updated_timestamp = blk: {
             if (date_raw) |date| {
                 const date_utc = try parseDateToUtc(date);
                 break :blk @floatToInt(i64, date_utc.toSeconds());
@@ -755,7 +756,7 @@ pub const Rss = struct {
             .link = feed_link,
             .updated_raw = date_raw,
             .items = items.toOwnedSlice(),
-            .timestamp = timestamp,
+            .updated_timestamp = updated_timestamp,
         };
 
         return result;
@@ -872,7 +873,7 @@ test "Rss.parse" {
     std.testing.expectEqualStrings("Liftoff News", feed.title);
     std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
     std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
-    expect(1055214000 == feed.timestamp.?);
+    expect(1055214000 == feed.updated_timestamp.?);
     expect(6 == feed.items.len);
     // for (feed.items) |item| {
     //     l.warn("title: {s}", .{item.title});
@@ -925,4 +926,23 @@ test "Rss.parseDateToUtc" {
         expect(0 == date.time.second);
         expect(date.zone.offset == 0);
     }
+}
+
+pub fn parse(allocator: *Allocator, contents: []const u8) !Feed {
+    var xml_parser = xml.Parser.init(contents);
+    while (xml_parser.next()) |event| {
+        switch (event) {
+            .open_tag => |tag| {
+                if (mem.eql(u8, "feed", tag)) {
+                    // Atom
+                    return try Atom.parse(allocator, contents);
+                } else if (mem.eql(u8, "rss", tag)) {
+                    // Rss
+                    return try Rss.parse(allocator, contents);
+                }
+            },
+            else => {},
+        }
+    }
+    return error.InvalidFeedContent;
 }

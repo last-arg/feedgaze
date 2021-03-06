@@ -10,7 +10,7 @@ const hzzp = @import("hzzp");
 const client = hzzp.base.client;
 const Headers = hzzp.Headers;
 const l = std.log;
-const dateStrToTimeStamp = @import("rss.zig").pubDateToTimestamp;
+const dateStrToTimeStamp = @import("parse.zig").Rss.pubDateToTimestamp;
 
 // 1. insert url
 // 2. valid url. return response
@@ -53,6 +53,8 @@ pub const TransferEncoding = enum {
 pub const ContentType = enum {
     unknown,
     xml,
+    xml_atom,
+    xml_rss,
     html,
 };
 
@@ -175,9 +177,11 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     const value = header.value[0..len];
                     if (ascii.eqlIgnoreCase("text/html", value)) {
                         feed_resp.content_type = .html;
-                    } else if (ascii.eqlIgnoreCase("application/rss+xml", value) or
-                        ascii.eqlIgnoreCase("application/atom+xml", value) or
-                        ascii.eqlIgnoreCase("application/xml", value) or
+                    } else if (ascii.eqlIgnoreCase("application/rss+xml", value)) {
+                        feed_resp.content_type = .xml_rss;
+                    } else if (ascii.eqlIgnoreCase("application/atom+xml", value)) {
+                        feed_resp.content_type = .xml_atom;
+                    } else if (ascii.eqlIgnoreCase("application/xml", value) or
                         ascii.eqlIgnoreCase("text/xml", value))
                     {
                         feed_resp.content_type = .xml;
