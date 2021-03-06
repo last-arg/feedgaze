@@ -610,8 +610,6 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
         const contents = try getLocalFileContents(allocator, location);
 
         var feed_data = try parse.parse(allocator, contents);
-        std.debug.warn("{}\n", .{feed_data});
-        std.debug.warn("{}\n", .{feed_data.items.len});
 
         try db_struct.insertFeed(.{
             .title = feed_data.title,
