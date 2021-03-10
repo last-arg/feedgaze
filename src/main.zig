@@ -59,19 +59,28 @@ pub fn main() anyerror!void {
             } else {
                 l.err("Subcommand add missing feed location", .{});
             }
-            // } else if (mem.eql(u8, "update", arg)) {
-            //     try updateFeeds(allocator, &db_conn);
-            // } else if (mem.eql(u8, "clean", arg)) {
-            //     try cleanItems(&db_conn, allocator);
-            // } else if (mem.eql(u8, "delete", arg)) {
-            //     if (iter.next(allocator)) |value_err| {
-            //         const value = try value_err;
-            //         try deleteFeed(&db_conn, allocator, value);
-            //     } else {
-            //         l.err("Subcommand delete missing argument location", .{});
-            //     }
-            // } else if (mem.eql(u8, "print", arg)) {
-            //     try printFeeds(&db_conn, allocator);
+        } else if (mem.eql(u8, "update", arg)) {
+            // try updateFeeds(allocator, &db_conn);
+        } else if (mem.eql(u8, "clean", arg)) {
+            // try cleanItems(&db_conn, allocator);
+        } else if (mem.eql(u8, "delete", arg)) {
+            // if (iter.next(allocator)) |value_err| {
+            //     const value = try value_err;
+            //     try deleteFeed(&db_conn, allocator, value);
+            // } else {
+            //     l.err("Subcommand delete missing argument location", .{});
+            // }
+        } else if (mem.eql(u8, "print", arg)) {
+            if (iter.next(allocator)) |value_err| {
+                std.debug.warn("test\n", .{});
+                const value = try value_err;
+                if (mem.eql(u8, "feeds", value)) {
+                    try printFeeds(&db_struct, allocator);
+                    return;
+                }
+            }
+
+            try printAllItems(&db_struct, allocator);
         } else {
             l.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
@@ -282,7 +291,7 @@ pub fn newestFeedItems(items: []rss.Item, timestamp: i64) []rss.Item {
     return items;
 }
 
-pub fn printFeeds(db_conn: *sql.Db, allocator: *Allocator) !void {
+pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     const Result = struct {
         title: []const u8,
         link: ?[]const u8,
@@ -290,45 +299,91 @@ pub fn printFeeds(db_conn: *sql.Db, allocator: *Allocator) !void {
     // NOTE: in case of DESC pub_date_utc null values got to the end of table
     const query =
         \\SELECT title, link FROM feed
-        \\ORDER BY created_at ASC
+        \\ORDER BY added_at ASC
     ;
-    var stmt = try db_conn.prepare(query);
+    var stmt = try db_struct.conn.prepare(query);
     defer stmt.deinit();
     const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
-        l.warn("ERR: {s}\nFailed query:\n{}", .{ db_conn.getDetailedError().message, query });
+        l.warn("ERR: {s}\nFailed query:\n{s}", .{ db_struct.conn.getDetailedError().message, query });
         return err;
     };
     const writer = std.io.getStdOut().writer();
-    try writer.print("count: {}\n", .{all_items.len});
+    try writer.print("There are {} feed(s)\n", .{all_items.len});
 
     for (all_items) |item| {
         const link = item.link orelse "<no-link>";
-        try writer.print("{s}\n{s}\n\n", .{ item.title, link });
+        try writer.print("{s} - {s}\n\n", .{ item.title, link });
     }
 }
 
-pub fn printAllItems(db_conn: *sql.Db, allocator: *Allocator) !void {
+pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
     const Result = struct {
         title: []const u8,
         link: ?[]const u8,
+        id: usize,
     };
-    // NOTE: in case of DESC pub_date_utc null values got to the end of table
-    const query =
-        \\SELECT title, link FROM item
-        \\ORDER BY pub_date_utc DESC, created_at ASC
-    ;
-    var stmt = try db_conn.prepare(query);
-    defer stmt.deinit();
-    const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
-        l.warn("ERR: {s}\nFailed query:\n{}", .{ db_conn.getDetailedError().message, query });
-        return err;
-    };
-    const writer = std.io.getStdOut().writer();
-    try writer.print("count: {}\n", .{all_items.len});
 
-    for (all_items) |item| {
-        const link = item.link orelse "<no-link>";
-        try writer.print("{s}\n{s}\n\n", .{ item.title, link });
+    // most recently updated feed
+    const most_recent_feeds_query =
+        \\SELECT
+        \\	title,
+        \\  link,
+        \\	id
+        \\FROM
+        \\	feed
+        \\ORDER BY
+        \\	last_item_timestamp DESC
+    ;
+
+    const most_recent_feeds = try db.selectAll(
+        Result,
+        allocator,
+        db_struct.conn,
+        most_recent_feeds_query,
+        .{},
+    );
+
+    // grouped by feed_id
+    const all_items_query =
+        \\SELECT
+        \\	title,
+        \\	link,
+        \\  feed_id
+        \\FROM
+        \\	item
+        \\ORDER BY
+        \\	feed_id DESC,
+        \\	pub_date_utc DESC
+    ;
+
+    const all_items = try db.selectAll(
+        Result,
+        allocator,
+        db_struct.conn,
+        all_items_query,
+        .{},
+    );
+
+    const writer = std.io.getStdOut().writer();
+
+    for (most_recent_feeds) |feed| {
+        const id = feed.id;
+        const start_index = blk: {
+            for (all_items) |item, idx| {
+                if (item.id == id) break :blk idx;
+            }
+            break; // Should not happen
+        };
+        const feed_link = feed.link orelse "<no-link>";
+        try writer.print("{s} - {s}\n", .{ feed.title, feed_link });
+        for (all_items[start_index..]) |item| {
+            if (item.id != id) break;
+            const item_link = item.link orelse "<no-link>";
+            try writer.print("  {s}\n  {s}\n\n", .{
+                item.title,
+                item_link,
+            });
+        }
     }
 }
 
@@ -591,6 +646,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
             .link = feed_data.link,
             .updated_raw = feed_data.updated_raw,
             .updated_timestamp = feed_data.updated_timestamp,
+            .last_item_timestamp = feed_data.last_item_timestamp,
         });
 
         // Unless something went wrong there has to be row
@@ -617,6 +673,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
             .link = feed_data.link,
             .updated_raw = feed_data.updated_raw,
             .updated_timestamp = feed_data.updated_timestamp,
+            .last_item_timestamp = feed_data.last_item_timestamp,
         });
 
         const id = (try db_struct.getFeedId(location)) orelse return error.NoFeedWithLocation;

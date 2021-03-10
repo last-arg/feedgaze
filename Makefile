@@ -20,6 +20,9 @@ test-http:
 test-parse:
 	watchexec -c -r -w src/ -e zig 'zig build test -- src/parse.zig'
 
+run-print:
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app print'
+
 db:
 	./zig-cache/bin/feed_app add https://lobste.rs
 	./zig-cache/bin/feed_app add https://dev.to/feed
