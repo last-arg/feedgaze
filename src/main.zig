@@ -62,7 +62,7 @@ pub fn main() anyerror!void {
         } else if (mem.eql(u8, "update", arg)) {
             // try updateFeeds(allocator, &db_conn);
         } else if (mem.eql(u8, "clean", arg)) {
-            // try cleanItems(&db_conn, allocator);
+            try cleanItems(&db_struct, allocator);
         } else if (mem.eql(u8, "delete", arg)) {
             // if (iter.next(allocator)) |value_err| {
             //     const value = try value_err;
@@ -448,13 +448,13 @@ pub fn deleteFeed(
     }
 }
 
-pub fn cleanItems(db_conn: *sql.Db, allocator: *Allocator) !void {
+pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
     const query =
-        \\select
+        \\SELECT
         \\  feed_id, count(feed_id) as count
-        \\from item
-        \\group by feed_id
-        \\having count(feed_id) > ?{usize}
+        \\FROM item
+        \\GROUP BY feed_id
+        \\HAVING count(feed_id) > ?{usize}
     ;
 
     const DbResult = struct {
@@ -462,24 +462,17 @@ pub fn cleanItems(db_conn: *sql.Db, allocator: *Allocator) !void {
         count: usize,
     };
 
-    const results = try selectAll(DbResult, allocator, db_conn, query, .{@as(usize, g.max_items_per_feed)});
-
-    const DbDelResult = struct {
-        id: usize,
-        feed_id: usize,
-        created_at: i64,
-        pub_date_utc: ?i64,
-    };
+    const results = try db.selectAll(DbResult, allocator, db_struct.conn, query, .{@as(usize, g.max_items_per_feed)});
 
     const del_query =
-        \\delete from item
-        \\where id in (select id
-        \\from item
-        \\where feed_id = ?
-        \\order by pub_date_utc ASC, created_at desc LIMIT ?)
+        \\DELETE FROM item
+        \\WHERE id IN (SELECT id
+        \\FROM item
+        \\WHERE feed_id = ?
+        \\ORDER BY pub_date_utc ASC, created_at DESC LIMIT ?)
     ;
     for (results) |r| {
-        try delete(db_conn, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
+        try db.delete(db_struct.conn, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
     }
 }
 
