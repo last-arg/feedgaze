@@ -64,12 +64,12 @@ pub fn main() anyerror!void {
         } else if (mem.eql(u8, "clean", arg)) {
             try cleanItems(&db_struct, allocator);
         } else if (mem.eql(u8, "delete", arg)) {
-            // if (iter.next(allocator)) |value_err| {
-            //     const value = try value_err;
-            //     try deleteFeed(&db_conn, allocator, value);
-            // } else {
-            //     l.err("Subcommand delete missing argument location", .{});
-            // }
+            if (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                try deleteFeed(&db_struct, allocator, value);
+            } else {
+                l.err("Subcommand delete missing argument location", .{});
+            }
         } else if (mem.eql(u8, "print", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
@@ -387,33 +387,43 @@ pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
 }
 
 pub fn deleteFeed(
-    db_conn: *sql.Db,
+    db_struct: *Db,
     allocator: *Allocator,
     location: []const u8,
 ) !void {
     const query =
-        \\SELECT location, id FROM feed WHERE location LIKE ?
+        \\SELECT location, title, link, id FROM feed
+        \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
     ;
     const DbResult = struct {
         location: []const u8,
+        title: []const u8,
+        link: ?[]const u8,
         id: usize,
     };
 
-    const search_term = try fmt.allocPrint(allocator, "%{s}%", .{"e"});
+    const search_term = try fmt.allocPrint(allocator, "%{s}%", .{location});
     defer allocator.free(search_term);
 
-    const del_query =
-        \\DELETE FROM feed WHERE id = ?
-    ;
     const stdout = std.io.getStdOut();
-    const results = try selectAll(DbResult, allocator, db_conn, query, .{search_term});
+    const results = try db.selectAll(DbResult, allocator, db_struct.conn, query, .{
+        search_term,
+        search_term,
+        search_term,
+    });
     if (results.len == 0) {
         try stdout.writer().print("Found no matches for '{s}' to delete.\n", .{location});
         return;
     }
     try stdout.writer().print("Found {} result(s):\n\n", .{results.len});
     for (results) |result, i| {
-        try stdout.writer().print("{}. {s}\n", .{ i + 1, result.location });
+        const link = result.link orelse "<no-link>";
+        try stdout.writer().print("{}. {s} | {s} | {s}\n", .{
+            i + 1,
+            result.title,
+            link,
+            result.location,
+        });
     }
     try stdout.writer().print("\n", .{});
     try stdout.writer().print("Enter 'q' to quit.\n", .{});
@@ -441,9 +451,12 @@ pub fn deleteFeed(
         }
     }
 
+    const del_query =
+        \\DELETE FROM feed WHERE id = ?;
+    ;
     if (delete_nr > 0) {
         const result = results[delete_nr - 1];
-        try delete(db_conn, del_query, .{result.id});
+        try db.delete(db_struct.conn, del_query, .{result.id});
         try stdout.writer().print("Deleted feed '{s}'\n", .{result.location});
     }
 }
