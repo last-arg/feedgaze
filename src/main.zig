@@ -72,7 +72,6 @@ pub fn main() anyerror!void {
             // }
         } else if (mem.eql(u8, "print", arg)) {
             if (iter.next(allocator)) |value_err| {
-                std.debug.warn("test\n", .{});
                 const value = try value_err;
                 if (mem.eql(u8, "feeds", value)) {
                     try printFeeds(&db_struct, allocator);
