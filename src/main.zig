@@ -60,7 +60,14 @@ pub fn main() anyerror!void {
                 l.err("Subcommand add missing feed location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
-            // try updateFeeds(allocator, &db_conn);
+            const force = blk: {
+                if (iter.next(allocator)) |value_err| {
+                    const value = try value_err;
+                    break :blk mem.eql(u8, "--force", value);
+                }
+                break :blk false;
+            };
+            try updateFeeds(allocator, &db_struct, .{ .force = force });
         } else if (mem.eql(u8, "clean", arg)) {
             try cleanItems(&db_struct, allocator);
         } else if (mem.eql(u8, "delete", arg)) {
@@ -89,7 +96,7 @@ pub fn main() anyerror!void {
     }
 }
 
-pub fn updateFeeds(allocator: *Allocator, db_conn: *sql.Db) !void {
+pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: bool = false }) !void {
     @setEvalBranchQuota(2000);
 
     const DbResult = struct {
@@ -97,50 +104,45 @@ pub fn updateFeeds(allocator: *Allocator, db_conn: *sql.Db) !void {
         etag: ?[]const u8,
         feed_id: usize,
         update_interval: usize,
-        ttl: ?usize,
         last_update: i64,
         expires_utc: ?i64,
         last_modified_utc: ?i64,
         cache_control_max_age: ?i64,
-        pub_date_utc: ?i64,
-        last_build_date_utc: ?i64,
     };
 
-    const feed_updates = try selectAll(DbResult, allocator, db_conn, Table.feed_update.selectAllWithLocation, .{});
+    const feed_updates = try db.selectAll(DbResult, allocator, db_struct.conn, Table.feed_update.selectAllWithLocation, .{});
     var indexes = try ArrayList(usize).initCapacity(allocator, feed_updates.len);
 
     const current_time = std.time.timestamp();
 
     for (feed_updates) |obj, i| {
         const check_date: i64 = blk: {
-            if (obj.ttl) |min| {
-                // Uses ttl, last_build_date_utc || last_update
-                const base_date = if (obj.last_build_date_utc) |d| d else obj.last_update;
-                break :blk base_date + (std.time.s_per_min * @intCast(i64, min));
-            } else if (obj.cache_control_max_age) |sec| {
+            if (obj.cache_control_max_age) |sec| {
                 // Uses cache_control_max_age, last_update
                 break :blk obj.last_update + sec;
             }
             break :blk obj.last_update + @intCast(i64, obj.update_interval);
         };
 
-        if (obj.expires_utc) |expire| {
-            if (check_date < expire) {
+        if (!opts.force) {
+            if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
+                continue;
+            } else if (check_date > current_time) {
                 continue;
             }
-        } else if (check_date < current_time) {
-            continue;
         }
-
         try indexes.append(i);
     }
 
     for (indexes.items) |i| {
+        l.warn("item", .{});
         const obj = feed_updates[i];
-        if (true) continue;
+        // if (true) continue;
         const url_or_err = http.makeUrl(obj.location);
 
         if (url_or_err) |url| {
+            if (true) continue;
+
             l.warn("Feed's HTTP request", .{});
             var req = http.FeedRequest{ .url = url };
             if (obj.etag) |etag| {
@@ -164,12 +166,17 @@ pub fn updateFeeds(allocator: *Allocator, db_conn: *sql.Db) !void {
             const resp = try http.resolveRequest(allocator, req);
 
             // No new content if body is null
-            if (resp.body == null) continue;
+            if (resp.body == null) {
+                l.warn("Empty HTTP request body. Skipping updating.", .{});
+                continue;
+            }
 
             const body = resp.body.?;
 
-            const rss_feed = try rss.Feed.init(allocator, obj.location, body);
-            // TODO: update last_updat field
+            // TODO: fix
+            const rss_feed = try parse.Feed.init(allocator, obj.location, body);
+
+            // TODO: update last_update field
             try update(db_conn, Table.feed_update.update_id, .{
                 rss_feed.info.ttl,
                 resp.cache_control_max_age,
@@ -216,53 +223,48 @@ pub fn updateFeeds(allocator: *Allocator, db_conn: *sql.Db) !void {
                 else
                     rss_feed.items;
 
-                try addFeedItems(db_conn, items, obj.feed_id);
+                try addFeedItems(db_struct.conn, items, obj.feed_id);
             }
         } else |_| {
             l.warn("Check local file feed", .{});
             // TODO?: file's last_modified date
             const contents = getLocalFileContents(allocator, obj.location) catch |err| switch (err) {
                 std.fs.File.OpenError.FileNotFound => {
-                    l.err("Could not locate local feed (file) at: '{}'", .{obj.location});
+                    l.err("Could not locate local feed (file) at: '{s}'", .{obj.location});
                     continue;
                 },
                 else => return err,
             };
             defer allocator.free(contents);
 
-            var rss_feed = try rss.Feed.init(allocator, obj.location, contents);
-            defer rss_feed.deinit();
-            const need_update = rss_feed.info.pub_date_utc == null or
-                !std.meta.eql(rss_feed.info.pub_date_utc, obj.pub_date_utc);
+            var rss_feed = try parse.parse(allocator, contents);
+
+            try db.update(db_struct.conn, Table.feed_update.update_id, .{
+                null,
+                null,
+                null, // TODO: when file was last modified
+                null,
+                // where
+                obj.feed_id,
+            });
+
+            const need_update = true;
             if (need_update) {
                 l.warn("Update local feed", .{});
-                try update(db_conn, Table.feed.update_id, .{
-                    rss_feed.info.title,
-                    rss_feed.info.link,
-                    rss_feed.info.pub_date,
-                    rss_feed.info.pub_date_utc,
-                    rss_feed.info.last_build_date,
-                    rss_feed.info.last_build_date_utc,
+                try db.update(db_struct.conn, Table.feed.update_where_id, .{
+                    rss_feed.title,
+                    rss_feed.link,
+                    rss_feed.updated_raw,
+                    rss_feed.updated_timestamp,
+                    rss_feed.last_item_timestamp,
                     // where
                     obj.feed_id,
                 });
 
-                // feed update
-                try update(db_conn, Table.feed.update_id, .{
-                    rss_feed.info.title,
-                    rss_feed.info.link,
-                    rss_feed.info.pub_date,
-                    rss_feed.info.pub_date_utc,
-                    rss_feed.info.last_build_date,
-                    rss_feed.info.last_build_date_utc,
-                    // where
-                    obj.feed_id,
-                });
-
-                // get newest feed's item pub_date
-                const latest_item_date = try one(
+                // get newest feed's item updated_timestamp
+                const latest_item_date = try db.one(
                     i64,
-                    db_conn,
+                    db_struct.conn,
                     Table.item.select_feed_latest,
                     .{obj.feed_id},
                 );
@@ -272,15 +274,16 @@ pub fn updateFeeds(allocator: *Allocator, db_conn: *sql.Db) !void {
                 else
                     rss_feed.items;
 
-                try addFeedItems(db_conn, items, obj.feed_id);
+                try addFeedItems(db_struct.conn, items, obj.feed_id);
             }
         }
+        l.warn("item end", .{});
     }
 }
 
-pub fn newestFeedItems(items: []rss.Item, timestamp: i64) []rss.Item {
+pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
     for (items) |item, idx| {
-        if (item.pub_date_utc) |item_date| {
+        if (item.updated_timestamp) |item_date| {
             if (item_date <= timestamp) {
                 return items[0..idx];
             }

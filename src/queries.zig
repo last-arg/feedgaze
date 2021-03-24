@@ -135,7 +135,8 @@ pub const Table = struct {
             \\  cache_control_max_age = ?,
             \\  expires_utc = ?,
             \\  last_modified_utc = ?,
-            \\  etag = ?
+            \\  etag = ?,
+            \\  last_update = (strftime('%s', 'now'))
             \\WHERE feed_id = ?
         ;
         pub const selectAll =
@@ -158,9 +159,7 @@ pub const Table = struct {
             \\  last_update,
             \\  expires_utc,
             \\  last_modified_utc,
-            \\  cache_control_max_age,
-            \\  feed.pub_date_utc as pub_date_utc,
-            \\  feed.last_build_date_utc as last_build_date_utc
+            \\  cache_control_max_age
             \\FROM feed_update
             \\LEFT JOIN feed ON feed_update.feed_id = feed.id;
         ;
@@ -239,7 +238,8 @@ pub const Table = struct {
             \\  title = ?{[]const u8},
             \\  link = ?,
             \\  updated_raw = ?,
-            \\  updated_timestamp = ?
+            \\  updated_timestamp = ?,
+            \\  last_item_timestamp = ?
             \\WHERE id = ?{usize}
         ;
     };
