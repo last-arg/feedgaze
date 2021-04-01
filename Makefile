@@ -27,7 +27,7 @@ run-delete:
 	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app delete write'
 
 run-update:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app update --force'
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app update --all'
 
 db:
 	./zig-cache/bin/feed_app add https://lobste.rs

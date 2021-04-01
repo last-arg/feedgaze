@@ -38,6 +38,7 @@ pub const FeedResponse = struct {
     // Owns the memory
     body: ?[]const u8 = null,
     location: ?[]const u8 = null,
+    status_code: u16 = 0,
 };
 
 pub const ContentEncoding = enum {
@@ -130,7 +131,8 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     while (try head_client.next()) |event| {
         switch (event) {
             .status => |status| {
-                std.debug.print("<HTTP Status {}>\n", .{status.code});
+                l.warn("HTTP status code: {}", .{status.code});
+                feed_resp.status_code = status.code;
                 if (status.code == 304) {
                     return feed_resp;
                 } else if (status.code == 301) {

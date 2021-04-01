@@ -136,7 +136,7 @@ pub const Table = struct {
             \\  expires_utc = ?,
             \\  last_modified_utc = ?,
             \\  etag = ?,
-            \\  last_update = (strftime('%s', 'now'))
+            \\  last_update = ?
             \\WHERE feed_id = ?
         ;
         pub const selectAll =
@@ -155,6 +155,7 @@ pub const Table = struct {
             \\  feed.location as location,
             \\  etag,
             \\  feed_id,
+            \\  feed.updated_timestamp as feed_update_timestamp,
             \\  update_interval,
             \\  last_update,
             \\  expires_utc,
@@ -183,16 +184,14 @@ pub const Table = struct {
             \\  link TEXT DEFAULT NULL,
             \\  updated_raw TEXT DEFAULT NULL,
             \\  updated_timestamp INTEGER DEFAULT NULL,
-            \\  last_item_timestamp INTEGER DEFAULT NULL,
             \\  added_at INTEGER DEFAULT (strftime('%s', 'now'))
             \\);
         ;
         pub const insert =
-            \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp, last_item_timestamp)
+            \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
             \\VALUES (
             \\  ?{[]const u8},
             \\  ?{[]const u8},
-            \\  ?,
             \\  ?,
             \\  ?,
             \\  ?
@@ -238,8 +237,7 @@ pub const Table = struct {
             \\  title = ?{[]const u8},
             \\  link = ?,
             \\  updated_raw = ?,
-            \\  updated_timestamp = ?,
-            \\  last_item_timestamp = ?
+            \\  updated_timestamp = ?
             \\WHERE id = ?{usize}
         ;
     };

@@ -225,7 +225,6 @@ pub const Feed = struct {
     // Rss: pubDate (optional)
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
-    last_item_timestamp: ?i64 = null,
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
@@ -241,7 +240,7 @@ pub const Feed = struct {
         // Atom: id (optional)
         // Rss: guid (optional)
         link: ?[]const u8 = null,
-        // Atom: updated (requried)
+        // Atom: updated (required)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
         updated_timestamp: ?i64 = null,

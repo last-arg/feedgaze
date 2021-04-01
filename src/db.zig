@@ -146,7 +146,6 @@ pub const Db = struct {
         link: ?[]const u8,
         updated_raw: ?[]const u8,
         updated_timestamp: ?i64,
-        last_item_timestamp: ?i64,
     };
 
     pub const FeedUpdate = struct {
@@ -173,7 +172,6 @@ pub const Db = struct {
             data.link,
             data.updated_raw,
             data.updated_timestamp,
-            data.last_item_timestamp,
         });
     }
 
