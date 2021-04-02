@@ -1,6 +1,4 @@
 // TODO?: put default values into contants?
-// TODO: if concatenating queries have to remove semicolons
-// and add spaces to end or beginning
 pub const Table = struct {
     pub const item = struct {
         pub const create =
@@ -101,10 +99,47 @@ pub const Table = struct {
             \\FROM setting;
         ;
     };
-    pub const feed_update = struct {
-        // TODO: move last_build_date* fields to feed table
+
+    pub const feed_update_local = struct {
         pub const create =
-            \\CREATE TABLE IF NOT EXISTS feed_update (
+            \\CREATE TABLE IF NOT EXISTS feed_update_local (
+            \\  feed_id INTEGER UNIQUE,
+            \\  update_interval INTEGER DEFAULT 600,
+            \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
+            \\  last_modified_timestamp INTEGER,
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
+            \\);
+        ;
+        pub const insert =
+            \\INSERT INTO feed_update_local
+            \\  (feed_id, last_modified_timestamp)
+            \\VALUES (
+            \\  ?{usize},
+            \\  ?{i64}
+            \\)
+        ;
+        pub const on_conflict_feed_id =
+            \\ON CONFLICT(feed_id) DO UPDATE SET
+            \\  last_modified_timestamp = excluded.last_modified_timestamp,
+            \\  last_update = (strftime('%s', 'now'))
+        ;
+        pub const selectAllWithLocation =
+            \\SELECT
+            \\  feed.location as location,
+            \\  feed_id,
+            \\  feed.updated_timestamp as feed_update_timestamp,
+            \\  update_interval,
+            \\  last_update,
+            \\  last_modified_timestamp
+            \\FROM feed_update_local
+            \\LEFT JOIN feed ON feed_update_local.feed_id = feed.id;
+        ;
+    };
+
+    pub const feed_update_http = struct {
+        const name = "feed_update_http";
+        pub const create =
+            \\CREATE TABLE IF NOT EXISTS feed_update_http (
             \\  feed_id INTEGER UNIQUE,
             \\  update_interval INTEGER DEFAULT 600,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
@@ -116,7 +151,7 @@ pub const Table = struct {
             \\);
         ;
         pub const insert =
-            \\INSERT INTO feed_update
+            \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
             \\VALUES (
             \\  ?{usize},
@@ -127,11 +162,8 @@ pub const Table = struct {
             \\)
         ;
 
-        pub const update_all =
-            \\UPDATE feed_update SET last_update = strftime('%s', 'now')
-        ;
         pub const update_id =
-            \\UPDATE feed_update SET
+            \\UPDATE feed_update_http SET
             \\  cache_control_max_age = ?,
             \\  expires_utc = ?,
             \\  last_modified_utc = ?,
@@ -148,7 +180,7 @@ pub const Table = struct {
             \\  expires_utc,
             \\  last_modified_utc,
             \\  cache_control_max_age
-            \\FROM feed_update;
+            \\FROM feed_update_http;
         ;
         pub const selectAllWithLocation =
             \\SELECT
@@ -161,18 +193,16 @@ pub const Table = struct {
             \\  expires_utc,
             \\  last_modified_utc,
             \\  cache_control_max_age
-            \\FROM feed_update
-            \\LEFT JOIN feed ON feed_update.feed_id = feed.id;
+            \\FROM feed_update_http
+            \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
         ;
         pub const on_conflict_feed_id =
             \\ ON CONFLICT(feed_id) DO UPDATE SET
-            \\  update_interval = excluded.update_interval,
             \\  cache_control_max_age = excluded.cache_control_max_age,
             \\  expires_utc = excluded.expires_utc,
             \\  last_modified_utc = excluded.last_modified_utc,
             \\  etag = excluded.etag,
             \\  last_update = (strftime('%s', 'now'))
-            // \\WHERE last_build_date_utc != excluded.last_build_date_utc
         ;
     };
     pub const feed = struct {

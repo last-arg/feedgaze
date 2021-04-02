@@ -92,15 +92,14 @@ pub fn main() anyerror!void {
             l.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
         }
-
-        // try printAllItems(&db_conn, allocator);
     }
 }
 
 pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: bool = false }) !void {
     @setEvalBranchQuota(2000);
 
-    const DbResult = struct {
+    // Update url feeds
+    const DbResultUrl = struct {
         location: []const u8,
         etag: ?[]const u8,
         feed_id: usize,
@@ -112,60 +111,33 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         cache_control_max_age: ?i64,
     };
 
-    const feed_updates = try db.selectAll(DbResult, allocator, db_struct.conn, Table.feed_update.selectAllWithLocation, .{});
-    var indexes = try ArrayList(usize).initCapacity(allocator, feed_updates.len);
-    var local_feeds = ArrayList(struct { file: std.fs.File, index: usize }).init(allocator);
-    defer {
-        indexes.deinit();
-        local_feeds.deinit();
-    }
+    const url_updates = try db.selectAll(DbResultUrl, allocator, db_struct.conn, Table.feed_update_http.selectAllWithLocation, .{});
+    defer allocator.free(url_updates);
 
     const current_time = std.time.timestamp();
 
-    for (feed_updates) |obj, i| {
-        const url_or_err = http.makeUrl(obj.location);
-        if (url_or_err) |url| {
-            // Url feeds
-            if (!opts.force) {
-                const check_date: i64 = blk: {
-                    if (obj.cache_control_max_age) |sec| {
-                        // Uses cache_control_max_age, last_update
-                        break :blk obj.last_update + sec;
-                    }
-                    if (obj.expires_utc) |sec| {
-                        break :blk sec;
-                    }
-                    break :blk obj.last_update + @intCast(i64, obj.update_interval);
-                };
-
-                if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
-                    continue;
-                } else if (check_date > current_time) {
-                    continue;
+    for (url_updates) |obj| {
+        l.info("Update feed: '{s}'", .{obj.location});
+        if (!opts.force) {
+            const check_date: i64 = blk: {
+                if (obj.cache_control_max_age) |sec| {
+                    // Uses cache_control_max_age, last_update
+                    break :blk obj.last_update + sec;
                 }
-            }
-            try indexes.append(i);
-            l.info("add url", .{});
-        } else |_| {
-            // Local feeds
-            const feed_file = try std.fs.openFileAbsolute(obj.location, .{});
-            var file_stat = try feed_file.stat();
-            if (!opts.force) {
-                if (obj.last_modified_utc) |last_modified| {
-                    const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
-                    if (last_modified == mtime_sec) {
-                        feed_file.close();
-                        continue;
-                    }
+                if (obj.expires_utc) |sec| {
+                    break :blk sec;
                 }
+                break :blk obj.last_update + @intCast(i64, obj.update_interval);
+            };
+            if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
+                l.info("\tSkip update: Not needed", .{});
+                continue;
+            } else if (check_date > current_time) {
+                l.info("\tSkip update: Not needed", .{});
+                continue;
             }
-            try local_feeds.append(.{ .file = feed_file, .index = i });
-            l.info("add local", .{});
         }
-    }
 
-    for (indexes.items) |index| {
-        const obj = feed_updates[index];
         const last_modified = blk: {
             if (obj.last_modified_utc) |last_modified_utc| {
                 const date = Datetime.fromTimestamp(last_modified_utc);
@@ -187,20 +159,18 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         const req = http.FeedRequest{
             .url = try http.makeUrl(obj.location),
             .etag = obj.etag,
-            // TODO: @debug
-            // .etag = "test",
             .last_modified = last_modified,
         };
 
         const resp = try http.resolveRequest(allocator, req);
 
         if (resp.status_code == 304) {
-            l.warn("Skipping update: Feed hasn't been modified", .{});
+            l.info("\tSkipping update: Feed hasn't been modified", .{});
             continue;
         }
 
         if (resp.body == null) {
-            l.warn("Skipping update: HTTP request body is empty", .{});
+            l.info("\tSkipping update: HTTP request body is empty", .{});
             continue;
         }
 
@@ -211,7 +181,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             else => try parse.parse(allocator, body),
         };
 
-        try db.update(db_struct.conn, Table.feed_update.update_id, .{
+        try db.update(db_struct.conn, Table.feed_update_http.update_id, .{
             resp.cache_control_max_age,
             resp.expires_utc,
             resp.last_modified_utc,
@@ -221,11 +191,13 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             obj.feed_id,
         });
 
-        if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-            rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
-        {
-            l.info("Skipping update: Feed updated/pubDate hasn't changed", .{});
-            continue;
+        if (!opts.force) {
+            if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
+                rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+            {
+                l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                continue;
+            }
         }
 
         try db.update(db_struct.conn, Table.feed.update_where_id, .{
@@ -251,19 +223,48 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             rss_feed.items;
 
         try addFeedItems(db_struct.conn, items, obj.feed_id);
-        l.info("Updated url '{s}'", .{obj.location});
+        l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
 
-    if (local_feeds.items.len == 0) return;
+    // Update local file feeds
+    const DbResultLocal = struct {
+        location: []const u8,
+        feed_id: usize,
+        feed_updated_timestamp: ?i64,
+        update_interval: usize,
+        last_update: i64,
+        last_modified_timestamp: ?i64,
+    };
+
+    const local_updates = try db.selectAll(DbResultLocal, allocator, db_struct.conn, Table.feed_update_local.selectAllWithLocation, .{});
+    defer allocator.free(local_updates);
+
+    if (local_updates.len == 0) return;
 
     var contents = try ArrayList(u8).initCapacity(allocator, 4096);
     defer contents.deinit();
 
-    for (local_feeds.items) |feed| {
-        const obj = feed_updates[feed.index];
-        const file = feed.file;
+    const update_local =
+        \\UPDATE feed_update_local SET
+        \\  last_modified_timestamp = ?,
+        \\  last_update = (strftime('%s', 'now'))
+        \\WHERE feed_id = ?
+    ;
+
+    for (local_updates) |obj| {
+        l.info("Update feed (local): '{s}'", .{obj.location});
+        const file = try std.fs.openFileAbsolute(obj.location, .{});
         defer file.close();
         var file_stat = try file.stat();
+        if (!opts.force) {
+            if (obj.last_modified_timestamp) |last_modified| {
+                const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
+                if (last_modified == mtime_sec) {
+                    l.info("\tSkipping update: File hasn't been modified", .{});
+                    continue;
+                }
+            }
+        }
 
         try contents.resize(0);
         try contents.ensureCapacity(file_stat.size);
@@ -271,24 +272,19 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         var rss_feed = try parse.parse(allocator, contents.items);
         const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
 
-        const update_local =
-            \\UPDATE feed_update SET
-            \\  last_modified_utc = ?,
-            \\  last_update = (strftime('%s', 'now'))
-            \\WHERE feed_id = ?
-        ;
-
         try db.update(db_struct.conn, update_local, .{
             mtime_sec,
             // where
             obj.feed_id,
         });
 
-        if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-            rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
-        {
-            l.info("Skipping update: Feed updated/pubDate hasn't changed", .{});
-            continue;
+        if (!opts.force) {
+            if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
+                rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+            {
+                l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                continue;
+            }
         }
 
         try db.update(db_struct.conn, Table.feed.update_where_id, .{
@@ -314,7 +310,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             rss_feed.items;
 
         try addFeedItems(db_struct.conn, items, obj.feed_id);
-        l.info("Updated local '{s}'", .{obj.location});
+        l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
 }
 
@@ -652,6 +648,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
     const allocator = db_struct.allocator;
     const url_or_err = http.makeUrl(location_raw);
 
+    // TODO: explore url/file detection
     if (url_or_err) |url| {
         var req = http.FeedRequest{ .url = url };
         const resp = try cliHandleRequest(allocator, req);
@@ -696,7 +693,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
         // Unless something went wrong there has to be row
         const id = (try db_struct.getFeedId(location)) orelse return error.NoFeedWithLocation;
 
-        try db.insert(db_struct.conn, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
+        try db.insert(db_struct.conn, Table.feed_update_http.insert ++ Table.feed_update_http.on_conflict_feed_id, .{
             id,
             resp.cache_control_max_age,
             resp.expires_utc,
@@ -721,10 +718,10 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
 
         const id = (try db_struct.getFeedId(location)) orelse return error.NoFeedWithLocation;
 
-        // TODO: file last modified date
-        const last_modified = 0;
-        try db.insert(db_struct.conn, Table.feed_update.insert ++ Table.feed_update.on_conflict_feed_id, .{
-            id, null, null, last_modified, null,
+        // TODO: get file last modified date
+        const last_modified: i64 = 0;
+        try db.insert(db_struct.conn, Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
+            id, last_modified,
         });
 
         try addFeedItems(db_struct.conn, feed_data.items, id);
