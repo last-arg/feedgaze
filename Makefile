@@ -21,7 +21,7 @@ test-parse:
 	watchexec -c -r -w src/ -e zig 'zig build test -- src/parse.zig'
 
 run-print:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app print'
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app print feeds'
 
 run-delete:
 	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app delete write'

@@ -209,20 +209,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             obj.feed_id,
         });
 
-        // get newest feed's item updated_timestamp
-        const latest_item_date = try db.one(
-            i64,
-            db_struct.conn,
-            Table.item.select_feed_latest,
-            .{obj.feed_id},
-        );
-
-        const items = if (latest_item_date) |latest_date|
-            newestFeedItems(rss_feed.items, latest_date)
-        else
-            rss_feed.items;
-
-        try addFeedItems(db_struct.conn, items, obj.feed_id);
+        try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
 
@@ -296,20 +283,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             obj.feed_id,
         });
 
-        // get newest feed's item updated_timestamp
-        const latest_item_date = try db.one(
-            i64,
-            db_struct.conn,
-            Table.item.select_feed_latest,
-            .{obj.feed_id},
-        );
-
-        const items = if (latest_item_date) |latest_date|
-            newestFeedItems(rss_feed.items, latest_date)
-        else
-            rss_feed.items;
-
-        try addFeedItems(db_struct.conn, items, obj.feed_id);
+        try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
 }
@@ -329,12 +303,11 @@ pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.It
 pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     const Result = struct {
         title: []const u8,
+        location: []const u8,
         link: ?[]const u8,
     };
-    // NOTE: in case of DESC pub_date_utc null values got to the end of table
     const query =
-        \\SELECT title, link FROM feed
-        \\ORDER BY added_at ASC
+        \\SELECT title, location, link FROM feed
     ;
     var stmt = try db_struct.conn.prepare(query);
     defer stmt.deinit();
@@ -345,9 +318,17 @@ pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     const writer = std.io.getStdOut().writer();
     try writer.print("There are {} feed(s)\n", .{all_items.len});
 
+    const print_fmt =
+        \\{s}
+        \\  link: {s}
+        \\  location: {s}
+        \\
+        \\
+    ;
+
     for (all_items) |item| {
         const link = item.link orelse "<no-link>";
-        try writer.print("{s} - {s}\n\n", .{ item.title, link });
+        try writer.print(print_fmt, .{ item.title, link, item.location });
     }
 }
 

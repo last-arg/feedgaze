@@ -400,13 +400,23 @@ pub const Atom = struct {
             }
         }
 
-        const updated_timestamp = blk: {
-            if (feed_date_raw) |date| {
-                const date_utc = try parseDateToUtc(date);
-                break :blk @floatToInt(i64, date_utc.toSeconds());
+        var updated_timestamp: ?i64 = null;
+        if (feed_date_raw) |date| {
+            const date_utc = try parseDateToUtc(date);
+            updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
+        } else if (entries.items.len > 0 and entries.items[0].updated_raw != null) {
+            var tmp_date: []const u8 = entries.items[0].updated_raw.?;
+            var tmp_timestamp: i64 = entries.items[0].updated_timestamp.?;
+            for (entries.items[1..]) |item| {
+                if (item.updated_timestamp != null and
+                    item.updated_timestamp.? > tmp_timestamp)
+                {
+                    feed_date_raw = item.updated_raw;
+                    updated_timestamp = item.updated_timestamp;
+                }
             }
-            break :blk null;
-        };
+        }
+
         var result = Feed{
             .title = feed_title orelse return error.InvalidAtomFeed,
             .id = feed_id,
@@ -742,14 +752,24 @@ pub const Rss = struct {
             }
         }
 
-        const date_raw = feed_pub_date orelse feed_build_date;
-        const updated_timestamp = blk: {
-            if (date_raw) |date| {
-                const date_utc = try parseDateToUtc(date);
-                break :blk @floatToInt(i64, date_utc.toSeconds());
+        var date_raw = feed_pub_date orelse feed_build_date;
+        var updated_timestamp: ?i64 = null;
+        if (date_raw) |date| {
+            const date_utc = try parseDateToUtc(date);
+            updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
+        } else if (items.items.len > 0 and items.items[0].updated_raw != null) {
+            var tmp_date: []const u8 = items.items[0].updated_raw.?;
+            var tmp_timestamp: i64 = items.items[0].updated_timestamp.?;
+            for (items.items[1..]) |item| {
+                if (item.updated_timestamp != null and
+                    item.updated_timestamp.? > tmp_timestamp)
+                {
+                    date_raw = item.updated_raw;
+                    updated_timestamp = item.updated_timestamp;
+                }
             }
-            break :blk null;
-        };
+        }
+
         const result = Feed{
             .title = feed_title orelse return error.InvalidRssFeed,
             .id = null,
