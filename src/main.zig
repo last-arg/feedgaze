@@ -210,6 +210,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         });
 
         try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
+        // TODO: remove extra feed items
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
 
@@ -226,7 +227,10 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
     const local_updates = try db.selectAll(DbResultLocal, allocator, db_struct.conn, Table.feed_update_local.selectAllWithLocation, .{});
     defer allocator.free(local_updates);
 
-    if (local_updates.len == 0) return;
+    if (local_updates.len == 0) {
+        try cleanItems(db_struct, allocator);
+        return;
+    }
 
     var contents = try ArrayList(u8).initCapacity(allocator, 4096);
     defer contents.deinit();
@@ -284,8 +288,10 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         });
 
         try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
+        // TODO: remove extra feed items
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
+    try cleanItems(db_struct, allocator);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
@@ -478,6 +484,21 @@ pub fn deleteFeed(
     }
 }
 
+pub fn cleanItemsById(db_struct: *Db, feed_id: usize) !void {
+    const query =
+        \\delete from item
+        \\where id in (select id from item
+        \\	where feed_id = 2
+        \\	order by pub_date_utc asc, created_at asc
+        \\	limit (case when ((select count(feed_id) from item where feed_id = 2) - 4) > 0
+        \\				then ((select count(feed_id) from item where feed_id = 2) - 4)
+        \\				else 0
+        \\			end)
+        \\)
+    ;
+    // TODO: implement fn cleanItemsById
+}
+
 pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
     const query =
         \\SELECT
@@ -511,19 +532,23 @@ test "active" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
-    var db_conn = try memoryDb();
-    try dbSetup(&db_conn);
+    // var db_conn = try memoryDb();
+    var db_conn = try db.createMemory();
+    try db.setup(&db_conn);
+    var db_struct = Db{ .conn = &db_conn, .allocator = allocator };
 
     // try cliAddFeed(&db_conn, allocator, input);
     // try updateFeeds(allocator, &db_conn);
 
     // const page = try parse.Html.parseLinks(allocator, @embedFile("../test/lobste.rs.html"));
 
-    const url_str = "https://www.thecrazyprogrammer.com/feed";
+    const url_str = "test/sample-rss-2.xml";
+    // const url_str = "test/sample-rss-091.xml";
+    // const url_str = "https://www.thecrazyprogrammer.com/feed";
     // const url = try http.makeUrl(url_str);
     // const url = try http.makeUrl("https://lobste.rs");
     // var req = http.FeedRequest{ .url = url };
-    const resp = try cliAddFeed(&db_conn, allocator, url_str);
+    const resp = try cliAddFeed(&db_struct, url_str);
 }
 
 // TODO?: move FeedRequest creation inside fn and pass url as parameter
@@ -707,6 +732,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
 
         try addFeedItems(db_struct.conn, feed_data.items, id);
     }
+    // try cleanItems(db_struct, allocator);
 }
 
 pub const FeedUpdate = struct {
@@ -738,9 +764,51 @@ pub const FeedUpdate = struct {
     }
 };
 
+const cmp = std.sort.asc(i64);
+pub fn compareItemDate(context: void, a: parse.Feed.Item, b: parse.Feed.Item) bool {
+    const a_timestamp = a.updated_timestamp orelse return true;
+    const b_timestamp = b.updated_timestamp orelse return false;
+    return cmp(context, a_timestamp, b_timestamp);
+}
+
+// TODO: order items by https://dev.to/feed before adding them to database
 pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: usize) !void {
-    const len = std.math.min(feed_items.len, g.max_items_per_feed);
-    for (feed_items[0..len]) |it| {
+    var start: usize = 0;
+    if (feed_items[0].updated_timestamp) |_| {
+        std.sort.insertionSort(parse.Feed.Item, feed_items, {}, compareItemDate);
+        const last_date_utc = blk: {
+            const query =
+                \\SELECT pub_date_utc FROM item
+                \\WHERE feed_id = ?
+                \\ORDER BY pub_date_utc DESC
+                \\LIMIT 1
+            ;
+            break :blk try db.one(i64, db_conn, query, .{feed_id});
+        };
+        // TODO: some timestamps might be null
+        // in sorted slice null values are at the beginning
+        if (last_date_utc) |date| {
+            const last_item = feed_items[feed_items.len - 1];
+            if (last_item.updated_timestamp.? < date) {
+                l.info("No new feed items to add", .{});
+                return;
+            }
+            for (feed_items) |item, i| {
+                if (item.updated_timestamp != null and item.updated_timestamp.? > date) {
+                    start = i;
+                    break;
+                }
+            }
+        }
+    } else {
+        std.mem.reverse(parse.Feed.Item, feed_items);
+    }
+
+    for (feed_items) |it| {
+        print("{s} - {s}\n", .{ it.updated_raw, it.title });
+    }
+
+    for (feed_items[start..]) |it| {
         if (it.id) |_| {
             try db.insert(
                 db_conn,
