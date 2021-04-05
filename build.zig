@@ -44,9 +44,9 @@ pub fn build(b: *Builder) void {
 
     var file_test = b.addTest(test_file);
     file_test.setBuildMode(mode);
-    if (std.mem.eql(u8, "src/main.zig", test_file)) {
-        file_test.setFilter("active");
-    }
+    // if (std.mem.eql(u8, "src/main.zig", test_file)) {
+    //     file_test.setFilter("active");
+    // }
 
     file_test.linkLibC();
     file_test.linkSystemLibrary("sqlite3");

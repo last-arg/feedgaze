@@ -527,30 +527,6 @@ pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
     }
 }
 
-test "active" {
-    const input = "./test/sample-rss-2.xml";
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = &arena.allocator;
-    // var db_conn = try memoryDb();
-    var db_conn = try db.createMemory();
-    try db.setup(&db_conn);
-    var db_struct = Db{ .conn = &db_conn, .allocator = allocator };
-
-    // try cliAddFeed(&db_conn, allocator, input);
-    // try updateFeeds(allocator, &db_conn);
-
-    // const page = try parse.Html.parseLinks(allocator, @embedFile("../test/lobste.rs.html"));
-
-    const url_str = "test/sample-rss-2.xml";
-    // const url_str = "test/sample-rss-091.xml";
-    // const url_str = "https://www.thecrazyprogrammer.com/feed";
-    // const url = try http.makeUrl(url_str);
-    // const url = try http.makeUrl("https://lobste.rs");
-    // var req = http.FeedRequest{ .url = url };
-    const resp = try cliAddFeed(&db_struct, url_str);
-}
-
 // TODO?: move FeedRequest creation inside fn and pass url as parameter
 pub fn cliHandleRequest(allocator: *Allocator, start_req: http.FeedRequest) !http.FeedResponse {
     const stdout = std.io.getStdOut();
@@ -764,51 +740,23 @@ pub const FeedUpdate = struct {
     }
 };
 
-const cmp = std.sort.asc(i64);
-pub fn compareItemDate(context: void, a: parse.Feed.Item, b: parse.Feed.Item) bool {
-    const a_timestamp = a.updated_timestamp orelse return true;
-    const b_timestamp = b.updated_timestamp orelse return false;
-    return cmp(context, a_timestamp, b_timestamp);
+// Move to db.zig
+pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
+    const query =
+        \\SELECT pub_date_utc FROM item
+        \\WHERE feed_id = ?
+        \\ORDER BY pub_date_utc DESC
+        \\LIMIT 1
+    ;
+    return try db.one(i64, db_conn, query, .{feed_id});
 }
+
+// TODO: move to Feed.Item struct
+// items[].updated_timestamp have to be non-null
 
 // TODO: order items by https://dev.to/feed before adding them to database
 pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: usize) !void {
-    var start: usize = 0;
-    if (feed_items[0].updated_timestamp) |_| {
-        std.sort.insertionSort(parse.Feed.Item, feed_items, {}, compareItemDate);
-        const last_date_utc = blk: {
-            const query =
-                \\SELECT pub_date_utc FROM item
-                \\WHERE feed_id = ?
-                \\ORDER BY pub_date_utc DESC
-                \\LIMIT 1
-            ;
-            break :blk try db.one(i64, db_conn, query, .{feed_id});
-        };
-        // TODO: some timestamps might be null
-        // in sorted slice null values are at the beginning
-        if (last_date_utc) |date| {
-            const last_item = feed_items[feed_items.len - 1];
-            if (last_item.updated_timestamp.? < date) {
-                l.info("No new feed items to add", .{});
-                return;
-            }
-            for (feed_items) |item, i| {
-                if (item.updated_timestamp != null and item.updated_timestamp.? > date) {
-                    start = i;
-                    break;
-                }
-            }
-        }
-    } else {
-        std.mem.reverse(parse.Feed.Item, feed_items);
-    }
-
     for (feed_items) |it| {
-        print("{s} - {s}\n", .{ it.updated_raw, it.title });
-    }
-
-    for (feed_items[start..]) |it| {
         if (it.id) |_| {
             try db.insert(
                 db_conn,

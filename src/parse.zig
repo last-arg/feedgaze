@@ -215,6 +215,7 @@ test "Html.parse" {
 // has something to do with attributes in xml element
 // xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
 pub const Feed = struct {
+    const Self = @This();
     // Atom: required
     // Rss: required
     title: []const u8,
@@ -245,6 +246,34 @@ pub const Feed = struct {
         updated_raw: ?[]const u8 = null,
         updated_timestamp: ?i64 = null,
     };
+
+    pub fn sortItemsByDate(feed: *Self) void {
+        std.sort.insertionSort(Item, feed.items, {}, compareItemDate);
+    }
+
+    const cmp = std.sort.asc(i64);
+    fn compareItemDate(context: void, a: Item, b: Item) bool {
+        const a_timestamp = a.updated_timestamp orelse return true;
+        const b_timestamp = b.updated_timestamp orelse return false;
+        return cmp(context, a_timestamp, b_timestamp);
+    }
+
+    pub fn getItemsWithNullDates(feed: *Self) []Item {
+        for (feed.items) |it, i| {
+            if (it.updated_timestamp != null) return feed.items[0..i];
+        }
+        return feed.items;
+    }
+
+    pub fn getItemsWithDates(feed: *Self, latest_date: i64) []Item {
+        const start = feed.getItemsWithNullDates().len;
+        const items = feed.items[start..];
+        assert(items[0].updated_timestamp != null);
+        for (items) |it, i| {
+            if (it.updated_timestamp.? > latest_date) return items[i..];
+        }
+        return items[items.len..];
+    }
 };
 
 pub const Atom = struct {
@@ -906,6 +935,32 @@ test "Rss.parse" {
     // Description is used as title
     expect(null != feed.items[0].updated_raw);
     std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
+
+    feed.sortItemsByDate();
+    const items_with_null_dates = feed.getItemsWithNullDates();
+    // const start = feed.getNonNullFeedItemStart();
+    expect(items_with_null_dates.len == 2);
+
+    const items_with_dates = feed.items[items_with_null_dates.len..];
+    expect(items_with_dates.len == 4);
+
+    {
+        const latest_timestamp = items_with_dates[0].updated_timestamp.? - 1;
+        const items_new = feed.getItemsWithDates(latest_timestamp);
+        expect(items_new.len == 4);
+    }
+
+    {
+        const latest_timestamp = items_with_dates[2].updated_timestamp.?;
+        const items_new = feed.getItemsWithDates(latest_timestamp);
+        expect(items_new.len == 1);
+    }
+
+    {
+        const latest_timestamp = items_with_dates[3].updated_timestamp.? + 1;
+        const items_new = feed.getItemsWithDates(latest_timestamp);
+        expect(items_new.len == 0);
+    }
 }
 
 test "Rss.parseDateToUtc" {
