@@ -25,6 +25,15 @@ pub const Table = struct {
             \\  ?
             \\)
         ;
+        pub const insert_minimal =
+            \\INSERT INTO item (feed_id, title, pub_date, pub_date_utc)
+            \\VALUES (
+            \\  ?{usize},
+            \\  ?{[]const u8},
+            \\  ?,
+            \\  ?
+            \\)
+        ;
         pub const select_all =
             \\SELECT
             \\  title,
@@ -35,17 +44,16 @@ pub const Table = struct {
             \\  id
             \\FROM item
         ;
-        pub const count_all =
-            \\SELECT
-            \\  count(feed_id)
-            \\FROM item
+        pub const select_id_by_title =
+            \\SELECT id FROM item
+            \\WHERE feed_id = ?
+            \\  AND title = ?
+            \\  AND guid IS NULL
+            \\  AND link IS NULL
         ;
-        pub const select_feed_latest =
-            \\SELECT pub_date_utc FROM item
-            \\WHERE feed_id = ? AND pub_date_utc IS NOT NULL
-            \\ORDER BY pub_date_utc DESC LIMIT 1;
-        ;
-        pub const on_conflict_guid =
+        pub const upsert_guid =
+            \\INSERT INTO item (feed_id, title, guid, link, pub_date, pub_date_utc)
+            \\VALUES ( ?{usize}, ?{[]const u8}, ?, ?, ?, ? )
             \\ON CONFLICT(guid) DO UPDATE SET
             \\  title = excluded.title,
             \\  link = excluded.link,
@@ -55,33 +63,25 @@ pub const Table = struct {
             \\  excluded.feed_id = feed_id
             \\  AND excluded.pub_date_utc != pub_date_utc
         ;
-        pub const on_conflict_link =
+        // NOTE: no guid inserted because if this query is run guid == null
+        pub const upsert_link =
+            \\INSERT INTO item (feed_id, title, link, pub_date, pub_date_utc)
+            \\VALUES ( ?{usize}, ?{[]const u8}, ?, ?, ? )
             \\ON CONFLICT(link) DO UPDATE SET
             \\  title = excluded.title,
-            \\  guid = excluded.guid,
             \\  pub_date = excluded.pub_date,
             \\  pub_date_utc = excluded.pub_date_utc
             \\WHERE
             \\  excluded.feed_id = feed_id
             \\  AND excluded.pub_date_utc != pub_date_utc
         ;
-        pub const has_item =
-            \\SELECT 1 FROM item
-            \\WHERE feed_id = ?
-            \\  AND pub_date_utc = ?
-            \\  AND guid IS NULL
-            \\  AND link IS NULL
-        ;
-        pub const update_without_guid_and_link =
+        pub const update_date =
             \\UPDATE item SET
-            \\  title = ?{[]const u8},
-            \\  link = ?,
-            \\  guid = ?
+            \\  pub_date = ?,
+            \\  pub_date_utc = ?
             \\WHERE
-            \\  feed_id = ?
-            \\  AND pub_date_utc = ?
-            \\  AND guid IS NULL
-            \\  AND link IS NULL
+            \\  id = ?
+            \\  AND pub_date_utc != ?
         ;
     };
     pub const setting = struct {

@@ -338,8 +338,6 @@ pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     }
 }
 
-// TODO: print newest items first
-// TODO: print most recently updated feeds first (under feed print items)
 pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
     const Result = struct {
         title: []const u8,
@@ -740,7 +738,7 @@ pub const FeedUpdate = struct {
     }
 };
 
-// Move to db.zig
+// TODO: Move to db.zig
 pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
     const query =
         \\SELECT pub_date_utc FROM item
@@ -751,41 +749,36 @@ pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
     return try db.one(i64, db_conn, query, .{feed_id});
 }
 
-// TODO: move to Feed.Item struct
-// items[].updated_timestamp have to be non-null
-
-// TODO: order items by https://dev.to/feed before adding them to database
 pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: usize) !void {
     for (feed_items) |it| {
-        if (it.id) |_| {
+        if (it.id) |guid| {
             try db.insert(
                 db_conn,
-                Table.item.insert ++ Table.item.on_conflict_guid,
-                .{ feed_id, it.title, it.link, it.id, it.updated_raw, it.updated_timestamp },
+                Table.item.upsert_guid,
+                .{ feed_id, it.title, guid, it.link, it.updated_raw, it.updated_timestamp },
             );
-        } else if (it.link) |_| {
-            // TODO: use it.link as link.id
+        } else if (it.link) |link| {
             try db.insert(
                 db_conn,
-                Table.item.insert ++ Table.item.on_conflict_link,
-                .{ feed_id, it.title, it.link, it.id, it.updated_raw, it.updated_timestamp },
+                Table.item.upsert_link,
+                .{ feed_id, it.title, link, it.updated_raw, it.updated_timestamp },
             );
-        } else if (it.updated_raw != null and
-            try db.one(bool, db_conn, Table.item.has_item, .{ feed_id, it.updated_timestamp }) != null)
-        {
-            // Updates row if it matches feed_id and updated_timestamp
-            try db.update(db_conn, Table.item.update_without_guid_and_link, .{
-                // set column values
-                it.title, it.link,              it.id,
-                // where
-                feed_id,  it.updated_timestamp,
-            });
         } else {
-            try db.insert(
+            const item_id = try db.one(
+                usize,
                 db_conn,
-                Table.item.insert,
-                .{ feed_id, it.title, it.link, it.id, it.updated_raw, it.updated_timestamp },
+                Table.item.select_id_by_title,
+                .{ feed_id, it.title },
             );
+            if (item_id) |id| {
+                try db.update(db_conn, Table.item.update_date, .{ it.updated_raw, it.updated_timestamp, id, it.updated_timestamp });
+            } else {
+                try db.insert(
+                    db_conn,
+                    Table.item.insert_minimal,
+                    .{ feed_id, it.title, it.updated_raw, it.updated_timestamp },
+                );
+            }
         }
     }
 }
