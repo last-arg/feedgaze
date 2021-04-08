@@ -1,0 +1,7 @@
+repo: feed_app
+doc: "feed_app"
+
+tabs:
+  - tab: edit
+    dir: src/
+    doc: "feed_app/src/"
