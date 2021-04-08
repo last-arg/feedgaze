@@ -709,35 +709,6 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
     // try cleanItems(db_struct, allocator);
 }
 
-pub const FeedUpdate = struct {
-    const Self = @This();
-    allocator: *Allocator,
-    db_conn: *sql.Db,
-
-    const Raw = struct {
-        etag: ?[]const u8,
-        feed_id: usize,
-        update_interval: usize,
-        last_update: i64,
-        ttl: ?usize,
-        last_build_date_utc: ?i64,
-        expires_utc: ?i64,
-        last_modified_utc: ?i64,
-        cache_control_max_age: ?i64,
-    };
-
-    pub fn selectAll(feed_update: Self) ![]Raw {
-        var stmt = try feed_update.db_conn.prepare(Table.feed_update.selectAll);
-        defer stmt.deinit();
-        return stmt.all(Raw, feed_update.allocator, .{}, .{}) catch |err| {
-            l.warn("FeedUpdate.selectAll() failed. ERR: {s}\n", .{
-                feed_update.db_conn.getDetailedError().message,
-            });
-            return err;
-        };
-    }
-};
-
 // TODO: Move to db.zig
 pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
     const query =
@@ -783,44 +754,6 @@ pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: us
     }
 }
 
-const Item = struct {
-    const Self = @This();
-    allocator: *Allocator,
-    db_conn: *sql.Db,
-
-    const Raw = struct {
-        title: []const u8,
-        link: []const u8,
-        pub_date: []const u8,
-        created_at: []const u8,
-        // TODO: add guid: ?[]const u8
-        // TODO: add pub_date_utc: ?i64
-        feed_id: usize,
-        id: usize,
-    };
-
-    pub fn deinitRaw(link: Self, raw: ?Raw) void {
-        if (raw) |r| {
-            link.allocator.free(r.title);
-            link.allocator.free(r.link);
-            link.allocator.free(r.pub_date);
-            link.allocator.free(r.created_at);
-        }
-    }
-
-    pub fn selectAll(item: Self) ![]Raw {
-        var all_items = ArrayList(Raw).init(item.allocator);
-        errdefer all_items.deinit();
-        var all = try item.db_conn.prepare(Table.item.select_all);
-        defer all.deinit();
-        var iter = try all.iterator(Raw, .{});
-        while (try iter.nextAlloc(item.allocator, .{})) |link_row| {
-            try all_items.append(link_row);
-        }
-        return all_items.toOwnedSlice();
-    }
-};
-
 // location has to be absolute
 pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]const u8 {
     // TODO: check out fn os.toPosixPath
@@ -831,86 +764,6 @@ pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]
     return try local_file.reader().readAllAlloc(allocator, file_stat.size);
 }
 
-pub fn addFeed(db_conn: Db, rss_feed: parse.Feed) !usize {
-    try insert(db_conn, Table.feed.insert ++ Table.feed.on_conflict_location, .{
-        rss_feed.title,
-        rss_feed.link,
-        rss_feed.location,
-        rss_feed.pub_date,
-        rss_feed.pub_date_utc,
-        rss_feed.last_build_date,
-        rss_feed.last_build_date_utc,
-    });
-
-    // Just inserted feed, it has to exist
-    const id = (try one(
-        usize,
-        db_conn,
-        Table.feed.select_id ++ Table.feed.where_location,
-        .{rss_feed.info.location},
-    )).?;
-    return id;
-}
-
-pub const Feed = struct {
-    const Self = @This();
-    allocator: *Allocator,
-    db_conn: *sql.Db,
-
-    pub const Raw = struct {
-        title: []const u8,
-        link: []const u8,
-        location: []const u8,
-        id: usize,
-        pub_date_utc: ?i64,
-    };
-
-    pub fn deinitRaw(feed: Self, raw: ?Raw) void {
-        if (raw) |r| {
-            feed.allocator.free(r.title);
-            feed.allocator.free(r.link);
-            feed.allocator.free(r.location);
-        }
-    }
-
-    pub fn init(allocator: *Allocator, db_conn: *sql.Db) Self {
-        return Self{
-            .allocator = allocator,
-            .db_conn = db_conn,
-        };
-    }
-
-    pub fn select(feed: Self) !?Raw {
-        const db_conn = feed.db_conn;
-        const allocator = feed.allocator;
-        return db_conn.oneAlloc(Raw, allocator, Table.feed.select, .{}, .{}) catch |err| {
-            l.warn("Failed query `{s}`. ERR: {s}\n", .{
-                Table.feed.select,
-                db_conn.getDetailedError().message,
-            });
-            return err;
-        };
-    }
-
-    pub fn selectLocation(feed: Self, location: []const u8) !?Raw {
-        const db_conn = feed.db_conn;
-        const allocator = feed.allocator;
-        return db_conn.oneAlloc(
-            Raw,
-            allocator,
-            Table.feed.select ++ Table.feed.where_location,
-            .{},
-            .{location},
-        ) catch |err| {
-            l.warn("Failed query `{s}`. ERR: {s}\n", .{
-                Table.feed.select ++ Table.feed.where_location,
-                db_conn.getDetailedError().message,
-            });
-            return err;
-        };
-    }
-};
-
 pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
     if (std.fs.path.isAbsolute(path)) {
         return try mem.dupe(allocator, u8, path);
@@ -920,25 +773,3 @@ pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
 
     return try std.fs.path.resolve(allocator, &[_][]const u8{ cwd, path });
 }
-
-const Setting = struct {
-    version: usize,
-
-    pub fn select(allocator: *Allocator, db_conn: *sql.Db) !?Setting {
-        return db_conn.oneAlloc(Setting, allocator, Table.setting.select, .{}, .{}) catch |err| {
-            l.warn("Failed to get setting. ERR: {s}\n", .{db_conn.getDetailedError().message});
-            return err;
-        };
-    }
-};
-
-// test "verifyDbTables" {
-//     var allocator = testing.allocator;
-//     var db_conn = try memoryDb();
-
-//     try dbSetup(&db_conn);
-//     const result = verifyDbTables(&db_conn);
-//     assert(result);
-//     const setting = (try Setting.select(allocator, &db_conn)).?;
-//     assert(1 == setting.version);
-// }
