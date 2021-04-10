@@ -1,5 +1,7 @@
 const std = @import("std");
 const Builder = @import("std").build.Builder;
+const LibExeObjStep = @import("std").build.LibExeObjStep;
+pub const CrossTarget = std.zig.CrossTarget;
 
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
@@ -16,14 +18,7 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
 
-    exe.linkLibC();
-    exe.linkSystemLibrary("sqlite3");
-    exe.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
-    exe.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
-    exe.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
-    exe.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
-    exe.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
-    @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", exe, target);
+    stepSetup(exe, target);
     exe.install();
 
     const run_cmd = exe.run();
@@ -42,21 +37,23 @@ pub fn build(b: *Builder) void {
         break :blk "src/main.zig";
     };
 
-    var file_test = b.addTest(test_file);
-    file_test.setBuildMode(mode);
-    // if (std.mem.eql(u8, "src/main.zig", test_file)) {
-    //     file_test.setFilter("active");
-    // }
+    var test_cmd = b.addTest(test_file);
+    test_cmd.setBuildMode(mode);
+    test_cmd.setFilter("@active");
 
-    file_test.linkLibC();
-    file_test.linkSystemLibrary("sqlite3");
-    file_test.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
-    file_test.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
-    file_test.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
-    file_test.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
-    file_test.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
-    @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", file_test, target);
+    stepSetup(test_cmd, target);
 
     const test_step = b.step("test", "Run file tests");
-    test_step.dependOn(&file_test.step);
+    test_step.dependOn(&test_cmd.step);
+}
+
+fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
+    step.linkLibC();
+    step.linkSystemLibrary("sqlite3");
+    step.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
+    step.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
+    step.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
+    step.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    step.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
+    @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", step, target);
 }
