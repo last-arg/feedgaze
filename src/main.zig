@@ -25,8 +25,14 @@ const g = struct {
     const max_items_per_feed = 10;
 };
 
-// TODO: see if there is good way to detect local file path or url
+test "@active" {
+    l.warn("Running test(s) with @active", .{});
+    const allocator = std.testing.allocator;
+    // const rel_loc = "tmp/test.db_conn";
+    const db_conn = try db.createDb(allocator, null);
+}
 
+// TODO: see if there is good way to detect local file path or url
 pub fn main() anyerror!void {
     std.log.info("Main run", .{});
     const base_allocator = std.heap.page_allocator;
@@ -762,14 +768,4 @@ pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]
     var file_stat = try local_file.stat();
 
     return try local_file.reader().readAllAlloc(allocator, file_stat.size);
-}
-
-pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
-    if (std.fs.path.isAbsolute(path)) {
-        return try mem.dupe(allocator, u8, path);
-    }
-    const cwd = try std.process.getCwdAlloc(allocator);
-    defer allocator.free(cwd);
-
-    return try std.fs.path.resolve(allocator, &[_][]const u8{ cwd, path });
 }

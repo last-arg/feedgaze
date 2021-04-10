@@ -4,10 +4,21 @@ const Allocator = std.mem.Allocator;
 const l = std.log;
 const testing = std.testing;
 const expect = testing.expect;
+const shame = @import("shame.zig");
 
 usingnamespace @import("queries.zig");
 
-pub fn createMemory() !sql.Db {
+pub fn createDb(allocator: *Allocator, loc: ?[]const u8) !sql.Db {
+    if (loc) |path| {
+        const abs_loc = try shame.makeFilePathZ(allocator, path);
+        defer allocator.free(abs_loc);
+        return try createFileDb(abs_loc);
+    } else {
+        return try createMemoryDb();
+    }
+}
+
+pub fn createMemoryDb() !sql.Db {
     var db: sql.Db = undefined;
     try db.init(.{
         .mode = sql.Db.Mode.Memory,
@@ -20,10 +31,10 @@ pub fn createMemory() !sql.Db {
     return db;
 }
 
-pub fn create(abs_loc: [:0]const u8) !sql.Db {
+pub fn createFileDb(path_opt: ?[:0]const u8) !sql.Db {
     var db: sql.Db = undefined;
     try db.init(.{
-        .mode = sql.Db.Mode{ .File = abs_loc },
+        .mode = if (path_opt) |path| sql.Db.Mode{ .File = path } else sql.Db.Mode.Memory,
         .open_flags = .{
             .write = true,
             .create = true,
