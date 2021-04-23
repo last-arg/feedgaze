@@ -38,5 +38,5 @@ db:
 	./zig-cache/bin/feed_app add https://dev.to/feed
 
 test-active:
-	watchexec -c -w src/ -e zig 'zig build test'
+	watchexec -c -r -w src/ -e zig 'zig build test'
 

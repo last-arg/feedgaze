@@ -7,8 +7,10 @@ const timezones = datetime.timezones;
 const parse = @import("parse.zig");
 const print = std.debug.print;
 const assert = std.debug.assert;
+const expect = std.testing.expect;
 const mem = std.mem;
 const fmt = std.fmt;
+const fs = std.fs;
 const time = std.time;
 const ascii = std.ascii;
 const process = std.process;
@@ -25,11 +27,178 @@ const g = struct {
     const max_items_per_feed = 10;
 };
 
-test "@active" {
-    l.warn("Running test(s) with @active", .{});
-    const allocator = std.testing.allocator;
-    // const rel_loc = "tmp/test.db_conn";
-    const db_conn = try db.createDb(allocator, null);
+fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
+    if (a == null and b == null) return true;
+    if (a == null or b == null) return false;
+    return mem.eql(u8, a.?, b.?);
+}
+
+test "@active local feed: add, update, remove" {
+    print("Running test(s) with @active\n", .{});
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    var sql_db = try db.createDb(allocator, null);
+    try db.setup(&sql_db);
+
+    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    const rel_path = "test/sample-rss-2.xml";
+    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+    const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
+    const contents = try getFileContents(allocator, abs_path);
+    const file = try fs.openFileAbsolute(abs_path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+
+    var feed = try parse.parse(allocator, contents);
+
+    const all_items = feed.items;
+    feed.items = all_items[0..3];
+    try addFeedLocal(&sql_db, feed, abs_path, mtime_sec);
+
+    const FeedResult = struct {
+        location: []const u8,
+        link: ?[]const u8,
+        title: []const u8,
+        updated_raw: ?[]const u8,
+        id: usize,
+        updated_timestamp: ?i64,
+    };
+
+    const all_feeds_query = "select location, link, title, updated_raw, id, updated_timestamp from feed";
+
+    // Feed
+    {
+        const db_feeds = try db.selectAll(FeedResult, allocator, &sql_db, all_feeds_query, .{});
+        expect(db_feeds.len == 1);
+        const first = db_feeds[0];
+        expect(first.id == 1);
+        expect(mem.eql(u8, abs_path, first.location));
+        expect(mem.eql(u8, feed.link.?, first.link.?));
+        expect(mem.eql(u8, feed.title, first.title));
+        expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
+        expect(feed.updated_timestamp.? == first.updated_timestamp.?);
+    }
+
+    const LocalUpdateResult = struct {
+        feed_id: usize,
+        update_interval: usize,
+        last_update: i64,
+        last_modified_timestamp: i64,
+    };
+
+    const local_query = "select feed_id, update_interval, last_update, last_modified_timestamp from feed_update_local";
+
+    // Local feed update
+    {
+        const db_feeds = try db.selectAll(LocalUpdateResult, allocator, &sql_db, local_query, .{});
+        expect(db_feeds.len == 1);
+        const first = db_feeds[0];
+        expect(first.feed_id == 1);
+        expect(first.update_interval == 600);
+        const current_time = std.time.timestamp();
+        expect(first.last_update <= current_time);
+        expect(first.last_modified_timestamp == mtime_sec);
+    }
+
+    const ItemsResult = struct {
+        link: ?[]const u8,
+        title: []const u8,
+        guid: ?[]const u8,
+        id: usize,
+        feed_id: usize,
+        pub_date: ?[]const u8,
+        pub_date_utc: ?i64,
+    };
+
+    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc from item order by pub_date_utc";
+
+    // Items
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &sql_db, all_items_query, .{});
+        expect(items.len == feed.items.len);
+    }
+
+    try updateAllFeeds(allocator, &sql_db, .{ .force = true });
+
+    // Items
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &sql_db, all_items_query, .{});
+        expect(items.len == all_items.len);
+
+        parse.Feed.sortItemsByDate(all_items);
+        for (items) |db_item, i| {
+            const f_item = all_items[i];
+            expect(equalNullString(db_item.link, f_item.link));
+            expect(equalNullString(db_item.guid, f_item.id));
+            std.testing.expectEqualStrings(db_item.title, f_item.title);
+            expect(equalNullString(db_item.pub_date, f_item.updated_raw));
+            expect(std.meta.eql(db_item.pub_date_utc, f_item.updated_timestamp));
+            expect(db_item.feed_id == 1);
+        }
+    }
+
+    // Local feed update
+    {
+        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &sql_db, local_query, .{});
+        expect(local_updates.len == 1);
+        const first = local_updates[0];
+        expect(first.feed_id == 1);
+        expect(first.update_interval == 600);
+        const current_time = std.time.timestamp();
+        expect(first.last_update <= current_time);
+        expect(first.last_modified_timestamp == mtime_sec);
+    }
+
+    // Delete
+    {
+        try deleteFeed(&sql_db, 1);
+
+        const feed_count = try db.count(&sql_db, "select count(id) from feed");
+        expect(feed_count == 0);
+        const local_update_count = try db.count(&sql_db, "select count(feed_id) from feed_update_local");
+        expect(local_update_count == 0);
+        const item_count = try db.count(&sql_db, "select count(id) from item");
+        expect(item_count == 0);
+    }
+}
+
+pub fn deleteFeed(sql_db: *sql.Db, id: usize) !void {
+    try db.delete(sql_db, "DELETE FROM feed WHERE id = ?", .{id});
+}
+
+pub fn addFeedLocal(
+    sql_db: *sql.Db,
+    feed: parse.Feed,
+    location: []const u8,
+    last_modified: i64,
+) !void {
+    try db.insert(sql_db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
+        feed.title,
+        location,
+        feed.link,
+        feed.updated_raw,
+        feed.updated_timestamp,
+    });
+
+    const id = (try db.one(
+        usize,
+        sql_db,
+        Table.feed.select_id ++ Table.feed.where_location,
+        .{location},
+    )) orelse return error.NoFeedWithLocation;
+
+    // TODO: get file last modified date
+    // const last_modified: i64 = 0;
+    // print("{}\n", .{last_modified});
+    try db.insert(sql_db, Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
+        id, last_modified,
+    });
+
+    try addFeedItems(sql_db, feed.items, id);
 }
 
 // TODO: see if there is good way to detect local file path or url
@@ -49,7 +218,8 @@ pub fn main() anyerror!void {
     //     .{ .read = true, .truncate = false },
     // );
 
-    var db_conn = try db.create(abs_location);
+    // var db_conn = try db.create(abs_location);
+    var db_conn = try db.createDb(allocator, null);
     // var db_conn = try db.createMemory();
     try db.setup(&db_conn);
     var db_struct = Db{ .conn = &db_conn, .allocator = allocator };
@@ -74,7 +244,7 @@ pub fn main() anyerror!void {
                 }
                 break :blk false;
             };
-            try updateFeeds(allocator, &db_struct, .{ .force = force });
+            try updateAllFeeds(allocator, &db_struct, .{ .force = force });
         } else if (mem.eql(u8, "clean", arg)) {
             try cleanItems(&db_struct, allocator);
         } else if (mem.eql(u8, "delete", arg)) {
@@ -101,7 +271,7 @@ pub fn main() anyerror!void {
     }
 }
 
-pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: bool = false }) !void {
+pub fn updateAllFeeds(allocator: *Allocator, sql_db: *sql.Db, opts: struct { force: bool = false }) !void {
     @setEvalBranchQuota(2000);
 
     // Update url feeds
@@ -117,7 +287,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         cache_control_max_age: ?i64,
     };
 
-    const url_updates = try db.selectAll(DbResultUrl, allocator, db_struct.conn, Table.feed_update_http.selectAllWithLocation, .{});
+    const url_updates = try db.selectAll(DbResultUrl, allocator, sql_db, Table.feed_update_http.selectAllWithLocation, .{});
     defer allocator.free(url_updates);
 
     const current_time = std.time.timestamp();
@@ -187,7 +357,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             else => try parse.parse(allocator, body),
         };
 
-        try db.update(db_struct.conn, Table.feed_update_http.update_id, .{
+        try db.update(sql_db, Table.feed_update_http.update_id, .{
             resp.cache_control_max_age,
             resp.expires_utc,
             resp.last_modified_utc,
@@ -206,7 +376,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             }
         }
 
-        try db.update(db_struct.conn, Table.feed.update_where_id, .{
+        try db.update(sql_db, Table.feed.update_where_id, .{
             rss_feed.title,
             rss_feed.link,
             rss_feed.updated_raw,
@@ -215,7 +385,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             obj.feed_id,
         });
 
-        try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
+        try addFeedItems(sql_db, rss_feed.items, obj.feed_id);
         // TODO: remove extra feed items
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
@@ -230,11 +400,11 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         last_modified_timestamp: ?i64,
     };
 
-    const local_updates = try db.selectAll(DbResultLocal, allocator, db_struct.conn, Table.feed_update_local.selectAllWithLocation, .{});
+    const local_updates = try db.selectAll(DbResultLocal, allocator, sql_db, Table.feed_update_local.selectAllWithLocation, .{});
     defer allocator.free(local_updates);
 
     if (local_updates.len == 0) {
-        try cleanItems(db_struct, allocator);
+        try cleanItems(sql_db, allocator);
         return;
     }
 
@@ -269,7 +439,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
         var rss_feed = try parse.parse(allocator, contents.items);
         const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
 
-        try db.update(db_struct.conn, update_local, .{
+        try db.update(sql_db, update_local, .{
             mtime_sec,
             // where
             obj.feed_id,
@@ -284,7 +454,7 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             }
         }
 
-        try db.update(db_struct.conn, Table.feed.update_where_id, .{
+        try db.update(sql_db, Table.feed.update_where_id, .{
             rss_feed.title,
             rss_feed.link,
             rss_feed.updated_raw,
@@ -293,11 +463,12 @@ pub fn updateFeeds(allocator: *Allocator, db_struct: *Db, opts: struct { force: 
             obj.feed_id,
         });
 
-        try addFeedItems(db_struct.conn, rss_feed.items, obj.feed_id);
+        print("etst this {}\n", .{rss_feed.items.len});
+        try addFeedItems(sql_db, rss_feed.items, obj.feed_id);
         // TODO: remove extra feed items
         l.info("\tUpdate finished: '{s}'", .{obj.location});
     }
-    try cleanItems(db_struct, allocator);
+    try cleanItems(sql_db, allocator);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
@@ -413,7 +584,7 @@ pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
     }
 }
 
-pub fn deleteFeed(
+pub fn cliDeleteFeed(
     db_struct: *Db,
     allocator: *Allocator,
     location: []const u8,
@@ -503,7 +674,7 @@ pub fn cleanItemsById(db_struct: *Db, feed_id: usize) !void {
     // TODO: implement fn cleanItemsById
 }
 
-pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
+pub fn cleanItems(sql_db: *sql.Db, allocator: *Allocator) !void {
     const query =
         \\SELECT
         \\  feed_id, count(feed_id) as count
@@ -517,7 +688,7 @@ pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
         count: usize,
     };
 
-    const results = try db.selectAll(DbResult, allocator, db_struct.conn, query, .{@as(usize, g.max_items_per_feed)});
+    const results = try db.selectAll(DbResult, allocator, sql_db, query, .{@as(usize, g.max_items_per_feed)});
 
     const del_query =
         \\DELETE FROM item
@@ -527,7 +698,7 @@ pub fn cleanItems(db_struct: *Db, allocator: *Allocator) !void {
         \\ORDER BY pub_date_utc ASC, created_at DESC LIMIT ?)
     ;
     for (results) |r| {
-        try db.delete(db_struct.conn, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
+        try db.delete(sql_db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
     }
 }
 
@@ -637,6 +808,8 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
     // TODO: explore url/file detection
     if (url_or_err) |url| {
         var req = http.FeedRequest{ .url = url };
+
+        // Also contains CLI prompt
         const resp = try cliHandleRequest(allocator, req);
 
         if (resp.body == null) {
@@ -662,6 +835,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
             }
         };
 
+        // Adding to DB
         var location = try fmt.allocPrint(allocator, "{s}://{s}{s}", .{
             resp.url.protocol,
             resp.url.domain,
@@ -690,7 +864,7 @@ pub fn cliAddFeed(db_struct: *Db, location_raw: []const u8) !void {
         try addFeedItems(db_struct.conn, feed_data.items, id);
     } else |_| {
         const location = try makeFilePath(allocator, location_raw);
-        const contents = try getLocalFileContents(allocator, location);
+        const contents = try getFileContents(allocator, location);
 
         var feed_data = try parse.parse(allocator, contents);
 
@@ -727,6 +901,7 @@ pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
 }
 
 pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: usize) !void {
+    parse.Feed.sortItemsByDate(feed_items);
     for (feed_items) |it| {
         if (it.id) |guid| {
             try db.insert(
@@ -760,12 +935,22 @@ pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: us
     }
 }
 
-// location has to be absolute
-pub fn getLocalFileContents(allocator: *Allocator, abs_location: []const u8) ![]const u8 {
-    // TODO: check out fn os.toPosixPath
-    const local_file = try std.fs.openFileAbsolute(abs_location, .{});
-    defer local_file.close();
-    var file_stat = try local_file.stat();
+pub fn getFileContents(allocator: *Allocator, abs_path: []const u8) ![]const u8 {
+    const file = try fs.openFileAbsolute(abs_path, .{});
+    defer file.close();
+    return try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
+}
 
-    return try local_file.reader().readAllAlloc(allocator, file_stat.size);
+test "getFileContents(): relative and absolute path" {
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    const abs_content = try getFileContents(allocator, abs_path);
+    const rel_path = "test/sample-rss-2.xml";
+    const rel_content = try getFileContents(allocator, rel_path);
+
+    assert(abs_content.len == rel_content.len);
 }

@@ -46,7 +46,7 @@ pub fn createFileDb(path_opt: ?[:0]const u8) !sql.Db {
 
 pub fn setup(db: *sql.Db) !void {
     // TODO?: use PRAGMA schema.user_version = integer ;
-    _ = try db.pragma(usize, .{}, "foreign_keys", .{"1"});
+    _ = try db.pragma(usize, .{}, "foreign_keys", "1");
 
     inline for (@typeInfo(Table).Struct.decls) |decl| {
         if (@hasDecl(decl.data.Type, "create")) {
@@ -222,16 +222,6 @@ pub const Db = struct {
             data.updated_timestamp,
             data.id,
         });
-    }
-
-    // TODO: test this fn
-    pub fn getFeedId(db: *Self, location: []const u8) !?usize {
-        return try one(
-            usize,
-            db.conn,
-            Table.feed.select_id ++ Table.feed.where_location,
-            .{location},
-        );
     }
 };
 

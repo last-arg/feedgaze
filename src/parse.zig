@@ -247,8 +247,8 @@ pub const Feed = struct {
         updated_timestamp: ?i64 = null,
     };
 
-    pub fn sortItemsByDate(feed: *Self) void {
-        std.sort.insertionSort(Item, feed.items, {}, compareItemDate);
+    pub fn sortItemsByDate(items: []Item) void {
+        std.sort.insertionSort(Item, items, {}, compareItemDate);
     }
 
     const cmp = std.sort.asc(i64);
@@ -936,7 +936,7 @@ test "Rss.parse" {
     expect(null != feed.items[0].updated_raw);
     std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
 
-    feed.sortItemsByDate();
+    Feed.sortItemsByDate(feed.items);
     const items_with_null_dates = feed.getItemsWithNullDates();
     // const start = feed.getNonNullFeedItemStart();
     expect(items_with_null_dates.len == 2);

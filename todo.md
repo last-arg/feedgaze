@@ -30,4 +30,3 @@
 [ ] Mark feeds to use OS notification system on new link(s)
 [ ] Mark feeds that will send email on new link(s)
 
-
