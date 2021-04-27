@@ -159,13 +159,21 @@ test "@active local feed: add, update, remove" {
     }
 
     const item_count_query = "select count(id) from item";
+
     // Delete items that are over max item limit
     {
         var item_count = try db.count(&sql_db, item_count_query);
         expect(feed.items.len == item_count);
 
+        // cleanItemsByFeedId()
         g.max_items_per_feed = 4;
-        try db_.deleteItemsById(1);
+        try db_.cleanItemsByFeedId(1);
+        item_count = try db.count(&sql_db, item_count_query);
+        expect(g.max_items_per_feed == item_count);
+
+        // cleanItems()
+        g.max_items_per_feed = 2;
+        try db_.cleanItems(allocator);
         item_count = try db.count(&sql_db, item_count_query);
         expect(g.max_items_per_feed == item_count);
     }
@@ -398,7 +406,7 @@ const Db_ = struct {
         defer allocator.free(local_updates);
 
         if (local_updates.len == 0) {
-            try cleanItems(self.db, allocator);
+            try self.cleanItems(allocator);
             return;
         }
 
@@ -461,20 +469,49 @@ const Db_ = struct {
             // TODO: remove extra feed items
             l.info("\tUpdate finished: '{s}'", .{obj.location});
         }
-        try cleanItems(self.db, allocator);
+        try self.cleanItems(allocator);
     }
 
-    pub fn deleteItemsById(self: Self, feed_id: usize) !void {
+    pub fn cleanItemsByFeedId(self: Self, feed_id: usize) !void {
         const query =
-            \\delete from item
-            \\where id in
-            \\	(select id from item
-            \\		where feed_id = ?
-            \\		order by pub_date_utc asc, created_at asc
-            \\		limit (select max(count(feed_id) - ?, 0) from item where feed_id = ?)
-            \\ )
+            \\DELETE FROM item
+            \\WHERE id IN
+            \\	(SELECT id FROM item
+            \\		WHERE feed_id = ?
+            \\		ORDER BY pub_date_utc ASC, created_at ASC
+            \\		LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
+            \\  )
         ;
         try db.delete(self.db, query, .{ feed_id, g.max_items_per_feed, feed_id });
+    }
+
+    pub fn cleanItems(self: Self, allocator: *Allocator) !void {
+        const query =
+            \\SELECT
+            \\  feed_id, count(feed_id) as count
+            \\FROM item
+            \\GROUP BY feed_id
+            \\HAVING count(feed_id) > ?{usize}
+        ;
+
+        const DbResult = struct {
+            feed_id: usize,
+            count: usize,
+        };
+
+        const results = try db.selectAll(DbResult, allocator, self.db, query, .{g.max_items_per_feed});
+
+        const del_query =
+            \\DELETE FROM item
+            \\WHERE id IN (SELECT id
+            \\  FROM item
+            \\  WHERE feed_id = ?
+            \\  ORDER BY pub_date_utc ASC, created_at ASC LIMIT ?
+            \\)
+        ;
+        for (results) |r| {
+            try db.delete(self.db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
+        }
     }
 };
 
@@ -733,34 +770,6 @@ pub fn cliDeleteFeed(
         const result = results[delete_nr - 1];
         try deleteFeed(db_struct.conn, result.id);
         try stdout.writer().print("Deleted feed '{s}'\n", .{result.location});
-    }
-}
-
-pub fn cleanItems(sql_db: *sql.Db, allocator: *Allocator) !void {
-    const query =
-        \\SELECT
-        \\  feed_id, count(feed_id) as count
-        \\FROM item
-        \\GROUP BY feed_id
-        \\HAVING count(feed_id) > ?{usize}
-    ;
-
-    const DbResult = struct {
-        feed_id: usize,
-        count: usize,
-    };
-
-    const results = try db.selectAll(DbResult, allocator, sql_db, query, .{@as(usize, g.max_items_per_feed)});
-
-    const del_query =
-        \\DELETE FROM item
-        \\WHERE id IN (SELECT id
-        \\FROM item
-        \\WHERE feed_id = ?
-        \\ORDER BY pub_date_utc ASC, created_at DESC LIMIT ?)
-    ;
-    for (results) |r| {
-        try db.delete(sql_db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
     }
 }
 
