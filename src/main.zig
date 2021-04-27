@@ -24,7 +24,7 @@ usingnamespace @import("queries.zig");
 
 pub const log_level = std.log.Level.info;
 const g = struct {
-    const max_items_per_feed = 10;
+    var max_items_per_feed: usize = 10;
 };
 
 fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
@@ -34,7 +34,6 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
 }
 
 test "@active local feed: add, update, remove" {
-    print("Running test(s) with @active\n", .{});
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -42,6 +41,9 @@ test "@active local feed: add, update, remove" {
 
     var sql_db = try db.createDb(allocator, null);
     try db.setup(&sql_db);
+    var db_ = Db_{
+        .db = &sql_db,
+    };
 
     // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
     const rel_path = "test/sample-rss-2.xml";
@@ -57,9 +59,11 @@ test "@active local feed: add, update, remove" {
 
     const all_items = feed.items;
     feed.items = all_items[0..3];
-    try addFeedLocal(&sql_db, feed, abs_path, mtime_sec);
+    const id = try db_.addFeed(feed, abs_path);
+    try db_.addFeedLocal(id, mtime_sec);
+    try db_.addItems(id, feed.items);
 
-    const FeedResult = struct {
+    const LocalResult = struct {
         location: []const u8,
         link: ?[]const u8,
         title: []const u8,
@@ -70,9 +74,9 @@ test "@active local feed: add, update, remove" {
 
     const all_feeds_query = "select location, link, title, updated_raw, id, updated_timestamp from feed";
 
-    // Feed
+    // Feed local
     {
-        const db_feeds = try db.selectAll(FeedResult, allocator, &sql_db, all_feeds_query, .{});
+        const db_feeds = try db.selectAll(LocalResult, allocator, &sql_db, all_feeds_query, .{});
         expect(db_feeds.len == 1);
         const first = db_feeds[0];
         expect(first.id == 1);
@@ -122,16 +126,17 @@ test "@active local feed: add, update, remove" {
         expect(items.len == feed.items.len);
     }
 
-    try updateAllFeeds(allocator, &sql_db, .{ .force = true });
+    try db_.updateAllFeeds(allocator, .{ .force = true });
+    feed.items = all_items;
 
     // Items
     {
         const items = try db.selectAll(ItemsResult, allocator, &sql_db, all_items_query, .{});
-        expect(items.len == all_items.len);
+        expect(items.len == feed.items.len);
 
-        parse.Feed.sortItemsByDate(all_items);
+        parse.Feed.sortItemsByDate(feed.items);
         for (items) |db_item, i| {
-            const f_item = all_items[i];
+            const f_item = feed.items[i];
             expect(equalNullString(db_item.link, f_item.link));
             expect(equalNullString(db_item.guid, f_item.id));
             std.testing.expectEqualStrings(db_item.title, f_item.title);
@@ -153,53 +158,325 @@ test "@active local feed: add, update, remove" {
         expect(first.last_modified_timestamp == mtime_sec);
     }
 
-    // Delete
+    const item_count_query = "select count(id) from item";
+    // Delete items that are over max item limit
     {
-        try deleteFeed(&sql_db, 1);
+        var item_count = try db.count(&sql_db, item_count_query);
+        expect(feed.items.len == item_count);
+
+        g.max_items_per_feed = 4;
+        try db_.deleteItemsById(1);
+        item_count = try db.count(&sql_db, item_count_query);
+        expect(g.max_items_per_feed == item_count);
+    }
+
+    // Delete feed
+    {
+        try db_.deleteFeed(1);
 
         const feed_count = try db.count(&sql_db, "select count(id) from feed");
         expect(feed_count == 0);
         const local_update_count = try db.count(&sql_db, "select count(feed_id) from feed_update_local");
         expect(local_update_count == 0);
-        const item_count = try db.count(&sql_db, "select count(id) from item");
+        const item_count = try db.count(&sql_db, item_count_query);
         expect(item_count == 0);
     }
 }
 
-pub fn deleteFeed(sql_db: *sql.Db, id: usize) !void {
-    try db.delete(sql_db, "DELETE FROM feed WHERE id = ?", .{id});
-}
+const Db_ = struct {
+    const Self = @This();
+    db: *sql.Db,
 
-pub fn addFeedLocal(
-    sql_db: *sql.Db,
-    feed: parse.Feed,
-    location: []const u8,
-    last_modified: i64,
-) !void {
-    try db.insert(sql_db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
-        feed.title,
-        location,
-        feed.link,
-        feed.updated_raw,
-        feed.updated_timestamp,
-    });
+    pub fn addFeed(self: Self, feed: parse.Feed, location: []const u8) !usize {
+        try db.insert(self.db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
+            feed.title,
+            location,
+            feed.link,
+            feed.updated_raw,
+            feed.updated_timestamp,
+        });
 
-    const id = (try db.one(
-        usize,
-        sql_db,
-        Table.feed.select_id ++ Table.feed.where_location,
-        .{location},
-    )) orelse return error.NoFeedWithLocation;
+        const id = (try db.one(
+            usize,
+            self.db,
+            Table.feed.select_id ++ Table.feed.where_location,
+            .{location},
+        )) orelse return error.NoFeedWithLocation;
 
-    // TODO: get file last modified date
-    // const last_modified: i64 = 0;
-    // print("{}\n", .{last_modified});
-    try db.insert(sql_db, Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
-        id, last_modified,
-    });
+        return id;
+    }
 
-    try addFeedItems(sql_db, feed.items, id);
-}
+    pub fn deleteFeed(self: Self, id: usize) !void {
+        try db.delete(self.db, "DELETE FROM feed WHERE id = ?", .{id});
+    }
+
+    pub fn addFeedUrl(self: Self, feed_id: usize, resp: http.FeedResponse) !void {
+        try db.insert(self.db, Table.feed_update_http.insert ++ Table.feed_update_http.on_conflict_feed_id, .{
+            id,
+            resp.cache_control_max_age,
+            resp.expires_utc,
+            resp.last_modified_utc,
+            resp.etag,
+        });
+    }
+
+    pub fn addFeedLocal(
+        self: Self,
+        id: usize,
+        last_modified: i64,
+    ) !void {
+        try db.insert(self.db, Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
+            id, last_modified,
+        });
+    }
+
+    pub fn addItems(self: Self, feed_id: usize, feed_items: []parse.Feed.Item) !void {
+        parse.Feed.sortItemsByDate(feed_items);
+        for (feed_items) |it| {
+            if (it.id) |guid| {
+                try db.insert(
+                    self.db,
+                    Table.item.upsert_guid,
+                    .{ feed_id, it.title, guid, it.link, it.updated_raw, it.updated_timestamp },
+                );
+            } else if (it.link) |link| {
+                try db.insert(
+                    self.db,
+                    Table.item.upsert_link,
+                    .{ feed_id, it.title, link, it.updated_raw, it.updated_timestamp },
+                );
+            } else {
+                const item_id = try db.one(
+                    usize,
+                    self.db,
+                    Table.item.select_id_by_title,
+                    .{ feed_id, it.title },
+                );
+                if (item_id) |id| {
+                    try db.update(self.db, Table.item.update_date, .{ it.updated_raw, it.updated_timestamp, id, it.updated_timestamp });
+                } else {
+                    try db.insert(
+                        self.db,
+                        Table.item.insert_minimal,
+                        .{ feed_id, it.title, it.updated_raw, it.updated_timestamp },
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn updateAllFeeds(self: Self, allocator: *Allocator, opts: struct { force: bool = false }) !void {
+        @setEvalBranchQuota(2000);
+
+        // Update url feeds
+        const DbResultUrl = struct {
+            location: []const u8,
+            etag: ?[]const u8,
+            feed_id: usize,
+            feed_updated_timestamp: ?i64,
+            update_interval: usize,
+            last_update: i64,
+            expires_utc: ?i64,
+            last_modified_utc: ?i64,
+            cache_control_max_age: ?i64,
+        };
+
+        const url_updates = try db.selectAll(DbResultUrl, allocator, self.db, Table.feed_update_http.selectAllWithLocation, .{});
+        defer allocator.free(url_updates);
+
+        const current_time = std.time.timestamp();
+
+        for (url_updates) |obj| {
+            l.info("Update feed: '{s}'", .{obj.location});
+            if (!opts.force) {
+                const check_date: i64 = blk: {
+                    if (obj.cache_control_max_age) |sec| {
+                        // Uses cache_control_max_age, last_update
+                        break :blk obj.last_update + sec;
+                    }
+                    if (obj.expires_utc) |sec| {
+                        break :blk sec;
+                    }
+                    break :blk obj.last_update + @intCast(i64, obj.update_interval);
+                };
+                if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
+                    l.info("\tSkip update: Not needed", .{});
+                    continue;
+                } else if (check_date > current_time) {
+                    l.info("\tSkip update: Not needed", .{});
+                    continue;
+                }
+            }
+
+            const last_modified = blk: {
+                if (obj.last_modified_utc) |last_modified_utc| {
+                    const date = Datetime.fromTimestamp(last_modified_utc);
+                    var date_buf: [29]u8 = undefined;
+                    const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
+                    const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
+                        date.date.weekdayName()[0..3],
+                        date.date.day,
+                        date.date.monthName()[0..3],
+                        date.date.year,
+                        date.time.hour,
+                        date.time.minute,
+                        date.time.second,
+                    });
+                    break :blk date_str;
+                }
+                break :blk null;
+            };
+            const req = http.FeedRequest{
+                .url = try http.makeUrl(obj.location),
+                .etag = obj.etag,
+                .last_modified = last_modified,
+            };
+
+            const resp = try http.resolveRequest(allocator, req);
+
+            if (resp.status_code == 304) {
+                l.info("\tSkipping update: Feed hasn't been modified", .{});
+                continue;
+            }
+
+            if (resp.body == null) {
+                l.info("\tSkipping update: HTTP request body is empty", .{});
+                continue;
+            }
+
+            const body = resp.body.?;
+            const rss_feed = switch (resp.content_type) {
+                .xml_atom => try parse.Atom.parse(allocator, body),
+                .xml_rss => try parse.Rss.parse(allocator, body),
+                else => try parse.parse(allocator, body),
+            };
+
+            try db.update(self.db, Table.feed_update_http.update_id, .{
+                resp.cache_control_max_age,
+                resp.expires_utc,
+                resp.last_modified_utc,
+                resp.etag,
+                current_time,
+                // where
+                obj.feed_id,
+            });
+
+            if (!opts.force) {
+                if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
+                    rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+                {
+                    l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                    continue;
+                }
+            }
+
+            try db.update(self.db, Table.feed.update_where_id, .{
+                rss_feed.title,
+                rss_feed.link,
+                rss_feed.updated_raw,
+                rss_feed.updated_timestamp,
+                // where
+                obj.feed_id,
+            });
+
+            try self.addItems(obj.feed_id, rss_feed.items);
+            // TODO: remove extra feed items
+            l.info("\tUpdate finished: '{s}'", .{obj.location});
+        }
+
+        // Update local file feeds
+        const DbResultLocal = struct {
+            location: []const u8,
+            feed_id: usize,
+            feed_updated_timestamp: ?i64,
+            update_interval: usize,
+            last_update: i64,
+            last_modified_timestamp: ?i64,
+        };
+
+        const local_updates = try db.selectAll(DbResultLocal, allocator, self.db, Table.feed_update_local.selectAllWithLocation, .{});
+        defer allocator.free(local_updates);
+
+        if (local_updates.len == 0) {
+            try cleanItems(self.db, allocator);
+            return;
+        }
+
+        var contents = try ArrayList(u8).initCapacity(allocator, 4096);
+        defer contents.deinit();
+
+        const update_local =
+            \\UPDATE feed_update_local SET
+            \\  last_modified_timestamp = ?,
+            \\  last_update = (strftime('%s', 'now'))
+            \\WHERE feed_id = ?
+        ;
+
+        for (local_updates) |obj| {
+            l.info("Update feed (local): '{s}'", .{obj.location});
+            const file = try std.fs.openFileAbsolute(obj.location, .{});
+            defer file.close();
+            var file_stat = try file.stat();
+            if (!opts.force) {
+                if (obj.last_modified_timestamp) |last_modified| {
+                    const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
+                    if (last_modified == mtime_sec) {
+                        l.info("\tSkipping update: File hasn't been modified", .{});
+                        continue;
+                    }
+                }
+            }
+
+            try contents.resize(0);
+            try contents.ensureCapacity(file_stat.size);
+            try file.reader().readAllArrayList(&contents, file_stat.size);
+            var rss_feed = try parse.parse(allocator, contents.items);
+            const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
+
+            try db.update(self.db, update_local, .{
+                mtime_sec,
+                // where
+                obj.feed_id,
+            });
+
+            if (!opts.force) {
+                if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
+                    rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+                {
+                    l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                    continue;
+                }
+            }
+
+            try db.update(self.db, Table.feed.update_where_id, .{
+                rss_feed.title,
+                rss_feed.link,
+                rss_feed.updated_raw,
+                rss_feed.updated_timestamp,
+                // where
+                obj.feed_id,
+            });
+
+            try self.addItems(obj.feed_id, rss_feed.items);
+            // TODO: remove extra feed items
+            l.info("\tUpdate finished: '{s}'", .{obj.location});
+        }
+        try cleanItems(self.db, allocator);
+    }
+
+    pub fn deleteItemsById(self: Self, feed_id: usize) !void {
+        const query =
+            \\delete from item
+            \\where id in
+            \\	(select id from item
+            \\		where feed_id = ?
+            \\		order by pub_date_utc asc, created_at asc
+            \\		limit (select max(count(feed_id) - ?, 0) from item where feed_id = ?)
+            \\ )
+        ;
+        try db.delete(self.db, query, .{ feed_id, g.max_items_per_feed, feed_id });
+    }
+};
 
 // TODO: see if there is good way to detect local file path or url
 pub fn main() anyerror!void {
@@ -269,206 +546,6 @@ pub fn main() anyerror!void {
             return error.UnknownArgument;
         }
     }
-}
-
-pub fn updateAllFeeds(allocator: *Allocator, sql_db: *sql.Db, opts: struct { force: bool = false }) !void {
-    @setEvalBranchQuota(2000);
-
-    // Update url feeds
-    const DbResultUrl = struct {
-        location: []const u8,
-        etag: ?[]const u8,
-        feed_id: usize,
-        feed_updated_timestamp: ?i64,
-        update_interval: usize,
-        last_update: i64,
-        expires_utc: ?i64,
-        last_modified_utc: ?i64,
-        cache_control_max_age: ?i64,
-    };
-
-    const url_updates = try db.selectAll(DbResultUrl, allocator, sql_db, Table.feed_update_http.selectAllWithLocation, .{});
-    defer allocator.free(url_updates);
-
-    const current_time = std.time.timestamp();
-
-    for (url_updates) |obj| {
-        l.info("Update feed: '{s}'", .{obj.location});
-        if (!opts.force) {
-            const check_date: i64 = blk: {
-                if (obj.cache_control_max_age) |sec| {
-                    // Uses cache_control_max_age, last_update
-                    break :blk obj.last_update + sec;
-                }
-                if (obj.expires_utc) |sec| {
-                    break :blk sec;
-                }
-                break :blk obj.last_update + @intCast(i64, obj.update_interval);
-            };
-            if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
-                l.info("\tSkip update: Not needed", .{});
-                continue;
-            } else if (check_date > current_time) {
-                l.info("\tSkip update: Not needed", .{});
-                continue;
-            }
-        }
-
-        const last_modified = blk: {
-            if (obj.last_modified_utc) |last_modified_utc| {
-                const date = Datetime.fromTimestamp(last_modified_utc);
-                var date_buf: [29]u8 = undefined;
-                const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
-                const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
-                    date.date.weekdayName()[0..3],
-                    date.date.day,
-                    date.date.monthName()[0..3],
-                    date.date.year,
-                    date.time.hour,
-                    date.time.minute,
-                    date.time.second,
-                });
-                break :blk date_str;
-            }
-            break :blk null;
-        };
-        const req = http.FeedRequest{
-            .url = try http.makeUrl(obj.location),
-            .etag = obj.etag,
-            .last_modified = last_modified,
-        };
-
-        const resp = try http.resolveRequest(allocator, req);
-
-        if (resp.status_code == 304) {
-            l.info("\tSkipping update: Feed hasn't been modified", .{});
-            continue;
-        }
-
-        if (resp.body == null) {
-            l.info("\tSkipping update: HTTP request body is empty", .{});
-            continue;
-        }
-
-        const body = resp.body.?;
-        const rss_feed = switch (resp.content_type) {
-            .xml_atom => try parse.Atom.parse(allocator, body),
-            .xml_rss => try parse.Rss.parse(allocator, body),
-            else => try parse.parse(allocator, body),
-        };
-
-        try db.update(sql_db, Table.feed_update_http.update_id, .{
-            resp.cache_control_max_age,
-            resp.expires_utc,
-            resp.last_modified_utc,
-            resp.etag,
-            current_time,
-            // where
-            obj.feed_id,
-        });
-
-        if (!opts.force) {
-            if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-                rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
-            {
-                l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
-                continue;
-            }
-        }
-
-        try db.update(sql_db, Table.feed.update_where_id, .{
-            rss_feed.title,
-            rss_feed.link,
-            rss_feed.updated_raw,
-            rss_feed.updated_timestamp,
-            // where
-            obj.feed_id,
-        });
-
-        try addFeedItems(sql_db, rss_feed.items, obj.feed_id);
-        // TODO: remove extra feed items
-        l.info("\tUpdate finished: '{s}'", .{obj.location});
-    }
-
-    // Update local file feeds
-    const DbResultLocal = struct {
-        location: []const u8,
-        feed_id: usize,
-        feed_updated_timestamp: ?i64,
-        update_interval: usize,
-        last_update: i64,
-        last_modified_timestamp: ?i64,
-    };
-
-    const local_updates = try db.selectAll(DbResultLocal, allocator, sql_db, Table.feed_update_local.selectAllWithLocation, .{});
-    defer allocator.free(local_updates);
-
-    if (local_updates.len == 0) {
-        try cleanItems(sql_db, allocator);
-        return;
-    }
-
-    var contents = try ArrayList(u8).initCapacity(allocator, 4096);
-    defer contents.deinit();
-
-    const update_local =
-        \\UPDATE feed_update_local SET
-        \\  last_modified_timestamp = ?,
-        \\  last_update = (strftime('%s', 'now'))
-        \\WHERE feed_id = ?
-    ;
-
-    for (local_updates) |obj| {
-        l.info("Update feed (local): '{s}'", .{obj.location});
-        const file = try std.fs.openFileAbsolute(obj.location, .{});
-        defer file.close();
-        var file_stat = try file.stat();
-        if (!opts.force) {
-            if (obj.last_modified_timestamp) |last_modified| {
-                const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
-                if (last_modified == mtime_sec) {
-                    l.info("\tSkipping update: File hasn't been modified", .{});
-                    continue;
-                }
-            }
-        }
-
-        try contents.resize(0);
-        try contents.ensureCapacity(file_stat.size);
-        try file.reader().readAllArrayList(&contents, file_stat.size);
-        var rss_feed = try parse.parse(allocator, contents.items);
-        const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
-
-        try db.update(sql_db, update_local, .{
-            mtime_sec,
-            // where
-            obj.feed_id,
-        });
-
-        if (!opts.force) {
-            if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-                rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
-            {
-                l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
-                continue;
-            }
-        }
-
-        try db.update(sql_db, Table.feed.update_where_id, .{
-            rss_feed.title,
-            rss_feed.link,
-            rss_feed.updated_raw,
-            rss_feed.updated_timestamp,
-            // where
-            obj.feed_id,
-        });
-
-        print("etst this {}\n", .{rss_feed.items.len});
-        try addFeedItems(sql_db, rss_feed.items, obj.feed_id);
-        // TODO: remove extra feed items
-        l.info("\tUpdate finished: '{s}'", .{obj.location});
-    }
-    try cleanItems(sql_db, allocator);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
@@ -654,24 +731,9 @@ pub fn cliDeleteFeed(
     ;
     if (delete_nr > 0) {
         const result = results[delete_nr - 1];
-        try db.delete(db_struct.conn, del_query, .{result.id});
+        try deleteFeed(db_struct.conn, result.id);
         try stdout.writer().print("Deleted feed '{s}'\n", .{result.location});
     }
-}
-
-pub fn cleanItemsById(db_struct: *Db, feed_id: usize) !void {
-    const query =
-        \\delete from item
-        \\where id in (select id from item
-        \\	where feed_id = 2
-        \\	order by pub_date_utc asc, created_at asc
-        \\	limit (case when ((select count(feed_id) from item where feed_id = 2) - 4) > 0
-        \\				then ((select count(feed_id) from item where feed_id = 2) - 4)
-        \\				else 0
-        \\			end)
-        \\)
-    ;
-    // TODO: implement fn cleanItemsById
 }
 
 pub fn cleanItems(sql_db: *sql.Db, allocator: *Allocator) !void {
@@ -711,6 +773,7 @@ pub fn cliHandleRequest(allocator: *Allocator, start_req: http.FeedRequest) !htt
     const max_tries = 3;
     var tries: usize = 0;
 
+    // TODO: check status code
     while (tries < max_tries) {
         const old_resp = resp;
         l.warn("CONTENT: {}", .{resp.content_type});
@@ -898,41 +961,6 @@ pub fn getLatestAddedItemDateTimestamp(db_conn: *sql.Db, feed_id: usize) !?i64 {
         \\LIMIT 1
     ;
     return try db.one(i64, db_conn, query, .{feed_id});
-}
-
-pub fn addFeedItems(db_conn: *sql.Db, feed_items: []parse.Feed.Item, feed_id: usize) !void {
-    parse.Feed.sortItemsByDate(feed_items);
-    for (feed_items) |it| {
-        if (it.id) |guid| {
-            try db.insert(
-                db_conn,
-                Table.item.upsert_guid,
-                .{ feed_id, it.title, guid, it.link, it.updated_raw, it.updated_timestamp },
-            );
-        } else if (it.link) |link| {
-            try db.insert(
-                db_conn,
-                Table.item.upsert_link,
-                .{ feed_id, it.title, link, it.updated_raw, it.updated_timestamp },
-            );
-        } else {
-            const item_id = try db.one(
-                usize,
-                db_conn,
-                Table.item.select_id_by_title,
-                .{ feed_id, it.title },
-            );
-            if (item_id) |id| {
-                try db.update(db_conn, Table.item.update_date, .{ it.updated_raw, it.updated_timestamp, id, it.updated_timestamp });
-            } else {
-                try db.insert(
-                    db_conn,
-                    Table.item.insert_minimal,
-                    .{ feed_id, it.title, it.updated_raw, it.updated_timestamp },
-                );
-            }
-        }
-    }
 }
 
 pub fn getFileContents(allocator: *Allocator, abs_path: []const u8) ![]const u8 {

@@ -76,8 +76,6 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     const port = 443;
     const path = req.url.path;
 
-    var feed_resp = FeedResponse{ .url = req.url };
-
     const tcp_conn = try std.net.tcpConnectToHost(allocator, host, port);
     defer tcp_conn.close();
 
@@ -127,6 +125,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var content_len: usize = std.math.maxInt(usize);
 
     var status_code: u16 = 0;
+    var feed_resp = FeedResponse{ .url = req.url };
 
     while (try head_client.next()) |event| {
         switch (event) {
