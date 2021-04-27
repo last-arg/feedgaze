@@ -39,12 +39,16 @@ pub fn build(b: *Builder) void {
 
     var test_cmd = b.addTest(test_file);
     test_cmd.setBuildMode(mode);
-    test_cmd.setFilter("@active");
-
     stepSetup(test_cmd, target);
-
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
+
+    var test_active_cmd = b.addTest(test_file);
+    test_active_cmd.setBuildMode(mode);
+    test_active_cmd.setFilter("@active");
+    stepSetup(test_active_cmd, target);
+    const test_active_step = b.step("test-active", "Run tests with @active");
+    test_active_step.dependOn(&test_active_cmd.step);
 }
 
 fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
