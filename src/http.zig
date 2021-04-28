@@ -11,6 +11,8 @@ const client = hzzp.base.client;
 const Headers = hzzp.Headers;
 const l = std.log;
 const dateStrToTimeStamp = @import("parse.zig").Rss.pubDateToTimestamp;
+const expect = std.testing.expect;
+const print = std.debug.print;
 
 // 1. insert url
 // 2. valid url. return response
@@ -339,45 +341,42 @@ pub const Url = struct {
 // NOTE: urls with port will error
 // NOTE: https://localhost will error
 pub fn makeUrl(url_str: []const u8) !Url {
-    // Actual url.len must atleast be 10 or there abouts
-    if (!mem.eql(u8, "http", url_str[0..4])) return error.InvalidUrl;
-
-    var it = mem.split(url_str, "://");
-    const protocol = it.next() orelse return error.InvalidUrl;
-
-    const url = it.rest();
+    var result: Url = undefined;
+    result.protocol = "http";
+    var url = url_str;
+    if (mem.indexOf(u8, url_str, "://")) |index| {
+        result.protocol = url_str[0..index];
+        url = url_str[index + 3 ..];
+    }
 
     const slash_index = mem.indexOfScalar(u8, url, '/') orelse url.len;
-    const domain_all = url[0..slash_index];
-    const dot_index = mem.lastIndexOfScalar(u8, domain_all, '.') orelse return error.InvalidDomain;
-    const domain = domain_all[0..dot_index];
-    const domain_ext = domain_all[dot_index + 1 ..];
+    result.domain = url[0..slash_index];
+    result.path = if (slash_index == url.len) "/" else url[slash_index..];
 
-    if (!ascii.isAlNum(domain[0])) return error.InvalidDomain;
-    if (!ascii.isAlNum(domain[domain.len - 1])) return error.InvalidDomain;
-    if (!ascii.isAlpha(domain_ext[0])) return error.InvalidDomainExtension;
+    return result;
+}
 
-    const domain_rest = domain[1 .. domain.len - 2];
-    const domain_ext_rest = domain_ext[1..];
-
-    for (domain_rest) |char| {
-        if (!ascii.isAlNum(char) and char != '-' and char != '.') {
-            return error.InvalidDomain;
-        }
+test "makeUrl" {
+    {
+        const url = try makeUrl("https://google.com/");
+        expect(mem.eql(u8, url.protocol, "https"));
+        expect(mem.eql(u8, url.domain, "google.com"));
+        expect(mem.eql(u8, url.path, "/"));
     }
 
-    for (domain_ext_rest) |char| {
-        if (!ascii.isAlNum(char) and char != '-') {
-            return error.InvalidDomainExtension;
-        }
+    {
+        const url = try makeUrl("google.com");
+        expect(mem.eql(u8, url.protocol, "http"));
+        expect(mem.eql(u8, url.domain, "google.com"));
+        expect(mem.eql(u8, url.path, "/"));
     }
 
-    const path = if (url[slash_index..].len == 0) "/" else url[slash_index..];
-    return Url{
-        .protocol = protocol,
-        .domain = domain_all,
-        .path = path,
-    };
+    {
+        const url = try makeUrl("google.com/test/path");
+        expect(mem.eql(u8, url.protocol, "http"));
+        expect(mem.eql(u8, url.domain, "google.com"));
+        expect(mem.eql(u8, url.path, "/test/path"));
+    }
 }
 
 test "http" {
