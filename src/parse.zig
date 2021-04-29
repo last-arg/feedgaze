@@ -152,8 +152,22 @@ pub const Html = struct {
                 }
             }
 
-            if (makeLink(link_rel, link_type, link_href, link_title)) |link| {
-                try links.append(link);
+            // Check for duplicate links
+            const has_link = blk: {
+                if (link_href) |href| {
+                    for (links.items) |link| {
+                        if (mem.eql(u8, link.href, href)) {
+                            break :blk true;
+                        }
+                    }
+                }
+                break :blk false;
+            };
+
+            if (!has_link) {
+                if (makeLink(link_rel, link_type, link_href, link_title)) |link| {
+                    try links.append(link);
+                }
             }
 
             link_rel = null;
