@@ -66,7 +66,7 @@ pub fn resolveRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var resp = try makeRequest(allocator, req);
     while (resp.location) |location| {
         l.warn("REDIRECTING TO {s}", .{location});
-        const new_req = FeedRequest{ .url = try Uri.parse(location, false) };
+        const new_req = FeedRequest{ .url = try makeUri(location) };
         resp = try makeRequest(allocator, new_req);
     }
     return resp;
@@ -331,53 +331,13 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     return feed_resp;
 }
 
-pub const Url = struct {
-    protocol: []const u8,
-    domain: []const u8,
-    path: []const u8,
-};
+pub fn makeUri(location: []const u8) !Uri {
+    var result = try Uri.parse(location, true);
 
-// https://www.whogohost.com/host/knowledgebase/308/Valid-Domain-Name-Characters.html
-// https://stackoverflow.com/a/53875771
-// NOTE: urls with port will error
-// NOTE: https://localhost will error
-pub fn makeUrl(url_str: []const u8) !Url {
-    var result: Url = undefined;
-    result.protocol = "http";
-    var url = url_str;
-    if (mem.indexOf(u8, url_str, "://")) |index| {
-        result.protocol = url_str[0..index];
-        url = url_str[index + 3 ..];
+    if (result.path.len == 0) {
+        result.path = "/";
     }
-
-    const slash_index = mem.indexOfScalar(u8, url, '/') orelse url.len;
-    result.domain = url[0..slash_index];
-    result.path = if (slash_index == url.len) "/" else url[slash_index..];
-
     return result;
-}
-
-test "makeUrl" {
-    {
-        const url = try makeUrl("https://google.com/");
-        expect(mem.eql(u8, url.protocol, "https"));
-        expect(mem.eql(u8, url.domain, "google.com"));
-        expect(mem.eql(u8, url.path, "/"));
-    }
-
-    {
-        const url = try makeUrl("google.com");
-        expect(mem.eql(u8, url.protocol, "http"));
-        expect(mem.eql(u8, url.domain, "google.com"));
-        expect(mem.eql(u8, url.path, "/"));
-    }
-
-    {
-        const url = try makeUrl("google.com/test/path");
-        expect(mem.eql(u8, url.protocol, "http"));
-        expect(mem.eql(u8, url.domain, "google.com"));
-        expect(mem.eql(u8, url.path, "/test/path"));
-    }
 }
 
 test "http" {
@@ -386,11 +346,11 @@ test "http" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
-    const url = makeUrl("http://google.com/") catch unreachable;
-    // const url = makeUrl("http://lobste.rs") catch unreachable;
-    // const url = makeUrl("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js") catch unreachable; // chunked + deflate
-    // const url = makeUrl("https://news.xbox.com/en-us/feed/") catch unreachable;
-    // const url = makeUrl("https://feeds.feedburner.com/eclipse/fnews") catch unreachable;
+    const url = makeUri("http://google.com/") catch unreachable;
+    // const url = makeUri("http://lobste.rs") catch unreachable;
+    // const url = makeUri("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js") catch unreachable; // chunked + deflate
+    // const url = makeUri("https://news.xbox.com/en-us/feed/") catch unreachable;
+    // const url = makeUri("https://feeds.feedburner.com/eclipse/fnews") catch unreachable;
 
     // var r = rand.DefaultPrng.init(@intCast(u64, std.time.milliTimestamp()));
     // l.warn("rand: {}", .{r.random.int(u8)});
