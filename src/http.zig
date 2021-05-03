@@ -5,6 +5,7 @@ const mem = std.mem;
 const fmt = std.fmt;
 const ascii = std.ascii;
 const bearssl = @import("zig-bearssl");
+const Uri = @import("zuri").Uri;
 const gzip = std.compress.gzip;
 const hzzp = @import("hzzp");
 const client = hzzp.base.client;
@@ -24,13 +25,13 @@ const print = std.debug.print;
 // 5. Not valid feed url and failed to find a valid feed url.
 
 pub const FeedRequest = struct {
-    url: Url,
+    url: Uri,
     etag: ?[]const u8 = null,
     last_modified: ?[]const u8 = null,
 };
 
 pub const FeedResponse = struct {
-    url: Url,
+    url: Uri,
     cache_control_max_age: ?usize = null, // s-maxage or max-age, if available ignore expires
     expires_utc: ?i64 = null,
     // Owns the memory
@@ -64,8 +65,8 @@ pub const ContentType = enum {
 pub fn resolveRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     var resp = try makeRequest(allocator, req);
     while (resp.location) |location| {
-        l.warn("Redirecting to {s}", .{location});
-        const new_req = FeedRequest{ .url = try makeUrl(location) };
+        l.warn("REDIRECTING TO {s}", .{location});
+        const new_req = FeedRequest{ .url = try Uri.parse(location, false) };
         resp = try makeRequest(allocator, new_req);
     }
     return resp;
@@ -73,7 +74,7 @@ pub fn resolveRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
 pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     const cert = @embedFile("../mozilla_certs.pem");
-    const host = try std.cstr.addNullByte(allocator, req.url.domain);
+    const host = try std.cstr.addNullByte(allocator, req.url.host.name);
     defer allocator.free(host);
     const port = 443;
     const path = req.url.path;
@@ -136,7 +137,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 feed_resp.status_code = status.code;
                 if (status.code == 304) {
                     return feed_resp;
-                } else if (status.code == 301) {
+                } else if (status.code == 301 or status.code == 302) {
                     status_code = status.code;
                 } else if (status.code != 200) {
                     l.err("HTTP status code {d} not handled", .{status.code});
