@@ -16,3 +16,9 @@
 [submodule "lib/zig-bearssl"]
 	path = lib/zig-bearssl
 	url = https://github.com/MasterQ32/zig-bearssl
+[submodule "zuri"]
+	path = zuri
+	url = https://github.com/Vexu/zuri
+[submodule "lib/zuri"]
+	path = lib/zuri
+	url = https://github.com/Vexu/zuri
