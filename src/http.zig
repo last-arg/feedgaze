@@ -334,8 +334,8 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 pub fn makeUri(location: []const u8) !Uri {
     var result = try Uri.parse(location, true);
 
-    if (result.host.name.len == 0) {
-        result.host.name = "http";
+    if (result.scheme.len == 0) {
+        result.scheme = "http";
     }
 
     if (result.path.len == 0) {
