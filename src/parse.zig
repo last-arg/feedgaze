@@ -117,16 +117,10 @@ pub const Html = struct {
                     key = contents[0..next_eql];
                     contents = contents[next_eql + 1 ..];
                     switch (contents[0]) {
-                        '"' => {
+                        '"', '\'' => |char| {
+                            l.warn("|{c}|", .{char});
                             contents = contents[1..];
-                            const value_end = mem.indexOfScalar(u8, contents, '"') orelse break;
-
-                            value = contents[0..value_end];
-                            contents = contents[value_end + 1 ..];
-                        },
-                        '\'' => {
-                            contents = contents[1..];
-                            const value_end = mem.indexOfScalar(u8, contents, '\'') orelse break;
+                            const value_end = mem.indexOfScalar(u8, contents, char) orelse break;
 
                             value = contents[0..value_end];
                             contents = contents[value_end + 1 ..];
@@ -213,13 +207,13 @@ pub const Html = struct {
     }
 };
 
-test "Html.parse" {
+test "Html.parse @active" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
     const html = @embedFile("../test/lobste.rs.html");
     const page = try Html.parseLinks(allocator, html);
-    expect(5 == page.links.len);
+    expect(4 == page.links.len);
     expect(Html.MediaType.rss == page.links[0].media_type);
 }
 
