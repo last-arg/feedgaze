@@ -33,10 +33,13 @@ run-update:
 run-clean:
 	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app clean'
 
+run-main:
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-cache/bin/feed_app'
+
 db:
 	./zig-cache/bin/feed_app add https://lobste.rs
 	./zig-cache/bin/feed_app add https://dev.to/feed
 
 test-active:
-	watchexec -c -r -w src/ -e zig 'zig build test'
+	watchexec -c -r -w src/ -e zig 'zig build test-active'
 
