@@ -59,5 +59,6 @@ fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
     step.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
     step.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
     step.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
+    step.addPackage(.{ .name = "zuri", .path = "lib/zuri/src/zuri.zig" });
     @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", step, target);
 }
