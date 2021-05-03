@@ -75,7 +75,7 @@ pub fn verifyTables(db: *sql.Db) bool {
     return true;
 }
 
-test "create and veriftyTables @active" {
+test "create and veriftyTables" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();

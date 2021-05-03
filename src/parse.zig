@@ -118,7 +118,6 @@ pub const Html = struct {
                     contents = contents[next_eql + 1 ..];
                     switch (contents[0]) {
                         '"', '\'' => |char| {
-                            l.warn("|{c}|", .{char});
                             contents = contents[1..];
                             const value_end = mem.indexOfScalar(u8, contents, char) orelse break;
 
@@ -207,7 +206,7 @@ pub const Html = struct {
     }
 };
 
-test "Html.parse @active" {
+test "Html.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
