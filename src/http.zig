@@ -133,7 +133,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     while (try head_client.next()) |event| {
         switch (event) {
             .status => |status| {
-                // l.warn("HTTP status code: {}", .{status.code});
+                l.warn("HTTP status code: {}", .{status.code});
                 feed_resp.status_code = status.code;
                 if (status.code == 304) {
                     return feed_resp;
@@ -333,6 +333,10 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
 pub fn makeUri(location: []const u8) !Uri {
     var result = try Uri.parse(location, true);
+
+    if (result.host.name.len == 0) {
+        result.host.name = "http";
+    }
 
     if (result.path.len == 0) {
         result.path = "/";
