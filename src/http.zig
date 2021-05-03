@@ -133,7 +133,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
     while (try head_client.next()) |event| {
         switch (event) {
             .status => |status| {
-                l.warn("HTTP status code: {}", .{status.code});
+                // l.warn("HTTP status code: {}", .{status.code});
                 feed_resp.status_code = status.code;
                 if (status.code == 304) {
                     return feed_resp;
@@ -145,7 +145,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 }
             },
             .header => |header| {
-                std.debug.print("{s}: {s}\n", .{ header.name, header.value });
+                // std.debug.print("{s}: {s}\n", .{ header.name, header.value });
                 if (ascii.eqlIgnoreCase("cache-control", header.name)) {
                     var it = mem.split(header.value, ",");
                     while (it.next()) |v_raw| {
@@ -228,10 +228,10 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
 
     switch (transfer_encoding) {
         .none => {
-            l.warn("Body response", .{});
+            // l.warn("Body response", .{});
             switch (content_encoding) {
                 .none => {
-                    l.warn("No compression", .{});
+                    // l.warn("No compression", .{});
 
                     if (content_len == std.math.maxInt(usize)) return error.NoContentLength;
 
@@ -248,7 +248,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     feed_resp.body = array_list.toOwnedSlice();
                 },
                 .gzip => {
-                    l.warn("Decompress gzip", .{});
+                    // l.warn("Decompress gzip", .{});
 
                     // TODO: might have redo it like .none part
                     var stream = try gzip.gzipStream(allocator, client_reader);
@@ -259,13 +259,13 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
             }
         },
         .chunked => {
-            l.warn("Chunked response", .{});
+            // l.warn("Chunked response", .{});
             var output = ArrayList(u8).init(allocator);
             errdefer output.deinit();
 
             switch (content_encoding) {
                 .none => {
-                    l.warn("No compression", .{});
+                    // l.warn("No compression", .{});
                     while (true) {
                         const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
                         if (hex_str == null) return error.InvalidChunk;
@@ -290,7 +290,7 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                     feed_resp.body = output.toOwnedSlice();
                 },
                 .gzip => {
-                    l.warn("Decompress gzip", .{});
+                    // l.warn("Decompress gzip", .{});
 
                     while (true) {
                         const hex_str = try client_reader.readUntilDelimiterOrEof(&request_buf, '\r');
