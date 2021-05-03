@@ -33,160 +33,6 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-test "local feed: add, update, remove" {
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = &arena.allocator;
-
-    var db_ = try Db_.init(allocator, null);
-
-    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
-    const rel_path = "test/sample-rss-2.xml";
-    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-    const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
-    const contents = try getFileContents(allocator, abs_path);
-    const file = try fs.openFileAbsolute(abs_path, .{});
-    defer file.close();
-    const stat = try file.stat();
-    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
-
-    var feed = try parse.parse(allocator, contents);
-
-    const all_items = feed.items;
-    feed.items = all_items[0..3];
-    const id = try db_.addFeed(feed, abs_path);
-    try db_.addFeedLocal(id, mtime_sec);
-    try db_.addItems(id, feed.items);
-
-    const LocalResult = struct {
-        location: []const u8,
-        link: ?[]const u8,
-        title: []const u8,
-        updated_raw: ?[]const u8,
-        id: usize,
-        updated_timestamp: ?i64,
-    };
-
-    const all_feeds_query = "select location, link, title, updated_raw, id, updated_timestamp from feed";
-
-    // Feed local
-    {
-        const db_feeds = try db.selectAll(LocalResult, allocator, &db_.db, all_feeds_query, .{});
-        expect(db_feeds.len == 1);
-        const first = db_feeds[0];
-        expect(first.id == 1);
-        expect(mem.eql(u8, abs_path, first.location));
-        expect(mem.eql(u8, feed.link.?, first.link.?));
-        expect(mem.eql(u8, feed.title, first.title));
-        expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
-        expect(feed.updated_timestamp.? == first.updated_timestamp.?);
-    }
-
-    const LocalUpdateResult = struct {
-        feed_id: usize,
-        update_interval: usize,
-        last_update: i64,
-        last_modified_timestamp: i64,
-    };
-
-    const local_query = "select feed_id, update_interval, last_update, last_modified_timestamp from feed_update_local";
-
-    // Local feed update
-    {
-        const db_feeds = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
-        expect(db_feeds.len == 1);
-        const first = db_feeds[0];
-        expect(first.feed_id == 1);
-        expect(first.update_interval == 600);
-        const current_time = std.time.timestamp();
-        expect(first.last_update <= current_time);
-        expect(first.last_modified_timestamp == mtime_sec);
-    }
-
-    const ItemsResult = struct {
-        link: ?[]const u8,
-        title: []const u8,
-        guid: ?[]const u8,
-        id: usize,
-        feed_id: usize,
-        pub_date: ?[]const u8,
-        pub_date_utc: ?i64,
-    };
-
-    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc from item order by pub_date_utc";
-
-    // Items
-    {
-        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
-        expect(items.len == feed.items.len);
-    }
-
-    try db_.updateAllFeeds(allocator, .{ .force = true });
-    feed.items = all_items;
-
-    // Items
-    {
-        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
-        expect(items.len == feed.items.len);
-
-        parse.Feed.sortItemsByDate(feed.items);
-        for (items) |db_item, i| {
-            const f_item = feed.items[i];
-            expect(equalNullString(db_item.link, f_item.link));
-            expect(equalNullString(db_item.guid, f_item.id));
-            std.testing.expectEqualStrings(db_item.title, f_item.title);
-            expect(equalNullString(db_item.pub_date, f_item.updated_raw));
-            expect(std.meta.eql(db_item.pub_date_utc, f_item.updated_timestamp));
-            expect(db_item.feed_id == 1);
-        }
-    }
-
-    // Local feed update
-    {
-        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
-        expect(local_updates.len == 1);
-        const first = local_updates[0];
-        expect(first.feed_id == 1);
-        expect(first.update_interval == 600);
-        const current_time = std.time.timestamp();
-        expect(first.last_update <= current_time);
-        expect(first.last_modified_timestamp == mtime_sec);
-    }
-
-    const item_count_query = "select count(id) from item";
-
-    // Delete items that are over max item limit
-    {
-        var item_count = try db.count(&db_.db, item_count_query);
-        expect(feed.items.len == item_count);
-
-        // cleanItemsByFeedId()
-        g.max_items_per_feed = 4;
-        try db_.cleanItemsByFeedId(1);
-        item_count = try db.count(&db_.db, item_count_query);
-        expect(g.max_items_per_feed == item_count);
-
-        // cleanItems()
-        g.max_items_per_feed = 2;
-        try db_.cleanItems(allocator);
-        item_count = try db.count(&db_.db, item_count_query);
-        expect(g.max_items_per_feed == item_count);
-    }
-
-    // Delete feed
-    {
-        try db_.deleteFeed(1);
-
-        const feed_count = try db.count(&db_.db, "select count(id) from feed");
-        expect(feed_count == 0);
-        const local_update_count = try db.count(&db_.db, "select count(feed_id) from feed_update_local");
-        expect(local_update_count == 0);
-        const item_count = try db.count(&db_.db, item_count_query);
-        expect(item_count == 0);
-    }
-}
-
 const Db_ = struct {
     const Self = @This();
     db: sql.Db,
@@ -636,7 +482,7 @@ const Cli = struct {
                     .html => unreachable,
                 };
 
-                const location = try fmt.allocPrint(allocator, "{s}//:{s}{s}", .{
+                const location = try fmt.allocPrint(allocator, "{s}://{s}{s}", .{
                     resp.url.scheme,
                     resp.url.host.name,
                     resp.url.path,
@@ -649,7 +495,7 @@ const Cli = struct {
                 try db_.addItems(feed_id, feed.items);
                 try db_.cleanItemsByFeedId(feed_id);
 
-                l.info("Added url feed: {s}", .{location});
+                try writer.print("Added url feed: {s}\n", .{location});
             },
             else => return err,
         }
@@ -673,6 +519,7 @@ const Cli = struct {
             const link = try chooseFeedLink(allocator, page_data, resp.url, writer, reader);
             var rss_uri = try http.makeUri(link.href);
             if (rss_uri.host.name.len == 0) {
+                rss_uri.scheme = resp.url.scheme;
                 rss_uri.host.name = resp.url.host.name;
             }
             return try resolveRequestToFeed(allocator, rss_uri, writer, reader);
@@ -813,16 +660,18 @@ test "Cli.addFeed() @active" {
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
     var read_valid = "1\n";
+    const added_url = "Added url feed: ";
 
     // {
     //     // remove last slash to get HTTP redirect
     //     const location = "old.reddit.com/r/programming/";
+    //     const rss_url = "https://old.reddit.com/r/programming/.rss";
     //     var text_io = TestIO{
     //         .do_print = true,
     //         .expected_actions = &[_]TestIO.Action{
     //             .{ .write = write_first },
     //             .{ .write = "programming\nold.reddit.com\n" },
-    //             .{ .write = "\t1. RSS -> https://old.reddit.com/r/programming/.rss\n" },
+    //             .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
     //             .{ .write = enter_link },
     //             .{ .read = "abc\n" },
     //             .{ .write = "Invalid number: 'abc'. Try again.\n" },
@@ -831,6 +680,7 @@ test "Cli.addFeed() @active" {
     //             .{ .write = "Number out of range: '12'. Try again.\n" },
     //             .{ .write = enter_link },
     //             .{ .read = read_valid },
+    //             .{ .write = added_url ++ rss_url },
     //         },
     //     };
 
@@ -843,14 +693,16 @@ test "Cli.addFeed() @active" {
         // Feed url has to constructed because Html.Link.href is
         // absolute path - '/syndication/5701'
         const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
+        const rss_url = "https://www.royalroad.com/syndication/5701";
         var text_io = TestIO{
             .do_print = true,
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = write_first },
                 .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
-                .{ .write = "\t1. Updates for Savage Divinity -> https://www.royalroad.com/syndication/5701\n" },
+                .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
                 .{ .write = enter_link },
                 .{ .read = read_valid },
+                .{ .write = added_url ++ rss_url ++ "\n" },
             },
         };
 
@@ -1076,4 +928,158 @@ test "getFileContents(): relative and absolute path" {
     const rel_content = try getFileContents(allocator, rel_path);
 
     assert(abs_content.len == rel_content.len);
+}
+
+test "local feed: add, update, remove" {
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    var db_ = try Db_.init(allocator, null);
+
+    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    const rel_path = "test/sample-rss-2.xml";
+    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+    const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
+    const contents = try getFileContents(allocator, abs_path);
+    const file = try fs.openFileAbsolute(abs_path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+
+    var feed = try parse.parse(allocator, contents);
+
+    const all_items = feed.items;
+    feed.items = all_items[0..3];
+    const id = try db_.addFeed(feed, abs_path);
+    try db_.addFeedLocal(id, mtime_sec);
+    try db_.addItems(id, feed.items);
+
+    const LocalResult = struct {
+        location: []const u8,
+        link: ?[]const u8,
+        title: []const u8,
+        updated_raw: ?[]const u8,
+        id: usize,
+        updated_timestamp: ?i64,
+    };
+
+    const all_feeds_query = "select location, link, title, updated_raw, id, updated_timestamp from feed";
+
+    // Feed local
+    {
+        const db_feeds = try db.selectAll(LocalResult, allocator, &db_.db, all_feeds_query, .{});
+        expect(db_feeds.len == 1);
+        const first = db_feeds[0];
+        expect(first.id == 1);
+        expect(mem.eql(u8, abs_path, first.location));
+        expect(mem.eql(u8, feed.link.?, first.link.?));
+        expect(mem.eql(u8, feed.title, first.title));
+        expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
+        expect(feed.updated_timestamp.? == first.updated_timestamp.?);
+    }
+
+    const LocalUpdateResult = struct {
+        feed_id: usize,
+        update_interval: usize,
+        last_update: i64,
+        last_modified_timestamp: i64,
+    };
+
+    const local_query = "select feed_id, update_interval, last_update, last_modified_timestamp from feed_update_local";
+
+    // Local feed update
+    {
+        const db_feeds = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
+        expect(db_feeds.len == 1);
+        const first = db_feeds[0];
+        expect(first.feed_id == 1);
+        expect(first.update_interval == 600);
+        const current_time = std.time.timestamp();
+        expect(first.last_update <= current_time);
+        expect(first.last_modified_timestamp == mtime_sec);
+    }
+
+    const ItemsResult = struct {
+        link: ?[]const u8,
+        title: []const u8,
+        guid: ?[]const u8,
+        id: usize,
+        feed_id: usize,
+        pub_date: ?[]const u8,
+        pub_date_utc: ?i64,
+    };
+
+    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc from item order by pub_date_utc";
+
+    // Items
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
+        expect(items.len == feed.items.len);
+    }
+
+    try db_.updateAllFeeds(allocator, .{ .force = true });
+    feed.items = all_items;
+
+    // Items
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
+        expect(items.len == feed.items.len);
+
+        parse.Feed.sortItemsByDate(feed.items);
+        for (items) |db_item, i| {
+            const f_item = feed.items[i];
+            expect(equalNullString(db_item.link, f_item.link));
+            expect(equalNullString(db_item.guid, f_item.id));
+            std.testing.expectEqualStrings(db_item.title, f_item.title);
+            expect(equalNullString(db_item.pub_date, f_item.updated_raw));
+            expect(std.meta.eql(db_item.pub_date_utc, f_item.updated_timestamp));
+            expect(db_item.feed_id == 1);
+        }
+    }
+
+    // Local feed update
+    {
+        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
+        expect(local_updates.len == 1);
+        const first = local_updates[0];
+        expect(first.feed_id == 1);
+        expect(first.update_interval == 600);
+        const current_time = std.time.timestamp();
+        expect(first.last_update <= current_time);
+        expect(first.last_modified_timestamp == mtime_sec);
+    }
+
+    const item_count_query = "select count(id) from item";
+
+    // Delete items that are over max item limit
+    {
+        var item_count = try db.count(&db_.db, item_count_query);
+        expect(feed.items.len == item_count);
+
+        // cleanItemsByFeedId()
+        g.max_items_per_feed = 4;
+        try db_.cleanItemsByFeedId(1);
+        item_count = try db.count(&db_.db, item_count_query);
+        expect(g.max_items_per_feed == item_count);
+
+        // cleanItems()
+        g.max_items_per_feed = 2;
+        try db_.cleanItems(allocator);
+        item_count = try db.count(&db_.db, item_count_query);
+        expect(g.max_items_per_feed == item_count);
+    }
+
+    // Delete feed
+    {
+        try db_.deleteFeed(1);
+
+        const feed_count = try db.count(&db_.db, "select count(id) from feed");
+        expect(feed_count == 0);
+        const local_update_count = try db.count(&db_.db, "select count(feed_id) from feed_update_local");
+        expect(local_update_count == 0);
+        const item_count = try db.count(&db_.db, item_count_query);
+        expect(item_count == 0);
+    }
 }
