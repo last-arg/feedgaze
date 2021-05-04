@@ -459,7 +459,7 @@ const Cli = struct {
             try db_.addFeedLocal(id, mtime_sec);
             try db_.addItems(id, feed.items);
             try db_.cleanItemsByFeedId(id);
-            l.info("Added local feed: {s}", .{abs_path});
+            try writer.print("Added local feed: {s}", .{abs_path});
         } else |err| switch (err) {
             error.FileNotFound => {
                 errdefer l.warn("Failed to add url feed: {s}", .{location_input});
@@ -650,44 +650,71 @@ const TestIO = struct {
     }
 };
 
-test "Cli.addFeed() @active" {
+test "Cli.addFeed()" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
 
     var db_ = try Db_.init(allocator, null);
+    const do_print = false;
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
     var read_valid = "1\n";
     const added_url = "Added url feed: ";
+    var counts: struct { feed: usize, local: usize, url: usize } = .{
+        .feed = @as(usize, 0),
+        .local = @as(usize, 0),
+        .url = @as(usize, 0),
+    };
 
-    // {
-    //     // remove last slash to get HTTP redirect
-    //     const location = "old.reddit.com/r/programming/";
-    //     const rss_url = "https://old.reddit.com/r/programming/.rss";
-    //     var text_io = TestIO{
-    //         .do_print = true,
-    //         .expected_actions = &[_]TestIO.Action{
-    //             .{ .write = write_first },
-    //             .{ .write = "programming\nold.reddit.com\n" },
-    //             .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = "abc\n" },
-    //             .{ .write = "Invalid number: 'abc'. Try again.\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = "12\n" },
-    //             .{ .write = "Number out of range: '12'. Try again.\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = read_valid },
-    //             .{ .write = added_url ++ rss_url },
-    //         },
-    //     };
+    {
+        // remove last slash to get HTTP redirect
+        const location = "test/sample-rss-2.xml";
+        const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+        var w = "Added local feed: " ++ rss_url ++ "\n";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = w },
+            },
+        };
 
-    //     const writer = text_io.writer();
-    //     const reader = text_io.reader();
-    //     try Cli.addFeed(allocator, &db_, location, writer, reader);
-    // }
+        const writer = text_io.writer();
+        const reader = text_io.reader();
+        try Cli.addFeed(allocator, &db_, location, writer, reader);
+        counts.feed += 1;
+        counts.local += 1;
+    }
+
+    {
+        // remove last slash to get HTTP redirect
+        const location = "old.reddit.com/r/programming/";
+        const rss_url = "https://old.reddit.com/r/programming/.rss";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = write_first },
+                .{ .write = "programming\nold.reddit.com\n" },
+                .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
+                .{ .write = enter_link },
+                .{ .read = "abc\n" },
+                .{ .write = "Invalid number: 'abc'. Try again.\n" },
+                .{ .write = enter_link },
+                .{ .read = "12\n" },
+                .{ .write = "Number out of range: '12'. Try again.\n" },
+                .{ .write = enter_link },
+                .{ .read = read_valid },
+                .{ .write = added_url ++ rss_url ++ "\n" },
+            },
+        };
+
+        const writer = text_io.writer();
+        const reader = text_io.reader();
+        try Cli.addFeed(allocator, &db_, location, writer, reader);
+        counts.feed += 1;
+        counts.url += 1;
+    }
 
     {
         // Feed url has to constructed because Html.Link.href is
@@ -695,7 +722,7 @@ test "Cli.addFeed() @active" {
         const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
         const rss_url = "https://www.royalroad.com/syndication/5701";
         var text_io = TestIO{
-            .do_print = true,
+            .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = write_first },
                 .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
@@ -709,16 +736,23 @@ test "Cli.addFeed() @active" {
         const writer = text_io.writer();
         const reader = text_io.reader();
         try Cli.addFeed(allocator, &db_, location, writer, reader);
+        counts.feed += 1;
+        counts.url += 1;
     }
 
-    // const location = "test.xml";
-    // const location = "test/sample-rss-2.xml";
-    // const location = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
-    // Gives back rss/atom feed
-    // const location = "lobste.rs";
-    // chooseFeedLink() with absolute path '/syndication/5701'
-    // const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
-
+    const feed_count_query = "select count(id) from feed";
+    const local_count_query = "select count(feed_id) from feed_update_local";
+    const url_count_query = "select count(feed_id) from feed_update_http";
+    const item_count_query = "select count(DISTINCT feed_id) from item";
+    var feed_count = try db.count(&db_.db, feed_count_query);
+    var local_count = try db.count(&db_.db, local_count_query);
+    var url_count = try db.count(&db_.db, url_count_query);
+    var item_feed_count = try db.count(&db_.db, item_count_query);
+    expect(feed_count == counts.feed);
+    expect(local_count == counts.local);
+    expect(feed_count == counts.local + counts.url);
+    expect(url_count == counts.url);
+    expect(item_feed_count == counts.feed);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
