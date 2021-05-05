@@ -387,13 +387,15 @@ pub fn main() anyerror!void {
 
     const stdout = std.io.getStdOut();
     const stdin = std.io.getStdIn();
+    const writer = stdout.writer();
+    const reader = stdout.reader();
 
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
         if (mem.eql(u8, "add", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.addFeed(allocator, db_, value, stdout.writer(), stdin.reader());
+                try Cli.addFeed(allocator, db_, value, writer, reader);
             } else {
                 log.err("Subcommand add missing feed location", .{});
             }
@@ -411,7 +413,7 @@ pub fn main() anyerror!void {
         } else if (mem.eql(u8, "delete", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.deleteFeed(allocator, _db, value, stdout.writer(), stdin.reader());
+                try Cli.deleteFeed(allocator, _db, value, writer, reader);
             } else {
                 log.err("Subcommand delete missing argument location", .{});
             }
