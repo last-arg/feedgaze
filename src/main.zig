@@ -401,6 +401,9 @@ pub fn main() anyerror!void {
             }
         } else if (mem.eql(u8, "update", arg)) {
             const force = blk: {
+                // TODO: add flag --local
+                // TODO: add flag --url/--net
+                // TODO?: if no flag default to --all flag?
                 if (iter.next(allocator)) |value_err| {
                     const value = try value_err;
                     break :blk mem.eql(u8, "--all", value);
@@ -666,7 +669,110 @@ const Cli = struct {
         };
         try writer.print("Clean feeds of extra links/items.\n", .{});
     }
+
+    pub fn printAllItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+        const Result = struct {
+            title: []const u8,
+            link: ?[]const u8,
+            id: usize,
+        };
+
+        // most recently updated feed
+        const most_recent_feeds_query =
+            \\SELECT
+            \\	title,
+            \\  link,
+            \\	id
+            \\FROM
+            \\	feed
+        ;
+
+        const most_recent_feeds = try db.selectAll(
+            Result,
+            allocator,
+            &db_.db,
+            most_recent_feeds_query,
+            .{},
+        );
+
+        // grouped by feed_id
+        const all_items_query =
+            \\SELECT
+            \\	title,
+            \\	link,
+            \\  feed_id
+            \\FROM
+            \\	item
+            \\ORDER BY
+            \\	feed_id DESC,
+            \\	pub_date_utc DESC,
+            \\  created_at DESC
+        ;
+
+        const all_items = try db.selectAll(
+            Result,
+            allocator,
+            &db_.db,
+            all_items_query,
+            .{},
+        );
+
+        for (most_recent_feeds) |feed| {
+            const id = feed.id;
+            const start_index = blk: {
+                for (all_items) |item, idx| {
+                    if (item.id == id) break :blk idx;
+                }
+                break; // Should not happen
+            };
+            const feed_link = feed.link orelse "<no-link>";
+            try writer.print("{s} - {s}\n", .{ feed.title, feed_link });
+            for (all_items[start_index..]) |item| {
+                if (item.id != id) break;
+                const item_link = item.link orelse "<no-link>";
+                try writer.print("  {s}\n  {s}\n\n", .{
+                    item.title,
+                    item_link,
+                });
+            }
+        }
+    }
 };
+
+test "Cli.printAllItems @active" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    var db_ = try Db_.init(allocator, null);
+    {
+        const location = "test/sample-rss-2.xml";
+        const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+        var w = "Added local feed: " ++ rss_url ++ "\n";
+        var text_io = TestIO{ .expected_actions = &[_]TestIO.Action{.{ .write = w }} };
+
+        const writer = text_io.writer();
+        const reader = text_io.reader();
+        try Cli.addFeed(allocator, &db_, location, writer, reader);
+    }
+
+    var first = "Liftoff News - http://liftoff.msfc.nasa.gov/\n";
+    var text_io = TestIO{
+        .expected_actions = &[_]TestIO.Action{
+            .{ .write = first },
+            .{ .write = "  Star City\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
+            .{ .write = "  Sky watchers in Europe, Asia, \n  <no-link>\n\n" },
+            .{ .write = "  TEST THIS\n  <no-link>\n\n" },
+            .{ .write = "  Astronauts' Dirty Laundry\n  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp\n\n" },
+            .{ .write = "  The Engine That Does More\n  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp\n\n" },
+            .{ .write = "  TEST THIS1\n  <no-link>\n\n" },
+        },
+    };
+    const writer = text_io.writer();
+    try Cli.printAllItems(allocator, &db_, writer);
+}
 
 test "Cli.cleanItems" {
     std.testing.log_level = .debug;
@@ -677,6 +783,8 @@ test "Cli.cleanItems" {
     const allocator = &arena.allocator;
 
     var db_ = try Db_.init(allocator, null);
+    // TODO: populate db with data
+
     var first = "Clean feeds of extra links/items.\n";
     var text_io = TestIO{
         .expected_actions = &[_]TestIO.Action{.{ .write = first }},
@@ -778,7 +886,7 @@ fn expectCounts(db_: *Db_, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "Cli.addFeed(), Cli.deleteFeed() @active" {
+test "Cli.addFeed(), Cli.deleteFeed()" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -795,7 +903,6 @@ test "Cli.addFeed(), Cli.deleteFeed() @active" {
     var counts = TestCounts{};
 
     {
-        // remove last slash to get HTTP redirect
         const location = "test/sample-rss-2.xml";
         const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
         var w = "Added local feed: " ++ rss_url ++ "\n";
@@ -922,18 +1029,6 @@ test "Cli.addFeed(), Cli.deleteFeed() @active" {
     try expectCounts(&db_, counts);
 }
 
-pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
-    for (items) |item, idx| {
-        if (item.updated_timestamp) |item_date| {
-            if (item_date <= timestamp) {
-                return items[0..idx];
-            }
-        }
-    }
-
-    return items;
-}
-
 pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     const Result = struct {
         title: []const u8,
@@ -963,75 +1058,6 @@ pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     for (all_items) |item| {
         const link = item.link orelse "<no-link>";
         try writer.print(print_fmt, .{ item.title, link, item.location });
-    }
-}
-
-pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
-    const Result = struct {
-        title: []const u8,
-        link: ?[]const u8,
-        id: usize,
-    };
-
-    // most recently updated feed
-    const most_recent_feeds_query =
-        \\SELECT
-        \\	title,
-        \\  link,
-        \\	id
-        \\FROM
-        \\	feed
-    ;
-
-    const most_recent_feeds = try db.selectAll(
-        Result,
-        allocator,
-        db_struct.conn,
-        most_recent_feeds_query,
-        .{},
-    );
-
-    // grouped by feed_id
-    const all_items_query =
-        \\SELECT
-        \\	title,
-        \\	link,
-        \\  feed_id
-        \\FROM
-        \\	item
-        \\ORDER BY
-        \\	feed_id DESC,
-        \\	pub_date_utc DESC
-    ;
-
-    const all_items = try db.selectAll(
-        Result,
-        allocator,
-        db_struct.conn,
-        all_items_query,
-        .{},
-    );
-
-    const writer = std.io.getStdOut().writer();
-
-    for (most_recent_feeds) |feed| {
-        const id = feed.id;
-        const start_index = blk: {
-            for (all_items) |item, idx| {
-                if (item.id == id) break :blk idx;
-            }
-            break; // Should not happen
-        };
-        const feed_link = feed.link orelse "<no-link>";
-        try writer.print("{s} - {s}\n", .{ feed.title, feed_link });
-        for (all_items[start_index..]) |item| {
-            if (item.id != id) break;
-            const item_link = item.link orelse "<no-link>";
-            try writer.print("  {s}\n  {s}\n\n", .{
-                item.title,
-                item_link,
-            });
-        }
     }
 }
 
