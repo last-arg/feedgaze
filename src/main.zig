@@ -651,10 +651,32 @@ const Cli = struct {
         }
     }
 
-    pub fn cleanItems(allocator: *Allocator) !void {
-        try db_.cleanItems(allocator);
+    pub fn cleanItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+        db_.cleanItems(allocator) catch {
+            l.warn("Failed to remove extra feed items.", .{});
+            return;
+        };
+        try writer.print("Clean feeds of extra links/items.\n", .{});
     }
 };
+
+test "Cli.cleanItems @active" {
+    std.testing.log_level = .debug;
+
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    var db_ = try Db_.init(allocator, null);
+    var first = "Clean feeds of extra links/items.\n";
+    var text_io = TestIO{
+        .expected_actions = &[_]TestIO.Action{.{ .write = first }},
+    };
+
+    const writer = text_io.writer();
+    try Cli.cleanItems(allocator, &db_, writer);
+}
 
 const TestIO = struct {
     const Self = @This();
