@@ -121,17 +121,25 @@ const Db_ = struct {
         }
     }
 
-    pub fn updateAllFeeds(self: *Self, allocator: *Allocator, opts: struct { force: bool = false }) !void {
-        @setEvalBranchQuota(2000);
+    const UpdateOptions = struct {
+        force: bool = false,
+    };
 
-        // Update url feeds
+    pub fn updateAllFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
+        try self.updateUrlFeeds(allocator, opts);
+        try self.updateLocalFeeds(allocator, opts);
+        try self.cleanItems(allocator);
+    }
+
+    pub fn updateUrlFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
+        @setEvalBranchQuota(2000);
         const DbResultUrl = struct {
             location: []const u8,
             etag: ?[]const u8,
             feed_id: usize,
             feed_updated_timestamp: ?i64,
             update_interval: usize,
-            last_updatemakeUr4,
+            last_update: i64,
             expires_utc: ?i64,
             last_modified_utc: ?i64,
             cache_control_max_age: ?i64,
@@ -182,8 +190,8 @@ const Db_ = struct {
                 }
                 break :blk null;
             };
-            const rehref: q = http.FeedRequest{
-                .url = try eUri(obj.location),
+            const req = http.FeedRequest{
+                .url = try http.makeUri(obj.location),
                 .etag = obj.etag,
                 .last_modified = last_modified,
             };
@@ -236,11 +244,11 @@ const Db_ = struct {
             });
 
             try self.addItems(obj.feed_id, rss_feed.items);
-            // TODO: remove extra feed items
-            log.info("\tUpdate finished: '{s}'", .{obj.location});
+            log.info("Update finished: '{s}'", .{obj.location});
         }
+    }
 
-        // Update local file feeds
+    pub fn updateLocalFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
         const DbResultLocal = struct {
             location: []const u8,
             feed_id: usize,
@@ -254,7 +262,6 @@ const Db_ = struct {
         defer allocator.free(local_updates);
 
         if (local_updates.len == 0) {
-            try self.cleanItems(allocator);
             return;
         }
 
@@ -314,10 +321,8 @@ const Db_ = struct {
             });
 
             try self.addItems(obj.feed_id, rss_feed.items);
-            // TODO: remove extra feed items
-            log.info("\tUpdate finished: '{s}'", .{obj.location});
+            log.info("Update finished: '{s}'", .{obj.location});
         }
-        try self.cleanItems(allocator);
     }
 
     pub fn cleanItemsByFeedId(self: *Self, feed_id: usize) !void {
@@ -410,7 +415,7 @@ pub fn main() anyerror!void {
                 }
                 break :blk false;
             };
-            try db_.updateAllFeeds(allocator, .{ .force = force });
+            try Cli.updateFeeds(allocator, &db_, .{ .force = force }, writer);
         } else if (mem.eql(u8, "clean", arg)) {
             try Cli.cleanItems(allocator);
         } else if (mem.eql(u8, "delete", arg)) {
@@ -737,9 +742,26 @@ const Cli = struct {
             }
         }
     }
+
+    pub const Options = struct {
+        force: bool = false,
+    };
+
+    pub fn updateFeeds(allocator: *Allocator, db_: *Db_, opts: Options, writer: anytype) !void {
+        db_.updateUrlFeeds(allocator, .{ .force = opts.force }) catch {
+            log.err("Failed to update feeds", .{});
+            return;
+        };
+        try writer.print("Updated url feeds\n", .{});
+        db_.updateLocalFeeds(allocator, .{ .force = opts.force }) catch {
+            log.err("Failed to update local feeds", .{});
+            return;
+        };
+        try writer.print("Updated local feeds\n", .{});
+    }
 };
 
-test "Cli.printAllItems @active" {
+test "Cli.printAllItems" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -886,7 +908,7 @@ fn expectCounts(db_: *Db_, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "Cli.addFeed(), Cli.deleteFeed()" {
+test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds() @active" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -981,6 +1003,19 @@ test "Cli.addFeed(), Cli.deleteFeed()" {
         for (results) |item_count| {
             expect(item_count <= g.max_items_per_feed);
         }
+    }
+
+    {
+        var first = "Updated url feeds\n";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = first },
+                .{ .write = "Updated local feeds\n" },
+            },
+        };
+        const writer = text_io.writer();
+        try Cli.updateFeeds(allocator, &db_, .{ .force = false }, writer);
     }
 
     {
@@ -1083,6 +1118,7 @@ test "getFileContents(): relative and absolute path" {
 }
 
 test "local feed: add, update, remove" {
+    std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
