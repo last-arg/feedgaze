@@ -407,14 +407,14 @@ pub fn main() anyerror!void {
             };
             try db_.updateAllFeeds(allocator, .{ .force = force });
         } else if (mem.eql(u8, "clean", arg)) {
-            // try cleanItems(&db_struct, allocator);
+            try Cli.cleanItems(allocator);
         } else if (mem.eql(u8, "delete", arg)) {
-            // if (iter.next(allocator)) |value_err| {
-            //     const value = try value_err;
-            //     try deleteFeed(&db_struct, allocator, value);
-            // } else {
-            //     l.err("Subcommand delete missing argument location", .{});
-            // }
+            if (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                try Cli.deleteFeed(allocator, _db, value, stdout.writer(), stdin.reader());
+            } else {
+                l.err("Subcommand delete missing argument location", .{});
+            }
         } else if (mem.eql(u8, "print", arg)) {
             // if (iter.next(allocator)) |value_err| {
             //     const value = try value_err;
@@ -579,6 +579,81 @@ const Cli = struct {
 
         return result_link;
     }
+
+    pub fn deleteFeed(
+        allocator: *Allocator,
+        db_: *Db_,
+        search_input: []const u8,
+        writer: anytype,
+        reader: anytype,
+    ) !void {
+        const query =
+            \\SELECT location, title, link, id FROM feed
+            \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
+        ;
+        const DbResult = struct {
+            location: []const u8,
+            title: []const u8,
+            link: ?[]const u8,
+            id: usize,
+        };
+
+        const search_term = try fmt.allocPrint(allocator, "%{s}%", .{search_input});
+        defer allocator.free(search_term);
+
+        const stdout = std.io.getStdOut();
+        const results = try db.selectAll(DbResult, allocator, &db_.db, query, .{
+            search_term,
+            search_term,
+            search_term,
+        });
+        if (results.len == 0) {
+            try writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
+            return;
+        }
+        try writer.print("Found {} result(s):\n\n", .{results.len});
+        for (results) |result, i| {
+            const link = result.link orelse "<no-link>";
+            try writer.print("{}. {s} | {s} | {s}\n", .{
+                i + 1,
+                result.title,
+                link,
+                result.location,
+            });
+        }
+        var buf: [32]u8 = undefined;
+
+        var delete_nr: usize = 0;
+        while (true) {
+            try writer.print("Enter feed number to delete? ", .{});
+            const bytes = try reader.read(&buf);
+            if (buf[0] == '\n') continue;
+
+            if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
+                if (nr >= 1 and nr <= results.len) {
+                    delete_nr = nr;
+                    break;
+                }
+                try writer.print("Entered number out of range. Try again.\n", .{});
+                continue;
+            } else |_| {
+                try writer.print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
+            }
+        }
+
+        const del_query =
+            \\DELETE FROM feed WHERE id = ?;
+        ;
+        if (delete_nr > 0) {
+            const result = results[delete_nr - 1];
+            try db_.deleteFeed(result.id);
+            try writer.print("Deleted feed '{s}'\n", .{result.location});
+        }
+    }
+
+    pub fn cleanItems(allocator: *Allocator) !void {
+        try db_.cleanItems(allocator);
+    }
 };
 
 const TestIO = struct {
@@ -650,7 +725,30 @@ const TestIO = struct {
     }
 };
 
-test "Cli.addFeed()" {
+const TestCounts = struct {
+    feed: usize = 0,
+    local: usize = 0,
+    url: usize = 0,
+};
+
+fn testCheckCounts(db_: *Db_, counts: TestCounts) !void {
+    const feed_count_query = "select count(id) from feed";
+    const local_count_query = "select count(feed_id) from feed_update_local";
+    const url_count_query = "select count(feed_id) from feed_update_http";
+    const item_count_query = "select count(DISTINCT feed_id) from item";
+
+    const feed_count = try db.count(&db_.db, feed_count_query);
+    const local_count = try db.count(&db_.db, local_count_query);
+    const url_count = try db.count(&db_.db, url_count_query);
+    const item_feed_count = try db.count(&db_.db, item_count_query);
+    expect(feed_count == counts.feed);
+    expect(local_count == counts.local);
+    expect(feed_count == counts.local + counts.url);
+    expect(url_count == counts.url);
+    expect(item_feed_count == counts.feed);
+}
+
+test "Cli.addFeed(), Cli.deleteFeed()" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -662,11 +760,7 @@ test "Cli.addFeed()" {
     var enter_link = "Enter link number: ";
     var read_valid = "1\n";
     const added_url = "Added url feed: ";
-    var counts: struct { feed: usize, local: usize, url: usize } = .{
-        .feed = @as(usize, 0),
-        .local = @as(usize, 0),
-        .url = @as(usize, 0),
-    };
+    var counts = TestCounts{};
 
     {
         // remove last slash to get HTTP redirect
@@ -687,72 +781,105 @@ test "Cli.addFeed()" {
         counts.local += 1;
     }
 
+    // {
+    //     // remove last slash to get HTTP redirect
+    //     const location = "old.reddit.com/r/programming/";
+    //     const rss_url = "https://old.reddit.com/r/programming/.rss";
+    //     var text_io = TestIO{
+    //         .do_print = do_print,
+    //         .expected_actions = &[_]TestIO.Action{
+    //             .{ .write = write_first },
+    //             .{ .write = "programming\nold.reddit.com\n" },
+    //             .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
+    //             .{ .write = enter_link },
+    //             .{ .read = "abc\n" },
+    //             .{ .write = "Invalid number: 'abc'. Try again.\n" },
+    //             .{ .write = enter_link },
+    //             .{ .read = "12\n" },
+    //             .{ .write = "Number out of range: '12'. Try again.\n" },
+    //             .{ .write = enter_link },
+    //             .{ .read = read_valid },
+    //             .{ .write = added_url ++ rss_url ++ "\n" },
+    //         },
+    //     };
+
+    //     const writer = text_io.writer();
+    //     const reader = text_io.reader();
+    //     try Cli.addFeed(allocator, &db_, location, writer, reader);
+    //     counts.feed += 1;
+    //     counts.url += 1;
+    // }
+
+    // {
+    //     // Feed url has to constructed because Html.Link.href is
+    //     // absolute path - '/syndication/5701'
+    //     const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
+    //     const rss_url = "https://www.royalroad.com/syndication/5701";
+    //     var text_io = TestIO{
+    //         .do_print = do_print,
+    //         .expected_actions = &[_]TestIO.Action{
+    //             .{ .write = write_first },
+    //             .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
+    //             .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
+    //             .{ .write = enter_link },
+    //             .{ .read = read_valid },
+    //             .{ .write = added_url ++ rss_url ++ "\n" },
+    //         },
+    //     };
+
+    //     const writer = text_io.writer();
+    //     const reader = text_io.reader();
+    //     try Cli.addFeed(allocator, &db_, location, writer, reader);
+    //     counts.feed += 1;
+    //     counts.url += 1;
+    // }
+
+    try testCheckCounts(&db_, counts);
+
     {
-        // remove last slash to get HTTP redirect
-        const location = "old.reddit.com/r/programming/";
-        const rss_url = "https://old.reddit.com/r/programming/.rss";
+        // Found no feed to delete
+        const search_value = "doesnt_exist";
+        var first = "Found no matches for '" ++ search_value ++ "' to delete.\n";
         var text_io = TestIO{
             .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
-                .{ .write = write_first },
-                .{ .write = "programming\nold.reddit.com\n" },
-                .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
-                .{ .write = enter_link },
-                .{ .read = "abc\n" },
-                .{ .write = "Invalid number: 'abc'. Try again.\n" },
-                .{ .write = enter_link },
-                .{ .read = "12\n" },
-                .{ .write = "Number out of range: '12'. Try again.\n" },
-                .{ .write = enter_link },
-                .{ .read = read_valid },
-                .{ .write = added_url ++ rss_url ++ "\n" },
+                .{ .write = first },
             },
         };
 
         const writer = text_io.writer();
         const reader = text_io.reader();
-        try Cli.addFeed(allocator, &db_, location, writer, reader);
-        counts.feed += 1;
-        counts.url += 1;
+        try Cli.deleteFeed(allocator, &db_, search_value, writer, reader);
     }
 
     {
-        // Feed url has to constructed because Html.Link.href is
-        // absolute path - '/syndication/5701'
-        const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
-        const rss_url = "https://www.royalroad.com/syndication/5701";
+        // Delete a feed
+        var enter_nr = "Enter feed number to delete? ";
         var text_io = TestIO{
             .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
-                .{ .write = write_first },
-                .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
-                .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
-                .{ .write = enter_link },
-                .{ .read = read_valid },
-                .{ .write = added_url ++ rss_url ++ "\n" },
+                .{ .write = "Found 1 result(s):\n\n" },
+                .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | /media/hdd/code/feed_app/test/sample-rss-2.xml\n" },
+                .{ .write = enter_nr },
+                .{ .read = "1a\n" },
+                .{ .write = "Invalid number entered: '1a'. Try again.\n" },
+                .{ .write = enter_nr },
+                .{ .read = "14\n" },
+                .{ .write = "Entered number out of range. Try again.\n" },
+                .{ .write = enter_nr },
+                .{ .read = "1\n" },
+                .{ .write = "Deleted feed '/media/hdd/code/feed_app/test/sample-rss-2.xml'\n" },
             },
         };
 
         const writer = text_io.writer();
         const reader = text_io.reader();
-        try Cli.addFeed(allocator, &db_, location, writer, reader);
-        counts.feed += 1;
-        counts.url += 1;
+        try Cli.deleteFeed(allocator, &db_, "liftoff", writer, reader);
+        counts.feed -= 1;
+        counts.local -= 1;
     }
 
-    const feed_count_query = "select count(id) from feed";
-    const local_count_query = "select count(feed_id) from feed_update_local";
-    const url_count_query = "select count(feed_id) from feed_update_http";
-    const item_count_query = "select count(DISTINCT feed_id) from item";
-    var feed_count = try db.count(&db_.db, feed_count_query);
-    var local_count = try db.count(&db_.db, local_count_query);
-    var url_count = try db.count(&db_.db, url_count_query);
-    var item_feed_count = try db.count(&db_.db, item_count_query);
-    expect(feed_count == counts.feed);
-    expect(local_count == counts.local);
-    expect(feed_count == counts.local + counts.url);
-    expect(url_count == counts.url);
-    expect(item_feed_count == counts.feed);
+    try testCheckCounts(&db_, counts);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
@@ -865,81 +992,6 @@ pub fn printAllItems(db_struct: *Db, allocator: *Allocator) !void {
                 item_link,
             });
         }
-    }
-}
-
-pub fn cliDeleteFeed(
-    db_struct: *Db,
-    allocator: *Allocator,
-    location: []const u8,
-) !void {
-    const query =
-        \\SELECT location, title, link, id FROM feed
-        \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
-    ;
-    const DbResult = struct {
-        location: []const u8,
-        title: []const u8,
-        link: ?[]const u8,
-        id: usize,
-    };
-
-    const search_term = try fmt.allocPrint(allocator, "%{s}%", .{location});
-    defer allocator.free(search_term);
-
-    const stdout = std.io.getStdOut();
-    const results = try db.selectAll(DbResult, allocator, db_struct.conn, query, .{
-        search_term,
-        search_term,
-        search_term,
-    });
-    if (results.len == 0) {
-        try stdout.writer().print("Found no matches for '{s}' to delete.\n", .{location});
-        return;
-    }
-    try stdout.writer().print("Found {} result(s):\n\n", .{results.len});
-    for (results) |result, i| {
-        const link = result.link orelse "<no-link>";
-        try stdout.writer().print("{}. {s} | {s} | {s}\n", .{
-            i + 1,
-            result.title,
-            link,
-            result.location,
-        });
-    }
-    try stdout.writer().print("\n", .{});
-    try stdout.writer().print("Enter 'q' to quit.\n", .{});
-    // TODO: flush stdin before or after reading it
-    const stdin = std.io.getStdIn();
-    var buf: [32]u8 = undefined;
-
-    var delete_nr: usize = 0;
-    while (true) {
-        try stdout.writer().print("Enter number you want to delete? ", .{});
-        const bytes = try stdin.read(&buf);
-        if (buf[0] == '\n') break;
-
-        if (bytes == 2 and buf[0] == 'q') return;
-
-        if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
-            if (nr >= 1 and nr <= results.len) {
-                delete_nr = nr;
-                break;
-            }
-            try stdout.writer().print("Entered number out of range. Try again.\n", .{});
-            continue;
-        } else |_| {
-            try stdout.writer().print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
-        }
-    }
-
-    const del_query =
-        \\DELETE FROM feed WHERE id = ?;
-    ;
-    if (delete_nr > 0) {
-        const result = results[delete_nr - 1];
-        try deleteFeed(db_struct.conn, result.id);
-        try stdout.writer().print("Deleted feed '{s}'\n", .{result.location});
     }
 }
 
