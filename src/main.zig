@@ -18,11 +18,11 @@ const process = std.process;
 const testing = std.testing;
 const ArrayList = std.ArrayList;
 const Allocator = std.mem.Allocator;
-const l = std.log;
+const log = std.log;
 const db = @import("db.zig");
 usingnamespace @import("queries.zig");
 
-// pub const log_level = std.log.Level.info;
+pub const log_level = std.log.Level.debug;
 const g = struct {
     var max_items_per_feed: usize = 10;
 };
@@ -143,7 +143,7 @@ const Db_ = struct {
         const current_time = std.time.timestamp();
 
         for (url_updates) |obj| {
-            l.info("Update feed: '{s}'", .{obj.location});
+            log.info("Update feed: '{s}'", .{obj.location});
             if (!opts.force) {
                 const check_date: i64 = blk: {
                     if (obj.cache_control_max_age) |sec| {
@@ -156,10 +156,10 @@ const Db_ = struct {
                     break :blk obj.last_update + @intCast(i64, obj.update_interval);
                 };
                 if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
-                    l.info("\tSkip update: Not needed", .{});
+                    log.info("\tSkip update: Not needed", .{});
                     continue;
                 } else if (check_date > current_time) {
-                    l.info("\tSkip update: Not needed", .{});
+                    log.info("\tSkip update: Not needed", .{});
                     continue;
                 }
             }
@@ -191,12 +191,12 @@ const Db_ = struct {
             const resp = try http.resolveRequest(allocator, req);
 
             if (resp.status_code == 304) {
-                l.info("\tSkipping update: Feed hasn't been modified", .{});
+                log.info("\tSkipping update: Feed hasn't been modified", .{});
                 continue;
             }
 
             if (resp.body == null) {
-                l.info("\tSkipping update: HTTP request body is empty", .{});
+                log.info("\tSkipping update: HTTP request body is empty", .{});
                 continue;
             }
 
@@ -221,7 +221,7 @@ const Db_ = struct {
                 if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
                     rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
                 {
-                    l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                    log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                     continue;
                 }
             }
@@ -237,7 +237,7 @@ const Db_ = struct {
 
             try self.addItems(obj.feed_id, rss_feed.items);
             // TODO: remove extra feed items
-            l.info("\tUpdate finished: '{s}'", .{obj.location});
+            log.info("\tUpdate finished: '{s}'", .{obj.location});
         }
 
         // Update local file feeds
@@ -269,7 +269,7 @@ const Db_ = struct {
         ;
 
         for (local_updates) |obj| {
-            l.info("Update feed (local): '{s}'", .{obj.location});
+            log.info("Update feed (local): '{s}'", .{obj.location});
             const file = try std.fs.openFileAbsolute(obj.location, .{});
             defer file.close();
             var file_stat = try file.stat();
@@ -277,7 +277,7 @@ const Db_ = struct {
                 if (obj.last_modified_timestamp) |last_modified| {
                     const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
                     if (last_modified == mtime_sec) {
-                        l.info("\tSkipping update: File hasn't been modified", .{});
+                        log.info("\tSkipping update: File hasn't been modified", .{});
                         continue;
                     }
                 }
@@ -299,7 +299,7 @@ const Db_ = struct {
                 if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
                     rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
                 {
-                    l.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                    log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                     continue;
                 }
             }
@@ -315,7 +315,7 @@ const Db_ = struct {
 
             try self.addItems(obj.feed_id, rss_feed.items);
             // TODO: remove extra feed items
-            l.info("\tUpdate finished: '{s}'", .{obj.location});
+            log.info("\tUpdate finished: '{s}'", .{obj.location});
         }
         try self.cleanItems(allocator);
     }
@@ -395,7 +395,7 @@ pub fn main() anyerror!void {
                 const value = try value_err;
                 try Cli.addFeed(allocator, db_, value, stdout.writer(), stdin.reader());
             } else {
-                l.err("Subcommand add missing feed location", .{});
+                log.err("Subcommand add missing feed location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
             const force = blk: {
@@ -413,7 +413,7 @@ pub fn main() anyerror!void {
                 const value = try value_err;
                 try Cli.deleteFeed(allocator, _db, value, stdout.writer(), stdin.reader());
             } else {
-                l.err("Subcommand delete missing argument location", .{});
+                log.err("Subcommand delete missing argument location", .{});
             }
         } else if (mem.eql(u8, "print", arg)) {
             // if (iter.next(allocator)) |value_err| {
@@ -426,7 +426,7 @@ pub fn main() anyerror!void {
 
             // try printAllItems(&db_struct, allocator);
         } else {
-            l.err("Unknown argument: {s}", .{arg});
+            log.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
         }
     }
@@ -443,10 +443,13 @@ const Cli = struct {
         var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
         const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
         if (abs_path_err) |abs_path| {
-            errdefer l.warn("Failed to add local feed: {s}", .{abs_path});
+            log.info("Add feed: '{s}'", .{abs_path});
+            errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
             // Add local feed
             const contents = try getFileContents(allocator, abs_path);
             const feed = try parse.parse(allocator, contents);
+            log.info("\tFeed.items: {}", .{feed.items.len});
+
             const id = try db_.addFeed(feed, abs_path);
 
             const mtime_sec = blk: {
@@ -462,11 +465,12 @@ const Cli = struct {
             try writer.print("Added local feed: {s}", .{abs_path});
         } else |err| switch (err) {
             error.FileNotFound => {
-                errdefer l.warn("Failed to add url feed: {s}", .{location_input});
+                log.info("Add feed: '{s}'", .{location_input});
+                errdefer log.warn("Failed to add url feed: {s}", .{location_input});
                 const url = try http.makeUri(location_input);
                 const resp = try resolveRequestToFeed(allocator, url, writer, reader);
                 if (resp.body == null or resp.body.?.len == 0) {
-                    l.warn("No body to parse", .{});
+                    log.warn("No body to parse", .{});
                     return error.NoBody;
                 }
 
@@ -476,11 +480,13 @@ const Cli = struct {
                     .xml_rss => try parse.Rss.parse(allocator, resp.body.?),
                     .xml => try parse.parse(allocator, resp.body.?),
                     .unknown => {
-                        l.warn("Unknown content type was returned\n", .{});
+                        log.warn("Unknown content type was returned\n", .{});
                         return error.UnknownHttpContent;
                     },
                     .html => unreachable,
                 };
+
+                log.info("\tFeed.items: {}", .{feed.items.len});
 
                 const location = try fmt.allocPrint(allocator, "{s}://{s}{s}", .{
                     resp.url.scheme,
@@ -653,14 +659,14 @@ const Cli = struct {
 
     pub fn cleanItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
         db_.cleanItems(allocator) catch {
-            l.warn("Failed to remove extra feed items.", .{});
+            log.warn("Failed to remove extra feed items.", .{});
             return;
         };
         try writer.print("Clean feeds of extra links/items.\n", .{});
     }
 };
 
-test "Cli.cleanItems @active" {
+test "Cli.cleanItems" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -753,7 +759,7 @@ const TestCounts = struct {
     url: usize = 0,
 };
 
-fn testCheckCounts(db_: *Db_, counts: TestCounts) !void {
+fn expectCounts(db_: *Db_, counts: TestCounts) !void {
     const feed_count_query = "select count(id) from feed";
     const local_count_query = "select count(feed_id) from feed_update_local";
     const url_count_query = "select count(feed_id) from feed_update_http";
@@ -770,7 +776,9 @@ fn testCheckCounts(db_: *Db_, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "Cli.addFeed(), Cli.deleteFeed()" {
+test "Cli.addFeed(), Cli.deleteFeed() @active" {
+    std.testing.log_level = .debug;
+
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -856,7 +864,15 @@ test "Cli.addFeed(), Cli.deleteFeed()" {
     //     counts.url += 1;
     // }
 
-    try testCheckCounts(&db_, counts);
+    try expectCounts(&db_, counts);
+
+    {
+        const query = "select count(feed_id) from item group by feed_id";
+        const results = try db.selectAll(usize, allocator, &db_.db, query, .{});
+        for (results) |item_count| {
+            expect(item_count <= g.max_items_per_feed);
+        }
+    }
 
     {
         // Found no feed to delete
@@ -901,7 +917,7 @@ test "Cli.addFeed(), Cli.deleteFeed()" {
         counts.local -= 1;
     }
 
-    try testCheckCounts(&db_, counts);
+    try expectCounts(&db_, counts);
 }
 
 pub fn newestFeedItems(items: []parse.Feed.Item, timestamp: i64) []parse.Feed.Item {
@@ -928,7 +944,7 @@ pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
     var stmt = try db_struct.conn.prepare(query);
     defer stmt.deinit();
     const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
-        l.warn("ERR: {s}\nFailed query:\n{s}", .{ db_struct.conn.getDetailedError().message, query });
+        log.warn("ERR: {s}\nFailed query:\n{s}", .{ db_struct.conn.getDetailedError().message, query });
         return err;
     };
     const writer = std.io.getStdOut().writer();
