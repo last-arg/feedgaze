@@ -33,7 +33,7 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-const Db_ = struct {
+const FeedDb = struct {
     const Self = @This();
     db: sql.Db,
 
@@ -384,7 +384,7 @@ pub fn main() anyerror!void {
     //     .{ .read = true, .truncate = false },
     // );
 
-    var db_ = try Db_.init(allocator, abs_location);
+    var db_ = try FeedDb.init(allocator, abs_location);
 
     var iter = process.args();
     _ = iter.skip();
@@ -447,7 +447,7 @@ pub fn main() anyerror!void {
 
 pub fn makeCli(
     allocator: *Allocator,
-    db_: *Db_,
+    db_: *FeedDb,
     writer: anytype,
     reader: anytype,
 ) Cli(@TypeOf(writer), @TypeOf(reader)) {
@@ -464,7 +464,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         const Self = @This();
 
         allocator: *Allocator,
-        db_: *Db_,
+        db_: *FeedDb,
         writer: Writer,
         reader: Reader,
 
@@ -813,14 +813,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     };
 }
 
-test "Cli.printAllItems, Cli.printFeeds" {
+test "@active Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try Db_.init(allocator, null);
+    var db_ = try FeedDb.init(allocator, null);
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
@@ -869,7 +869,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "Cli.cleanItems" {
+test "@active Cli.cleanItems" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -877,7 +877,7 @@ test "Cli.cleanItems" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try Db_.init(allocator, null);
+    var db_ = try FeedDb.init(allocator, null);
     // TODO: populate db with data
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
@@ -971,7 +971,7 @@ const TestCounts = struct {
     url: usize = 0,
 };
 
-fn expectCounts(db_: *Db_, counts: TestCounts) !void {
+fn expectCounts(db_: *FeedDb, counts: TestCounts) !void {
     const feed_count_query = "select count(id) from feed";
     const local_count_query = "select count(feed_id) from feed_update_local";
     const url_count_query = "select count(feed_id) from feed_update_http";
@@ -988,7 +988,7 @@ fn expectCounts(db_: *Db_, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -996,7 +996,7 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try Db_.init(allocator, null);
+    var db_ = try FeedDb.init(allocator, null);
     const do_print = false;
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
@@ -1178,7 +1178,7 @@ test "local feed: add, update, remove" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try Db_.init(allocator, null);
+    var db_ = try FeedDb.init(allocator, null);
 
     // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
     const rel_path = "test/sample-rss-2.xml";
