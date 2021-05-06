@@ -1,3 +1,4 @@
 tmp/
+zig-out/
 zig-cache/
 *.wip
