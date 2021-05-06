@@ -1,7 +1,7 @@
 default:
 	echo 'Hello, world!'
 
-test-active:
+watch-active:
   watchexec -c -r -w src/ -e zig 'zig build test-active'
 
 update:
