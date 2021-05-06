@@ -389,15 +389,19 @@ pub fn main() anyerror!void {
     var iter = process.args();
     _ = iter.skip();
 
-    const writer = std.io.getStdOut().writer();
+    var writer = std.io.getStdOut().writer();
     const reader = std.io.getStdIn().reader();
+    var cli = Cli{
+        .allocator = allocator,
+        .db_ = &db_,
+    };
 
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
         if (mem.eql(u8, "add", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.addFeed(allocator, &db_, value, writer, reader);
+                try cli.addFeed(value, writer, reader);
             } else {
                 log.err("Subcommand add missing feed location", .{});
             }
@@ -412,13 +416,13 @@ pub fn main() anyerror!void {
                 }
                 break :blk false;
             };
-            try Cli.updateFeeds(allocator, &db_, .{ .force = force }, writer);
+            try cli.updateFeeds(.{ .force = force }, writer);
         } else if (mem.eql(u8, "clean", arg)) {
-            try Cli.cleanItems(allocator, &db_, writer);
+            try cli.cleanItems(writer);
         } else if (mem.eql(u8, "delete", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.deleteFeed(allocator, &db_, value, writer, reader);
+                try cli.deleteFeed(value, writer, reader);
             } else {
                 log.err("Subcommand delete missing argument location", .{});
             }
@@ -426,12 +430,12 @@ pub fn main() anyerror!void {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
                 if (mem.eql(u8, "feeds", value)) {
-                    try Cli.printFeeds(allocator, &db_, writer);
+                    try cli.printFeeds(writer);
                     return;
                 }
             }
 
-            try Cli.printAllItems(allocator, &db_, writer);
+            try cli.printAllItems(writer);
         } else {
             log.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
@@ -440,9 +444,13 @@ pub fn main() anyerror!void {
 }
 
 const Cli = struct {
+    const Self = @This();
+
+    allocator: *Allocator,
+    db_: *Db_,
+
     pub fn addFeed(
-        allocator: *Allocator,
-        db_: *Db_,
+        self: *Self,
         location_input: []const u8,
         writer: anytype,
         reader: anytype,
@@ -453,11 +461,11 @@ const Cli = struct {
             log.info("Add feed: '{s}'", .{abs_path});
             errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
             // Add local feed
-            const contents = try getFileContents(allocator, abs_path);
-            const feed = try parse.parse(allocator, contents);
+            const contents = try getFileContents(self.allocator, abs_path);
+            const feed = try parse.parse(self.allocator, contents);
             log.info("\tFeed.items: {}", .{feed.items.len});
 
-            const id = try db_.addFeed(feed, abs_path);
+            const id = try self.db_.addFeed(feed, abs_path);
 
             const mtime_sec = blk: {
                 const file = try fs.openFileAbsolute(abs_path, .{});
@@ -466,16 +474,16 @@ const Cli = struct {
                 break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
             };
 
-            try db_.addFeedLocal(id, mtime_sec);
-            try db_.addItems(id, feed.items);
-            try db_.cleanItemsByFeedId(id);
+            try self.db_.addFeedLocal(id, mtime_sec);
+            try self.db_.addItems(id, feed.items);
+            try self.db_.cleanItemsByFeedId(id);
             try writer.print("Added local feed: {s}", .{abs_path});
         } else |err| switch (err) {
             error.FileNotFound => {
                 log.info("Add feed: '{s}'", .{location_input});
                 errdefer log.warn("Failed to add url feed: {s}", .{location_input});
                 const url = try http.makeUri(location_input);
-                const resp = try resolveRequestToFeed(allocator, url, writer, reader);
+                const resp = try resolveRequestToFeed(self.allocator, url, writer, reader);
                 if (resp.body == null or resp.body.?.len == 0) {
                     log.warn("No body to parse", .{});
                     return error.NoBody;
@@ -483,9 +491,9 @@ const Cli = struct {
 
                 // Parse feed data
                 const feed = switch (resp.content_type) {
-                    .xml_atom => try parse.Atom.parse(allocator, resp.body.?),
-                    .xml_rss => try parse.Rss.parse(allocator, resp.body.?),
-                    .xml => try parse.parse(allocator, resp.body.?),
+                    .xml_atom => try parse.Atom.parse(self.allocator, resp.body.?),
+                    .xml_rss => try parse.Rss.parse(self.allocator, resp.body.?),
+                    .xml => try parse.parse(self.allocator, resp.body.?),
                     .unknown => {
                         log.warn("Unknown content type was returned\n", .{});
                         return error.UnknownHttpContent;
@@ -495,18 +503,18 @@ const Cli = struct {
 
                 log.info("\tFeed.items: {}", .{feed.items.len});
 
-                const location = try fmt.allocPrint(allocator, "{s}://{s}{s}", .{
+                const location = try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
                     resp.url.scheme,
                     resp.url.host.name,
                     resp.url.path,
                 });
-                defer allocator.free(location);
+                defer self.allocator.free(location);
 
                 // Add feed
-                const feed_id = try db_.addFeed(feed, location);
-                try db_.addFeedUrl(feed_id, resp);
-                try db_.addItems(feed_id, feed.items);
-                try db_.cleanItemsByFeedId(feed_id);
+                const feed_id = try self.db_.addFeed(feed, location);
+                try self.db_.addFeedUrl(feed_id, resp);
+                try self.db_.addItems(feed_id, feed.items);
+                try self.db_.cleanItemsByFeedId(feed_id);
 
                 try writer.print("Added url feed: {s}\n", .{location});
             },
@@ -594,8 +602,7 @@ const Cli = struct {
     }
 
     pub fn deleteFeed(
-        allocator: *Allocator,
-        db_: *Db_,
+        self: *Self,
         search_input: []const u8,
         writer: anytype,
         reader: anytype,
@@ -611,10 +618,10 @@ const Cli = struct {
             id: usize,
         };
 
-        const search_term = try fmt.allocPrint(allocator, "%{s}%", .{search_input});
-        defer allocator.free(search_term);
+        const search_term = try fmt.allocPrint(self.allocator, "%{s}%", .{search_input});
+        defer self.allocator.free(search_term);
 
-        const results = try db.selectAll(DbResult, allocator, &db_.db, query, .{
+        const results = try db.selectAll(DbResult, self.allocator, &self.db_.db, query, .{
             search_term,
             search_term,
             search_term,
@@ -658,20 +665,21 @@ const Cli = struct {
         ;
         if (delete_nr > 0) {
             const result = results[delete_nr - 1];
-            try db_.deleteFeed(result.id);
+            try self.db_.deleteFeed(result.id);
             try writer.print("Deleted feed '{s}'\n", .{result.location});
         }
     }
 
-    pub fn cleanItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
-        db_.cleanItems(allocator) catch {
+    pub fn cleanItems(self: *Self, writer: anytype) !void {
+        self.db_.cleanItems(self.allocator) catch {
             log.warn("Failed to remove extra feed items.", .{});
             return;
         };
         try writer.print("Clean feeds of extra links/items.\n", .{});
     }
 
-    pub fn printAllItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+    // pub fn printAllItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+    pub fn printAllItems(self: *Self, writer: anytype) !void {
         const Result = struct {
             title: []const u8,
             link: ?[]const u8,
@@ -690,8 +698,8 @@ const Cli = struct {
 
         const most_recent_feeds = try db.selectAll(
             Result,
-            allocator,
-            &db_.db,
+            self.allocator,
+            &self.db_.db,
             most_recent_feeds_query,
             .{},
         );
@@ -717,8 +725,8 @@ const Cli = struct {
 
         const all_items = try db.selectAll(
             Result,
-            allocator,
-            &db_.db,
+            self.allocator,
+            &self.db_.db,
             all_items_query,
             .{},
         );
@@ -748,20 +756,20 @@ const Cli = struct {
         force: bool = false,
     };
 
-    pub fn updateFeeds(allocator: *Allocator, db_: *Db_, opts: Options, writer: anytype) !void {
-        db_.updateUrlFeeds(allocator, .{ .force = opts.force }) catch {
+    pub fn updateFeeds(self: *Self, opts: Options, writer: anytype) !void {
+        self.db_.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
             log.err("Failed to update feeds", .{});
             return;
         };
         try writer.print("Updated url feeds\n", .{});
-        db_.updateLocalFeeds(allocator, .{ .force = opts.force }) catch {
+        self.db_.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
             log.err("Failed to update local feeds", .{});
             return;
         };
         try writer.print("Updated local feeds\n", .{});
     }
 
-    pub fn printFeeds(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+    pub fn printFeeds(self: *Self, writer: anytype) !void {
         const Result = struct {
             title: []const u8,
             location: []const u8,
@@ -770,10 +778,10 @@ const Cli = struct {
         const query =
             \\SELECT title, location, link FROM feed
         ;
-        var stmt = try db_.db.prepare(query);
+        var stmt = try self.db_.db.prepare(query);
         defer stmt.deinit();
-        const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
-            log.warn("{s}\nFailed query:\n{s}", .{ db_.db.getDetailedError().message, query });
+        const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
+            log.warn("{s}\nFailed query:\n{s}", .{ self.db_.db.getDetailedError().message, query });
             return err;
         };
         try writer.print("There are {} feed(s)\n", .{all_items.len});
