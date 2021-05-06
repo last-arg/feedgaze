@@ -869,7 +869,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "@active Cli.cleanItems" {
+test "Cli.cleanItems" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
