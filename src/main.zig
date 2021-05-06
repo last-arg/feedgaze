@@ -426,15 +426,15 @@ pub fn main() anyerror!void {
                 log.err("Subcommand delete missing argument location", .{});
             }
         } else if (mem.eql(u8, "print", arg)) {
-            // if (iter.next(allocator)) |value_err| {
-            //     const value = try value_err;
-            //     if (mem.eql(u8, "feeds", value)) {
-            //         try printFeeds(&db_struct, allocator);
-            //         return;
-            //     }
-            // }
+            if (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                if (mem.eql(u8, "feeds", value)) {
+                    try Cli.printFeeds(allocator, &db_, writer);
+                    return;
+                }
+            }
 
-            // try printAllItems(&db_struct, allocator);
+            try printAllItems(allocator, _db, writer);
         } else {
             log.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
@@ -759,6 +759,37 @@ const Cli = struct {
         };
         try writer.print("Updated local feeds\n", .{});
     }
+
+    pub fn printFeeds(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
+        const Result = struct {
+            title: []const u8,
+            location: []const u8,
+            link: ?[]const u8,
+        };
+        const query =
+            \\SELECT title, location, link FROM feed
+        ;
+        var stmt = try db_.db.prepare(query);
+        defer stmt.deinit();
+        const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
+            log.warn("{s}\nFailed query:\n{s}", .{ db_.db.getDetailedError().message, query });
+            return err;
+        };
+        try writer.print("There are {} feed(s)\n", .{all_items.len});
+
+        const print_fmt =
+            \\{s}
+            \\  link: {s}
+            \\  location: {s}
+            \\
+            \\
+        ;
+
+        for (all_items) |item| {
+            const link = item.link orelse "<no-link>";
+            try writer.print(print_fmt, .{ item.title, link, item.location });
+        }
+    }
 };
 
 test "Cli.printAllItems" {
@@ -780,20 +811,34 @@ test "Cli.printAllItems" {
         try Cli.addFeed(allocator, &db_, location, writer, reader);
     }
 
-    var first = "Liftoff News - http://liftoff.msfc.nasa.gov/\n";
-    var text_io = TestIO{
-        .expected_actions = &[_]TestIO.Action{
-            .{ .write = first },
-            .{ .write = "  Star City\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
-            .{ .write = "  Sky watchers in Europe, Asia, \n  <no-link>\n\n" },
-            .{ .write = "  TEST THIS\n  <no-link>\n\n" },
-            .{ .write = "  Astronauts' Dirty Laundry\n  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp\n\n" },
-            .{ .write = "  The Engine That Does More\n  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp\n\n" },
-            .{ .write = "  TEST THIS1\n  <no-link>\n\n" },
-        },
-    };
-    const writer = text_io.writer();
-    try Cli.printAllItems(allocator, &db_, writer);
+    {
+        var first = "Liftoff News - http://liftoff.msfc.nasa.gov/\n";
+        var text_io = TestIO{
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = first },
+                .{ .write = "  Star City\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
+                .{ .write = "  Sky watchers in Europe, Asia, \n  <no-link>\n\n" },
+                .{ .write = "  TEST THIS\n  <no-link>\n\n" },
+                .{ .write = "  Astronauts' Dirty Laundry\n  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp\n\n" },
+                .{ .write = "  The Engine That Does More\n  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp\n\n" },
+                .{ .write = "  TEST THIS1\n  <no-link>\n\n" },
+            },
+        };
+        const writer = text_io.writer();
+        try Cli.printAllItems(allocator, &db_, writer);
+    }
+
+    {
+        var first = "There are 1 feed(s)\n";
+        var text_io = TestIO{
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = first },
+                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: /media/hdd/code/feed_app/test/sample-rss-2.xml\n\n" },
+            },
+        };
+        const writer = text_io.writer();
+        try Cli.printFeeds(allocator, &db_, writer);
+    }
 }
 
 test "Cli.cleanItems" {
@@ -908,7 +953,7 @@ fn expectCounts(db_: *Db_, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds() @active" {
+test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -1062,38 +1107,6 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds() @active" {
     }
 
     try expectCounts(&db_, counts);
-}
-
-pub fn printFeeds(db_struct: *Db, allocator: *Allocator) !void {
-    const Result = struct {
-        title: []const u8,
-        location: []const u8,
-        link: ?[]const u8,
-    };
-    const query =
-        \\SELECT title, location, link FROM feed
-    ;
-    var stmt = try db_struct.conn.prepare(query);
-    defer stmt.deinit();
-    const all_items = stmt.all(Result, allocator, .{}, .{}) catch |err| {
-        log.warn("ERR: {s}\nFailed query:\n{s}", .{ db_struct.conn.getDetailedError().message, query });
-        return err;
-    };
-    const writer = std.io.getStdOut().writer();
-    try writer.print("There are {} feed(s)\n", .{all_items.len});
-
-    const print_fmt =
-        \\{s}
-        \\  link: {s}
-        \\  location: {s}
-        \\
-        \\
-    ;
-
-    for (all_items) |item| {
-        const link = item.link orelse "<no-link>";
-        try writer.print(print_fmt, .{ item.title, link, item.location });
-    }
 }
 
 // Caller freed memory
