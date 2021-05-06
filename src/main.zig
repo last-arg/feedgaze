@@ -391,10 +391,12 @@ pub fn main() anyerror!void {
 
     var writer = std.io.getStdOut().writer();
     const reader = std.io.getStdIn().reader();
-    var cli = Cli{
-        .allocator = allocator,
-        .db_ = &db_,
-    };
+    // var cli = Cli{
+    //     .allocator = allocator,
+    //     .db_ = &db_,
+    //     .writer = writer,
+    // };
+    var cli = makeCli(allocator, &db_, writer, reader);
 
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
@@ -443,365 +445,375 @@ pub fn main() anyerror!void {
     }
 }
 
-const Cli = struct {
-    const Self = @This();
-
+pub fn makeCli(
     allocator: *Allocator,
     db_: *Db_,
+    writer: anytype,
+    reader: anytype,
+) Cli(@TypeOf(writer), @TypeOf(reader)) {
+    return Cli(@TypeOf(writer), @TypeOf(reader)){
+        .allocator = allocator,
+        .db_ = db_,
+        .writer = writer,
+        .reader = reader,
+    };
+}
 
-    pub fn addFeed(
-        self: *Self,
-        location_input: []const u8,
-        writer: anytype,
-        reader: anytype,
-    ) !void {
-        var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-        const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
-        if (abs_path_err) |abs_path| {
-            log.info("Add feed: '{s}'", .{abs_path});
-            errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
-            // Add local feed
-            const contents = try getFileContents(self.allocator, abs_path);
-            const feed = try parse.parse(self.allocator, contents);
-            log.info("\tFeed.items: {}", .{feed.items.len});
+pub fn Cli(comptime Writer: type, comptime Reader: type) type {
+    return struct {
+        const Self = @This();
 
-            const id = try self.db_.addFeed(feed, abs_path);
+        allocator: *Allocator,
+        db_: *Db_,
+        writer: Writer,
+        reader: Reader,
 
-            const mtime_sec = blk: {
-                const file = try fs.openFileAbsolute(abs_path, .{});
-                defer file.close();
-                const stat = try file.stat();
-                break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
-            };
-
-            try self.db_.addFeedLocal(id, mtime_sec);
-            try self.db_.addItems(id, feed.items);
-            try self.db_.cleanItemsByFeedId(id);
-            try writer.print("Added local feed: {s}", .{abs_path});
-        } else |err| switch (err) {
-            error.FileNotFound => {
-                log.info("Add feed: '{s}'", .{location_input});
-                errdefer log.warn("Failed to add url feed: {s}", .{location_input});
-                const url = try http.makeUri(location_input);
-                const resp = try resolveRequestToFeed(self.allocator, url, writer, reader);
-                if (resp.body == null or resp.body.?.len == 0) {
-                    log.warn("No body to parse", .{});
-                    return error.NoBody;
-                }
-
-                // Parse feed data
-                const feed = switch (resp.content_type) {
-                    .xml_atom => try parse.Atom.parse(self.allocator, resp.body.?),
-                    .xml_rss => try parse.Rss.parse(self.allocator, resp.body.?),
-                    .xml => try parse.parse(self.allocator, resp.body.?),
-                    .unknown => {
-                        log.warn("Unknown content type was returned\n", .{});
-                        return error.UnknownHttpContent;
-                    },
-                    .html => unreachable,
-                };
-
+        pub fn addFeed(
+            self: *Self,
+            location_input: []const u8,
+        ) !void {
+            var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+            const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
+            if (abs_path_err) |abs_path| {
+                log.info("Add feed: '{s}'", .{abs_path});
+                errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
+                // Add local feed
+                const contents = try getFileContents(self.allocator, abs_path);
+                const feed = try parse.parse(self.allocator, contents);
                 log.info("\tFeed.items: {}", .{feed.items.len});
 
-                const location = try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
-                    resp.url.scheme,
-                    resp.url.host.name,
-                    resp.url.path,
-                });
-                defer self.allocator.free(location);
+                const id = try self.db_.addFeed(feed, abs_path);
 
-                // Add feed
-                const feed_id = try self.db_.addFeed(feed, location);
-                try self.db_.addFeedUrl(feed_id, resp);
-                try self.db_.addItems(feed_id, feed.items);
-                try self.db_.cleanItemsByFeedId(feed_id);
-
-                try writer.print("Added url feed: {s}\n", .{location});
-            },
-            else => return err,
-        }
-    }
-
-    fn resolveRequestToFeed(
-        allocator: *Allocator,
-        url: Uri,
-        writer: anytype,
-        reader: anytype,
-    ) anyerror!http.FeedResponse {
-        const req = http.FeedRequest{ .url = url };
-        const resp = try http.resolveRequest(allocator, req);
-
-        if (resp.content_type == .html) {
-            const page_data = try parse.Html.parseLinks(allocator, resp.body.?);
-            if (page_data.links.len == 0) {
-                try writer.print("Found no RSS or Atom feed links\n", .{});
-                return error.NoRssOrAtomLinksFound;
-            }
-            const link = try chooseFeedLink(allocator, page_data, resp.url, writer, reader);
-            var rss_uri = try http.makeUri(link.href);
-            if (rss_uri.host.name.len == 0) {
-                rss_uri.scheme = resp.url.scheme;
-                rss_uri.host.name = resp.url.host.name;
-            }
-            return try resolveRequestToFeed(allocator, rss_uri, writer, reader);
-        }
-
-        return resp;
-    }
-
-    fn chooseFeedLink(
-        allocator: *Allocator,
-        page_data: parse.Html.Page,
-        url: Uri,
-        writer: anytype,
-        reader: anytype,
-    ) !parse.Html.Link {
-        var buf: [64]u8 = undefined;
-        try writer.print("Choose feed to add\n", .{});
-        const title = page_data.title orelse "<no-page-title>";
-        try writer.print("{s}\n{s}\n", .{ title, url.host.name });
-        for (page_data.links) |link, i| {
-            const link_title = page_data.links[i].title orelse "<no-title>";
-            if (link.href[0] != '/') {
-                try writer.print("\t{d}. {s} -> {s}\n", .{ i + 1, link_title, link.href });
-            } else {
-                try writer.print("\t{d}. {s} -> {s}://{s}{s}\n", .{
-                    i + 1,
-                    link_title,
-                    url.scheme,
-                    url.host.name,
-                    link.href,
-                });
-            }
-        }
-
-        const result_link = blk: {
-            while (true) {
-                try writer.print("Enter link number: ", .{});
-                const bytes = try reader.read(&buf);
-                const input = buf[0 .. bytes - 1];
-                const nr = fmt.parseUnsigned(u16, input, 10) catch |err| {
-                    try writer.print(
-                        "Invalid number: '{s}'. Try again.\n",
-                        .{input},
-                    );
-                    continue;
+                const mtime_sec = blk: {
+                    const file = try fs.openFileAbsolute(abs_path, .{});
+                    defer file.close();
+                    const stat = try file.stat();
+                    break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
                 };
-                if (nr < 1 or nr > page_data.links.len) {
-                    try writer.print(
-                        "Number out of range: '{d}'. Try again.\n",
-                        .{nr},
-                    );
-                    continue;
-                }
-                break :blk page_data.links[nr - 1];
-            }
-        };
 
-        return result_link;
-    }
+                try self.db_.addFeedLocal(id, mtime_sec);
+                try self.db_.addItems(id, feed.items);
+                try self.db_.cleanItemsByFeedId(id);
+                try self.writer.print("Added local feed: {s}", .{abs_path});
+            } else |err| switch (err) {
+                error.FileNotFound => {
+                    log.info("Add feed: '{s}'", .{location_input});
+                    errdefer log.warn("Failed to add url feed: {s}", .{location_input});
+                    const url = try http.makeUri(location_input);
+                    const resp = try resolveRequestToFeed(self.allocator, url, self.writer, self.reader);
+                    if (resp.body == null or resp.body.?.len == 0) {
+                        log.warn("No body to parse", .{});
+                        return error.NoBody;
+                    }
 
-    pub fn deleteFeed(
-        self: *Self,
-        search_input: []const u8,
-        writer: anytype,
-        reader: anytype,
-    ) !void {
-        const query =
-            \\SELECT location, title, link, id FROM feed
-            \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
-        ;
-        const DbResult = struct {
-            location: []const u8,
-            title: []const u8,
-            link: ?[]const u8,
-            id: usize,
-        };
+                    // Parse feed data
+                    const feed = switch (resp.content_type) {
+                        .xml_atom => try parse.Atom.parse(self.allocator, resp.body.?),
+                        .xml_rss => try parse.Rss.parse(self.allocator, resp.body.?),
+                        .xml => try parse.parse(self.allocator, resp.body.?),
+                        .unknown => {
+                            log.warn("Unknown content type was returned\n", .{});
+                            return error.UnknownHttpContent;
+                        },
+                        .html => unreachable,
+                    };
 
-        const search_term = try fmt.allocPrint(self.allocator, "%{s}%", .{search_input});
-        defer self.allocator.free(search_term);
+                    log.info("\tFeed.items: {}", .{feed.items.len});
 
-        const results = try db.selectAll(DbResult, self.allocator, &self.db_.db, query, .{
-            search_term,
-            search_term,
-            search_term,
-        });
-        if (results.len == 0) {
-            try writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
-            return;
-        }
-        try writer.print("Found {} result(s):\n\n", .{results.len});
-        for (results) |result, i| {
-            const link = result.link orelse "<no-link>";
-            try writer.print("{}. {s} | {s} | {s}\n", .{
-                i + 1,
-                result.title,
-                link,
-                result.location,
-            });
-        }
-        var buf: [32]u8 = undefined;
+                    const location = try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
+                        resp.url.scheme,
+                        resp.url.host.name,
+                        resp.url.path,
+                    });
+                    defer self.allocator.free(location);
 
-        var delete_nr: usize = 0;
-        while (true) {
-            try writer.print("Enter feed number to delete? ", .{});
-            const bytes = try reader.read(&buf);
-            if (buf[0] == '\n') continue;
+                    // Add feed
+                    const feed_id = try self.db_.addFeed(feed, location);
+                    try self.db_.addFeedUrl(feed_id, resp);
+                    try self.db_.addItems(feed_id, feed.items);
+                    try self.db_.cleanItemsByFeedId(feed_id);
 
-            if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
-                if (nr >= 1 and nr <= results.len) {
-                    delete_nr = nr;
-                    break;
-                }
-                try writer.print("Entered number out of range. Try again.\n", .{});
-                continue;
-            } else |_| {
-                try writer.print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
+                    try self.writer.print("Added url feed: {s}\n", .{location});
+                },
+                else => return err,
             }
         }
 
-        const del_query =
-            \\DELETE FROM feed WHERE id = ?;
-        ;
-        if (delete_nr > 0) {
-            const result = results[delete_nr - 1];
-            try self.db_.deleteFeed(result.id);
-            try writer.print("Deleted feed '{s}'\n", .{result.location});
-        }
-    }
+        fn resolveRequestToFeed(
+            allocator: *Allocator,
+            url: Uri,
+            writer: anytype,
+            reader: anytype,
+        ) anyerror!http.FeedResponse {
+            const req = http.FeedRequest{ .url = url };
+            const resp = try http.resolveRequest(allocator, req);
 
-    pub fn cleanItems(self: *Self, writer: anytype) !void {
-        self.db_.cleanItems(self.allocator) catch {
-            log.warn("Failed to remove extra feed items.", .{});
-            return;
-        };
-        try writer.print("Clean feeds of extra links/items.\n", .{});
-    }
-
-    // pub fn printAllItems(allocator: *Allocator, db_: *Db_, writer: anytype) !void {
-    pub fn printAllItems(self: *Self, writer: anytype) !void {
-        const Result = struct {
-            title: []const u8,
-            link: ?[]const u8,
-            id: usize,
-        };
-
-        // most recently updated feed
-        const most_recent_feeds_query =
-            \\SELECT
-            \\	title,
-            \\  link,
-            \\	id
-            \\FROM
-            \\	feed
-        ;
-
-        const most_recent_feeds = try db.selectAll(
-            Result,
-            self.allocator,
-            &self.db_.db,
-            most_recent_feeds_query,
-            .{},
-        );
-
-        if (most_recent_feeds.len == 0) {
-            try writer.print("There are 0 feeds\n", .{});
-            return;
-        }
-
-        // grouped by feed_id
-        const all_items_query =
-            \\SELECT
-            \\	title,
-            \\	link,
-            \\  feed_id
-            \\FROM
-            \\	item
-            \\ORDER BY
-            \\	feed_id DESC,
-            \\	pub_date_utc DESC,
-            \\  created_at DESC
-        ;
-
-        const all_items = try db.selectAll(
-            Result,
-            self.allocator,
-            &self.db_.db,
-            all_items_query,
-            .{},
-        );
-
-        for (most_recent_feeds) |feed| {
-            const id = feed.id;
-            const start_index = blk: {
-                for (all_items) |item, idx| {
-                    if (item.id == id) break :blk idx;
+            if (resp.content_type == .html) {
+                const page_data = try parse.Html.parseLinks(allocator, resp.body.?);
+                if (page_data.links.len == 0) {
+                    try writer.print("Found no RSS or Atom feed links\n", .{});
+                    return error.NoRssOrAtomLinksFound;
                 }
-                break; // Should not happen
+                const link = try chooseFeedLink(allocator, page_data, resp.url, writer, reader);
+                var rss_uri = try http.makeUri(link.href);
+                if (rss_uri.host.name.len == 0) {
+                    rss_uri.scheme = resp.url.scheme;
+                    rss_uri.host.name = resp.url.host.name;
+                }
+                return try resolveRequestToFeed(allocator, rss_uri, writer, reader);
+            }
+
+            return resp;
+        }
+
+        fn chooseFeedLink(
+            allocator: *Allocator,
+            page_data: parse.Html.Page,
+            url: Uri,
+            writer: anytype,
+            reader: anytype,
+        ) !parse.Html.Link {
+            var buf: [64]u8 = undefined;
+            try writer.print("Choose feed to add\n", .{});
+            const title = page_data.title orelse "<no-page-title>";
+            try writer.print("{s}\n{s}\n", .{ title, url.host.name });
+            for (page_data.links) |link, i| {
+                const link_title = page_data.links[i].title orelse "<no-title>";
+                if (link.href[0] != '/') {
+                    try writer.print("\t{d}. {s} -> {s}\n", .{ i + 1, link_title, link.href });
+                } else {
+                    try writer.print("\t{d}. {s} -> {s}://{s}{s}\n", .{
+                        i + 1,
+                        link_title,
+                        url.scheme,
+                        url.host.name,
+                        link.href,
+                    });
+                }
+            }
+
+            const result_link = blk: {
+                while (true) {
+                    try writer.print("Enter link number: ", .{});
+                    const bytes = try reader.read(&buf);
+                    const input = buf[0 .. bytes - 1];
+                    const nr = fmt.parseUnsigned(u16, input, 10) catch |err| {
+                        try writer.print(
+                            "Invalid number: '{s}'. Try again.\n",
+                            .{input},
+                        );
+                        continue;
+                    };
+                    if (nr < 1 or nr > page_data.links.len) {
+                        try writer.print(
+                            "Number out of range: '{d}'. Try again.\n",
+                            .{nr},
+                        );
+                        continue;
+                    }
+                    break :blk page_data.links[nr - 1];
+                }
             };
-            const feed_link = feed.link orelse "<no-link>";
-            try writer.print("{s} - {s}\n", .{ feed.title, feed_link });
-            for (all_items[start_index..]) |item| {
-                if (item.id != id) break;
-                const item_link = item.link orelse "<no-link>";
-                try writer.print("  {s}\n  {s}\n\n", .{
-                    item.title,
-                    item_link,
+
+            return result_link;
+        }
+
+        pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
+            const query =
+                \\SELECT location, title, link, id FROM feed
+                \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
+            ;
+            const DbResult = struct {
+                location: []const u8,
+                title: []const u8,
+                link: ?[]const u8,
+                id: usize,
+            };
+
+            const search_term = try fmt.allocPrint(self.allocator, "%{s}%", .{search_input});
+            defer self.allocator.free(search_term);
+
+            const results = try db.selectAll(DbResult, self.allocator, &self.db_.db, query, .{
+                search_term,
+                search_term,
+                search_term,
+            });
+            if (results.len == 0) {
+                try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
+                return;
+            }
+            try self.writer.print("Found {} result(s):\n\n", .{results.len});
+            for (results) |result, i| {
+                const link = result.link orelse "<no-link>";
+                try self.writer.print("{}. {s} | {s} | {s}\n", .{
+                    i + 1,
+                    result.title,
+                    link,
+                    result.location,
                 });
             }
-        }
-    }
+            var buf: [32]u8 = undefined;
 
-    pub const Options = struct {
-        force: bool = false,
+            var delete_nr: usize = 0;
+            while (true) {
+                try self.writer.print("Enter feed number to delete? ", .{});
+                const bytes = try self.reader.read(&buf);
+                if (buf[0] == '\n') continue;
+
+                if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
+                    if (nr >= 1 and nr <= results.len) {
+                        delete_nr = nr;
+                        break;
+                    }
+                    try self.writer.print("Entered number out of range. Try again.\n", .{});
+                    continue;
+                } else |_| {
+                    try self.writer.print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
+                }
+            }
+
+            const del_query =
+                \\DELETE FROM feed WHERE id = ?;
+            ;
+            if (delete_nr > 0) {
+                const result = results[delete_nr - 1];
+                try self.db_.deleteFeed(result.id);
+                try self.writer.print("Deleted feed '{s}'\n", .{result.location});
+            }
+        }
+
+        pub fn cleanItems(self: *Self) !void {
+            self.db_.cleanItems(self.allocator) catch {
+                log.warn("Failed to remove extra feed items.", .{});
+                return;
+            };
+            try self.writer.print("Clean feeds of extra links/items.\n", .{});
+        }
+
+        pub fn printAllItems(self: *Self) !void {
+            const Result = struct {
+                title: []const u8,
+                link: ?[]const u8,
+                id: usize,
+            };
+
+            // most recently updated feed
+            const most_recent_feeds_query =
+                \\SELECT
+                \\	title,
+                \\  link,
+                \\	id
+                \\FROM
+                \\	feed
+            ;
+
+            const most_recent_feeds = try db.selectAll(
+                Result,
+                self.allocator,
+                &self.db_.db,
+                most_recent_feeds_query,
+                .{},
+            );
+
+            if (most_recent_feeds.len == 0) {
+                try self.writer.print("There are 0 feeds\n", .{});
+                return;
+            }
+
+            // grouped by feed_id
+            const all_items_query =
+                \\SELECT
+                \\	title,
+                \\	link,
+                \\  feed_id
+                \\FROM
+                \\	item
+                \\ORDER BY
+                \\	feed_id DESC,
+                \\	pub_date_utc DESC,
+                \\  created_at DESC
+            ;
+
+            const all_items = try db.selectAll(
+                Result,
+                self.allocator,
+                &self.db_.db,
+                all_items_query,
+                .{},
+            );
+
+            for (most_recent_feeds) |feed| {
+                const id = feed.id;
+                const start_index = blk: {
+                    for (all_items) |item, idx| {
+                        if (item.id == id) break :blk idx;
+                    }
+                    break; // Should not happen
+                };
+                const feed_link = feed.link orelse "<no-link>";
+                try self.writer.print("{s} - {s}\n", .{ feed.title, feed_link });
+                for (all_items[start_index..]) |item| {
+                    if (item.id != id) break;
+                    const item_link = item.link orelse "<no-link>";
+                    try self.writer.print("  {s}\n  {s}\n\n", .{
+                        item.title,
+                        item_link,
+                    });
+                }
+            }
+        }
+
+        pub const Options = struct {
+            force: bool = false,
+        };
+
+        pub fn updateFeeds(self: *Self, opts: Options) !void {
+            self.db_.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
+                log.err("Failed to update feeds", .{});
+                return;
+            };
+            try self.writer.print("Updated url feeds\n", .{});
+            self.db_.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
+                log.err("Failed to update local feeds", .{});
+                return;
+            };
+            try self.writer.print("Updated local feeds\n", .{});
+        }
+
+        pub fn printFeeds(self: *Self) !void {
+            const Result = struct {
+                title: []const u8,
+                location: []const u8,
+                link: ?[]const u8,
+            };
+            const query =
+                \\SELECT title, location, link FROM feed
+            ;
+            var stmt = try self.db_.db.prepare(query);
+            defer stmt.deinit();
+            const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
+                log.warn("{s}\nFailed query:\n{s}", .{ self.db_.db.getDetailedError().message, query });
+                return err;
+            };
+            try self.writer.print("There are {} feed(s)\n", .{all_items.len});
+
+            const print_fmt =
+                \\{s}
+                \\  link: {s}
+                \\  location: {s}
+                \\
+                \\
+            ;
+
+            for (all_items) |item| {
+                const link = item.link orelse "<no-link>";
+                try self.writer.print(print_fmt, .{ item.title, link, item.location });
+            }
+        }
     };
+}
 
-    pub fn updateFeeds(self: *Self, opts: Options, writer: anytype) !void {
-        self.db_.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
-            log.err("Failed to update feeds", .{});
-            return;
-        };
-        try writer.print("Updated url feeds\n", .{});
-        self.db_.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
-            log.err("Failed to update local feeds", .{});
-            return;
-        };
-        try writer.print("Updated local feeds\n", .{});
-    }
-
-    pub fn printFeeds(self: *Self, writer: anytype) !void {
-        const Result = struct {
-            title: []const u8,
-            location: []const u8,
-            link: ?[]const u8,
-        };
-        const query =
-            \\SELECT title, location, link FROM feed
-        ;
-        var stmt = try self.db_.db.prepare(query);
-        defer stmt.deinit();
-        const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
-            log.warn("{s}\nFailed query:\n{s}", .{ self.db_.db.getDetailedError().message, query });
-            return err;
-        };
-        try writer.print("There are {} feed(s)\n", .{all_items.len});
-
-        const print_fmt =
-            \\{s}
-            \\  link: {s}
-            \\  location: {s}
-            \\
-            \\
-        ;
-
-        for (all_items) |item| {
-            const link = item.link orelse "<no-link>";
-            try writer.print(print_fmt, .{ item.title, link, item.location });
-        }
-    }
-};
-
-test "Cli.printAllItems" {
+test "Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -809,15 +821,22 @@ test "Cli.printAllItems" {
     const allocator = &arena.allocator;
 
     var db_ = try Db_.init(allocator, null);
+
+    var cli = Cli(TestIO.Writer, TestIO.Reader){
+        .allocator = allocator,
+        .db_ = &db_,
+        .writer = undefined,
+        .reader = undefined,
+    };
+
     {
         const location = "test/sample-rss-2.xml";
         const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
         var w = "Added local feed: " ++ rss_url ++ "\n";
         var text_io = TestIO{ .expected_actions = &[_]TestIO.Action{.{ .write = w }} };
 
-        const writer = text_io.writer();
-        const reader = text_io.reader();
-        try Cli.addFeed(allocator, &db_, location, writer, reader);
+        cli.writer = text_io.writer();
+        try cli.addFeed(location);
     }
 
     {
@@ -833,8 +852,8 @@ test "Cli.printAllItems" {
                 .{ .write = "  TEST THIS1\n  <no-link>\n\n" },
             },
         };
-        const writer = text_io.writer();
-        try Cli.printAllItems(allocator, &db_, writer);
+        cli.writer = text_io.writer();
+        try cli.printAllItems();
     }
 
     {
@@ -845,12 +864,12 @@ test "Cli.printAllItems" {
                 .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: /media/hdd/code/feed_app/test/sample-rss-2.xml\n\n" },
             },
         };
-        const writer = text_io.writer();
-        try Cli.printFeeds(allocator, &db_, writer);
+        cli.writer = text_io.writer();
+        try cli.printFeeds();
     }
 }
 
-test "Cli.cleanItems" {
+test "@active Cli.cleanItems" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -861,13 +880,20 @@ test "Cli.cleanItems" {
     var db_ = try Db_.init(allocator, null);
     // TODO: populate db with data
 
+    var cli = Cli(TestIO.Writer, TestIO.Reader){
+        .allocator = allocator,
+        .db_ = &db_,
+        .writer = undefined,
+        .reader = undefined,
+    };
+
     var first = "Clean feeds of extra links/items.\n";
     var text_io = TestIO{
         .expected_actions = &[_]TestIO.Action{.{ .write = first }},
     };
 
-    const writer = text_io.writer();
-    try Cli.cleanItems(allocator, &db_, writer);
+    cli.writer = text_io.writer();
+    try cli.cleanItems();
 }
 
 const TestIO = struct {
@@ -978,6 +1004,13 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     const added_url = "Added url feed: ";
     var counts = TestCounts{};
 
+    var cli = Cli(TestIO.Writer, TestIO.Reader){
+        .allocator = allocator,
+        .db_ = &db_,
+        .writer = undefined,
+        .reader = undefined,
+    };
+
     {
         const location = "test/sample-rss-2.xml";
         const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
@@ -989,9 +1022,8 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
             },
         };
 
-        const writer = text_io.writer();
-        const reader = text_io.reader();
-        try Cli.addFeed(allocator, &db_, location, writer, reader);
+        cli.writer = text_io.writer();
+        try cli.addFeed(location);
         counts.feed += 1;
         counts.local += 1;
     }
@@ -1018,9 +1050,9 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     //         },
     //     };
 
-    //     const writer = text_io.writer();
-    //     const reader = text_io.reader();
-    //     try Cli.addFeed(allocator, &db_, location, writer, reader);
+    //     cli.writer = text_io.writer();
+    //     cli.reader = text_io.reader();
+    //     try cli.addFeed(location);
     //     counts.feed += 1;
     //     counts.url += 1;
     // }
@@ -1042,9 +1074,9 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     //         },
     //     };
 
-    //     const writer = text_io.writer();
-    //     const reader = text_io.reader();
-    //     try Cli.addFeed(allocator, &db_, location, writer, reader);
+    //     cli.writer = text_io.writer();
+    //     cli.reader = text_io.reader();
+    //     try cli.addFeed(location);
     //     counts.feed += 1;
     //     counts.url += 1;
     // }
@@ -1068,8 +1100,8 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
                 .{ .write = "Updated local feeds\n" },
             },
         };
-        const writer = text_io.writer();
-        try Cli.updateFeeds(allocator, &db_, .{ .force = false }, writer);
+        cli.writer = text_io.writer();
+        try cli.updateFeeds(.{ .force = false });
     }
 
     {
@@ -1083,9 +1115,9 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
             },
         };
 
-        const writer = text_io.writer();
-        const reader = text_io.reader();
-        try Cli.deleteFeed(allocator, &db_, search_value, writer, reader);
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed(search_value);
     }
 
     {
@@ -1108,9 +1140,9 @@ test "Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
             },
         };
 
-        const writer = text_io.writer();
-        const reader = text_io.reader();
-        try Cli.deleteFeed(allocator, &db_, "liftoff", writer, reader);
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed("liftoff");
         counts.feed -= 1;
         counts.local -= 1;
     }
