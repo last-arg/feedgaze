@@ -376,15 +376,15 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    const abs_location = "/media/hdd/code/feed_app/tmp/test.db_conn";
+    const abs_location = "/media/hdd/code/feed_app/tmp/test.feed_dbconn";
     // TODO: make default location somewhere in home directory
-    // const abs_location = try makeFilePath(allocator, default_db_location);
-    // const db_file = try std.fs.createFileAbsolute(
+    // const abs_location = try makeFilePath(allocator, default_feed_dblocation);
+    // const feed_dbfile = try std.fs.createFileAbsolute(
     //     abs_location,
     //     .{ .read = true, .truncate = false },
     // );
 
-    var db_ = try FeedDb.init(allocator, abs_location);
+    var feed_db = try FeedDb.init(allocator, abs_location);
 
     var iter = process.args();
     _ = iter.skip();
@@ -393,10 +393,10 @@ pub fn main() anyerror!void {
     const reader = std.io.getStdIn().reader();
     // var cli = Cli{
     //     .allocator = allocator,
-    //     .db_ = &db_,
+    //     .feed_db = &feed_db,
     //     .writer = writer,
     // };
-    var cli = makeCli(allocator, &db_, writer, reader);
+    var cli = makeCli(allocator, &feed_db, writer, reader);
 
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
@@ -447,13 +447,13 @@ pub fn main() anyerror!void {
 
 pub fn makeCli(
     allocator: *Allocator,
-    db_: *FeedDb,
+    feed_db: *FeedDb,
     writer: anytype,
     reader: anytype,
 ) Cli(@TypeOf(writer), @TypeOf(reader)) {
     return Cli(@TypeOf(writer), @TypeOf(reader)){
         .allocator = allocator,
-        .db_ = db_,
+        .feed_db = feed_db,
         .writer = writer,
         .reader = reader,
     };
@@ -464,7 +464,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         const Self = @This();
 
         allocator: *Allocator,
-        db_: *FeedDb,
+        feed_db: *FeedDb,
         writer: Writer,
         reader: Reader,
 
@@ -482,7 +482,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const feed = try parse.parse(self.allocator, contents);
                 log.info("\tFeed.items: {}", .{feed.items.len});
 
-                const id = try self.db_.addFeed(feed, abs_path);
+                const id = try self.feed_db.addFeed(feed, abs_path);
 
                 const mtime_sec = blk: {
                     const file = try fs.openFileAbsolute(abs_path, .{});
@@ -491,9 +491,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
                 };
 
-                try self.db_.addFeedLocal(id, mtime_sec);
-                try self.db_.addItems(id, feed.items);
-                try self.db_.cleanItemsByFeedId(id);
+                try self.feed_db.addFeedLocal(id, mtime_sec);
+                try self.feed_db.addItems(id, feed.items);
+                try self.feed_db.cleanItemsByFeedId(id);
                 try self.writer.print("Added local feed: {s}", .{abs_path});
             } else |err| switch (err) {
                 error.FileNotFound => {
@@ -528,10 +528,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     defer self.allocator.free(location);
 
                     // Add feed
-                    const feed_id = try self.db_.addFeed(feed, location);
-                    try self.db_.addFeedUrl(feed_id, resp);
-                    try self.db_.addItems(feed_id, feed.items);
-                    try self.db_.cleanItemsByFeedId(feed_id);
+                    const feed_id = try self.feed_db.addFeed(feed, location);
+                    try self.feed_db.addFeedUrl(feed_id, resp);
+                    try self.feed_db.addItems(feed_id, feed.items);
+                    try self.feed_db.cleanItemsByFeedId(feed_id);
 
                     try self.writer.print("Added url feed: {s}\n", .{location});
                 },
@@ -633,7 +633,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const search_term = try fmt.allocPrint(self.allocator, "%{s}%", .{search_input});
             defer self.allocator.free(search_term);
 
-            const results = try db.selectAll(DbResult, self.allocator, &self.db_.db, query, .{
+            const results = try db.selectAll(DbResult, self.allocator, &self.feed_db.db, query, .{
                 search_term,
                 search_term,
                 search_term,
@@ -677,13 +677,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             ;
             if (delete_nr > 0) {
                 const result = results[delete_nr - 1];
-                try self.db_.deleteFeed(result.id);
+                try self.feed_db.deleteFeed(result.id);
                 try self.writer.print("Deleted feed '{s}'\n", .{result.location});
             }
         }
 
         pub fn cleanItems(self: *Self) !void {
-            self.db_.cleanItems(self.allocator) catch {
+            self.feed_db.cleanItems(self.allocator) catch {
                 log.warn("Failed to remove extra feed items.", .{});
                 return;
             };
@@ -710,7 +710,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const most_recent_feeds = try db.selectAll(
                 Result,
                 self.allocator,
-                &self.db_.db,
+                &self.feed_db.db,
                 most_recent_feeds_query,
                 .{},
             );
@@ -737,7 +737,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const all_items = try db.selectAll(
                 Result,
                 self.allocator,
-                &self.db_.db,
+                &self.feed_db.db,
                 all_items_query,
                 .{},
             );
@@ -768,12 +768,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         };
 
         pub fn updateFeeds(self: *Self, opts: Options) !void {
-            self.db_.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
+            self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
                 log.err("Failed to update feeds", .{});
                 return;
             };
             try self.writer.print("Updated url feeds\n", .{});
-            self.db_.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
+            self.feed_db.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
                 log.err("Failed to update local feeds", .{});
                 return;
             };
@@ -789,10 +789,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const query =
                 \\SELECT title, location, link FROM feed
             ;
-            var stmt = try self.db_.db.prepare(query);
+            var stmt = try self.feed_db.db.prepare(query);
             defer stmt.deinit();
             const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
-                log.warn("{s}\nFailed query:\n{s}", .{ self.db_.db.getDetailedError().message, query });
+                log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.getDetailedError().message, query });
                 return err;
             };
             try self.writer.print("There are {} feed(s)\n", .{all_items.len});
@@ -820,11 +820,11 @@ test "@active Cli.printAllItems, Cli.printFeeds" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try FeedDb.init(allocator, null);
+    var feed_db = try FeedDb.init(allocator, null);
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
-        .db_ = &db_,
+        .feed_db = &feed_db,
         .writer = undefined,
         .reader = undefined,
     };
@@ -877,12 +877,12 @@ test "@active Cli.cleanItems" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try FeedDb.init(allocator, null);
+    var feed_db = try FeedDb.init(allocator, null);
     // TODO: populate db with data
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
-        .db_ = &db_,
+        .feed_db = &feed_db,
         .writer = undefined,
         .reader = undefined,
     };
@@ -971,16 +971,16 @@ const TestCounts = struct {
     url: usize = 0,
 };
 
-fn expectCounts(db_: *FeedDb, counts: TestCounts) !void {
+fn expectCounts(feed_db: *FeedDb, counts: TestCounts) !void {
     const feed_count_query = "select count(id) from feed";
     const local_count_query = "select count(feed_id) from feed_update_local";
     const url_count_query = "select count(feed_id) from feed_update_http";
     const item_count_query = "select count(DISTINCT feed_id) from item";
 
-    const feed_count = try db.count(&db_.db, feed_count_query);
-    const local_count = try db.count(&db_.db, local_count_query);
-    const url_count = try db.count(&db_.db, url_count_query);
-    const item_feed_count = try db.count(&db_.db, item_count_query);
+    const feed_count = try db.count(&feed_db.db, feed_count_query);
+    const local_count = try db.count(&feed_db.db, local_count_query);
+    const url_count = try db.count(&feed_db.db, url_count_query);
+    const item_feed_count = try db.count(&feed_db.db, item_count_query);
     expect(feed_count == counts.feed);
     expect(local_count == counts.local);
     expect(feed_count == counts.local + counts.url);
@@ -996,7 +996,7 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try FeedDb.init(allocator, null);
+    var feed_db = try FeedDb.init(allocator, null);
     const do_print = false;
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
@@ -1006,7 +1006,7 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
-        .db_ = &db_,
+        .feed_db = &feed_db,
         .writer = undefined,
         .reader = undefined,
     };
@@ -1081,11 +1081,11 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     //     counts.url += 1;
     // }
 
-    try expectCounts(&db_, counts);
+    try expectCounts(&feed_db, counts);
 
     {
         const query = "select count(feed_id) from item group by feed_id";
-        const results = try db.selectAll(usize, allocator, &db_.db, query, .{});
+        const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
         for (results) |item_count| {
             expect(item_count <= g.max_items_per_feed);
         }
@@ -1147,7 +1147,7 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         counts.local -= 1;
     }
 
-    try expectCounts(&db_, counts);
+    try expectCounts(&feed_db, counts);
 }
 
 // Caller freed memory
@@ -1178,7 +1178,7 @@ test "local feed: add, update, remove" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var db_ = try FeedDb.init(allocator, null);
+    var feed_db = try FeedDb.init(allocator, null);
 
     // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
     const rel_path = "test/sample-rss-2.xml";
@@ -1194,9 +1194,9 @@ test "local feed: add, update, remove" {
 
     const all_items = feed.items;
     feed.items = all_items[0..3];
-    const id = try db_.addFeed(feed, abs_path);
-    try db_.addFeedLocal(id, mtime_sec);
-    try db_.addItems(id, feed.items);
+    const id = try feed_db.addFeed(feed, abs_path);
+    try feed_db.addFeedLocal(id, mtime_sec);
+    try feed_db.addItems(id, feed.items);
 
     const LocalResult = struct {
         location: []const u8,
@@ -1211,9 +1211,9 @@ test "local feed: add, update, remove" {
 
     // Feed local
     {
-        const db_feeds = try db.selectAll(LocalResult, allocator, &db_.db, all_feeds_query, .{});
-        expect(db_feeds.len == 1);
-        const first = db_feeds[0];
+        const feed_dbfeeds = try db.selectAll(LocalResult, allocator, &feed_db.db, all_feeds_query, .{});
+        expect(feed_dbfeeds.len == 1);
+        const first = feed_dbfeeds[0];
         expect(first.id == 1);
         expect(mem.eql(u8, abs_path, first.location));
         expect(mem.eql(u8, feed.link.?, first.link.?));
@@ -1233,9 +1233,9 @@ test "local feed: add, update, remove" {
 
     // Local feed update
     {
-        const db_feeds = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
-        expect(db_feeds.len == 1);
-        const first = db_feeds[0];
+        const feed_dbfeeds = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
+        expect(feed_dbfeeds.len == 1);
+        const first = feed_dbfeeds[0];
         expect(first.feed_id == 1);
         expect(first.update_interval == 600);
         const current_time = std.time.timestamp();
@@ -1257,33 +1257,33 @@ test "local feed: add, update, remove" {
 
     // Items
     {
-        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
+        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
         expect(items.len == feed.items.len);
     }
 
-    try db_.updateAllFeeds(allocator, .{ .force = true });
+    try feed_db.updateAllFeeds(allocator, .{ .force = true });
     feed.items = all_items;
 
     // Items
     {
-        const items = try db.selectAll(ItemsResult, allocator, &db_.db, all_items_query, .{});
+        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
         expect(items.len == feed.items.len);
 
         parse.Feed.sortItemsByDate(feed.items);
-        for (items) |db_item, i| {
+        for (items) |feed_dbitem, i| {
             const f_item = feed.items[i];
-            expect(equalNullString(db_item.link, f_item.link));
-            expect(equalNullString(db_item.guid, f_item.id));
-            std.testing.expectEqualStrings(db_item.title, f_item.title);
-            expect(equalNullString(db_item.pub_date, f_item.updated_raw));
-            expect(std.meta.eql(db_item.pub_date_utc, f_item.updated_timestamp));
-            expect(db_item.feed_id == 1);
+            expect(equalNullString(feed_dbitem.link, f_item.link));
+            expect(equalNullString(feed_dbitem.guid, f_item.id));
+            std.testing.expectEqualStrings(feed_dbitem.title, f_item.title);
+            expect(equalNullString(feed_dbitem.pub_date, f_item.updated_raw));
+            expect(std.meta.eql(feed_dbitem.pub_date_utc, f_item.updated_timestamp));
+            expect(feed_dbitem.feed_id == 1);
         }
     }
 
     // Local feed update
     {
-        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &db_.db, local_query, .{});
+        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
         expect(local_updates.len == 1);
         const first = local_updates[0];
         expect(first.feed_id == 1);
@@ -1297,31 +1297,31 @@ test "local feed: add, update, remove" {
 
     // Delete items that are over max item limit
     {
-        var item_count = try db.count(&db_.db, item_count_query);
+        var item_count = try db.count(&feed_db.db, item_count_query);
         expect(feed.items.len == item_count);
 
         // cleanItemsByFeedId()
         g.max_items_per_feed = 4;
-        try db_.cleanItemsByFeedId(1);
-        item_count = try db.count(&db_.db, item_count_query);
+        try feed_db.cleanItemsByFeedId(1);
+        item_count = try db.count(&feed_db.db, item_count_query);
         expect(g.max_items_per_feed == item_count);
 
         // cleanItems()
         g.max_items_per_feed = 2;
-        try db_.cleanItems(allocator);
-        item_count = try db.count(&db_.db, item_count_query);
+        try feed_db.cleanItems(allocator);
+        item_count = try db.count(&feed_db.db, item_count_query);
         expect(g.max_items_per_feed == item_count);
     }
 
     // Delete feed
     {
-        try db_.deleteFeed(1);
+        try feed_db.deleteFeed(1);
 
-        const feed_count = try db.count(&db_.db, "select count(id) from feed");
+        const feed_count = try db.count(&feed_db.db, "select count(id) from feed");
         expect(feed_count == 0);
-        const local_update_count = try db.count(&db_.db, "select count(feed_id) from feed_update_local");
+        const local_update_count = try db.count(&feed_db.db, "select count(feed_id) from feed_update_local");
         expect(local_update_count == 0);
-        const item_count = try db.count(&db_.db, item_count_query);
+        const item_count = try db.count(&feed_db.db, item_count_query);
         expect(item_count == 0);
     }
 }
