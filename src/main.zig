@@ -370,7 +370,6 @@ const Db_ = struct {
 
 // TODO: see if there is good way to detect local file path or url
 pub fn main() anyerror!void {
-    std.log.info("Main run", .{});
     const base_allocator = std.heap.page_allocator;
     // const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -385,22 +384,20 @@ pub fn main() anyerror!void {
     //     .{ .read = true, .truncate = false },
     // );
 
-    var db_ = try Db_.init(allocator, null);
+    var db_ = try Db_.init(allocator, abs_location);
 
     var iter = process.args();
     _ = iter.skip();
 
-    const stdout = std.io.getStdOut();
-    const stdin = std.io.getStdIn();
-    const writer = stdout.writer();
-    const reader = stdout.reader();
+    const writer = std.io.getStdOut().writer();
+    const reader = std.io.getStdIn().reader();
 
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
         if (mem.eql(u8, "add", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.addFeed(allocator, db_, value, writer, reader);
+                try Cli.addFeed(allocator, &db_, value, writer, reader);
             } else {
                 log.err("Subcommand add missing feed location", .{});
             }
@@ -417,11 +414,11 @@ pub fn main() anyerror!void {
             };
             try Cli.updateFeeds(allocator, &db_, .{ .force = force }, writer);
         } else if (mem.eql(u8, "clean", arg)) {
-            try Cli.cleanItems(allocator);
+            try Cli.cleanItems(allocator, &db_, writer);
         } else if (mem.eql(u8, "delete", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try Cli.deleteFeed(allocator, _db, value, writer, reader);
+                try Cli.deleteFeed(allocator, &db_, value, writer, reader);
             } else {
                 log.err("Subcommand delete missing argument location", .{});
             }
@@ -434,7 +431,7 @@ pub fn main() anyerror!void {
                 }
             }
 
-            try printAllItems(allocator, _db, writer);
+            try Cli.printAllItems(allocator, &db_, writer);
         } else {
             log.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
@@ -617,7 +614,6 @@ const Cli = struct {
         const search_term = try fmt.allocPrint(allocator, "%{s}%", .{search_input});
         defer allocator.free(search_term);
 
-        const stdout = std.io.getStdOut();
         const results = try db.selectAll(DbResult, allocator, &db_.db, query, .{
             search_term,
             search_term,
@@ -699,6 +695,11 @@ const Cli = struct {
             most_recent_feeds_query,
             .{},
         );
+
+        if (most_recent_feeds.len == 0) {
+            try writer.print("There are 0 feeds\n", .{});
+            return;
+        }
 
         // grouped by feed_id
         const all_items_query =
