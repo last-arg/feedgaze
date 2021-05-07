@@ -988,7 +988,7 @@ fn expectCounts(feed_db: *FeedDb, counts: TestCounts) !void {
     expect(item_feed_count == counts.feed);
 }
 
-test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -1027,59 +1027,6 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         counts.feed += 1;
         counts.local += 1;
     }
-
-    // {
-    //     // remove last slash to get HTTP redirect
-    //     const location = "old.reddit.com/r/programming/";
-    //     const rss_url = "https://old.reddit.com/r/programming/.rss";
-    //     var text_io = TestIO{
-    //         .do_print = do_print,
-    //         .expected_actions = &[_]TestIO.Action{
-    //             .{ .write = write_first },
-    //             .{ .write = "programming\nold.reddit.com\n" },
-    //             .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = "abc\n" },
-    //             .{ .write = "Invalid number: 'abc'. Try again.\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = "12\n" },
-    //             .{ .write = "Number out of range: '12'. Try again.\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = read_valid },
-    //             .{ .write = added_url ++ rss_url ++ "\n" },
-    //         },
-    //     };
-
-    //     cli.writer = text_io.writer();
-    //     cli.reader = text_io.reader();
-    //     try cli.addFeed(location);
-    //     counts.feed += 1;
-    //     counts.url += 1;
-    // }
-
-    // {
-    //     // Feed url has to constructed because Html.Link.href is
-    //     // absolute path - '/syndication/5701'
-    //     const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
-    //     const rss_url = "https://www.royalroad.com/syndication/5701";
-    //     var text_io = TestIO{
-    //         .do_print = do_print,
-    //         .expected_actions = &[_]TestIO.Action{
-    //             .{ .write = write_first },
-    //             .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
-    //             .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
-    //             .{ .write = enter_link },
-    //             .{ .read = read_valid },
-    //             .{ .write = added_url ++ rss_url ++ "\n" },
-    //         },
-    //     };
-
-    //     cli.writer = text_io.writer();
-    //     cli.reader = text_io.reader();
-    //     try cli.addFeed(location);
-    //     counts.feed += 1;
-    //     counts.url += 1;
-    // }
 
     try expectCounts(&feed_db, counts);
 
@@ -1145,6 +1092,150 @@ test "@active Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         try cli.deleteFeed("liftoff");
         counts.feed -= 1;
         counts.local -= 1;
+    }
+
+    try expectCounts(&feed_db, counts);
+}
+
+test "@active url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = &arena.allocator;
+
+    var feed_db = try FeedDb.init(allocator, null);
+    const do_print = false;
+    var write_first = "Choose feed to add\n";
+    var enter_link = "Enter link number: ";
+    var read_valid = "1\n";
+    const added_url = "Added url feed: ";
+    var counts = TestCounts{};
+
+    var cli = Cli(TestIO.Writer, TestIO.Reader){
+        .allocator = allocator,
+        .feed_db = &feed_db,
+        .writer = undefined,
+        .reader = undefined,
+    };
+
+    {
+        // remove last slash to get HTTP redirect
+        const location = "old.reddit.com/r/programming/";
+        const rss_url = "https://old.reddit.com/r/programming/.rss";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = write_first },
+                .{ .write = "programming\nold.reddit.com\n" },
+                .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
+                .{ .write = enter_link },
+                .{ .read = "abc\n" },
+                .{ .write = "Invalid number: 'abc'. Try again.\n" },
+                .{ .write = enter_link },
+                .{ .read = "12\n" },
+                .{ .write = "Number out of range: '12'. Try again.\n" },
+                .{ .write = enter_link },
+                .{ .read = read_valid },
+                .{ .write = added_url ++ rss_url ++ "\n" },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.addFeed(location);
+        counts.feed += 1;
+        counts.url += 1;
+    }
+
+    {
+        // Feed url has to constructed because Html.Link.href is
+        // absolute path - '/syndication/5701'
+        const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
+        const rss_url = "https://www.royalroad.com/syndication/5701";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = write_first },
+                .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
+                .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
+                .{ .write = enter_link },
+                .{ .read = read_valid },
+                .{ .write = added_url ++ rss_url ++ "\n" },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.addFeed(location);
+        counts.feed += 1;
+        counts.url += 1;
+    }
+
+    try expectCounts(&feed_db, counts);
+
+    {
+        const query = "select count(feed_id) from item group by feed_id";
+        const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
+        for (results) |item_count| {
+            expect(item_count <= g.max_items_per_feed);
+        }
+    }
+
+    {
+        var first = "Updated url feeds\n";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = first },
+                .{ .write = "Updated local feeds\n" },
+            },
+        };
+        cli.writer = text_io.writer();
+        try cli.updateFeeds(.{ .force = false });
+    }
+
+    {
+        // Found no feed to delete
+        const search_value = "doesnt_exist";
+        var first = "Found no matches for '" ++ search_value ++ "' to delete.\n";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = first },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed(search_value);
+    }
+
+    {
+        // Delete a feed
+        var enter_nr = "Enter feed number to delete? ";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = "Found 1 result(s):\n\n" },
+                .{ .write = "1. programming | https://old.reddit.com/r/programming/.rss | https://old.reddit.com/r/programming/.rss\n" },
+                .{ .write = enter_nr },
+                .{ .read = "1a\n" },
+                .{ .write = "Invalid number entered: '1a'. Try again.\n" },
+                .{ .write = enter_nr },
+                .{ .read = "14\n" },
+                .{ .write = "Entered number out of range. Try again.\n" },
+                .{ .write = enter_nr },
+                .{ .read = "1\n" },
+                .{ .write = "Deleted feed 'https://old.reddit.com/r/programming/.rss'\n" },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed("programming");
+        counts.feed -= 1;
+        counts.url -= 1;
     }
 
     try expectCounts(&feed_db, counts);
