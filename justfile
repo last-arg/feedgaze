@@ -10,5 +10,14 @@ watch-local:
 watch-active:
   watchexec -c -r -w src/ -e zig 'zig build test-active'
 
+test-cli:
+  zig build test -- src/cli.zig
+
+watch-active-cli:
+  watchexec -c -r -w src/ -e zig 'zig build test-active -- src/cli.zig'
+
+watch-active-shame:
+  watchexec -c -r -w src/ -e zig 'zig build test-active -- src/shame.zig'
+
 update:
   git submodule foreach git pull origin master
