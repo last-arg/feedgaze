@@ -813,7 +813,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     };
 }
 
-test "@active Cli.printAllItems, Cli.printFeeds" {
+test "Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -869,7 +869,7 @@ test "@active Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "@active Cli.cleanItems" {
+test "Cli.cleanItems" {
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -1097,7 +1097,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     try expectCounts(&feed_db, counts);
 }
 
-test "@active url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

@@ -208,7 +208,6 @@ pub fn makeRequest(allocator: *Allocator, req: FeedRequest) !FeedResponse {
                 }
             },
             .head_done => {
-                std.debug.print("---\n", .{});
                 if (status_code == 301) {
                     return feed_resp;
                 }
