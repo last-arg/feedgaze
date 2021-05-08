@@ -44,7 +44,7 @@ pub fn main() anyerror!void {
         if (mem.eql(u8, "add", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try cli.addFeed(value, writer, reader);
+                try cli.addFeed(value);
             } else {
                 log.err("Subcommand add missing feed location", .{});
             }
@@ -59,13 +59,13 @@ pub fn main() anyerror!void {
                 }
                 break :blk false;
             };
-            try cli.updateFeeds(.{ .force = force }, writer);
+            try cli.updateFeeds(.{ .force = force });
         } else if (mem.eql(u8, "clean", arg)) {
-            try cli.cleanItems(writer);
+            try cli.cleanItems();
         } else if (mem.eql(u8, "delete", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                try cli.deleteFeed(value, writer, reader);
+                try cli.deleteFeed(value);
             } else {
                 log.err("Subcommand delete missing argument location", .{});
             }
@@ -73,12 +73,12 @@ pub fn main() anyerror!void {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;
                 if (mem.eql(u8, "feeds", value)) {
-                    try cli.printFeeds(writer);
+                    try cli.printFeeds();
                     return;
                 }
             }
 
-            try cli.printAllItems(writer);
+            try cli.printAllItems();
         } else {
             log.err("Unknown argument: {s}", .{arg});
             return error.UnknownArgument;
