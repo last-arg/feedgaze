@@ -14,8 +14,6 @@ const Datetime = datetime.Datetime;
 const timezones = datetime.timezones;
 const l = std.log;
 
-// TODO: decode html entities in Rss, Html, Atom
-
 pub const Html = struct {
     pub const Page = struct {
         title: ?[]const u8 = null,
@@ -526,11 +524,11 @@ test "Atom.parse" {
     testing.expectEqualStrings("http://example.org/feed/", result.link.?);
     testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
 
-    expect(2 == result.items.len);
     expect(1355423402 == result.updated_timestamp.?);
-    // TODO: test feed items
-    // l.warn("items.len: {}", .{result.items.len});
     expect(null != result.items[0].updated_raw);
+
+    expect(2 == result.items.len);
+    // TODO: test feed items
 }
 
 test "Atom.parseDateToUtc" {

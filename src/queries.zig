@@ -1,4 +1,4 @@
-// TODO?: put default values into contants?
+// TODO?: put default values into constants?
 pub const Table = struct {
     pub const item = struct {
         pub const create =
