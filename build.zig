@@ -30,25 +30,18 @@ pub fn build(b: *Builder) void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const test_file = blk: {
-        if (b.args) |args| {
-            break :blk args[0];
-        }
-        break :blk "src/main.zig";
-    };
+    const test_file = if (b.args) |args| args[0] else "src/main.zig";
 
     var test_cmd = b.addTest(test_file);
     test_cmd.setBuildMode(mode);
     stepSetup(test_cmd, target);
+    if (b.args) |args| {
+        if (args.len >= 2) {
+            test_cmd.setFilter(args[1]);
+        }
+    }
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
-
-    var test_active_cmd = b.addTest(test_file);
-    test_active_cmd.setBuildMode(mode);
-    test_active_cmd.setFilter("@active");
-    stepSetup(test_active_cmd, target);
-    const test_active_step = b.step("test-active", "Run tests with @active");
-    test_active_step.dependOn(&test_active_cmd.step);
 }
 
 fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
