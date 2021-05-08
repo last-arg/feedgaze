@@ -19,5 +19,11 @@ watch-active-cli:
 watch-active-shame:
   watchexec -c -r -w src/ -e zig 'zig build test-active -- src/shame.zig'
 
+watch-active-feeddb:
+  watchexec -c -r -w src/ -e zig 'zig build test-active -- src/feed_db.zig'
+
+build-run:
+  zig build run
+
 update:
   git submodule foreach git pull origin master
