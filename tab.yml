@@ -1,5 +1,6 @@
 repo: feed_app
 doc: "feed_app"
+shell: fish
 
 tabs:
   - tab: edit
