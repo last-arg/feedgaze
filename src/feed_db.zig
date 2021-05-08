@@ -13,9 +13,12 @@ const expect = std.testing.expect;
 const datetime = @import("datetime");
 const Datetime = datetime.Datetime;
 const ArrayList = std.ArrayList;
-const g = @import("main.zig").g;
 
 usingnamespace @import("queries.zig");
+
+pub const g = struct {
+    pub var max_items_per_feed: usize = 10;
+};
 
 pub const FeedDb = struct {
     const Self = @This();

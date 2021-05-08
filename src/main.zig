@@ -7,12 +7,8 @@ const log = std.log;
 const command = @import("cli.zig");
 const FeedDb = @import("feed_db.zig").FeedDb;
 const Cli = command.Cli;
-usingnamespace @import("queries.zig");
 
 pub const log_level = std.log.Level.debug;
-pub const g = struct {
-    pub var max_items_per_feed: usize = 10;
-};
 
 pub fn main() anyerror!void {
     const base_allocator = std.heap.page_allocator;

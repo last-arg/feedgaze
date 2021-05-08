@@ -15,9 +15,6 @@ const expect = std.testing.expect;
 const assert = std.debug.assert;
 const FeedDb = @import("feed_db.zig").FeedDb;
 
-// TODO: change when code is moved
-const g = @import("main.zig").g;
-
 pub fn makeCli(
     allocator: *Allocator,
     feed_db: *FeedDb,
@@ -562,6 +559,7 @@ test "Cli.cleanItems" {
 }
 
 test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+    const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -671,6 +669,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 }
 
 test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+    const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
