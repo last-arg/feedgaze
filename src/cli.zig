@@ -13,9 +13,9 @@ const db = @import("db.zig");
 const shame = @import("shame.zig");
 const expect = std.testing.expect;
 const assert = std.debug.assert;
+const FeedDb = @import("feed_db.zig").FeedDb;
 
 // TODO: change when code is moved
-const FeedDb = @import("main.zig").FeedDb;
 const g = @import("main.zig").g;
 
 pub fn makeCli(
