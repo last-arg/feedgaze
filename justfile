@@ -13,5 +13,8 @@ test file="" filter="":
 watch-test file="" filter="":
   watchexec -c -r -w src/ -e zig just test {{file}} {{filter}}
 
+watch-update:
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feed_app update --force'
+
 update:
   git submodule foreach git pull origin master

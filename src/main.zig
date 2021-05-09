@@ -49,17 +49,21 @@ pub fn main() anyerror!void {
                 log.err("Subcommand add missing feed location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
-            const force = blk: {
-                // TODO: add flag --local
-                // TODO: add flag --url/--net
-                // TODO?: if no flag default to --all flag?
-                if (iter.next(allocator)) |value_err| {
-                    const value = try value_err;
-                    break :blk mem.eql(u8, "--all", value);
+            var opts = command.UpdateOptions{};
+            while (iter.next(allocator)) |value_err| {
+                const value = try value_err;
+                if (mem.eql(u8, "--all", value)) {
+                    opts.url = true;
+                    opts.local = true;
+                } else if (mem.eql(u8, "--url", value)) {
+                    opts.local = false;
+                } else if (mem.eql(u8, "--local", value)) {
+                    opts.url = false;
+                } else if (mem.eql(u8, "--force", value)) {
+                    opts.force = true;
                 }
-                break :blk false;
-            };
-            try cli.updateFeeds(.{ .force = force });
+            }
+            try cli.updateFeeds(opts);
         } else if (mem.eql(u8, "clean", arg)) {
             try cli.cleanItems();
         } else if (mem.eql(u8, "delete", arg)) {

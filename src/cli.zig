@@ -29,6 +29,12 @@ pub fn makeCli(
     };
 }
 
+pub const UpdateOptions = struct {
+    url: bool = true,
+    local: bool = true,
+    force: bool = false,
+};
+
 pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         const Self = @This();
@@ -333,21 +339,21 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub const Options = struct {
-            force: bool = false,
-        };
-
-        pub fn updateFeeds(self: *Self, opts: Options) !void {
-            self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
-                log.err("Failed to update feeds", .{});
-                return;
-            };
-            try self.writer.print("Updated url feeds\n", .{});
-            self.feed_db.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
-                log.err("Failed to update local feeds", .{});
-                return;
-            };
-            try self.writer.print("Updated local feeds\n", .{});
+        pub fn updateFeeds(self: *Self, opts: UpdateOptions) !void {
+            if (opts.url) {
+                self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
+                    log.err("Failed to update feeds", .{});
+                    return;
+                };
+                try self.writer.print("Updated url feeds\n", .{});
+            }
+            if (opts.local) {
+                self.feed_db.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
+                    log.err("Failed to update local feeds", .{});
+                    return;
+                };
+                try self.writer.print("Updated local feeds\n", .{});
+            }
         }
 
         pub fn printFeeds(self: *Self) !void {

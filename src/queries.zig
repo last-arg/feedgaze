@@ -205,6 +205,7 @@ pub const Table = struct {
             \\  last_update = (strftime('%s', 'now'))
         ;
     };
+
     pub const feed = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed(
