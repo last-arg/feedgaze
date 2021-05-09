@@ -195,25 +195,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
-            const query =
-                \\SELECT location, title, link, id FROM feed
-                \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
-            ;
-            const DbResult = struct {
-                location: []const u8,
-                title: []const u8,
-                link: ?[]const u8,
-                id: usize,
-            };
+            const results = try self.feed_db.search(self.allocator, search_input);
 
-            const search_term = try fmt.allocPrint(self.allocator, "%{s}%", .{search_input});
-            defer self.allocator.free(search_term);
-
-            const results = try db.selectAll(DbResult, self.allocator, &self.feed_db.db, query, .{
-                search_term,
-                search_term,
-                search_term,
-            });
             if (results.len == 0) {
                 try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
                 return;
