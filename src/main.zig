@@ -17,7 +17,7 @@ pub fn main() anyerror!void {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    const abs_location = "/media/hdd/code/feed_app/tmp/test.feed_dbconn";
+    const abs_location = "/media/hdd/code/feed_app/tmp/test.db_conn";
     // TODO: make default location somewhere in home directory
     // const abs_location = try makeFilePath(allocator, default_feed_dblocation);
     // const feed_dbfile = try std.fs.createFileAbsolute(
@@ -66,6 +66,13 @@ pub fn main() anyerror!void {
             try cli.updateFeeds(opts);
         } else if (mem.eql(u8, "clean", arg)) {
             try cli.cleanItems();
+        } else if (mem.eql(u8, "search", arg)) {
+            if (iter.next(allocator)) |value_err| {
+                const term = try value_err;
+                try cli.search(term);
+            } else {
+                log.err("Subcommand search missing term", .{});
+            }
         } else if (mem.eql(u8, "delete", arg)) {
             if (iter.next(allocator)) |value_err| {
                 const value = try value_err;

@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 const sql = @import("sqlite");
 const db = @import("db.zig");
 const fs = std.fs;
+const fmt = std.fmt;
 const log = std.log;
 const http = @import("http.zig");
 const mem = std.mem;
@@ -352,6 +353,29 @@ pub const FeedDb = struct {
         for (results) |r| {
             try db.delete(&self.db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
         }
+    }
+
+    pub const SearchResult = struct {
+        location: []const u8,
+        title: []const u8,
+        link: ?[]const u8,
+        id: usize,
+    };
+
+    pub fn search(self: *Self, allocator: *Allocator, term: []const u8) ![]SearchResult {
+        const query =
+            \\SELECT location, title, link, id FROM feed
+            \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
+        ;
+        const search_term = try fmt.allocPrint(allocator, "%{s}%", .{term});
+        defer allocator.free(search_term);
+
+        const results = try db.selectAll(SearchResult, allocator, &self.db, query, .{
+            search_term,
+            search_term,
+            search_term,
+        });
+        return results;
     }
 };
 

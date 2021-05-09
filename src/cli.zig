@@ -386,6 +386,20 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try self.writer.print(print_fmt, .{ item.title, link, item.location });
             }
         }
+
+        pub fn search(self: *Self, term: []const u8) !void {
+            const results = try self.feed_db.search(self.allocator, term);
+            if (results.len == 0) {
+                try self.writer.print("Found no matches\n", .{});
+                return;
+            }
+
+            try self.writer.print("Found {} match(es):\n", .{results.len});
+            // TODO?: display data as table
+            for (results) |result| {
+                try self.writer.print("{s}\n\tid: {}\n\tlink: {s}\n\tfeed link: {s}\n", .{ result.title, result.id, result.link, result.location });
+            }
+        }
     };
 }
 

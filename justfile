@@ -16,5 +16,8 @@ watch-test file="" filter="":
 watch-update:
 	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feed_app update --force'
 
+watch-search:
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feed_app search dev'
+
 update:
   git submodule foreach git pull origin master
