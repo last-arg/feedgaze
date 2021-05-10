@@ -528,7 +528,22 @@ test "Atom.parse" {
     expect(null != result.items[0].updated_raw);
 
     expect(2 == result.items.len);
-    // TODO: test feed items
+
+    {
+        const item = result.items[0];
+        expect(mem.eql(u8, "Atom-Powered Robots Run Amok", item.title));
+        expect(mem.eql(u8, "http://example.org/2003/12/13/atom03", item.link.?));
+        expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
+        expect(mem.eql(u8, "2008-11-13T18:30:02Z", item.updated_raw.?));
+    }
+
+    {
+        const item = result.items[1];
+        expect(mem.eql(u8, "Entry 1", item.title));
+        expect(mem.eql(u8, "http://example.org/2008/12/13/entry-1", item.link.?));
+        expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
+        expect(mem.eql(u8, "2005-12-13T18:30:02Z", item.updated_raw.?));
+    }
 }
 
 test "Atom.parseDateToUtc" {
