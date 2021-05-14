@@ -29,7 +29,7 @@ pub fn getFileContents(allocator: *Allocator, path: []const u8) ![]const u8 {
     return try file.reader().readAllAlloc(allocator, std.math.maxInt(usize));
 }
 
-test "@active getFileContents(): relative and absolute path" {
+test "getFileContents(): relative and absolute path" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -40,5 +40,5 @@ test "@active getFileContents(): relative and absolute path" {
     const rel_path = "test/sample-rss-2.xml";
     const rel_content = try getFileContents(allocator, rel_path);
 
-    expect(abs_content.len == rel_content.len);
+    try expect(abs_content.len == rel_content.len);
 }

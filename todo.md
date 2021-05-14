@@ -1,14 +1,16 @@
 # Initial
 [ ] HTTP(S) request
   [?] HTTP (plain secure)? use https only?
-  [ ] Implement redirect
 [ ] Feeds
-  [ ] RSS
-    [ ] Add some extended modules' support
-  [ ] Atom
+  [ ] Github
+      - https://github.community/t/rss-feeds-for-github-projects/292
+      - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
+  [ ] Reddit
+      - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
   [?] Json feed?
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
-  [ ] Site can have several feeds
+[ ] parse.zig
+    [ ] Fix: parsing Feed.link. rel = self/alternative
 [ ] UI
   [ ] CLI - initial
   [ ] TUI - NotCurses

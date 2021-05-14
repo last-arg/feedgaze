@@ -426,14 +426,14 @@ test "@active FeedDb(local): add, update, remove" {
     // Feed local
     {
         const feed_dbfeeds = try db.selectAll(LocalResult, allocator, &feed_db.db, all_feeds_query, .{});
-        expect(feed_dbfeeds.len == 1);
+        try expect(feed_dbfeeds.len == 1);
         const first = feed_dbfeeds[0];
-        expect(first.id == 1);
-        expect(mem.eql(u8, abs_path, first.location));
-        expect(mem.eql(u8, feed.link.?, first.link.?));
-        expect(mem.eql(u8, feed.title, first.title));
-        expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
-        expect(feed.updated_timestamp.? == first.updated_timestamp.?);
+        try expect(first.id == 1);
+        try expect(mem.eql(u8, abs_path, first.location));
+        try expect(mem.eql(u8, feed.link.?, first.link.?));
+        try expect(mem.eql(u8, feed.title, first.title));
+        try expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
+        try expect(feed.updated_timestamp.? == first.updated_timestamp.?);
     }
 
     const LocalUpdateResult = struct {
@@ -448,13 +448,13 @@ test "@active FeedDb(local): add, update, remove" {
     // Local feed update
     {
         const feed_dbfeeds = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
-        expect(feed_dbfeeds.len == 1);
+        try expect(feed_dbfeeds.len == 1);
         const first = feed_dbfeeds[0];
-        expect(first.feed_id == 1);
-        expect(first.update_interval == 600);
+        try expect(first.feed_id == 1);
+        try expect(first.update_interval == 600);
         const current_time = std.time.timestamp();
-        expect(first.last_update <= current_time);
-        expect(first.last_modified_timestamp == mtime_sec);
+        try expect(first.last_update <= current_time);
+        try expect(first.last_modified_timestamp == mtime_sec);
     }
 
     const ItemsResult = struct {
@@ -472,7 +472,7 @@ test "@active FeedDb(local): add, update, remove" {
     // Items
     {
         const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
-        expect(items.len == feed.items.len);
+        try expect(items.len == feed.items.len);
     }
 
     try feed_db.updateAllFeeds(allocator, .{ .force = true });
@@ -481,30 +481,30 @@ test "@active FeedDb(local): add, update, remove" {
     // Items
     {
         const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
-        expect(items.len == feed.items.len);
+        try expect(items.len == feed.items.len);
 
         parse.Feed.sortItemsByDate(feed.items);
         for (items) |feed_dbitem, i| {
             const f_item = feed.items[i];
-            expect(equalNullString(feed_dbitem.link, f_item.link));
-            expect(equalNullString(feed_dbitem.guid, f_item.id));
-            std.testing.expectEqualStrings(feed_dbitem.title, f_item.title);
-            expect(equalNullString(feed_dbitem.pub_date, f_item.updated_raw));
-            expect(std.meta.eql(feed_dbitem.pub_date_utc, f_item.updated_timestamp));
-            expect(feed_dbitem.feed_id == 1);
+            try expect(equalNullString(feed_dbitem.link, f_item.link));
+            try expect(equalNullString(feed_dbitem.guid, f_item.id));
+            try std.testing.expectEqualStrings(feed_dbitem.title, f_item.title);
+            try expect(equalNullString(feed_dbitem.pub_date, f_item.updated_raw));
+            try expect(std.meta.eql(feed_dbitem.pub_date_utc, f_item.updated_timestamp));
+            try expect(feed_dbitem.feed_id == 1);
         }
     }
 
     // Local feed update
     {
         const local_updates = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
-        expect(local_updates.len == 1);
+        try expect(local_updates.len == 1);
         const first = local_updates[0];
-        expect(first.feed_id == 1);
-        expect(first.update_interval == 600);
+        try expect(first.feed_id == 1);
+        try expect(first.update_interval == 600);
         const current_time = std.time.timestamp();
-        expect(first.last_update <= current_time);
-        expect(first.last_modified_timestamp == mtime_sec);
+        try expect(first.last_update <= current_time);
+        try expect(first.last_modified_timestamp == mtime_sec);
     }
 
     const item_count_query = "select count(id) from item";
@@ -512,19 +512,19 @@ test "@active FeedDb(local): add, update, remove" {
     // Delete items that are over max item limit
     {
         var item_count = try db.count(&feed_db.db, item_count_query);
-        expect(feed.items.len == item_count);
+        try expect(feed.items.len == item_count);
 
         // cleanItemsByFeedId()
         g.max_items_per_feed = 4;
         try feed_db.cleanItemsByFeedId(1);
         item_count = try db.count(&feed_db.db, item_count_query);
-        expect(g.max_items_per_feed == item_count);
+        try expect(g.max_items_per_feed == item_count);
 
         // cleanItems()
         g.max_items_per_feed = 2;
         try feed_db.cleanItems(allocator);
         item_count = try db.count(&feed_db.db, item_count_query);
-        expect(g.max_items_per_feed == item_count);
+        try expect(g.max_items_per_feed == item_count);
     }
 
     // Delete feed
@@ -532,10 +532,10 @@ test "@active FeedDb(local): add, update, remove" {
         try feed_db.deleteFeed(1);
 
         const feed_count = try db.count(&feed_db.db, "select count(id) from feed");
-        expect(feed_count == 0);
+        try expect(feed_count == 0);
         const local_update_count = try db.count(&feed_db.db, "select count(feed_id) from feed_update_local");
-        expect(local_update_count == 0);
+        try expect(local_update_count == 0);
         const item_count = try db.count(&feed_db.db, item_count_query);
-        expect(item_count == 0);
+        try expect(item_count == 0);
     }
 }

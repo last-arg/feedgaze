@@ -1,14 +1,18 @@
 const std = @import("std");
+const log = std.log;
 const sql = @import("sqlite");
 const mem = std.mem;
 const process = std.process;
 const Allocator = std.mem.Allocator;
-const log = std.log;
 const command = @import("cli.zig");
 const FeedDb = @import("feed_db.zig").FeedDb;
 const Cli = command.Cli;
 
 pub const log_level = std.log.Level.debug;
+
+// pub fn main() anyerror!void {
+//     log.info("Workds", .{});
+// }
 
 pub fn main() anyerror!void {
     const base_allocator = std.heap.page_allocator;
@@ -16,6 +20,7 @@ pub fn main() anyerror!void {
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
+    log.info("test", .{});
 
     const abs_location = "/media/hdd/code/feed_app/tmp/test.db_conn";
     // TODO: make default location somewhere in home directory

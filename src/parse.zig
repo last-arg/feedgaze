@@ -210,8 +210,8 @@ test "Html.parse" {
     const allocator = &arena.allocator;
     const html = @embedFile("../test/lobste.rs.html");
     const page = try Html.parseLinks(allocator, html);
-    expect(4 == page.links.len);
-    expect(Html.MediaType.rss == page.links[0].media_type);
+    try expect(4 == page.links.len);
+    try expect(Html.MediaType.rss == page.links[0].media_type);
 }
 
 // TODO?: add field interval (ttl/)
@@ -519,30 +519,30 @@ test "Atom.parse" {
 
     const contents = @embedFile("../test/atom.xml");
     const result = try Atom.parse(allocator, contents);
-    testing.expectEqualStrings("Example Feed", result.title);
-    testing.expectEqualStrings("urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6", result.id.?);
-    testing.expectEqualStrings("http://example.org/feed/", result.link.?);
-    testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
+    try testing.expectEqualStrings("Example Feed", result.title);
+    try testing.expectEqualStrings("urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6", result.id.?);
+    try testing.expectEqualStrings("http://example.org/feed/", result.link.?);
+    try testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
 
-    expect(1355423402 == result.updated_timestamp.?);
-    expect(null != result.items[0].updated_raw);
+    try expect(1355423402 == result.updated_timestamp.?);
+    try expect(null != result.items[0].updated_raw);
 
-    expect(2 == result.items.len);
+    try expect(2 == result.items.len);
 
     {
         const item = result.items[0];
-        expect(mem.eql(u8, "Atom-Powered Robots Run Amok", item.title));
-        expect(mem.eql(u8, "http://example.org/2003/12/13/atom03", item.link.?));
-        expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
-        expect(mem.eql(u8, "2008-11-13T18:30:02Z", item.updated_raw.?));
+        try expect(mem.eql(u8, "Atom-Powered Robots Run Amok", item.title));
+        try expect(mem.eql(u8, "http://example.org/2003/12/13/atom03", item.link.?));
+        try expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
+        try expect(mem.eql(u8, "2008-11-13T18:30:02Z", item.updated_raw.?));
     }
 
     {
         const item = result.items[1];
-        expect(mem.eql(u8, "Entry 1", item.title));
-        expect(mem.eql(u8, "http://example.org/2008/12/13/entry-1", item.link.?));
-        expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
-        expect(mem.eql(u8, "2005-12-13T18:30:02Z", item.updated_raw.?));
+        try expect(mem.eql(u8, "Entry 1", item.title));
+        try expect(mem.eql(u8, "http://example.org/2008/12/13/entry-1", item.link.?));
+        try expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
+        try expect(mem.eql(u8, "2005-12-13T18:30:02Z", item.updated_raw.?));
     }
 }
 
@@ -555,50 +555,50 @@ test "Atom.parseDateToUtc" {
     {
         const date_raw = "2003-12-13T18:30:02Z";
         const dt = try Atom.parseDateToUtc(date_raw);
-        expect(2003 == dt.date.year);
-        expect(12 == dt.date.month);
-        expect(13 == dt.date.day);
-        expect(18 == dt.time.hour);
-        expect(30 == dt.time.minute);
-        expect(02 == dt.time.second);
-        expect(0 == dt.time.nanosecond);
-        expect(0 == dt.zone.offset);
+        try expect(2003 == dt.date.year);
+        try expect(12 == dt.date.month);
+        try expect(13 == dt.date.day);
+        try expect(18 == dt.time.hour);
+        try expect(30 == dt.time.minute);
+        try expect(02 == dt.time.second);
+        try expect(0 == dt.time.nanosecond);
+        try expect(0 == dt.zone.offset);
     }
     {
         const date_raw = "2003-12-13T18:30:02.25Z";
         const dt = try Atom.parseDateToUtc(date_raw);
-        expect(2003 == dt.date.year);
-        expect(12 == dt.date.month);
-        expect(13 == dt.date.day);
-        expect(18 == dt.time.hour);
-        expect(30 == dt.time.minute);
-        expect(02 == dt.time.second);
-        expect(250000000 == dt.time.nanosecond);
-        expect(0 == dt.zone.offset);
+        try expect(2003 == dt.date.year);
+        try expect(12 == dt.date.month);
+        try expect(13 == dt.date.day);
+        try expect(18 == dt.time.hour);
+        try expect(30 == dt.time.minute);
+        try expect(02 == dt.time.second);
+        try expect(250000000 == dt.time.nanosecond);
+        try expect(0 == dt.zone.offset);
     }
     {
         const date_raw = "2003-12-13T18:30:02+01:00";
         const dt = try Atom.parseDateToUtc(date_raw);
-        expect(2003 == dt.date.year);
-        expect(12 == dt.date.month);
-        expect(13 == dt.date.day);
-        expect(17 == dt.time.hour);
-        expect(30 == dt.time.minute);
-        expect(02 == dt.time.second);
-        expect(0 == dt.time.nanosecond);
-        expect(0 == dt.zone.offset);
+        try expect(2003 == dt.date.year);
+        try expect(12 == dt.date.month);
+        try expect(13 == dt.date.day);
+        try expect(17 == dt.time.hour);
+        try expect(30 == dt.time.minute);
+        try expect(02 == dt.time.second);
+        try expect(0 == dt.time.nanosecond);
+        try expect(0 == dt.zone.offset);
     }
     {
         const date_raw = "2003-12-13T18:30:02.25+01:00";
         const dt = try Atom.parseDateToUtc(date_raw);
-        expect(2003 == dt.date.year);
-        expect(12 == dt.date.month);
-        expect(13 == dt.date.day);
-        expect(17 == dt.time.hour);
-        expect(30 == dt.time.minute);
-        expect(02 == dt.time.second);
-        expect(250000000 == dt.time.nanosecond);
-        expect(0 == dt.zone.offset);
+        try expect(2003 == dt.date.year);
+        try expect(12 == dt.date.month);
+        try expect(13 == dt.date.day);
+        try expect(17 == dt.time.hour);
+        try expect(30 == dt.time.minute);
+        try expect(02 == dt.time.second);
+        try expect(250000000 == dt.time.nanosecond);
+        try expect(0 == dt.zone.offset);
     }
 }
 
@@ -939,11 +939,11 @@ test "Rss.parse" {
     const allocator = &arena.allocator;
     const contents = @embedFile("../test/sample-rss-2.xml");
     var feed = try Rss.parse(allocator, contents);
-    std.testing.expectEqualStrings("Liftoff News", feed.title);
-    std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
-    std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
-    expect(1055214000 == feed.updated_timestamp.?);
-    expect(6 == feed.items.len);
+    try std.testing.expectEqualStrings("Liftoff News", feed.title);
+    try std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
+    try std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
+    try expect(1055214000 == feed.updated_timestamp.?);
+    try expect(6 == feed.items.len);
     // for (feed.items) |item| {
     //     l.warn("title: {s}", .{item.title});
     //     const id = item.id orelse "<no id>";
@@ -953,33 +953,33 @@ test "Rss.parse" {
     //     l.warn("updated_raw: {s}", .{item.updated_raw.?});
     // }
     // Description is used as title
-    expect(null != feed.items[0].updated_raw);
-    std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
+    try expect(null != feed.items[0].updated_raw);
+    try std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
 
     Feed.sortItemsByDate(feed.items);
     const items_with_null_dates = feed.getItemsWithNullDates();
     // const start = feed.getNonNullFeedItemStart();
-    expect(items_with_null_dates.len == 2);
+    try expect(items_with_null_dates.len == 2);
 
     const items_with_dates = feed.items[items_with_null_dates.len..];
-    expect(items_with_dates.len == 4);
+    try expect(items_with_dates.len == 4);
 
     {
         const latest_timestamp = items_with_dates[0].updated_timestamp.? - 1;
         const items_new = feed.getItemsWithDates(latest_timestamp);
-        expect(items_new.len == 4);
+        try expect(items_new.len == 4);
     }
 
     {
         const latest_timestamp = items_with_dates[2].updated_timestamp.?;
         const items_new = feed.getItemsWithDates(latest_timestamp);
-        expect(items_new.len == 1);
+        try expect(items_new.len == 1);
     }
 
     {
         const latest_timestamp = items_with_dates[3].updated_timestamp.? + 1;
         const items_new = feed.getItemsWithDates(latest_timestamp);
-        expect(items_new.len == 0);
+        try expect(items_new.len == 0);
     }
 }
 
@@ -987,39 +987,39 @@ test "Rss.parseDateToUtc" {
     {
         const date_str = "Tue, 03 Jun 2003 09:39:21 GMT";
         const date = try Rss.parseDateToUtc(date_str);
-        expect(2003 == date.date.year);
-        expect(6 == date.date.month);
-        expect(3 == date.date.day);
-        expect(9 == date.time.hour);
-        expect(39 == date.time.minute);
-        expect(21 == date.time.second);
-        expect(date.zone.offset == 0);
+        try expect(2003 == date.date.year);
+        try expect(6 == date.date.month);
+        try expect(3 == date.date.day);
+        try expect(9 == date.time.hour);
+        try expect(39 == date.time.minute);
+        try expect(21 == date.time.second);
+        try expect(date.zone.offset == 0);
     }
 
     {
         // dates with timezone format +/-NNNN will be turned into UTC
         const date_str = "Wed, 01 Oct 2002 01:00:00 +0200";
         const date = try Rss.parseDateToUtc(date_str);
-        expect(2002 == date.date.year);
-        expect(9 == date.date.month);
-        expect(30 == date.date.day);
-        expect(23 == date.time.hour);
-        expect(0 == date.time.minute);
-        expect(0 == date.time.second);
-        expect(date.zone.offset == 0);
+        try expect(2002 == date.date.year);
+        try expect(9 == date.date.month);
+        try expect(30 == date.date.day);
+        try expect(23 == date.time.hour);
+        try expect(0 == date.time.minute);
+        try expect(0 == date.time.second);
+        try expect(date.zone.offset == 0);
     }
 
     {
         // dates with timezone format +/-NNNN will be turned into UTC
         const date_str = "Wed, 01 Oct 2002 01:00:00 -0200";
         const date = try Rss.parseDateToUtc(date_str);
-        expect(2002 == date.date.year);
-        expect(10 == date.date.month);
-        expect(1 == date.date.day);
-        expect(3 == date.time.hour);
-        expect(0 == date.time.minute);
-        expect(0 == date.time.second);
-        expect(date.zone.offset == 0);
+        try expect(2002 == date.date.year);
+        try expect(10 == date.date.month);
+        try expect(1 == date.date.day);
+        try expect(3 == date.time.hour);
+        try expect(0 == date.time.minute);
+        try expect(0 == date.time.second);
+        try expect(date.zone.offset == 0);
     }
 }
 

@@ -46,12 +46,13 @@ pub fn build(b: *Builder) void {
 
 fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
     step.linkLibC();
+    // step.linkSystemLibrary("z");
     step.linkSystemLibrary("sqlite3");
     step.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
     step.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
     step.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
     step.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
     step.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
-    step.addPackage(.{ .name = "zuri", .path = "lib/zuri/src/zuri.zig" });
     @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", step, target);
+    step.addPackage(.{ .name = "zuri", .path = "lib/zuri/src/zuri.zig" });
 }

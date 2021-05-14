@@ -44,6 +44,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         writer: Writer,
         reader: Reader,
 
+        const Host = struct {
+            title: []const u8,
+            name: []const u8,
+
+            feeds: []const Feed,
+
+            const Feed = struct {
+                title: Fmt,
+                link: Fmt,
+            };
+
+            const Fmt = struct {
+                start: []const u8,
+                end: []const u8,
+            };
+        };
+
         pub fn addFeed(
             self: *Self,
             location_input: []const u8,
@@ -75,7 +92,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 error.FileNotFound => {
                     log.info("Add feed: '{s}'", .{location_input});
                     errdefer log.warn("Failed to add url feed: {s}", .{location_input});
-                    const url = try http.makeUri(location_input);
+                    const url = try resolveLocation(self.allocator, location_input);
+                    log.info("url: '{s}?{s}'", .{ url.path, url.query });
+
+                    // if (true) return;
+
                     const resp = try resolveRequestToFeed(self.allocator, url, self.writer, self.reader);
                     if (resp.body == null or resp.body.?.len == 0) {
                         log.warn("No body to parse", .{});
@@ -94,13 +115,22 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         .html => unreachable,
                     };
 
-                    log.info("\tFeed.items: {}", .{feed.items.len});
-
-                    const location = try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
-                        resp.url.scheme,
-                        resp.url.host.name,
-                        resp.url.path,
-                    });
+                    const location = blk: {
+                        if (resp.url.query.len == 0) {
+                            break :blk try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
+                                resp.url.scheme,
+                                resp.url.host.name,
+                                resp.url.path,
+                            });
+                        } else {
+                            break :blk try fmt.allocPrint(self.allocator, "{s}://{s}{s}?{s}", .{
+                                resp.url.scheme,
+                                resp.url.host.name,
+                                resp.url.path,
+                                resp.url.query,
+                            });
+                        }
+                    };
                     defer self.allocator.free(location);
 
                     // Add feed
@@ -115,6 +145,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
+        fn resolveLocation(allocator: *Allocator, location: []const u8) !Uri {
+            var url = try http.makeUri(location);
+            if (std.ascii.endsWithIgnoreCase(url.host.name, "reddit.com")) {
+                log.info("reddit.com", .{});
+                const path_end = ".rss";
+                const path = url.path;
+                url.host.name = "old.reddit.com";
+                if (url.query.len == 0) url.query = "sort=new";
+                if (!std.ascii.endsWithIgnoreCase(path, ".rss")) {
+                    log.info("add .rss", .{});
+                    url.path = try fmt.allocPrint(allocator, "{s}/{s}", .{ path, path_end });
+                }
+            }
+
+            return url;
+        }
+
         fn resolveRequestToFeed(
             allocator: *Allocator,
             url: Uri,
@@ -126,11 +173,16 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             if (resp.content_type == .html) {
                 const page_data = try parse.Html.parseLinks(allocator, resp.body.?);
+                log.info("{}", .{page_data.links.len});
                 if (page_data.links.len == 0) {
+                    // log.err("Found no RSS or Atom feed links", .{});
                     try writer.print("Found no RSS or Atom feed links\n", .{});
                     return error.NoRssOrAtomLinksFound;
                 }
-                const link = try chooseFeedLink(allocator, page_data, resp.url, writer, reader);
+                const link = blk: {
+                    const index = try chooseFeedLink(page_data.links.len, writer, reader);
+                    break :blk page_data.links[index];
+                };
                 var rss_uri = try http.makeUri(link.href);
                 if (rss_uri.host.name.len == 0) {
                     rss_uri.scheme = resp.url.scheme;
@@ -142,33 +194,42 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             return resp;
         }
 
+        const FeedData = union(enum) {
+            host_feeds: []const Host.Feed,
+            page_links: []const parse.Html.Link,
+        };
+
+        fn printFeedChoices(title: ?[]const u8, url: Uri, feed_data: FeedData, fill_text: []const u8, writer: anytype) !void {
+            try writer.print("Choose feed to add\n", .{});
+            const feed_title = title orelse "<no-page-title>";
+            try writer.print("{s}\n{s}\n", .{ feed_title, url.host.name });
+            switch (feed_data) {
+                .host_feeds => |feeds| {
+                    for (feeds) |feed, i| {
+                        try writer.print("\t{d}. {s}{s}{s} -> {s}{s}{s}\n", .{
+                            i + 1,
+                            feed.title.start,
+                            fill_text,
+                            feed.title.end,
+                            feed.link.start,
+                            fill_text,
+                            feed.link.end,
+                        });
+                    }
+                },
+                .page_links => |links| {
+                    //
+                },
+            }
+        }
+
         fn chooseFeedLink(
-            allocator: *Allocator,
-            page_data: parse.Html.Page,
-            url: Uri,
+            nr_of_links: usize,
             writer: anytype,
             reader: anytype,
-        ) !parse.Html.Link {
+        ) !usize {
             var buf: [64]u8 = undefined;
-            try writer.print("Choose feed to add\n", .{});
-            const title = page_data.title orelse "<no-page-title>";
-            try writer.print("{s}\n{s}\n", .{ title, url.host.name });
-            for (page_data.links) |link, i| {
-                const link_title = page_data.links[i].title orelse "<no-title>";
-                if (link.href[0] != '/') {
-                    try writer.print("\t{d}. {s} -> {s}\n", .{ i + 1, link_title, link.href });
-                } else {
-                    try writer.print("\t{d}. {s} -> {s}://{s}{s}\n", .{
-                        i + 1,
-                        link_title,
-                        url.scheme,
-                        url.host.name,
-                        link.href,
-                    });
-                }
-            }
-
-            const result_link = blk: {
+            const result_index = blk: {
                 while (true) {
                     try writer.print("Enter link number: ", .{});
                     const bytes = try reader.read(&buf);
@@ -180,18 +241,70 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         );
                         continue;
                     };
-                    if (nr < 1 or nr > page_data.links.len) {
+                    if (nr < 1 or nr > nr_of_links) {
                         try writer.print(
                             "Number out of range: '{d}'. Try again.\n",
                             .{nr},
                         );
                         continue;
                     }
-                    break :blk page_data.links[nr - 1];
+                    break :blk nr - 1;
                 }
             };
 
-            return result_link;
+            return result_index;
+
+            // switch (feed_data) {
+            //     .page => |page| {
+            //         try writer.print("Choose feed to add\n", .{});
+            //         const title = page.title orelse "<no-page-title>";
+            //         try writer.print("{s}\n{s}\n", .{ title, url.host.name });
+            //         for (page.links) |link, i| {
+            //             const link_title = page.links[i].title orelse "<no-title>";
+            //             if (link.href[0] != '/') {
+            //                 try writer.print("\t{d}. {s} -> {s}\n", .{ i + 1, link_title, link.href });
+            //             } else {
+            //                 try writer.print("\t{d}. {s} -> {s}://{s}{s}\n", .{
+            //                     i + 1,
+            //                     link_title,
+            //                     url.scheme,
+            //                     url.host.name,
+            //                     link.href,
+            //                 });
+            //             }
+            //         }
+
+            //         var buf: [64]u8 = undefined;
+            //         const result_index = blk: {
+            //             while (true) {
+            //                 try writer.print("Enter link number: ", .{});
+            //                 const bytes = try reader.read(&buf);
+            //                 const input = buf[0 .. bytes - 1];
+            //                 const nr = fmt.parseUnsigned(u16, input, 10) catch |err| {
+            //                     try writer.print(
+            //                         "Invalid number: '{s}'. Try again.\n",
+            //                         .{input},
+            //                     );
+            //                     continue;
+            //                 };
+            //                 if (nr < 1 or nr > page.links.len) {
+            //                     try writer.print(
+            //                         "Number out of range: '{d}'. Try again.\n",
+            //                         .{nr},
+            //                     );
+            //                     continue;
+            //                 }
+            //                 break :blk nr - 1;
+            //             }
+            //         };
+
+            //         return result_index;
+            //     },
+            //     .host => |host| {
+            //         log.info("{}", .{host});
+            //         return 0;
+            //     },
+            // }
         }
 
         pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
@@ -413,10 +526,17 @@ const TestIO = struct {
     pub const Error = error{
         TooMuchData,
         DifferentData,
+        NoExpectedWrites,
+        IndexOutOfBounds,
     };
 
     fn write(self: *Self, bytes: []const u8) Error!usize {
+        if (self.expected_actions.len == 0) return error.NoExpectedWrites;
         const i = self.action_index;
+        if (i >= self.expected_actions.len) {
+            log.err("Index out of bound. Didn't print: {s}", .{bytes});
+            return bytes.len;
+        }
         const expected = self.expected_actions[i].write;
 
         if (expected.len < bytes.len) {
@@ -471,11 +591,11 @@ fn expectCounts(feed_db: *FeedDb, counts: TestCounts) !void {
     const local_count = try db.count(&feed_db.db, local_count_query);
     const url_count = try db.count(&feed_db.db, url_count_query);
     const item_feed_count = try db.count(&feed_db.db, item_count_query);
-    expect(feed_count == counts.feed);
-    expect(local_count == counts.local);
-    expect(feed_count == counts.local + counts.url);
-    expect(url_count == counts.url);
-    expect(item_feed_count == counts.feed);
+    try expect(feed_count == counts.feed);
+    try expect(local_count == counts.local);
+    try expect(feed_count == counts.local + counts.url);
+    try expect(url_count == counts.url);
+    try expect(item_feed_count == counts.feed);
 }
 
 test "Cli.printAllItems, Cli.printFeeds" {
@@ -608,7 +728,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         const query = "select count(feed_id) from item group by feed_id";
         const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
         for (results) |item_count| {
-            expect(item_count <= g.max_items_per_feed);
+            try expect(item_count <= g.max_items_per_feed);
         }
     }
 
@@ -671,20 +791,20 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     try expectCounts(&feed_db, counts);
 }
 
-test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
-    const g = @import("feed_db.zig").g;
+test "@active url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
+    const g = @import("feed_db.zig").g;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = &arena.allocator;
 
     var feed_db = try FeedDb.init(allocator, null);
-    const do_print = false;
+    const do_print = true;
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
     var read_valid = "1\n";
-    const added_url = "Added url feed: ";
+    var added_url = "Added url feed: ";
     var counts = TestCounts{};
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
@@ -693,6 +813,27 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         .writer = undefined,
         .reader = undefined,
     };
+
+    {
+        // Test reddit.com
+        const url_end = ".rss?sort=new";
+        const location = "https://www.reddit.com/r/programming/.rss";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = added_url },
+                .{ .write = "https://old.reddit.com/r/programming/" ++ url_end ++ "\n" },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.addFeed(location);
+        counts.feed += 1;
+        counts.url += 1;
+    }
+
+    if (true) return;
 
     {
         // remove last slash to get HTTP redirect
@@ -753,7 +894,7 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         const query = "select count(feed_id) from item group by feed_id";
         const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
         for (results) |item_count| {
-            expect(item_count <= g.max_items_per_feed);
+            try expect(item_count <= g.max_items_per_feed);
         }
     }
 
