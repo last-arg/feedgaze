@@ -2,9 +2,9 @@
 with pkgs;
 mkShell {
   buildInputs = [
-    # zig-binary
+    zig-binary
     # zig-master
-    zig-latest
+    # zig-latest
     sqlite
     pkg-config
     rlwrap
