@@ -1,3 +1,4 @@
+// Source: https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
 const std = @import("std");
 
 pub const Parser = struct {

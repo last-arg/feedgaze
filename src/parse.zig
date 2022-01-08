@@ -9,9 +9,9 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const xml = @import("xml");
-const datetime = @import("datetime");
+const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
-const timezones = datetime.timezones;
+const timezones = @import("datetime").timezones;
 const l = std.log;
 
 pub const Html = struct {
@@ -43,7 +43,7 @@ pub const Html = struct {
         return name;
     }
 
-    pub fn parseLinks(allocator: *Allocator, contents_const: []const u8) !Page {
+    pub fn parseLinks(allocator: Allocator, contents_const: []const u8) !Page {
         var contents = contents_const;
         var links = ArrayList(Link).init(allocator);
         defer links.deinit();
@@ -298,7 +298,7 @@ pub const Atom = struct {
     // Atom feed parsing:
     // https://tools.ietf.org/html/rfc4287
     // https://validator.w3.org/feed/docs/atom.html
-    pub fn parse(allocator: *Allocator, contents: []const u8) !Feed {
+    pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
         var entries = ArrayList(Feed.Item).init(allocator);
         defer entries.deinit();
 
@@ -392,10 +392,10 @@ pub const Atom = struct {
                         },
                     }
                 },
-                .comment => |str| {
+                .comment => |_| {
                     // warn("comment: {s}\n", .{str});
                 },
-                .processing_instruction => |str| {
+                .processing_instruction => |_| {
                     // warn("processing_instruction: {s}\n", .{str});
                 },
                 .character_data => |value| {
@@ -439,7 +439,6 @@ pub const Atom = struct {
             const date_utc = try parseDateToUtc(date);
             updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
         } else if (entries.items.len > 0 and entries.items[0].updated_raw != null) {
-            var tmp_date: []const u8 = entries.items[0].updated_raw.?;
             var tmp_timestamp: i64 = entries.items[0].updated_timestamp.?;
             for (entries.items[1..]) |item| {
                 if (item.updated_timestamp != null and
@@ -548,10 +547,6 @@ test "Atom.parse" {
 
 test "Atom.parseDateToUtc" {
     l.warn("\n", .{});
-    var arena = std.heap.ArenaAllocator.init(testing.allocator);
-    defer arena.deinit();
-    const allocator = &arena.allocator;
-
     {
         const date_raw = "2003-12-13T18:30:02Z";
         const dt = try Atom.parseDateToUtc(date_raw);
@@ -626,7 +621,7 @@ pub const Rss = struct {
         _ignore,
     };
 
-    pub fn parse(allocator: *Allocator, contents: []const u8) !Feed {
+    pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
         var items = try ArrayList(Feed.Item).initCapacity(allocator, 10);
         defer items.deinit();
 
@@ -739,15 +734,15 @@ pub const Rss = struct {
                         state = .channel;
                     }
                 },
-                .attribute => |attr| {
+                .attribute => |_| {
                     // warn("attribute\n", .{});
                     // warn("\tname: {s}\n", .{attr.name});
                     // warn("\traw_value: {s}\n", .{attr.raw_value});
                 },
-                .comment => |str| {
+                .comment => |_| {
                     // warn("comment: {s}\n", .{str});
                 },
-                .processing_instruction => |str| {
+                .processing_instruction => |_| {
                     // warn("processing_instruction: {s}\n", .{str});
                 },
                 .character_data => |value| {
@@ -807,7 +802,6 @@ pub const Rss = struct {
             const date_utc = try parseDateToUtc(date);
             updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
         } else if (items.items.len > 0 and items.items[0].updated_raw != null) {
-            var tmp_date: []const u8 = items.items[0].updated_raw.?;
             var tmp_timestamp: i64 = items.items[0].updated_timestamp.?;
             for (items.items[1..]) |item| {
                 if (item.updated_timestamp != null and
@@ -838,7 +832,7 @@ pub const Rss = struct {
     }
 
     pub fn parseDateToUtc(str: []const u8) !Datetime {
-        var iter = mem.split(str, " ");
+        var iter = mem.split(u8, str, " ");
 
         // Skip: don't care about day of week
         _ = iter.next();
@@ -870,7 +864,7 @@ pub const Rss = struct {
 
         // time
         const time_str = iter.next() orelse return error.InvalidPubDate;
-        var time_iter = mem.split(time_str, ":");
+        var time_iter = mem.split(u8, time_str, ":");
         // time: hour
         const hour_str = time_iter.next() orelse return error.InvalidPubDate;
         const hour = try fmt.parseInt(u8, hour_str, 10);
@@ -1023,7 +1017,7 @@ test "Rss.parseDateToUtc" {
     }
 }
 
-pub fn parse(allocator: *Allocator, contents: []const u8) !Feed {
+pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
     var xml_parser = xml.Parser.init(contents);
     while (xml_parser.next()) |event| {
         switch (event) {

@@ -16,7 +16,7 @@ const assert = std.debug.assert;
 const FeedDb = @import("feed_db.zig").FeedDb;
 
 pub fn makeCli(
-    allocator: *Allocator,
+    allocator: Allocator,
     feed_db: *FeedDb,
     writer: anytype,
     reader: anytype,
@@ -39,7 +39,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         const Self = @This();
 
-        allocator: *Allocator,
+        allocator: Allocator,
         feed_db: *FeedDb,
         writer: Writer,
         reader: Reader,
@@ -145,7 +145,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        fn resolveLocation(allocator: *Allocator, location: []const u8) !Uri {
+        fn resolveLocation(allocator: Allocator, location: []const u8) !Uri {
             var url = try http.makeUri(location);
             if (std.ascii.endsWithIgnoreCase(url.host.name, "reddit.com")) {
                 log.info("reddit.com", .{});
@@ -163,7 +163,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         fn resolveRequestToFeed(
-            allocator: *Allocator,
+            allocator: Allocator,
             url: Uri,
             writer: anytype,
             reader: anytype,
@@ -217,7 +217,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         });
                     }
                 },
-                .page_links => |links| {
+                .page_links => |_| {
                     //
                 },
             }
@@ -234,7 +234,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try writer.print("Enter link number: ", .{});
                     const bytes = try reader.read(&buf);
                     const input = buf[0 .. bytes - 1];
-                    const nr = fmt.parseUnsigned(u16, input, 10) catch |err| {
+                    const nr = fmt.parseUnsigned(u16, input, 10) catch {
                         try writer.print(
                             "Invalid number: '{s}'. Try again.\n",
                             .{input},
@@ -344,9 +344,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
             }
 
-            const del_query =
-                \\DELETE FROM feed WHERE id = ?;
-            ;
+            // const del_query =
+            //     \\DELETE FROM feed WHERE id = ?;
+            // ;
             if (delete_nr > 0) {
                 const result = results[delete_nr - 1];
                 try self.feed_db.deleteFeed(result.id);
@@ -692,10 +692,6 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     var feed_db = try FeedDb.init(allocator, null);
     const do_print = false;
-    var write_first = "Choose feed to add\n";
-    var enter_link = "Enter link number: ";
-    var read_valid = "1\n";
-    const added_url = "Added url feed: ";
     var counts = TestCounts{};
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){

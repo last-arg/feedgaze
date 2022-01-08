@@ -11,11 +11,10 @@ const shame = @import("shame.zig");
 const time = std.time;
 const parse = @import("parse.zig");
 const expect = std.testing.expect;
-const datetime = @import("datetime");
+const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const ArrayList = std.ArrayList;
-
-usingnamespace @import("queries.zig");
+const Table = @import("queries.zig").Table;
 
 pub const g = struct {
     pub var max_items_per_feed: usize = 10;
@@ -25,7 +24,7 @@ pub const FeedDb = struct {
     const Self = @This();
     db: sql.Db,
 
-    pub fn init(allocator: *Allocator, location: ?[]const u8) !Self {
+    pub fn init(allocator: Allocator, location: ?[]const u8) !Self {
         var sql_db = try db.createDb(allocator, location);
         try db.setup(&sql_db);
         return Self{ .db = sql_db };
@@ -113,13 +112,13 @@ pub const FeedDb = struct {
         force: bool = false,
     };
 
-    pub fn updateAllFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
+    pub fn updateAllFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
         try self.updateUrlFeeds(allocator, opts);
         try self.updateLocalFeeds(allocator, opts);
         try self.cleanItems(allocator);
     }
 
-    pub fn updateUrlFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
+    pub fn updateUrlFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
         @setEvalBranchQuota(2000);
         const DbResultUrl = struct {
             location: []const u8,
@@ -236,7 +235,7 @@ pub const FeedDb = struct {
         }
     }
 
-    pub fn updateLocalFeeds(self: *Self, allocator: *Allocator, opts: UpdateOptions) !void {
+    pub fn updateLocalFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
         const DbResultLocal = struct {
             location: []const u8,
             feed_id: usize,
@@ -279,7 +278,7 @@ pub const FeedDb = struct {
             }
 
             try contents.resize(0);
-            try contents.ensureCapacity(file_stat.size);
+            try contents.ensureTotalCapacity(file_stat.size);
             try file.reader().readAllArrayList(&contents, file_stat.size);
             var rss_feed = try parse.parse(allocator, contents.items);
             const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
@@ -326,7 +325,7 @@ pub const FeedDb = struct {
         try db.delete(&self.db, query, .{ feed_id, g.max_items_per_feed, feed_id });
     }
 
-    pub fn cleanItems(self: *Self, allocator: *Allocator) !void {
+    pub fn cleanItems(self: *Self, allocator: Allocator) !void {
         const query =
             \\SELECT
             \\  feed_id, count(feed_id) as count
@@ -362,7 +361,7 @@ pub const FeedDb = struct {
         id: usize,
     };
 
-    pub fn search(self: *Self, allocator: *Allocator, term: []const u8) ![]SearchResult {
+    pub fn search(self: *Self, allocator: Allocator, term: []const u8) ![]SearchResult {
         const query =
             \\SELECT location, title, link, id FROM feed
             \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?

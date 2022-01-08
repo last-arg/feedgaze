@@ -18,6 +18,9 @@
   [ ] TUI - NotCurses
   [ ] Web browser (http server) - later
 [ ] Zig
+  [ ] XML parsing
+    - https://github.com/wooky/zupnp/tree/master/src/xml
+    - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
   [ ] Https client
     - https://github.com/truemedian/zfetch
     - https://github.com/ducdetronquito/requestz

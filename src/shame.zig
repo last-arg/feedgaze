@@ -4,9 +4,9 @@ const fs = std.fs;
 const Allocator = std.mem.Allocator;
 const expect = std.testing.expect;
 
-pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
+pub fn makeFilePath(allocator: Allocator, path: []const u8) ![]const u8 {
     if (std.fs.path.isAbsolute(path)) {
-        return try mem.dupe(allocator, u8, path);
+        return try mem.Allocator.dupe(allocator, u8, path);
     }
     const cwd = try std.process.getCwdAlloc(allocator);
     defer allocator.free(cwd);
@@ -14,14 +14,14 @@ pub fn makeFilePath(allocator: *Allocator, path: []const u8) ![]const u8 {
     return try std.fs.path.resolve(allocator, &[_][]const u8{ cwd, path });
 }
 
-pub fn makeFilePathZ(allocator: *Allocator, path: []const u8) ![:0]const u8 {
+pub fn makeFilePathZ(allocator: Allocator, path: []const u8) ![:0]const u8 {
     const loc = try makeFilePath(allocator, path);
     defer allocator.free(loc);
     return try mem.Allocator.dupeZ(allocator, u8, path);
 }
 
 // Caller freed memory
-pub fn getFileContents(allocator: *Allocator, path: []const u8) ![]const u8 {
+pub fn getFileContents(allocator: Allocator, path: []const u8) ![]const u8 {
     var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
     const abs_path = try fs.cwd().realpath(path, &path_buf);
     const file = try fs.openFileAbsolute(abs_path, .{});

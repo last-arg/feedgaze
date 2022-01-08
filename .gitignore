@@ -1,3 +1,4 @@
+.gyro/
 tmp/
 zig-out/
 zig-cache/

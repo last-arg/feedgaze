@@ -2,6 +2,7 @@ const std = @import("std");
 const Builder = @import("std").build.Builder;
 const LibExeObjStep = @import("std").build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
@@ -44,15 +45,17 @@ pub fn build(b: *Builder) void {
     test_step.dependOn(&test_cmd.step);
 }
 
-fn stepSetup(step: *LibExeObjStep, target: CrossTarget) void {
+fn stepSetup(step: *LibExeObjStep, _: CrossTarget) void {
     step.linkLibC();
     // step.linkSystemLibrary("z");
     step.linkSystemLibrary("sqlite3");
-    step.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
-    step.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
-    step.addPackage(.{ .name = "xml", .path = "lib/zig-xml/xml.zig" });
-    step.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
-    step.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
-    @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", step, target);
-    step.addPackage(.{ .name = "zuri", .path = "lib/zuri/src/zuri.zig" });
+    // step.addPackage(.{ .name = "sqlite", .path = "lib/zig-sqlite/sqlite.zig" });
+    // step.addPackage(.{ .name = "datetime", .path = "lib/zig-datetime/datetime.zig" });
+    // step.addPackage(.{ .name = "hzzp", .path = "lib/hzzp/src/main.zig" });
+    // step.addPackage(.{ .name = "zig-bearssl", .path = "lib/zig-bearssl/src/lib.zig" });
+    // @import("lib/zig-bearssl/src/lib.zig").linkBearSSL("./lib/zig-bearssl", step, target);
+    // step.addPackage(.{ .name = "zuri", .path = "lib/zuri/src/zuri.zig" });
+
+    step.addPackagePath("xml", "lib/zig-xml/xml.zig");
+    pkgs.addAllTo(step);
 }

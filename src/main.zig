@@ -19,7 +19,7 @@ pub fn main() anyerror!void {
     // const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
     log.info("test", .{});
 
     const abs_location = "/media/hdd/code/feed_app/tmp/test.db_conn";

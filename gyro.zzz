@@ -1,0 +1,16 @@
+deps:
+  sqlite:
+    git:
+      url: "https://github.com/vrischmann/zig-sqlite.git"
+      ref: master
+      root: sqlite.zig
+  datetime:
+    git:
+      url: "https://github.com/frmdstryr/zig-datetime.git"
+      ref: master
+      root: src/main.zig
+  zuri:
+    git:
+      url: "https://github.com/Vexu/zuri.git"
+      ref: master
+      root: src/zuri.zig

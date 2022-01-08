@@ -5,10 +5,9 @@ const l = std.log;
 const testing = std.testing;
 const expect = testing.expect;
 const shame = @import("shame.zig");
+const Table = @import("queries.zig").Table;
 
-usingnamespace @import("queries.zig");
-
-pub fn createDb(allocator: *Allocator, loc: ?[]const u8) !sql.Db {
+pub fn createDb(allocator: Allocator, loc: ?[]const u8) !sql.Db {
     if (loc) |path| {
         const abs_loc = try shame.makeFilePathZ(allocator, path);
         defer allocator.free(abs_loc);
@@ -19,8 +18,7 @@ pub fn createDb(allocator: *Allocator, loc: ?[]const u8) !sql.Db {
 }
 
 pub fn createMemoryDb() !sql.Db {
-    var db: sql.Db = undefined;
-    try db.init(.{
+    return try sql.Db.init(.{
         .mode = sql.Db.Mode.Memory,
         .open_flags = .{
             .write = true,
@@ -28,12 +26,10 @@ pub fn createMemoryDb() !sql.Db {
         },
         // .threading_mode = .SingleThread,
     });
-    return db;
 }
 
 pub fn createFileDb(path_opt: ?[:0]const u8) !sql.Db {
-    var db: sql.Db = undefined;
-    try db.init(.{
+    return try sql.Db.init(.{
         .mode = if (path_opt) |path| sql.Db.Mode{ .File = path } else sql.Db.Mode.Memory,
         .open_flags = .{
             .write = true,
@@ -41,7 +37,6 @@ pub fn createFileDb(path_opt: ?[:0]const u8) !sql.Db {
         },
         // .threading_mode = .MultiThread,
     });
-    return db;
 }
 
 pub fn setup(db: *sql.Db) !void {
@@ -51,7 +46,7 @@ pub fn setup(db: *sql.Db) !void {
     inline for (@typeInfo(Table).Struct.decls) |decl| {
         if (@hasDecl(decl.data.Type, "create")) {
             const sql_create = @field(decl.data.Type, "create");
-            db.exec(sql_create, .{}) catch |err| {
+            db.exec(sql_create, .{}, .{}) catch |err| {
                 l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, sql_create });
                 return err;
             };
@@ -102,7 +97,7 @@ pub fn count(db: *sql.Db, comptime query: []const u8) !usize {
     return result.?;
 }
 
-pub fn select(comptime T: type, allocator: *Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
+pub fn select(comptime T: type, allocator: Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
     return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
@@ -111,7 +106,7 @@ pub fn select(comptime T: type, allocator: *Allocator, db: *sql.Db, comptime que
 
 pub fn selectAll(
     comptime T: type,
-    allocator: *Allocator,
+    allocator: Allocator,
     db: *sql.Db,
     comptime query: []const u8,
     opts: anytype,
@@ -130,46 +125,22 @@ pub fn selectAll(
 pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
     @setEvalBranchQuota(2000);
 
-    db.exec(query, args) catch |err| {
+    db.exec(query, .{}, args) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
 
 pub fn update(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    db.exec(query, args) catch |err| {
+    db.exec(query, .{}, args) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
 
 pub fn delete(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    db.exec(query, args) catch |err| {
+    db.exec(query, .{}, args) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
-
-const test_feed_insert_1 = Db.FeedInsert{
-    .title = "Feed Example",
-    .location = "https://example.com/feed.xml",
-    .link = "https://example.com",
-    .updated_raw = "valid_date",
-    .updated_timestamp = 22,
-};
-
-const test_feed_insert_2 = Db.FeedInsert{
-    .title = "Feed Other",
-    .location = "https://other.com/feed.xml",
-    .link = "https://other.com",
-    .updated_raw = "valid_date",
-    .updated_timestamp = 22,
-};
-
-var test_feed_update_1 = Db.FeedUpdate{
-    .title = "Updated title",
-    .link = test_feed_insert_1.link,
-    .updated_raw = test_feed_insert_1.updated_raw,
-    .updated_timestamp = test_feed_insert_1.updated_timestamp,
-    .id = 1, // Overwrite if needed
-};
