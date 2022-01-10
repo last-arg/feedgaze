@@ -12,21 +12,6 @@ const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const print = std.debug.print;
 
-// 1. insert url
-// 2. valid url. return response
-// 3. redirected. go to step 1
-// 4. returned content-type == "text/html"
-//   - parse html for rss links
-//   - if one link/url found go to step 1
-//   - more than one link ask which link/url to add and go to step 1
-// 5. Not valid feed url and failed to find a valid feed url.
-
-pub const FeedRequest = struct {
-    url: Uri,
-    etag: ?[]const u8 = null,
-    last_modified: ?[]const u8 = null,
-};
-
 const FeedResponse = union(enum) {
     success: Success,
     not_modified: void,
@@ -64,19 +49,14 @@ pub const ContentEncoding = enum {
     gzip,
 };
 
-pub const TransferEncoding = enum {
-    none,
-    chunked,
-};
-
 pub const ContentType = enum {
-    xml, // text/xml
-    xml_atom, // application/atom+xml
-    xml_rss, // application/rss+xml
-    // TODO: add new content types
-    // json, // application/json
-    // json_feed, // application/feed+json
-    html, // text/html
+    // zig fmt: off
+    xml,       // text/xml
+    xml_atom,  // application/atom+xml
+    xml_rss,   // application/rss+xml
+    json,      // application/json
+    json_feed, // application/feed+json
+    html,      // text/html
     unknown,
 };
 
@@ -150,7 +130,6 @@ pub fn makeRequest(
         var content_length: usize = 128;
         for (req.headers.list.items) |header| {
             print("{s}: {s}\n", .{ header.name, header.value });
-            // TODO: parse other header names and values
             if (ascii.eqlIgnoreCase("content-length", header.name)) {
                 content_length = try fmt.parseInt(u32, header.value, 10);
             } else if (ascii.eqlIgnoreCase("content-type", header.name)) {
@@ -166,8 +145,11 @@ pub fn makeRequest(
                     ascii.eqlIgnoreCase("text/xml", value))
                 {
                     result.content_type = .xml;
+                } else if (ascii.eqlIgnoreCase("application/feed+json", value)) {
+                    result.content_type = .json_feed;
+                } else if (ascii.eqlIgnoreCase("application/json", value)) {
+                    result.content_type = .json;
                 }
-                // TODO: new ContentType enums
             } else if (ascii.eqlIgnoreCase("content-encoding", header.name)) {
                 var it = mem.split(u8, header.value, ",");
                 while (it.next()) |val_raw| {
@@ -273,9 +255,6 @@ test "http" {
     // const rand = std.rand;
     // var r = rand.DefaultPrng.init(@intCast(u64, std.time.milliTimestamp()));
     // l.warn("rand: {}", .{r.random.int(u8)});
-
-    // const req = FeedRequest{ .url = url };
-    // _ = try resolveRequest(allocator, req);
 
     // const r = resolveRequest(allocator, "https://feeds.feedburner.com/eclipse/fnews", null, null); // gzip
     // const r = resolveRequest(allocator, "https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js", null, null);
