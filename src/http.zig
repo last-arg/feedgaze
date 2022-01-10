@@ -1,5 +1,4 @@
 const std = @import("std");
-const ArrayList = std.ArrayList;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const mem = std.mem;
 const fmt = std.fmt;
