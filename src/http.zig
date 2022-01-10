@@ -201,37 +201,23 @@ pub fn makeRequest(
                         break;
                     }
                 }
+            } else if (ascii.eqlIgnoreCase("etag", header.name)) {
+                result.etag = mem.Allocator.dupe(allocator, u8, header.value) catch continue;
+            } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
+                result.last_modified_utc = dateStrToTimeStamp(header.value) catch continue;
+            } else if (ascii.eqlIgnoreCase("expires", header.name)) {
+                result.expires_utc = dateStrToTimeStamp(header.value) catch continue;
+            } else if (ascii.eqlIgnoreCase("cache-control", header.name)) {
+                var it = mem.split(u8, header.value, ",");
+                while (it.next()) |v_raw| {
+                    const v = mem.trimLeft(u8, v_raw, " \r\n\t");
+                    if (ascii.startsWithIgnoreCase(v, "max-age") or ascii.startsWithIgnoreCase(v, "s-maxage")) {
+                        const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
+                        result.cache_control_max_age = try fmt.parseInt(usize, v[eq_index + 1 ..], 10);
+                        break;
+                    }
+                }
             }
-
-            // if (ascii.eqlIgnoreCase("cache-control", header.name)) {
-            //     var it = mem.split(header.value, ",");
-            //     while (it.next()) |v_raw| {
-            //         const v = mem.trimLeft(u8, v_raw, " \r\n\t");
-            //         if (feed_resp.cache_control_max_age == null and
-            //             ascii.startsWithIgnoreCase(v, "max-age"))
-            //         {
-            //             const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-            //             const nr = v[eq_index + 1 ..];
-            //             feed_resp.cache_control_max_age =
-            //                 try fmt.parseInt(usize, nr, 10);
-            //         } else if (ascii.startsWithIgnoreCase(v, "s-maxage")) {
-            //             const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-            //             const nr = v[eq_index + 1 ..];
-            //             feed_resp.cache_control_max_age =
-            //                 try fmt.parseInt(usize, nr, 10);
-            //         }
-            //     }
-            // } else if (ascii.eqlIgnoreCase("etag", header.name)) {
-            //     feed_resp.etag = try allocator.dupe(u8, header.value);
-            //     errdefer allocator.free(feed_resp.etag);
-            // } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
-            //     feed_resp.last_modified_utc = try dateStrToTimeStamp(header.value);
-            // } else if (ascii.eqlIgnoreCase("expires", header.name)) {
-            //     feed_resp.expires_utc = dateStrToTimeStamp(header.value) catch continue;
-            // } else if (ascii.eqlIgnoreCase("transfer-encoding", header.name)) {
-            //     if (ascii.eqlIgnoreCase("chunked", header.value)) {
-            //         transfer_encoding = .chunked;
-            //     }
         }
 
         const req_reader = req.reader();
