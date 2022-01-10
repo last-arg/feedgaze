@@ -24,9 +24,43 @@ pub const pkgs = struct {
         },
     };
 
+    pub const zfetch = Pkg{
+        .name = "zfetch",
+        .path = FileSource{
+            .path = ".gyro/zfetch-truemedian-github.com-271cab5d/pkg/src/main.zig",
+        },
+        .dependencies = &[_]Pkg{
+            Pkg{
+                .name = "uri",
+                .path = FileSource{
+                    .path = ".gyro/uri-mattnite-0.0.1-astrolabe.pm/pkg/uri.zig",
+                },
+            },
+            Pkg{
+                .name = "hzzp",
+                .path = FileSource{
+                    .path = ".gyro/hzzp-truemedian-0.1.8-astrolabe.pm/pkg/src/main.zig",
+                },
+            },
+            Pkg{
+                .name = "network",
+                .path = FileSource{
+                    .path = ".gyro/zig-network-MasterQ32-github.com-b9c52822/pkg/network.zig",
+                },
+            },
+            Pkg{
+                .name = "iguanaTLS",
+                .path = FileSource{
+                    .path = ".gyro/iguanaTLS-marler8997-github.com-2b37c575/pkg/src/main.zig",
+                },
+            },
+        },
+    };
+
     pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {
         artifact.addPackage(pkgs.sqlite);
         artifact.addPackage(pkgs.datetime);
         artifact.addPackage(pkgs.zuri);
+        artifact.addPackage(pkgs.zfetch);
     }
 };
