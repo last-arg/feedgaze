@@ -1,6 +1,6 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
-const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const mem = std.mem;
 const fmt = std.fmt;
 const ascii = std.ascii;
@@ -33,26 +33,11 @@ const FeedResponse = union(enum) {
     permanent_redirect: PermanentRedirect,
     temporary_redirect: TemporaryRedirect,
     fail: []const u8,
-
-    pub fn deinit(self: @This(), allocator: Allocator) void {
-        switch (self) {
-            .success => |s| s.deinit(allocator),
-            .not_modified => {},
-            .permanent_redirect => |perm| perm.deinit(allocator),
-            .temporary_redirect => |temp| temp.deinit(allocator),
-            .fail => |value| allocator.free(value),
-        }
-    }
 };
 
 const PermanentRedirect = struct {
     location: []const u8,
     msg: []const u8,
-
-    pub fn deinit(self: @This(), allocator: Allocator) void {
-        allocator.free(self.location);
-        allocator.free(self.msg);
-    }
 };
 
 const TemporaryRedirect = struct {
@@ -61,11 +46,6 @@ const TemporaryRedirect = struct {
     last_modified: ?[]const u8 = null, // Doesn't own memory
     etag: ?[]const u8 = null, // Doesn't own memory
     msg: []const u8,
-
-    pub fn deinit(self: @This(), allocator: Allocator) void {
-        allocator.free(self.location);
-        allocator.free(self.msg);
-    }
 };
 
 const Success = struct {
@@ -77,12 +57,6 @@ const Success = struct {
     expires_utc: ?i64 = null,
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
-
-    pub fn deinit(self: @This(), allocator: Allocator) void {
-        allocator.free(self.location);
-        allocator.free(self.body);
-        if (self.etag) |value| allocator.free(value);
-    }
 };
 
 pub const ContentEncoding = enum {
@@ -108,28 +82,27 @@ pub const ContentType = enum {
 
 const max_redirects = 3;
 pub fn resolveRequest(
-    allocator: Allocator,
+    arena: *ArenaAllocator,
     url: []const u8,
     last_modified: ?[]const u8,
     etag: ?[]const u8,
 ) !FeedResponse {
-    var resp = try makeRequest(allocator, url, last_modified, etag);
-    errdefer resp.deinit(allocator);
+    var resp = try makeRequest(arena, url, last_modified, etag);
     var redirect_count: u16 = 0;
     while (redirect_count < max_redirects) : (redirect_count += 1) {
         switch (resp) {
             .success, .fail, .not_modified => break,
             .permanent_redirect => |perm| {
                 log.debug("Permanent redirect to {s}", .{perm.location});
-                resp = try makeRequest(allocator, perm.location, null, null);
+                resp = try makeRequest(arena, perm.location, null, null);
             },
             .temporary_redirect => |temp| {
                 log.info("Temporary redirect to {s}", .{temp.location});
-                resp = try makeRequest(allocator, temp.location, temp.last_modified, temp.etag);
+                resp = try makeRequest(arena, temp.location, temp.last_modified, temp.etag);
             },
         }
     } else {
-        return FeedResponse{ .fail = try fmt.allocPrint(allocator, "Too many redirects", .{}) };
+        return FeedResponse{ .fail = "Too many redirects" };
     }
     return resp;
 }
@@ -142,17 +115,17 @@ fn isPermanentRedirect(code: u16) bool {
 }
 
 pub fn makeRequest(
-    allocator: Allocator,
+    arena: *ArenaAllocator,
     url: []const u8,
     last_modified: ?[]const u8,
     etag: ?[]const u8,
 ) !FeedResponse {
-    print("URL: {s}\n", .{url});
+    var allocator = arena.allocator();
     try zfetch.init();
-    defer zfetch.deinit();
+    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
 
     var headers = zfetch.Headers.init(allocator);
-    defer headers.deinit();
+    // defer headers.deinit(); // AreanAllocator will clean up all allocations
     const uri = try makeUri(url);
     try headers.appendValue("Host", uri.host.name);
     try headers.appendValue("Connection", "close");
@@ -163,7 +136,10 @@ pub fn makeRequest(
     if (last_modified) |value| try headers.appendValue("If-Modified-Since", value);
 
     var req = try zfetch.Request.init(allocator, url, null);
-    defer req.deinit();
+    // Closing file socket + freeing allocations
+    // defer req.deinit();
+    // Only close the file, let AreanAllocator take care of freeing allocations
+    defer req.socket.close();
 
     try req.do(.GET, headers, null);
 
@@ -227,7 +203,7 @@ pub fn makeRequest(
             },
             .gzip => {
                 var stream = try std.compress.gzip.gzipStream(allocator, req_reader);
-                defer stream.deinit();
+                // defer stream.deinit(); // let ArenaAllocator free all the allocations
                 result.body = try stream.reader().readAllAlloc(allocator, std.math.maxInt(usize));
             },
         }
@@ -288,7 +264,6 @@ test "http" {
     const testing = std.testing;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
     // const url = makeUri("http://google.com/") catch unreachable;
     // const url = makeUri("http://lobste.rs") catch unreachable;
     // const url = makeUri("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js") catch unreachable; // chunked + deflate
@@ -302,10 +277,9 @@ test "http" {
     // const req = FeedRequest{ .url = url };
     // _ = try resolveRequest(allocator, req);
 
-    // const r = makeRequest(allocator, "https://feeds.feedburner.com/eclipse/fnews", null, null); // gzip
-    // const r = makeRequest(allocator, "https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js", null, null);
-    // const r = makeRequest(allocator, "https://google.com/", null, null);
-    const r = try resolveRequest(allocator, "http://lobste.rs/", null, null);
-    defer r.deinit(allocator);
+    // const r = resolveRequest(allocator, "https://feeds.feedburner.com/eclipse/fnews", null, null); // gzip
+    // const r = resolveRequest(allocator, "https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js", null, null);
+    // const r = resolveRequest(allocator, "https://google.com/", null, null);
+    const r = try resolveRequest(&arena, "http://lobste.rs/", null, null);
     print("{?}\n", .{r});
 }
