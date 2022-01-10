@@ -26,10 +26,10 @@ const PermanentRedirect = struct {
 
 const TemporaryRedirect = struct {
     location: []const u8,
+    msg: []const u8,
     // Need to pass cache related fields to next request
     last_modified: ?[]const u8 = null, // Doesn't own memory
     etag: ?[]const u8 = null, // Doesn't own memory
-    msg: []const u8,
 };
 
 const Success = struct {
@@ -93,6 +93,9 @@ fn isPermanentRedirect(code: u16) bool {
     return false;
 }
 
+// TODO: input url has http or https scheme
+// TODO: input url has to have '/' if there is only hostname
+// Either makeRequest() fixes url mistakes or it is fixed before calling makeRequest()
 pub fn makeRequest(
     arena: *ArenaAllocator,
     url: []const u8,
@@ -230,34 +233,25 @@ pub fn makeRequest(
 
 pub fn makeUri(location: []const u8) !Uri {
     var result = try Uri.parse(location, true);
-
-    if (result.scheme.len == 0) {
-        result.scheme = "http";
-    }
-
-    if (result.path.len == 0) {
-        result.path = "/";
-    }
+    if (result.scheme.len == 0) result.scheme = "http";
+    if (result.path.len == 0) result.path = "/";
     return result;
 }
+
 
 test "http" {
     const testing = std.testing;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    // const url = makeUri("http://google.com/") catch unreachable;
-    // const url = makeUri("http://lobste.rs") catch unreachable;
-    // const url = makeUri("https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js") catch unreachable; // chunked + deflate
+    // const url = makeUri("https://google.com") catch unreachable;
     // const url = makeUri("https://news.xbox.com/en-us/feed/") catch unreachable;
-    // const url = makeUri("https://feeds.feedburner.com/eclipse/fnews") catch unreachable;
 
-    // const rand = std.rand;
-    // var r = rand.DefaultPrng.init(@intCast(u64, std.time.milliTimestamp()));
-    // l.warn("rand: {}", .{r.random.int(u8)});
-
-    // const r = resolveRequest(allocator, "https://feeds.feedburner.com/eclipse/fnews", null, null); // gzip
-    // const r = resolveRequest(allocator, "https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js", null, null);
-    // const r = resolveRequest(allocator, "https://google.com/", null, null);
+    // const r = try resolveRequest(&arena, "https://feeds.feedburner.com/eclipse/fnews", null, null); // gzip
+    // const r = try resolveRequest(&arena, "https://www.aruba.it/CMSPages/GetResource.ashx?scriptfile=%2fCMSScripts%2fCustom%2faruba.js", null, null);
+    // const r = try resolveRequest(&arena, "https://google.com/", null, null);
     const r = try resolveRequest(&arena, "http://lobste.rs/", null, null);
-    print("{?}\n", .{r});
+    // print("{?}\n", .{r});
+    if (r == .fail) {
+        print("{s}\n", .{r.fail});
+    }
 }
