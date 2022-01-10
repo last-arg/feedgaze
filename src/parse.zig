@@ -207,7 +207,7 @@ pub const Html = struct {
 test "Html.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
     const html = @embedFile("../test/lobste.rs.html");
     const page = try Html.parseLinks(allocator, html);
     try expect(4 == page.links.len);
@@ -514,7 +514,7 @@ test "Atom.parse" {
     l.warn("\n", .{});
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
     const contents = @embedFile("../test/atom.xml");
     const result = try Atom.parse(allocator, contents);
@@ -930,7 +930,7 @@ pub const Rss = struct {
 test "Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
     const contents = @embedFile("../test/sample-rss-2.xml");
     var feed = try Rss.parse(allocator, contents);
     try std.testing.expectEqualStrings("Liftoff News", feed.title);
