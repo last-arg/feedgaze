@@ -131,7 +131,7 @@ pub fn makeRequest(
         var content_encoding = ContentEncoding.none;
         var content_length: usize = 128;
         for (req.headers.list.items) |header| {
-            print("{s}: {s}\n", .{ header.name, header.value });
+            // print("{s}: {s}\n", .{ header.name, header.value });
             if (ascii.eqlIgnoreCase("content-length", header.name)) {
                 content_length = try fmt.parseInt(u32, header.value, 10);
             } else if (ascii.eqlIgnoreCase("content-type", header.name)) {

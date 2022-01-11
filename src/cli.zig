@@ -1,5 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const fs = std.fs;
 const log = std.log;
 const parse = @import("parse.zig");
@@ -94,8 +95,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     errdefer log.warn("Failed to add url feed: {s}", .{location_input});
                     const url = try resolveLocation(self.allocator, location_input);
                     log.info("url: '{s}?{s}'", .{ url.path, url.query });
-
-                    // if (true) return;
 
                     const resp = try resolveRequestToFeed(self.allocator, url, self.writer, self.reader);
                     if (resp.body == null or resp.body.?.len == 0) {
@@ -540,12 +539,12 @@ const TestIO = struct {
         const expected = self.expected_actions[i].write;
 
         if (expected.len < bytes.len) {
-            std.debug.warn(warn_fmt, .{ expected, bytes });
+            print(warn_fmt, .{ expected, bytes });
             return error.TooMuchData;
         }
 
         if (!mem.eql(u8, expected[0..bytes.len], bytes)) {
-            std.debug.warn(warn_fmt, .{ expected[0..bytes.len], bytes });
+            print(warn_fmt, .{ expected[0..bytes.len], bytes });
             return error.DifferentData;
         }
 
@@ -603,7 +602,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
     var feed_db = try FeedDb.init(allocator, null);
 
@@ -787,13 +786,13 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     try expectCounts(&feed_db, counts);
 }
 
-test "@active url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
     const g = @import("feed_db.zig").g;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
     var feed_db = try FeedDb.init(allocator, null);
     const do_print = true;
@@ -951,4 +950,153 @@ test "@active url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     }
 
     try expectCounts(&feed_db, counts);
+}
+
+// When deallocing have to check if input and output urls are different.
+// Because no allocations will be made if url is valid
+fn makeValidUrl(allocator: Allocator, url: []const u8) ![]const u8 {
+    const no_http = !std.ascii.startsWithIgnoreCase(url, "http");
+    const substr = "://";
+    const start = if (std.ascii.indexOfIgnoreCase(url, substr)) |idx| idx + substr.len else 0;
+    const no_slash = std.mem.indexOfScalar(u8, url[start..], '/') == null;
+    if (no_http and no_slash) {
+        return try fmt.allocPrint(allocator, "http://{s}/", .{url});
+    } else if (no_http) {
+        return try fmt.allocPrint(allocator, "http://{s}", .{url});
+    } else if (no_slash) {
+        return try fmt.allocPrint(allocator, "{s}/", .{url});
+    }
+    return url;
+}
+
+test "makeValidUrl()" {
+    const allocator = std.testing.allocator;
+    const urls = .{ "google.com", "google.com/", "http://google.com", "http://google.com/" };
+    inline for (urls) |url| {
+        const new_url = try makeValidUrl(allocator, url);
+        defer if (!std.mem.eql(u8, url, new_url)) allocator.free(new_url);
+        try std.testing.expectEqualStrings("http://google.com/", new_url);
+    }
+}
+
+fn pickFeedLink(
+    page: parse.Html.Page,
+    url: []const u8,
+    writer: anytype,
+    reader: anytype,
+) ![]const u8 {
+    const no_title = "<no-title>";
+    const page_title = page.title orelse no_title;
+    try writer.print("{s}\n{s}\n", .{ page_title, url });
+
+    for (page.links) |link, i| {
+        const link_title = link.title orelse no_title;
+        try writer.print("  {d}. [{s}] {s} | {s}\n", .{
+            i + 1,
+            parse.Html.MediaType.toString(link.media_type),
+            link.href,
+            link_title,
+        });
+    }
+
+    // TODO?: can input several numbers. Comma or space separated, or both?
+    var buf: [64]u8 = undefined;
+    const index = blk: {
+        while (true) {
+            try writer.print("Enter link number: ", .{});
+            const bytes = try reader.read(&buf);
+            const input = buf[0 .. bytes - 1];
+            const nr = fmt.parseUnsigned(u16, input, 10) catch {
+                try writer.print(
+                    "Invalid number: '{s}'. Try again.\n",
+                    .{input},
+                );
+                continue;
+            };
+            if (nr < 1 or nr > page.links.len) {
+                try writer.print(
+                    "Number out of range: '{d}'. Try again.\n",
+                    .{nr},
+                );
+                continue;
+            }
+            break :blk nr - 1;
+        }
+    };
+
+    return page.links[index].href;
+}
+
+fn getFeedHttp(arena: *ArenaAllocator, input_url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
+    // construct valid url if needed
+    const url = try makeValidUrl(arena.allocator(), input_url);
+    _ = url;
+    // make http request
+    var resp = try http.resolveRequest(arena, url, null, null);
+    const html_data = if (resp == .success and resp.success.content_type == .html)
+        try parse.Html.parseLinks(arena.allocator(), resp.success.body)
+    else
+        null;
+
+    if (html_data) |data| {
+        if (data.links.len > 0) {
+            // user input
+            const new_url = try pickFeedLink(data, resp.success.location, writer, reader);
+            // make new http request
+            resp = try http.resolveRequest(arena, new_url, null, null);
+        } else {
+            try writer.print("Found no feed links in html\n", .{});
+        }
+    }
+
+    return resp;
+}
+
+pub fn parseFeedResponse(resp: http.FeedResponse) !void {
+    // TODO: parsing
+    switch (resp) {
+        .success => |s| {
+            switch (s.content_type) {
+                .xml => {},
+                .xml_atom => {},
+                .xml_rss => {},
+                .json => {},
+                .json_feed => {},
+                .html => unreachable, // This is resolve in during http request - getFeedHttp()
+                .unknown => {},
+            }
+        },
+        .not_modified, .permanent_redirect, .temporary_redirect => unreachable,
+        .fail => unreachable, // Check for FeedResponse.fail before calling parseFeedResponse()
+    }
+}
+
+test "@active getFeedHttp()" {
+    const base_allocator = std.testing.allocator;
+    var arena = ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+
+    var enter_link = "Enter link number: ";
+    var read_valid = "1\n";
+    var text_io = TestIO{
+        .do_print = true,
+        .expected_actions = &[_]TestIO.Action{
+            .{ .write = "Commits · truemedian/zfetch · GitHub\nhttps://github.com/truemedian/zfetch/commits\n" },
+            .{ .write = "  1. [Atom] https://github.com/truemedian/zfetch/commits/master.atom | Recent Commits to zfetch:master\n" },
+            .{ .write = enter_link },
+            .{ .read = "abc\n" },
+            .{ .write = "Invalid number: 'abc'. Try again.\n" },
+            .{ .write = enter_link },
+            .{ .read = "12\n" },
+            .{ .write = "Number out of range: '12'. Try again.\n" },
+            .{ .write = enter_link },
+            .{ .read = read_valid },
+        },
+    };
+    const writer = text_io.writer();
+    const reader = text_io.reader();
+
+    const r = try getFeedHttp(&arena, "https://github.com/truemedian/zfetch/commits", writer, reader); // return html
+    if (r == .fail) print("Getting feed failed: {s}\n", .{r.fail});
+    // print("{}\n", .{r});
 }

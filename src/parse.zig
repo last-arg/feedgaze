@@ -36,6 +36,14 @@ pub const Html = struct {
         atom,
         rss,
         unknown,
+
+        pub fn toString(media_type: MediaType) []const u8 {
+            return switch (media_type) {
+                .atom => "Atom",
+                .rss => "RSS",
+                .unknown => "Unknown",
+            };
+        }
     };
 
     pub fn mediaTypeToString(mt: MediaType) []const u8 {
