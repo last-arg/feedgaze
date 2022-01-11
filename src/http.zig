@@ -11,7 +11,7 @@ const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const print = std.debug.print;
 
-const FeedResponse = union(enum) {
+pub const FeedResponse = union(enum) {
     success: Success,
     not_modified: void,
     permanent_redirect: PermanentRedirect,
@@ -162,7 +162,7 @@ pub fn makeRequest(
                     }
                 }
             } else if (ascii.eqlIgnoreCase("etag", header.name)) {
-                result.etag = mem.Allocator.dupe(allocator, u8, header.value) catch continue;
+                result.etag = header.value;
             } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
                 result.last_modified_utc = dateStrToTimeStamp(header.value) catch continue;
             } else if (ascii.eqlIgnoreCase("expires", header.name)) {
@@ -201,7 +201,7 @@ pub fn makeRequest(
 
         for (req.headers.list.items) |header| {
             if (ascii.eqlIgnoreCase("location", header.name)) {
-                permanent_redirect.location = try mem.Allocator.dupe(allocator, u8, header.value);
+                permanent_redirect.location = header.value;
                 break;
             }
         }
@@ -217,7 +217,7 @@ pub fn makeRequest(
 
         for (req.headers.list.items) |header| {
             if (ascii.eqlIgnoreCase("location", header.name)) {
-                temporary_redirect.location = try mem.Allocator.dupe(allocator, u8, header.value);
+                temporary_redirect.location = header.value;
                 break;
             }
         }
@@ -238,6 +238,11 @@ pub fn makeUri(location: []const u8) !Uri {
     return result;
 }
 
+test "makeUri" {
+    const url = try makeUri("google.com");
+    try std.testing.expectEqualSlices(u8, "http", url.scheme);
+    try std.testing.expectEqualSlices(u8, "/", url.path);
+}
 
 test "http" {
     const testing = std.testing;
@@ -251,7 +256,5 @@ test "http" {
     // const r = try resolveRequest(&arena, "https://google.com/", null, null);
     const r = try resolveRequest(&arena, "http://lobste.rs/", null, null);
     // print("{?}\n", .{r});
-    if (r == .fail) {
-        print("{s}\n", .{r.fail});
-    }
+    if (r == .fail) print("{s}\n", .{r.fail});
 }
