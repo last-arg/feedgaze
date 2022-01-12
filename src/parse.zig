@@ -1043,3 +1043,26 @@ pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
     }
     return error.InvalidFeedContent;
 }
+
+pub fn isRss(body: []const u8) bool {
+    const rss_str = "<rss";
+    var start = ascii.indexOfIgnoreCase(body, rss_str) orelse return false;
+    const end = mem.indexOfScalarPos(u8, body, start, '>') orelse return false;
+    start += rss_str.len;
+    if (ascii.indexOfIgnoreCase(body[start..end], "version=") == null) return false;
+    if (ascii.indexOfIgnoreCase(body[end + 1 ..], "<channel") == null) return false;
+    return true;
+}
+
+pub fn isAtom(body: []const u8) bool {
+    const start_str = "<feed";
+    var start = ascii.indexOfIgnoreCase(body, start_str) orelse return false;
+    const end = mem.indexOfScalarPos(u8, body, start, '>') orelse return false;
+    start += start_str.len;
+    return ascii.indexOfIgnoreCase(body[start..end], "xmlns=\"http://www.w3.org/2005/Atom\"") != null;
+}
+
+test "isRss(), isAtom()" {
+    try expect(isRss(@embedFile("../test/sample-rss-091.xml")));
+    try expect(isAtom(@embedFile("../test/atom.xml")));
+}
