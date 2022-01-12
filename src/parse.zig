@@ -1026,20 +1026,10 @@ test "Rss.parseDateToUtc" {
 }
 
 pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
-    var xml_parser = xml.Parser.init(contents);
-    while (xml_parser.next()) |event| {
-        switch (event) {
-            .open_tag => |tag| {
-                if (mem.eql(u8, "feed", tag)) {
-                    // Atom
-                    return try Atom.parse(allocator, contents);
-                } else if (mem.eql(u8, "rss", tag)) {
-                    // Rss
-                    return try Rss.parse(allocator, contents);
-                }
-            },
-            else => {},
-        }
+    if (isAtom(contents)) {
+        return try Atom.parse(allocator, contents);
+    } else if (isRss(contents)) {
+        return try Rss.parse(allocator, contents);
     }
     return error.InvalidFeedContent;
 }
