@@ -2,18 +2,11 @@
 with pkgs;
 mkShell {
   buildInputs = [
-    zig-binary
-    # zig-master
-    # zig-latest
+    zig
     sqlite
     pkg-config
     rlwrap
-    # llvmPackages.clang-unwrapped
-    # llvmPackages.llvm
-    # llvmPackages.lld
-    # libxml2
-    # zlib
-    zlib.dev
+    # zlib.dev
   ];
   shellHook = ''
     NIX_CFLAGS_COMPILE="$(echo "$NIX_CFLAGS_COMPILE" | sed -e "s/-frandom-seed=[^-]*//")"
