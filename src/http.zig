@@ -86,7 +86,8 @@ pub fn resolveRequest(
             },
         }
     } else {
-        return FeedResponse{ .fail = "Too many redirects" };
+        const nr_str = comptime fmt.comptimePrint("{d}", .{max_redirects});
+        return FeedResponse{ .fail = "Too many redirects. Max number of redirects allowed is " ++ nr_str };
     }
     std.debug.assert(resp == .success or resp == .fail);
     return @ptrCast(*FeedResponse, &resp).*;
@@ -183,6 +184,7 @@ pub fn makeRequest(
             }
         }
 
+        // TODO: instead of allocating body content try to stream it to parser
         const req_reader = req.reader();
         switch (content_encoding) {
             .none => {
