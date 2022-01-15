@@ -1052,26 +1052,7 @@ fn getFeedHttp(arena: *ArenaAllocator, input_url: []const u8, writer: anytype, r
     return resp;
 }
 
-pub fn parseFeedResponse(resp: http.FeedResponse) !void {
-    // TODO: parsing
-    switch (resp) {
-        .success => |s| {
-            switch (s.content_type) {
-                .xml => {},
-                .xml_atom => {},
-                .xml_rss => {},
-                .json => {},
-                .json_feed => {},
-                .html => unreachable, // This is resolve in during http request - getFeedHttp()
-                .unknown => {},
-            }
-        },
-        .not_modified, .permanent_redirect, .temporary_redirect => unreachable,
-        .fail => unreachable, // Check for FeedResponse.fail before calling parseFeedResponse()
-    }
-}
-
-test "@active getFeedHttp()" {
+test "getFeedHttp()" {
     const base_allocator = std.testing.allocator;
     var arena = ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -1099,4 +1080,80 @@ test "@active getFeedHttp()" {
     const r = try getFeedHttp(&arena, "https://github.com/truemedian/zfetch/commits", writer, reader); // return html
     if (r == .fail) print("Getting feed failed: {s}\n", .{r.fail});
     // print("{}\n", .{r});
+}
+
+pub fn parseFeedResponseBody(
+    arena: *ArenaAllocator,
+    body: []const u8,
+    content_type: http.ContentType,
+) !parse.Feed {
+    return switch (content_type) {
+        .xml => try parse.parse(arena, body),
+        .xml_atom => try parse.Atom.parse(arena, body),
+        .xml_rss => try parse.Rss.parse(arena, body),
+        .json => unreachable,
+        .json_feed => @panic("TODO: parse json feed"),
+        .html, .unknown => unreachable, // .html should be parse before calling this function
+    };
+}
+
+pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8, writer: anytype, reader: anytype) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    // TODO?: url, resp.success.location, feed.link
+    const url = try makeValidUrl(arena.allocator(), input_url);
+    try writer.print("Adding feed '{s}'\n", .{url});
+    errdefer writer.print("Failed to add new feed {s}", .{url}) catch unreachable;
+    const resp = try getFeedHttp(&arena, url, writer, reader);
+    if (resp != .success) {
+        try writer.print("Failed to resolve url {s}", .{url});
+        if (resp == .fail) {
+            try writer.print("Failed message: {s}\n", .{resp.fail});
+        }
+        std.os.exit(0);
+    }
+    if (!mem.eql(u8, url, resp.success.location)) {
+        try writer.print(" New url '{s}'\n", .{resp.success.location});
+    }
+    try writer.print("  Feed fetched\n", .{});
+
+    try writer.print("  Parsing feed\n", .{});
+    var feed = try parseFeedResponseBody(&arena, resp.success.body, resp.success.content_type);
+    try writer.print("  Feed parsed\n", .{});
+
+    try writer.print("  Saving feed\n", .{});
+    _ = feed;
+    _ = feed_db;
+    if (feed.link == null) feed.link = url;
+    // TODO?: make into transaction?
+    const feed_id = try feed_db.addFeed(feed, resp.success.location);
+    try feed_db.addFeedUrl(feed_id, resp.success);
+    try feed_db.addItems(feed_id, feed.items);
+    try writer.print("  Feed saved\n", .{});
+
+    // parse.printFeed(feed);
+}
+
+test "@active addFeedHttp()" {
+    const base_allocator = std.testing.allocator;
+
+    var enter_link = "Enter link number: ";
+    var read_valid = "1\n";
+
+    const url = "https://lobste.rs/";
+    var text_io = TestIO{
+        .do_print = true,
+        .expected_actions = &[_]TestIO.Action{
+            .{ .write = "Adding feed '" ++ url ++ "'\n" }, .{ .write = "  Feed fetched\n" },
+            .{ .write = "  Parsing feed\n" },              .{ .write = "  Feed parsed\n" },
+            .{ .write = "  Saving feed\n" },               .{ .write = "  Feed saved\n" },
+            .{ .write = enter_link },                      .{ .read = read_valid },
+        },
+    };
+    const writer = text_io.writer();
+    const reader = text_io.reader();
+    var feed_db = try FeedDb.init(base_allocator, null);
+
+    try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
 }

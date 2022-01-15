@@ -4,6 +4,7 @@ const sql = @import("sqlite");
 const db = @import("db.zig");
 const fs = std.fs;
 const fmt = std.fmt;
+const print = std.debug.print;
 const log = std.log;
 const http = @import("http.zig");
 const mem = std.mem;
@@ -17,44 +18,67 @@ const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 
 pub const g = struct {
-    pub var max_items_per_feed: usize = 10;
+    pub var max_items_per_feed: u16 = 10;
 };
 
 pub const FeedDb = struct {
     const Self = @This();
     db: sql.Db,
+    allocator: Allocator,
 
     pub fn init(allocator: Allocator, location: ?[]const u8) !Self {
         var sql_db = try db.createDb(allocator, location);
         try db.setup(&sql_db);
-        return Self{ .db = sql_db };
+        return Self{ .db = sql_db, .allocator = allocator };
     }
 
     pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !usize {
-        try db.insert(&self.db, Table.feed.insert ++ Table.feed.on_conflict_location, .{
-            feed.title,
-            location,
-            feed.link,
-            feed.updated_raw,
-            feed.updated_timestamp,
-        });
-
-        const id = (try db.one(
-            usize,
-            &self.db,
-            Table.feed.select_id ++ Table.feed.where_location,
-            .{location},
-        )) orelse return error.NoFeedWithLocation;
-
-        return id;
+        const query =
+            \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
+            \\VALUES (
+            \\  ?{[]const u8},
+            \\  ?{[]const u8},
+            \\  ?,
+            \\  ?,
+            \\  ?
+            \\) ON CONFLICT(location) DO UPDATE SET
+            \\   title = excluded.title,
+            \\   link = excluded.link,
+            \\   updated_raw = excluded.updated_raw,
+            \\   updated_timestamp = excluded.updated_timestamp
+            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\RETURNING id;
+        ;
+        const args = .{ feed.title, location, feed.link, feed.updated_raw, feed.updated_timestamp };
+        return db.one(usize, &self.db, query, args) catch |err| {
+            log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
+            return err;
+        } orelse error.NoReturnId;
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
         try db.delete(&self.db, "DELETE FROM feed WHERE id = ?", .{id});
     }
 
-    pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.FeedResponse) !void {
-        try db.insert(&self.db, Table.feed_update_http.insert ++ Table.feed_update_http.on_conflict_feed_id, .{
+    pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.Success) !void {
+        const query =
+            \\INSERT INTO feed_update_http
+            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
+            \\VALUES (
+            \\  ?{usize},
+            \\  ?,
+            \\  ?,
+            \\  ?,
+            \\  ?
+            \\)
+            \\ ON CONFLICT(feed_id) DO UPDATE SET
+            \\  cache_control_max_age = excluded.cache_control_max_age,
+            \\  expires_utc = excluded.expires_utc,
+            \\  last_modified_utc = excluded.last_modified_utc,
+            \\  etag = excluded.etag,
+            \\  last_update = (strftime('%s', 'now'))
+        ;
+        try self.db.exec(query, .{}, .{
             feed_id,
             resp.cache_control_max_age,
             resp.expires_utc,
@@ -74,36 +98,90 @@ pub const FeedDb = struct {
     }
 
     pub fn addItems(self: *Self, feed_id: usize, feed_items: []parse.Feed.Item) !void {
-        parse.Feed.sortItemsByDate(feed_items);
-        for (feed_items) |it| {
-            if (it.id) |guid| {
-                try db.insert(
-                    &self.db,
-                    Table.item.upsert_guid,
-                    .{ feed_id, it.title, guid, it.link, it.updated_raw, it.updated_timestamp },
-                );
-            } else if (it.link) |link| {
-                try db.insert(
-                    &self.db,
-                    Table.item.upsert_link,
-                    .{ feed_id, it.title, link, it.updated_raw, it.updated_timestamp },
-                );
-            } else {
-                const item_id = try db.one(
-                    usize,
-                    &self.db,
-                    Table.item.select_id_by_title,
-                    .{ feed_id, it.title },
-                );
-                if (item_id) |id| {
-                    try db.update(&self.db, Table.item.update_date, .{ it.updated_raw, it.updated_timestamp, id, it.updated_timestamp });
+        const items = feed_items[0..std.math.min(feed_items.len, g.max_items_per_feed)];
+        // Modifies item order in memory. Don't use after this if order is important.
+        std.mem.reverse(parse.Feed.Item, items);
+        const hasGuidOrLink = blk: {
+            const hasGuid = blk_guid: {
+                for (items) |item| {
+                    if (item.id == null) break :blk_guid false;
                 } else {
-                    try db.insert(
-                        &self.db,
-                        Table.item.insert_minimal,
-                        .{ feed_id, it.title, it.updated_raw, it.updated_timestamp },
-                    );
+                    break :blk_guid true;
                 }
+            };
+
+            const hasLink = blk_link: {
+                for (items) |item| {
+                    if (item.link == null) break :blk_link false;
+                } else {
+                    break :blk_link true;
+                }
+            };
+
+            break :blk hasGuid and hasLink;
+        };
+        const insert_query =
+            \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
+            \\VALUES (
+            \\  ?{usize},
+            \\  ?{[]const u8},
+            \\  ?, ?, ?, ?
+            \\)
+        ;
+        if (hasGuidOrLink) {
+            // TODO?: construct whole insert query?
+            // How will on conflict work with it? Goes to the end or each item requires one?
+            const conflict_update =
+                \\ DO UPDATE SET
+                \\  title = excluded.title,
+                \\  pub_date = excluded.pub_date,
+                \\  pub_date_utc = excluded.pub_date_utc,
+                \\  created_at = (strftime('%s', 'now'))
+                \\WHERE
+                \\  excluded.feed_id = feed_id
+                \\  AND excluded.pub_date_utc != pub_date_utc
+            ;
+            const query = insert_query ++ "\nON CONFLICT(guid) " ++ conflict_update ++ "\nON CONFLICT(link)" ++ conflict_update ++ ";";
+
+            for (items) |item| {
+                self.db.exec(query, .{}, .{
+                    feed_id, item.title,       item.link,
+                    item.id, item.updated_raw, item.updated_timestamp,
+                }) catch |err| {
+                    log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
+                    return err;
+                };
+            }
+            const del_query =
+                \\DELETE FROM item
+                \\WHERE id IN
+                \\    (SELECT id FROM item
+                \\        WHERE feed_id = ?
+                \\        ORDER BY id ASC
+                \\        LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
+                \\  )
+            ;
+            try self.db.exec(del_query, .{}, .{ feed_id, g.max_items_per_feed, feed_id });
+        } else {
+            print("No guid or link\n", .{});
+            const del_query = "DELETE FROM item WHERE feed_id = ?;";
+            try self.db.exec(del_query, .{}, .{feed_id});
+            const query =
+                \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
+                \\VALUES (
+                \\  ?{usize},
+                \\  ?{[]const u8},
+                \\  ?, ?, ?, ?
+                \\);
+            ;
+            for (items) |item| {
+                self.db.exec(query, .{}, .{
+                    feed_id, item.title,       item.link,
+                    item.id, item.updated_raw, item.updated_timestamp,
+                }) catch |err| {
+                    log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
+                    return err;
+                };
             }
         }
     }
@@ -316,10 +394,10 @@ pub const FeedDb = struct {
         const query =
             \\DELETE FROM item
             \\WHERE id IN
-            \\	(SELECT id FROM item
-            \\		WHERE feed_id = ?
-            \\		ORDER BY pub_date_utc ASC, created_at ASC
-            \\		LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
+            \\    (SELECT id FROM item
+            \\        WHERE feed_id = ?
+            \\        ORDER BY id ASC
+            \\        LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
             \\  )
         ;
         try db.delete(&self.db, query, .{ feed_id, g.max_items_per_feed, feed_id });
@@ -384,12 +462,12 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-test "@active FeedDb(local): add, update, remove" {
+test "addItems()" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
     var feed_db = try FeedDb.init(allocator, null);
 
@@ -403,7 +481,71 @@ test "@active FeedDb(local): add, update, remove" {
     const stat = try file.stat();
     const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
 
-    var feed = try parse.parse(allocator, contents);
+    var feed = try parse.parse(&arena, contents);
+
+    const all_items = feed.items;
+    print("len: {d}\n", .{all_items.len});
+    const id = try feed_db.addFeed(feed, abs_path);
+    try feed_db.addFeedLocal(id, mtime_sec);
+    var tail = try allocator.alloc(parse.Feed.Item, feed.items.len - 3);
+    mem.copy(parse.Feed.Item, tail, feed.items[3..feed.items.len]);
+    try feed_db.addItems(id, tail);
+
+    const ItemsResult = struct {
+        link: ?[]const u8,
+        title: []const u8,
+        guid: ?[]const u8,
+        id: usize,
+        feed_id: usize,
+        pub_date: ?[]const u8,
+        pub_date_utc: ?i64,
+        created_at: i64,
+    };
+
+    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc, created_at from item order by id DESC";
+    const out_fmt =
+        \\{s}
+        \\{d} {s} {d}
+        \\
+        \\
+    ;
+
+    // Items
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
+
+        for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
+    }
+    try feed_db.addItems(id, feed.items);
+    print("==================\n", .{});
+    {
+        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
+
+        for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
+    }
+}
+
+// TODO?: remove/redo?
+test "FeedDb(local): add, update, remove" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var feed_db = try FeedDb.init(allocator, null);
+
+    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    const rel_path = "test/sample-rss-2.xml";
+    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+    const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
+    const contents = try shame.getFileContents(allocator, abs_path);
+    const file = try fs.openFileAbsolute(abs_path, .{});
+    defer file.close();
+    const stat = try file.stat();
+    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+
+    var feed = try parse.parse(&arena, contents);
 
     const all_items = feed.items;
     feed.items = all_items[0..3];
