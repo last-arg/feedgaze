@@ -11,8 +11,12 @@ const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const print = std.debug.print;
 
-// TODO: public API should only return success or fail
 pub const FeedResponse = union(enum) {
+    success: Success,
+    fail: []const u8,
+};
+
+const InternalResponse = union(enum) {
     success: Success,
     not_modified: void,
     permanent_redirect: PermanentRedirect,
@@ -84,7 +88,8 @@ pub fn resolveRequest(
     } else {
         return FeedResponse{ .fail = "Too many redirects" };
     }
-    return resp;
+    std.debug.assert(resp == .success or resp == .fail);
+    return @ptrCast(*FeedResponse, &resp).*;
 }
 
 fn isPermanentRedirect(code: u16) bool {
@@ -94,15 +99,12 @@ fn isPermanentRedirect(code: u16) bool {
     return false;
 }
 
-// TODO: input url has http or https scheme
-// TODO: input url has to have '/' if there is only hostname
-// Either makeRequest() fixes url mistakes or it is fixed before calling makeRequest()
 pub fn makeRequest(
     arena: *ArenaAllocator,
     url: []const u8,
     last_modified: ?[]const u8,
     etag: ?[]const u8,
-) !FeedResponse {
+) !InternalResponse {
     var allocator = arena.allocator();
     try zfetch.init();
     defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
@@ -193,7 +195,7 @@ pub fn makeRequest(
             },
         }
 
-        return FeedResponse{ .success = result };
+        return InternalResponse{ .success = result };
     } else if (isPermanentRedirect(req.status.code)) {
         var permanent_redirect = PermanentRedirect{
             .location = undefined,
@@ -207,7 +209,7 @@ pub fn makeRequest(
             }
         }
 
-        return FeedResponse{ .permanent_redirect = permanent_redirect };
+        return InternalResponse{ .permanent_redirect = permanent_redirect };
     } else if (req.status.code == 302) {
         var temporary_redirect = TemporaryRedirect{
             .location = undefined,
@@ -223,13 +225,13 @@ pub fn makeRequest(
             }
         }
 
-        return FeedResponse{ .temporary_redirect = temporary_redirect };
+        return InternalResponse{ .temporary_redirect = temporary_redirect };
     } else if (req.status.code == 304) {
-        return FeedResponse{ .not_modified = {} };
+        return InternalResponse{ .not_modified = {} };
     }
 
     const msg = try fmt.allocPrint(allocator, "{d} {s}", .{ req.status.code, req.status.reason });
-    return FeedResponse{ .fail = msg };
+    return InternalResponse{ .fail = msg };
 }
 
 pub fn makeUri(location: []const u8) !Uri {

@@ -1107,7 +1107,7 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
         if (resp == .fail) {
             try writer.print("Failed message: {s}\n", .{resp.fail});
         }
-        std.os.exit(0);
+        return error.FailedHttpRequest;
     }
     if (!mem.eql(u8, url, resp.success.location)) {
         try writer.print(" New url '{s}'\n", .{resp.success.location});
