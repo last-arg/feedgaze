@@ -4,8 +4,8 @@ pub const Table = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS item(
             \\  id INTEGER PRIMARY KEY,
-            \\  feed_id INTEGER,
-            \\  title TEXT,
+            \\  feed_id INTEGER NOT NULL,
+            \\  title TEXT NOT NULL,
             \\  link TEXT UNIQUE DEFAULT NULL,
             \\  guid TEXT UNIQUE DEFAULT NULL,
             \\  pub_date TEXT DEFAULT NULL,

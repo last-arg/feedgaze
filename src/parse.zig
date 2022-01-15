@@ -4,6 +4,7 @@ const mem = std.mem;
 const fmt = std.fmt;
 const ascii = std.ascii;
 const testing = std.testing;
+const print = std.debug.print;
 const expect = testing.expect;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
@@ -229,11 +230,11 @@ test "Html.parse" {
 // xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
 pub const Feed = struct {
     const Self = @This();
-    // Atom: required
-    // Rss: required
+    // Atom: title (required)
+    // Rss: title (required)
     title: []const u8,
-    // Atom: required
-    // Rss: doesn't exits. Use link or feed url location?
+    // Atom: id (required). Has to be URI.
+    // Rss: link (required). Not the best option but should do
     id: ?[]const u8,
     // Atom: updated (required)
     // Rss: pubDate (optional)
@@ -246,15 +247,17 @@ pub const Feed = struct {
 
     pub const Item = struct {
         // Atom: title (required)
-        // Rss: must have atleast title or description
+        // Rss: title or description (requires one of these)
         title: []const u8,
-        // Atom: id (required)
-        // Rss: guid (optional)
+        // Atom: id (required). Has to be URI.
+        // Rss: guid (optional) or link (optional)
         id: ?[]const u8 = null,
-        // Atom: id (optional)
-        // Rss: guid (optional)
+        // TODO?: use link instead if available?
+        // Atom: id (required) or link (optional)
+        // Rss: link (optional)
         link: ?[]const u8 = null,
-        // Atom: updated (required)
+        // TODO: use published instead of updated if available
+        // Atom: updated (required) or published (optional)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
         updated_timestamp: ?i64 = null,
@@ -289,6 +292,28 @@ pub const Feed = struct {
     }
 };
 
+pub fn printFeedItems(items: []Feed.Item) void {
+    for (items) |item| {
+        print("  title: {s}\n", .{item.title});
+        if (item.id) |val| print("  id: {s}\n", .{val});
+        if (item.link) |val| print("  link: {s}\n", .{val});
+        if (item.updated_raw) |val| print("  updated_raw: {s}\n", .{val});
+        if (item.updated_timestamp) |val| print("  updated_timestamp: {d}\n", .{val});
+        print("\n", .{});
+    }
+}
+
+pub fn printFeed(feed: Feed) void {
+    print("title: {s}\n", .{feed.title});
+    if (feed.id) |id| print("id: {s}\n", .{id});
+    if (feed.updated_raw) |val| print("updated_raw: {s}\n", .{val});
+    if (feed.updated_timestamp) |val| print("updated_timestamp: {d}\n", .{val});
+    if (feed.link) |val| print("link: {s}\n", .{val});
+    print("items [{d}]:\n", .{feed.items.len});
+    printFeedItems(feed.items);
+    print("\n", .{});
+}
+
 pub const Atom = struct {
     const State = enum {
         feed,
@@ -306,8 +331,8 @@ pub const Atom = struct {
     // Atom feed parsing:
     // https://tools.ietf.org/html/rfc4287
     // https://validator.w3.org/feed/docs/atom.html
-    pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
-        var entries = ArrayList(Feed.Item).init(allocator);
+    pub fn parse(arena: *std.heap.ArenaAllocator, contents: []const u8) !Feed {
+        var entries = try ArrayList(Feed.Item).initCapacity(arena.allocator(), 10);
         defer entries.deinit();
 
         var state: State = .feed;
@@ -415,6 +440,9 @@ pub const Atom = struct {
                                     feed_id = value;
                                 },
                                 .title => {
+                                    // TODO: whole title can be in pieces.
+                                    // Not confirmed but if it happens in item title should also happend here
+                                    // Save start and end index of title
                                     feed_title = value;
                                 },
                                 .updated => {
@@ -429,6 +457,8 @@ pub const Atom = struct {
                                     id = value;
                                 },
                                 .title => {
+                                    // TODO: whole title can be in pieces.
+                                    // Save start and end index of title
                                     title = value;
                                 },
                                 .updated => {
@@ -629,8 +659,8 @@ pub const Rss = struct {
         _ignore,
     };
 
-    pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
-        var items = try ArrayList(Feed.Item).initCapacity(allocator, 10);
+    pub fn parse(arena: *std.heap.ArenaAllocator, contents: []const u8) !Feed {
+        var items = try ArrayList(Feed.Item).initCapacity(arena.allocator(), 10);
         defer items.deinit();
 
         var state: State = .channel;
@@ -703,7 +733,7 @@ pub const Rss = struct {
                             if (item_title) |value| {
                                 break :blk value;
                             } else if (item_description) |value| {
-                                const max_len: usize = 30;
+                                const max_len: usize = 100;
                                 if (item_desc_start_ptr) |ptr| {
                                     const start_ptr = @ptrToInt(ptr);
                                     const end_ptr = @ptrToInt(value[value.len - 1 ..].ptr);
@@ -759,6 +789,9 @@ pub const Rss = struct {
                         .channel => {
                             switch (channel_field) {
                                 .title => {
+                                    // TODO: whole title can be in pieces.
+                                    // Not confirmed but if it happens in item title should also happend here
+                                    // Save start and end index of title
                                     feed_title = value;
                                 },
                                 .link => {
@@ -779,6 +812,8 @@ pub const Rss = struct {
                         .item => {
                             switch (item_field) {
                                 .title => {
+                                    // TODO: whole title can be in pieces
+                                    // Save start and end index of title
                                     item_title = value;
                                 },
                                 .link => {
@@ -938,9 +973,8 @@ pub const Rss = struct {
 test "Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
     const contents = @embedFile("../test/sample-rss-2.xml");
-    var feed = try Rss.parse(allocator, contents);
+    var feed = try Rss.parse(&arena, contents);
     try std.testing.expectEqualStrings("Liftoff News", feed.title);
     try std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
     try std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
@@ -1025,11 +1059,11 @@ test "Rss.parseDateToUtc" {
     }
 }
 
-pub fn parse(allocator: Allocator, contents: []const u8) !Feed {
+pub fn parse(arena: *std.heap.ArenaAllocator, contents: []const u8) !Feed {
     if (isAtom(contents)) {
-        return try Atom.parse(allocator, contents);
+        return try Atom.parse(arena, contents);
     } else if (isRss(contents)) {
-        return try Rss.parse(allocator, contents);
+        return try Rss.parse(arena, contents);
     }
     return error.InvalidFeedContent;
 }

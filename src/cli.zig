@@ -1131,15 +1131,13 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     try feed_db.addFeedUrl(feed_id, resp.success);
     try feed_db.addItems(feed_id, feed.items);
     try writer.print("  Feed saved\n", .{});
-
-    // parse.printFeed(feed);
 }
 
 test "@active addFeedHttp()" {
     const base_allocator = std.testing.allocator;
 
     var enter_link = "Enter link number: ";
-    var read_valid = "1\n";
+    var read_one = "1\n";
 
     const url = "https://lobste.rs/";
     var text_io = TestIO{
@@ -1148,7 +1146,7 @@ test "@active addFeedHttp()" {
             .{ .write = "Adding feed '" ++ url ++ "'\n" }, .{ .write = "  Feed fetched\n" },
             .{ .write = "  Parsing feed\n" },              .{ .write = "  Feed parsed\n" },
             .{ .write = "  Saving feed\n" },               .{ .write = "  Feed saved\n" },
-            .{ .write = enter_link },                      .{ .read = read_valid },
+            .{ .write = enter_link },                      .{ .read = read_one },
         },
     };
     const writer = text_io.writer();

@@ -11,6 +11,7 @@ const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const print = std.debug.print;
 
+// TODO: public API should only return success or fail
 pub const FeedResponse = union(enum) {
     success: Success,
     not_modified: void,
@@ -32,7 +33,7 @@ const TemporaryRedirect = struct {
     etag: ?[]const u8 = null, // Doesn't own memory
 };
 
-const Success = struct {
+pub const Success = struct {
     location: []const u8,
     body: []const u8,
     content_type: ContentType = .unknown,
