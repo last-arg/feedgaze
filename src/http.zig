@@ -116,7 +116,7 @@ pub fn makeRequest(
     try headers.appendValue("Host", uri.host.name);
     try headers.appendValue("Connection", "close");
     try headers.appendValue("Accept-Encoding", "gzip");
-    try headers.appendValue("Accept", "application/rss+xml, application/atom+xml, application/feed+json, application/json, text/xml, application/xml, text/html");
+    try headers.appendValue("Accept", "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html");
 
     if (etag) |value| try headers.appendValue("If-None-Match", value);
     if (last_modified) |value| try headers.appendValue("If-Modified-Since", value);

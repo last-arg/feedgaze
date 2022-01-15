@@ -252,8 +252,9 @@ pub const Feed = struct {
         // Atom: id (required). Has to be URI.
         // Rss: guid (optional) or link (optional)
         id: ?[]const u8 = null,
-        // TODO?: use link instead if available?
-        // Atom: id (required) or link (optional)
+        // In atom id (required) can also be link.
+        // Check if id is link before outputing some data
+        // Atom: link (optional),
         // Rss: link (optional)
         link: ?[]const u8 = null,
         // TODO: use published instead of updated if available
@@ -325,6 +326,7 @@ pub const Atom = struct {
         link,
         id,
         updated,
+        published,
         ignore,
     };
 
@@ -347,7 +349,8 @@ pub const Atom = struct {
 
         var title: ?[]const u8 = null;
         var id: ?[]const u8 = null;
-        var date_raw: ?[]const u8 = null;
+        var updated_raw: ?[]const u8 = null;
+        var published_raw: ?[]const u8 = null;
         var link_rel: []const u8 = "alternate";
         var link_href: ?[]const u8 = null;
 
@@ -362,7 +365,7 @@ pub const Atom = struct {
                         link_href = null;
                         title = null;
                         id = null;
-                        date_raw = null;
+                        updated_raw = null;
                     } else if (mem.eql(u8, "link", tag)) {
                         field = .link;
                     } else if (mem.eql(u8, "id", tag)) {
@@ -383,8 +386,12 @@ pub const Atom = struct {
                         },
                         .entry => {
                             if (mem.eql(u8, "entry", tag)) {
-                                const updated_timestamp = blk: {
-                                    if (date_raw) |date| {
+                                const published_timestamp = blk: {
+                                    if (published_raw) |date| {
+                                        const date_utc = try parseDateToUtc(date);
+                                        break :blk @floatToInt(i64, date_utc.toSeconds());
+                                    }
+                                    if (updated_raw) |date| {
                                         const date_utc = try parseDateToUtc(date);
                                         break :blk @floatToInt(i64, date_utc.toSeconds());
                                     }
@@ -394,8 +401,8 @@ pub const Atom = struct {
                                     .title = title orelse return error.InvalidAtomFeed,
                                     .id = id,
                                     .link = link_href,
-                                    .updated_raw = date_raw,
-                                    .updated_timestamp = updated_timestamp,
+                                    .updated_raw = published_raw orelse updated_raw,
+                                    .updated_timestamp = published_timestamp,
                                 };
                                 try entries.append(entry);
                                 state = .feed;
@@ -448,7 +455,7 @@ pub const Atom = struct {
                                 .updated => {
                                     feed_date_raw = value;
                                 },
-                                .ignore, .link => {},
+                                .ignore, .link, .published => {},
                             }
                         },
                         .entry => {
@@ -459,10 +466,14 @@ pub const Atom = struct {
                                 .title => {
                                     // TODO: whole title can be in pieces.
                                     // Save start and end index of title
+                                    print("atom: |{s}|\n", .{value});
                                     title = value;
                                 },
                                 .updated => {
-                                    date_raw = value;
+                                    updated_raw = value;
+                                },
+                                .published => {
+                                    published_raw = value;
                                 },
                                 .ignore, .link => {},
                             }
@@ -668,7 +679,6 @@ pub const Rss = struct {
         var item_field: ItemField = ._ignore;
 
         var item_title: ?[]const u8 = null;
-        var item_desc_start_ptr: ?[*]const u8 = null;
         var item_description: ?[]const u8 = null;
         var item_link: ?[]const u8 = null;
         var item_guid: ?[]const u8 = null;
@@ -701,7 +711,6 @@ pub const Rss = struct {
                                 state = .item;
                                 item_title = null;
                                 item_description = null;
-                                item_desc_start_ptr = null;
                                 item_guid = null;
                                 item_link = null;
                                 item_pub_date = null;
@@ -729,30 +738,6 @@ pub const Rss = struct {
                 .close_tag => |tag| {
                     // warn("close_tag: {s}\n", .{str});
                     if (mem.eql(u8, "item", tag)) {
-                        const title = blk: {
-                            if (item_title) |value| {
-                                break :blk value;
-                            } else if (item_description) |value| {
-                                const max_len: usize = 100;
-                                if (item_desc_start_ptr) |ptr| {
-                                    const start_ptr = @ptrToInt(ptr);
-                                    const end_ptr = @ptrToInt(value[value.len - 1 ..].ptr);
-                                    const content_ptr = @ptrToInt(contents.ptr);
-                                    const start_index = start_ptr - content_ptr;
-                                    const end_index = index: {
-                                        const end = end_ptr - content_ptr;
-                                        const len = end - start_index + 1;
-                                        if (len > max_len) {
-                                            break :index start_index + max_len;
-                                        }
-                                        break :index end + 1;
-                                    };
-                                    break :blk contents[start_index..end_index];
-                                }
-                            }
-                            return error.InvalidRssFeed;
-                        };
-
                         const updated_timestamp = blk: {
                             if (item_pub_date) |date| {
                                 const date_utc = try parseDateToUtc(date);
@@ -761,7 +746,7 @@ pub const Rss = struct {
                             break :blk null;
                         };
                         const item = Feed.Item{
-                            .title = title,
+                            .title = item_title orelse item_description orelse return error.InvalidRssFeed,
                             .id = item_guid,
                             .link = item_link,
                             .updated_raw = item_pub_date,
@@ -789,10 +774,7 @@ pub const Rss = struct {
                         .channel => {
                             switch (channel_field) {
                                 .title => {
-                                    // TODO: whole title can be in pieces.
-                                    // Not confirmed but if it happens in item title should also happend here
-                                    // Save start and end index of title
-                                    feed_title = value;
+                                    feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
                                 },
                                 .link => {
                                     feed_link = value;
@@ -812,9 +794,7 @@ pub const Rss = struct {
                         .item => {
                             switch (item_field) {
                                 .title => {
-                                    // TODO: whole title can be in pieces
-                                    // Save start and end index of title
-                                    item_title = value;
+                                    item_title = xmlCharacterData(&xml_parser, contents, value, "title");
                                 },
                                 .link => {
                                     item_link = value;
@@ -826,10 +806,9 @@ pub const Rss = struct {
                                     item_guid = value;
                                 },
                                 .description => {
-                                    if (item_desc_start_ptr == null) {
-                                        item_desc_start_ptr = value.ptr;
-                                    }
-                                    item_description = value;
+                                    item_description = xmlCharacterData(&xml_parser, contents, value, "description");
+                                    const len = std.math.min(item_description.?.len, 50);
+                                    item_description = item_description.?[0..len];
                                 },
                                 ._ignore => {},
                             }
@@ -866,6 +845,29 @@ pub const Rss = struct {
         };
 
         return result;
+    }
+
+    fn xmlCharacterData(
+        xml_parser: *xml.Parser,
+        contents: []const u8,
+        start_value: []const u8,
+        close_tag: []const u8,
+    ) []const u8 {
+        var end_value = start_value;
+        while (xml_parser.next()) |item_event| {
+            switch (item_event) {
+                .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
+                .character_data => |title_value| end_value = title_value,
+                else => std.debug.panic("Xml(RSS): Failed to parse item's title value\n", .{}),
+            }
+        }
+
+        if (start_value.ptr == end_value.ptr) return start_value;
+
+        const content_ptr = @ptrToInt(contents.ptr);
+        const start_index = @ptrToInt(start_value.ptr) - content_ptr;
+        const end_index = @ptrToInt(end_value.ptr) + end_value.len - content_ptr;
+        return contents[start_index..end_index];
     }
 
     pub fn pubDateToTimestamp(str: []const u8) !i64 {
@@ -970,7 +972,7 @@ pub const Rss = struct {
     }
 };
 
-test "Rss.parse" {
+test "@active Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const contents = @embedFile("../test/sample-rss-2.xml");
@@ -980,17 +982,10 @@ test "Rss.parse" {
     try std.testing.expectEqualStrings("Tue, 10 Jun 2003 04:00:00 +0100", feed.updated_raw.?);
     try expect(1055214000 == feed.updated_timestamp.?);
     try expect(6 == feed.items.len);
-    // for (feed.items) |item| {
-    //     l.warn("title: {s}", .{item.title});
-    //     const id = item.id orelse "<no id>";
-    //     l.warn("guid: {s}", .{id});
-    //     const link = item.link orelse "<no link>";
-    //     l.warn("link: {s}", .{link});
-    //     l.warn("updated_raw: {s}", .{item.updated_raw.?});
-    // }
+
     // Description is used as title
     try expect(null != feed.items[0].updated_raw);
-    try std.testing.expectEqualStrings("Sky watchers in Europe, Asia, ", feed.items[1].title);
+    try std.testing.expectEqualStrings("Sky watchers in Europe, Asia, and parts of Alaska ", feed.items[1].title);
 
     Feed.sortItemsByDate(feed.items);
     const items_with_null_dates = feed.getItemsWithNullDates();

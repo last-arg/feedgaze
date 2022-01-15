@@ -1125,6 +1125,7 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     try feed_db.addFeedUrl(feed_id, resp.success);
     try feed_db.addItems(feed_id, feed.items);
     try writer.print("  Feed saved\n", .{});
+    parse.printFeed(feed);
 }
 
 test "@active addFeedHttp()" {
