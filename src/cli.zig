@@ -1027,10 +1027,7 @@ fn pickFeedLink(
     return page.links[index].href;
 }
 
-fn getFeedHttp(arena: *ArenaAllocator, input_url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
-    // construct valid url if needed
-    const url = try makeValidUrl(arena.allocator(), input_url);
-    _ = url;
+fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
     // make http request
     var resp = try http.resolveRequest(arena, url, null, null);
     const html_data = if (resp == .success and resp.success.content_type == .html)
@@ -1101,7 +1098,6 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    // TODO?: url, resp.success.location, feed.link
     const url = try makeValidUrl(arena.allocator(), input_url);
     try writer.print("Adding feed '{s}'\n", .{url});
     errdefer writer.print("Failed to add new feed {s}", .{url}) catch unreachable;
@@ -1123,8 +1119,6 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     try writer.print("  Feed parsed\n", .{});
 
     try writer.print("  Saving feed\n", .{});
-    _ = feed;
-    _ = feed_db;
     if (feed.link == null) feed.link = url;
     // TODO?: make into transaction?
     const feed_id = try feed_db.addFeed(feed, resp.success.location);
