@@ -286,12 +286,12 @@ pub const FeedDb = struct {
                     log.info("Failed http request: {s}", .{msg});
                     continue;
                 },
-                .success => {},
+                .ok => {},
             }
 
             // TODO: catch errors and continue loop
             // There might be errors where continuing loop isn't a good idea
-            const resp = resp_union.success;
+            const resp = resp_union.ok;
             const rss_feed = switch (resp.content_type) {
                 .xml_atom => try parse.Atom.parse(&arena, resp.body),
                 .xml_rss => try parse.Rss.parse(&arena, resp.body),
@@ -494,10 +494,10 @@ pub fn testResolveRequest(
 ) !http.FeedResponse {
     const ok = testDataRespOk();
     try std.testing.expectEqualStrings(url, ok.location);
-    return http.FeedResponse{ .success = ok };
+    return http.FeedResponse{ .ok = ok };
 }
 
-test "@active FeedDb fake net test" {
+test "FeedDb fake net test" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

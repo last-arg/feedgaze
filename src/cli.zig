@@ -1030,15 +1030,15 @@ fn pickFeedLink(
 fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
     // make http request
     var resp = try http.resolveRequest(arena, url, null, null);
-    const html_data = if (resp == .success and resp.success.content_type == .html)
-        try parse.Html.parseLinks(arena.allocator(), resp.success.body)
+    const html_data = if (resp == .ok and resp.ok.content_type == .html)
+        try parse.Html.parseLinks(arena.allocator(), resp.ok.body)
     else
         null;
 
     if (html_data) |data| {
         if (data.links.len > 0) {
             // user input
-            const new_url = try pickFeedLink(data, resp.success.location, writer, reader);
+            const new_url = try pickFeedLink(data, resp.ok.location, writer, reader);
             // make new http request
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
@@ -1102,28 +1102,29 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     try writer.print("Adding feed '{s}'\n", .{url});
     errdefer writer.print("Failed to add new feed {s}", .{url}) catch unreachable;
     const resp = try getFeedHttp(&arena, url, writer, reader);
-    if (resp != .success) {
+    // TODO: add .not_modified
+    if (resp != .ok) {
         try writer.print("Failed to resolve url {s}", .{url});
         if (resp == .fail) {
             try writer.print("Failed message: {s}\n", .{resp.fail});
         }
         return error.FailedHttpRequest;
     }
-    if (!mem.eql(u8, url, resp.success.location)) {
-        try writer.print(" New url '{s}'\n", .{resp.success.location});
+    if (!mem.eql(u8, url, resp.ok.location)) {
+        try writer.print(" New url '{s}'\n", .{resp.ok.location});
     }
     try writer.print("  Feed fetched\n", .{});
 
     try writer.print("  Parsing feed\n", .{});
-    var feed = try parseFeedResponseBody(&arena, resp.success.body, resp.success.content_type);
+    var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
     try writer.print("  Feed parsed\n", .{});
 
     try writer.print("  Saving feed\n", .{});
     if (feed.link == null) feed.link = url;
-    var savepoint = try feed_db.db.savepoint("addFeedUrl");
+    var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
     defer savepoint.rollback();
-    const feed_id = try feed_db.addFeed(feed, resp.success.location);
-    try feed_db.addFeedUrl(feed_id, resp.success);
+    const feed_id = try feed_db.addFeed(feed, resp.ok.location);
+    try feed_db.addFeedUrl(feed_id, resp.ok);
     try feed_db.addItems(feed_id, feed.items);
     savepoint.commit();
     try writer.print("  Feed saved\n", .{});

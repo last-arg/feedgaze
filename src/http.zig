@@ -12,13 +12,13 @@ const expect = std.testing.expect;
 const print = std.debug.print;
 
 pub const FeedResponse = union(enum) {
-    success: Ok,
+    ok: Ok,
     not_modified: void,
     fail: []const u8,
 };
 
 const InternalResponse = union(enum) {
-    success: Ok,
+    ok: Ok,
     not_modified: void,
     permanent_redirect: PermanentRedirect,
     temporary_redirect: TemporaryRedirect,
@@ -76,7 +76,7 @@ pub fn resolveRequest(
     var redirect_count: u16 = 0;
     while (redirect_count < max_redirects) : (redirect_count += 1) {
         switch (resp) {
-            .success, .fail, .not_modified => break,
+            .ok, .fail, .not_modified => break,
             .permanent_redirect => |perm| {
                 log.debug("Permanent redirect to {s}", .{perm.location});
                 resp = try makeRequest(arena, perm.location, null, null);
@@ -90,7 +90,7 @@ pub fn resolveRequest(
         const nr_str = comptime fmt.comptimePrint("{d}", .{max_redirects});
         return FeedResponse{ .fail = "Too many redirects. Max number of redirects allowed is " ++ nr_str };
     }
-    std.debug.assert(resp == .success or resp == .fail);
+    std.debug.assert(resp == .ok or resp == .fail);
     return @ptrCast(*FeedResponse, &resp).*;
 }
 
@@ -198,7 +198,7 @@ pub fn makeRequest(
             },
         }
 
-        return InternalResponse{ .success = result };
+        return InternalResponse{ .ok = result };
     } else if (isPermanentRedirect(req.status.code)) {
         var permanent_redirect = PermanentRedirect{
             .location = undefined,
