@@ -508,6 +508,8 @@ test "FeedDb fake net test" {
     var feed_db = try FeedDb.init(allocator, null);
     var feed = try parse.parse(&arena, test_data.body);
 
+    var savepoint = try feed_db.db.sql_db.savepoint("test_net");
+    defer savepoint.rollback();
     const id = try feed_db.addFeed(feed, test_data.location);
     try feed_db.addFeedUrl(id, test_data);
 
@@ -553,9 +555,10 @@ test "FeedDb fake net test" {
         const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_http", .{});
         try expect(count_http.? == 0);
     }
+    savepoint.commit();
 }
 
-test "FeedDb local" {
+test "@active FeedDb local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -575,6 +578,8 @@ test "FeedDb local" {
 
     var feed = try parse.parse(&arena, contents);
 
+    var savepoint = try feed_db.db.sql_db.savepoint("test_local");
+    defer savepoint.rollback();
     const id = try feed_db.addFeed(feed, abs_path);
     try feed_db.addFeedLocal(id, mtime_sec);
     const last_items = feed.items[3..];
@@ -641,4 +646,5 @@ test "FeedDb local" {
         const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_local", .{});
         try expect(count_http.? == 0);
     }
+    savepoint.commit();
 }
