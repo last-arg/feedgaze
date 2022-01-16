@@ -174,6 +174,8 @@ pub const FeedDb = struct {
 
     const UpdateOptions = struct {
         force: bool = false,
+        // For testing purposes
+        resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
     };
 
     pub fn updateAllFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
@@ -182,10 +184,7 @@ pub const FeedDb = struct {
         try self.cleanItems(allocator);
     }
 
-    // TODO: Split network code from updateUrlFeeds()
-    // TODO: or pass resolveRequest as callback. use typeof on http.resolveRequest function
-    pub fn updateUrlFeeds(self: *Self, cb: anytype, opts: UpdateOptions) !void {
-        @setEvalBranchQuota(2000);
+    pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
         const DbResultUrl = struct {
             location: []const u8,
             etag: ?[]const u8,
@@ -220,11 +219,8 @@ pub const FeedDb = struct {
 
         const current_time = std.time.timestamp();
 
-        print("Update feeds. Count: {d}\n", .{url_updates.len});
-        // TODO: should do some memory freeing?
-        // There could be alot of feeds which would make the memory explode
         for (url_updates) |obj| {
-            log.info("Update feed: '{s}'", .{obj.location});
+            log.info("Updating: '{s}'", .{obj.location});
             if (!opts.force) {
                 const check_date: i64 = blk: {
                     if (obj.cache_control_max_age) |sec| {
@@ -266,8 +262,7 @@ pub const FeedDb = struct {
 
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            // const resp_union = try http.resolveRequest(&arena, obj.location, last_modified, obj.etag);
-            const resp_union = try cb(&arena, obj.location, last_modified, obj.etag);
+            const resp_union = try opts.resolveUrl(&arena, obj.location, last_modified, obj.etag);
 
             switch (resp_union) {
                 .not_modified => {
@@ -319,7 +314,7 @@ pub const FeedDb = struct {
             });
 
             try self.addItems(obj.feed_id, rss_feed.items);
-            log.info("Update finished: '{s}'", .{obj.location});
+            log.info("Updated: '{s}'", .{obj.location});
         }
     }
 
@@ -494,6 +489,7 @@ pub fn testResolveRequest(
 }
 
 test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
+    // @compileLog(@TypeOf(http.resolveRequest));
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -530,7 +526,7 @@ test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
     }
 
     // update feed
-    try feed_db.updateUrlFeeds(testResolveRequest, .{ .force = true });
+    try feed_db.updateUrlFeeds(.{ .force = true, .resolveUrl = testResolveRequest });
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
         try expect(items.len == feed.items.len);
@@ -538,6 +534,8 @@ test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
             try std.testing.expectEqualStrings(feed.items[i].title, item.title);
         }
     }
+
+    // TODO: delete feed
 }
 
 // TODO?: remove/redo?
