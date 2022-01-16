@@ -257,7 +257,6 @@ pub const Feed = struct {
         // Atom: link (optional),
         // Rss: link (optional)
         link: ?[]const u8 = null,
-        // TODO: use published instead of updated if available
         // Atom: updated (required) or published (optional)
         // Rss: pubDate (optional)
         updated_raw: ?[]const u8 = null,
