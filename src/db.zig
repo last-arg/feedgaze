@@ -40,8 +40,10 @@ pub fn createFileDb(path_opt: ?[:0]const u8) !sql.Db {
 }
 
 pub fn setup(db: *sql.Db) !void {
-    // TODO?: use PRAGMA schema.user_version = integer ;
+    _ = try db.pragma(usize, .{}, "user_version", "1");
     _ = try db.pragma(usize, .{}, "foreign_keys", "1");
+    _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
+    _ = try db.pragma(usize, .{}, "synchronous", "normal");
 
     inline for (@typeInfo(Table).Struct.decls) |decl| {
         if (@hasDecl(decl.data.Type, "create")) {

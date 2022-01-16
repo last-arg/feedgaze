@@ -166,6 +166,8 @@ pub const FeedDb = struct {
             print("No guid or link\n", .{});
             const del_query = "DELETE FROM item WHERE feed_id = ?;";
             try self.db.exec(del_query, .{}, .{feed_id});
+            // TODO?: construct whole insert query?
+            // How will on conflict work with it? Goes to the end or each item requires one?
             const query =
                 \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
                 \\VALUES (
