@@ -28,6 +28,7 @@ pub const Db = struct {
         };
     }
 
+    // TODO: might not need opts arg?
     pub fn selectAll(
         self: *Self,
         comptime T: type,

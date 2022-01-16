@@ -77,12 +77,8 @@ pub const FeedDb = struct {
             \\  etag = excluded.etag,
             \\  last_update = (strftime('%s', 'now'))
         ;
-        try self.db.exec(query, .{}, .{
-            feed_id,
-            resp.cache_control_max_age,
-            resp.expires_utc,
-            resp.last_modified_utc,
-            resp.etag,
+        try self.db.exec(query, .{
+            feed_id, resp.cache_control_max_age, resp.expires_utc, resp.last_modified_utc, resp.etag,
         });
     }
 
@@ -157,7 +153,6 @@ pub const FeedDb = struct {
             ;
             try self.db.exec(del_query, .{ feed_id, g.max_items_per_feed, feed_id });
         } else {
-            print("No guid or link\n", .{});
             const del_query = "DELETE FROM item WHERE feed_id = ?;";
             try self.db.exec(del_query, .{feed_id});
             const query =
@@ -187,7 +182,9 @@ pub const FeedDb = struct {
         try self.cleanItems(allocator);
     }
 
-    pub fn updateUrlFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
+    // TODO: Split network code from updateUrlFeeds()
+    // TODO: or pass resolveRequest as callback. use typeof on http.resolveRequest function
+    pub fn updateUrlFeeds(self: *Self, cb: anytype, opts: UpdateOptions) !void {
         @setEvalBranchQuota(2000);
         const DbResultUrl = struct {
             location: []const u8,
@@ -201,11 +198,31 @@ pub const FeedDb = struct {
             cache_control_max_age: ?i64,
         };
 
-        const url_updates = try db.selectAll(DbResultUrl, allocator, &self.db, Table.feed_update_http.selectAllWithLocation, .{});
-        defer allocator.free(url_updates);
+        const query_all =
+            \\SELECT
+            \\  feed.location as location,
+            \\  etag,
+            \\  feed_id,
+            \\  feed.updated_timestamp as feed_update_timestamp,
+            \\  update_interval,
+            \\  last_update,
+            \\  expires_utc,
+            \\  last_modified_utc,
+            \\  cache_control_max_age
+            \\FROM feed_update_http
+            \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
+        ;
+
+        // TODO: use sqlite iterator instead?
+        // Could save memory. Would release after feed's update is done
+        const url_updates = try self.db.selectAll(DbResultUrl, query_all, .{});
+        // defer allocator.free(url_updates);
 
         const current_time = std.time.timestamp();
 
+        print("Update feeds. Count: {d}\n", .{url_updates.len});
+        // TODO: should do some memory freeing?
+        // There could be alot of feeds which would make the memory explode
         for (url_updates) |obj| {
             log.info("Update feed: '{s}'", .{obj.location});
             if (!opts.force) {
@@ -228,10 +245,10 @@ pub const FeedDb = struct {
                 }
             }
 
-            const last_modified = blk: {
+            var date_buf: [29]u8 = undefined;
+            const last_modified: ?[]const u8 = blk: {
                 if (obj.last_modified_utc) |last_modified_utc| {
                     const date = Datetime.fromTimestamp(last_modified_utc);
-                    var date_buf: [29]u8 = undefined;
                     const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
                     const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
                         date.date.weekdayName()[0..3],
@@ -246,32 +263,34 @@ pub const FeedDb = struct {
                 }
                 break :blk null;
             };
-            const req = http.FeedRequest{
-                .url = try http.makeUri(obj.location),
-                .etag = obj.etag,
-                .last_modified = last_modified,
-            };
 
-            const resp = try http.resolveRequest(allocator, req);
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            // const resp_union = try http.resolveRequest(&arena, obj.location, last_modified, obj.etag);
+            const resp_union = try cb(&arena, obj.location, last_modified, obj.etag);
 
-            if (resp.status_code == 304) {
-                log.info("\tSkipping update: Feed hasn't been modified", .{});
-                continue;
+            switch (resp_union) {
+                .not_modified => {
+                    log.info("Skipping update: Feed hasn't been modified", .{});
+                    continue;
+                },
+                .fail => |msg| {
+                    log.info("Failed http request: {s}", .{msg});
+                    continue;
+                },
+                .success => {},
             }
 
-            if (resp.body == null) {
-                log.info("\tSkipping update: HTTP request body is empty", .{});
-                continue;
-            }
-
-            const body = resp.body.?;
+            // TODO: catch errors and continue loop
+            // There might be errors where continuing loop isn't a good idea
+            const resp = resp_union.success;
             const rss_feed = switch (resp.content_type) {
-                .xml_atom => try parse.Atom.parse(allocator, body),
-                .xml_rss => try parse.Rss.parse(allocator, body),
-                else => try parse.parse(allocator, body),
+                .xml_atom => try parse.Atom.parse(&arena, resp.body),
+                .xml_rss => try parse.Rss.parse(&arena, resp.body),
+                else => try parse.parse(&arena, resp.body),
             };
 
-            try db.update(&self.db, Table.feed_update_http.update_id, .{
+            try self.db.exec(Table.feed_update_http.update_id, .{
                 resp.cache_control_max_age,
                 resp.expires_utc,
                 resp.last_modified_utc,
@@ -290,7 +309,7 @@ pub const FeedDb = struct {
                 }
             }
 
-            try db.update(&self.db, Table.feed.update_where_id, .{
+            try self.db.exec(Table.feed.update_where_id, .{
                 rss_feed.title,
                 rss_feed.link,
                 rss_feed.updated_raw,
@@ -453,65 +472,71 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-test "@active addItems()" {
+fn testDataRespOk() http.Success {
+    const location = "https://lobste.rs/";
+    const contents = @embedFile("../test/sample-rss-2.xml");
+    return http.Success{
+        .location = location,
+        .body = contents,
+        .content_type = http.ContentType.xml_rss,
+    };
+}
+
+pub fn testResolveRequest(
+    _: *std.heap.ArenaAllocator,
+    url: []const u8,
+    _: ?[]const u8,
+    _: ?[]const u8,
+) !http.FeedResponse {
+    const ok = testDataRespOk();
+    try std.testing.expectEqualStrings(url, ok.location);
+    return http.FeedResponse{ .success = ok };
+}
+
+test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    const test_data = testDataRespOk();
     var feed_db = try FeedDb.init(allocator, null);
+    var feed = try parse.parse(&arena, test_data.body);
 
-    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
-    const rel_path = "test/sample-rss-2.xml";
-    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-    const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
-    const contents = try shame.getFileContents(allocator, abs_path);
-    const file = try fs.openFileAbsolute(abs_path, .{});
-    defer file.close();
-    const stat = try file.stat();
-    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+    const id = try feed_db.addFeed(feed, test_data.location);
+    try feed_db.addFeedUrl(id, test_data);
 
-    var feed = try parse.parse(&arena, contents);
+    const ItemsResult = struct { title: []const u8 };
+    const all_items_query = "select title from item order by id DESC";
 
-    // const all_items = feed.items;
-    const id = try feed_db.addFeed(feed, abs_path);
-    try feed_db.addFeedLocal(id, mtime_sec);
-    var tail = try allocator.alloc(parse.Feed.Item, feed.items.len - 3);
-    mem.copy(parse.Feed.Item, tail, feed.items[3..feed.items.len]);
-    try feed_db.addItems(id, tail);
+    // No items yet
+    const saved_items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
+    try expect(saved_items.len == 0);
 
-    const ItemsResult = struct {
-        link: ?[]const u8,
-        title: []const u8,
-        guid: ?[]const u8,
-        id: usize,
-        feed_id: usize,
-        pub_date: ?[]const u8,
-        pub_date_utc: ?i64,
-        created_at: i64,
-    };
-
-    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc, created_at from item order by id DESC";
-    const out_fmt =
-        \\{s}
-        \\{d} {s} {d}
-        \\
-        \\
-    ;
-
-    // Items
+    // Add some items
+    const start_index = 3;
+    try expect(start_index < feed.items.len);
+    const items_src = feed.items[3..];
+    var tmp_items = try allocator.alloc(parse.Feed.Item, items_src.len);
+    std.mem.copy(parse.Feed.Item, tmp_items, items_src);
+    try feed_db.addItems(id, tmp_items);
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
-
-        for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
+        try expect(items.len == items_src.len);
+        for (items) |item, i| {
+            try std.testing.expectEqualStrings(items_src[i].title, item.title);
+        }
     }
-    try feed_db.addItems(id, feed.items);
-    print("==================\n", .{});
+
+    // update feed
+    try feed_db.updateUrlFeeds(testResolveRequest, .{ .force = true });
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
-
-        for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
+        try expect(items.len == feed.items.len);
+        for (items) |item, i| {
+            try std.testing.expectEqualStrings(feed.items[i].title, item.title);
+        }
     }
 }
 

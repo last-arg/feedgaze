@@ -13,6 +13,7 @@ const print = std.debug.print;
 
 pub const FeedResponse = union(enum) {
     success: Success,
+    not_modified: void,
     fail: []const u8,
 };
 
