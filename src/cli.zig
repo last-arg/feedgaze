@@ -1050,6 +1050,7 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
 }
 
 test "getFeedHttp()" {
+    std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -1099,34 +1100,34 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     defer arena.deinit();
 
     const url = try makeValidUrl(arena.allocator(), input_url);
-    try writer.print("Adding feed '{s}'\n", .{url});
-    errdefer writer.print("Failed to add new feed {s}\n", .{url}) catch @panic("Failed to print message about failing to add new feed\n");
+    try writer.print("Adding feed {s}\n", .{url});
+    errdefer log.err("Failed to add new feed {s}\n", .{url});
     // TODO: check db for url?
     const resp = try getFeedHttp(&arena, url, writer, reader);
     switch (resp) {
         .fail => |msg| {
-            try writer.print("Failed to add new feed {s}\n", .{url});
-            try writer.print("Failed to resolve url {s}\n", .{url});
-            try writer.print("Failed message: {s}\n", .{msg});
+            log.err("Failed to add new feed {s}", .{url});
+            log.err("Failed to resolve url {s}", .{url});
+            log.err("Failed message: {s}", .{msg});
             return;
         },
         .not_modified => {
-            try writer.print("Failed to add new feed {s}\n", .{url});
-            try writer.print("Request returned not modified which should not be happening when adding new feed\n", .{});
+            log.err("Failed to add new feed {s}", .{url});
+            log.err("Request returned not modified which should not be happening when adding new feed", .{});
             return;
         },
         .ok => {},
     }
     if (!mem.eql(u8, url, resp.ok.location)) {
-        try writer.print(" New url '{s}'\n", .{resp.ok.location});
+        log.info("New url '{s}'", .{resp.ok.location});
     }
-    try writer.print("  Feed fetched\n", .{});
+    log.info("Feed fetched", .{});
 
-    try writer.print("  Parsing feed\n", .{});
+    log.info("Parsing feed", .{});
     var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
-    try writer.print("  Feed parsed\n", .{});
+    log.info("Feed parsed", .{});
 
-    try writer.print("  Saving feed\n", .{});
+    log.info("Saving feed", .{});
     if (feed.link == null) feed.link = url;
     var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
     defer savepoint.rollback();
@@ -1134,24 +1135,21 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
     try feed_db.addFeedUrl(feed_id, resp.ok);
     try feed_db.addItems(feed_id, feed.items);
     savepoint.commit();
-    try writer.print("  Feed saved\n", .{});
+    try writer.print("Feed added {s}\n", .{url});
 }
 
 test "@active addFeedHttp()" {
+    std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
 
-    var enter_link = "Enter link number: ";
-    var read_one = "1\n";
-
     const url = "https://lobste.rs/";
+    var actions = [_]TestIO.Action{
+        .{ .write = "Adding feed " ++ url ++ "\n" },
+        .{ .write = "Feed added " ++ url ++ "\n" },
+    };
     var text_io = TestIO{
         .do_print = true,
-        .expected_actions = &[_]TestIO.Action{
-            .{ .write = "Adding feed '" ++ url ++ "'\n" }, .{ .write = "  Feed fetched\n" },
-            .{ .write = "  Parsing feed\n" },              .{ .write = "  Feed parsed\n" },
-            .{ .write = "  Saving feed\n" },               .{ .write = "  Feed saved\n" },
-            .{ .write = enter_link },                      .{ .read = read_one },
-        },
+        .expected_actions = &actions,
     };
     const writer = text_io.writer();
     const reader = text_io.reader();
