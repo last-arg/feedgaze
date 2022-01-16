@@ -1120,12 +1120,13 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
 
     try writer.print("  Saving feed\n", .{});
     if (feed.link == null) feed.link = url;
-    // TODO?: make into transaction?
+    var savepoint = try feed_db.db.savepoint("addFeedUrl");
+    defer savepoint.rollback();
     const feed_id = try feed_db.addFeed(feed, resp.success.location);
     try feed_db.addFeedUrl(feed_id, resp.success);
     try feed_db.addItems(feed_id, feed.items);
+    savepoint.commit();
     try writer.print("  Feed saved\n", .{});
-    parse.printFeed(feed);
 }
 
 test "@active addFeedHttp()" {
