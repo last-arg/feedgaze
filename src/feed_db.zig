@@ -56,7 +56,7 @@ pub const FeedDb = struct {
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
-        try db.delete(&self.db, "DELETE FROM feed WHERE id = ?", .{id});
+        try self.db.exec("DELETE FROM feed WHERE id = ?", .{id});
     }
 
     pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.Success) !void {
@@ -488,8 +488,7 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .success = ok };
 }
 
-test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
-    // @compileLog(@TypeOf(http.resolveRequest));
+test "@active FeedDb fake net test" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -535,7 +534,16 @@ test "@active FeedDb(fake net) addItems(), updateUrlFeeds()" {
         }
     }
 
-    // TODO: delete feed
+    // delete feed
+    try feed_db.deleteFeed(id);
+    {
+        const count_item = try feed_db.db.one(usize, "select count(id) from item", .{});
+        try expect(count_item.? == 0);
+        const count_feed = try feed_db.db.one(usize, "select count(id) from feed", .{});
+        try expect(count_feed.? == 0);
+        const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_http", .{});
+        try expect(count_http.? == 0);
+    }
 }
 
 // TODO?: remove/redo?
