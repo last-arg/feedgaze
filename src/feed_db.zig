@@ -60,7 +60,7 @@ pub const FeedDb = struct {
         try self.db.exec("DELETE FROM feed WHERE id = ?", .{id});
     }
 
-    pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.Success) !void {
+    pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.Ok) !void {
         const query =
             \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
@@ -476,10 +476,10 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-fn testDataRespOk() http.Success {
+fn testDataRespOk() http.Ok {
     const location = "https://lobste.rs/";
     const contents = @embedFile("../test/sample-rss-2.xml");
-    return http.Success{
+    return http.Ok{
         .location = location,
         .body = contents,
         .content_type = http.ContentType.xml_rss,
@@ -497,7 +497,7 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .success = ok };
 }
 
-test "FeedDb fake net test" {
+test "@active FeedDb fake net test" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -558,7 +558,7 @@ test "FeedDb fake net test" {
     savepoint.commit();
 }
 
-test "@active FeedDb local" {
+test "FeedDb local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

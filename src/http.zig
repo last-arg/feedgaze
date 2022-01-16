@@ -12,13 +12,13 @@ const expect = std.testing.expect;
 const print = std.debug.print;
 
 pub const FeedResponse = union(enum) {
-    success: Success,
+    success: Ok,
     not_modified: void,
     fail: []const u8,
 };
 
 const InternalResponse = union(enum) {
-    success: Success,
+    success: Ok,
     not_modified: void,
     permanent_redirect: PermanentRedirect,
     temporary_redirect: TemporaryRedirect,
@@ -38,7 +38,7 @@ const TemporaryRedirect = struct {
     etag: ?[]const u8 = null, // Doesn't own memory
 };
 
-pub const Success = struct {
+pub const Ok = struct {
     location: []const u8,
     body: []const u8,
     content_type: ContentType = .unknown,
@@ -131,7 +131,7 @@ pub fn makeRequest(
     try req.do(.GET, headers, null);
 
     if (req.status.code == 200) {
-        var result: Success = undefined;
+        var result: Ok = undefined;
         result.location = url;
         var content_encoding = ContentEncoding.none;
         var content_length: usize = 128;
