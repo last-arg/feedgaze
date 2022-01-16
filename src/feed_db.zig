@@ -12,6 +12,7 @@ const shame = @import("shame.zig");
 const time = std.time;
 const parse = @import("parse.zig");
 const expect = std.testing.expect;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const ArrayList = std.ArrayList;
@@ -87,6 +88,18 @@ pub const FeedDb = struct {
         feed_id: usize,
         last_modified: i64,
     ) !void {
+        const query =
+            \\INSERT INTO feed_update_local
+            \\  (feed_id, last_modified_timestamp)
+            \\VALUES (
+            \\  ?{usize},
+            \\  ?{i64}
+            \\)
+            \\ON CONFLICT(feed_id) DO UPDATE SET
+            \\  last_modified_timestamp = excluded.last_modified_timestamp,
+            \\  last_update = (strftime('%s', 'now'))
+        ;
+        _ = query;
         try self.db.exec(Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
             feed_id, last_modified,
         });
@@ -178,10 +191,10 @@ pub const FeedDb = struct {
         resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
     };
 
-    pub fn updateAllFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
-        try self.updateUrlFeeds(allocator, opts);
-        try self.updateLocalFeeds(allocator, opts);
-        try self.cleanItems(allocator);
+    pub fn updateAllFeeds(self: *Self, opts: UpdateOptions) !void {
+        try self.updateUrlFeeds(opts);
+        try self.updateLocalFeeds(self.allocator, opts);
+        try self.cleanItems();
     }
 
     pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
@@ -318,7 +331,7 @@ pub const FeedDb = struct {
         }
     }
 
-    pub fn updateLocalFeeds(self: *Self, allocator: Allocator, opts: UpdateOptions) !void {
+    pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
         const DbResultLocal = struct {
             location: []const u8,
             feed_id: usize,
@@ -328,17 +341,15 @@ pub const FeedDb = struct {
             last_modified_timestamp: ?i64,
         };
 
-        const local_updates = try db.selectAll(DbResultLocal, allocator, &self.db, Table.feed_update_local.selectAllWithLocation, .{});
-        defer allocator.free(local_updates);
+        const local_updates = try self.db.selectAll(DbResultLocal, Table.feed_update_local.selectAllWithLocation, .{});
+        // defer allocator.free(local_updates);
 
-        if (local_updates.len == 0) {
-            return;
-        }
+        if (local_updates.len == 0) return;
 
-        var contents = try ArrayList(u8).initCapacity(allocator, 4096);
+        var contents = try ArrayList(u8).initCapacity(self.allocator, 4096);
         defer contents.deinit();
 
-        const update_local =
+        const query_update_local =
             \\UPDATE feed_update_local SET
             \\  last_modified_timestamp = ?,
             \\  last_update = (strftime('%s', 'now'))
@@ -346,7 +357,7 @@ pub const FeedDb = struct {
         ;
 
         for (local_updates) |obj| {
-            log.info("Update feed (local): '{s}'", .{obj.location});
+            log.info("Updating: '{s}'", .{obj.location});
             const file = try std.fs.openFileAbsolute(obj.location, .{});
             defer file.close();
             var file_stat = try file.stat();
@@ -363,10 +374,11 @@ pub const FeedDb = struct {
             try contents.resize(0);
             try contents.ensureTotalCapacity(file_stat.size);
             try file.reader().readAllArrayList(&contents, file_stat.size);
-            var rss_feed = try parse.parse(allocator, contents.items);
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            var rss_feed = try parse.parse(&arena, contents.items);
             const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
 
-            try db.update(&self.db, update_local, .{
+            try self.db.exec(query_update_local, .{
                 mtime_sec,
                 // where
                 obj.feed_id,
@@ -381,7 +393,7 @@ pub const FeedDb = struct {
                 }
             }
 
-            try db.update(&self.db, Table.feed.update_where_id, .{
+            try self.db.exec(Table.feed.update_where_id, .{
                 rss_feed.title,
                 rss_feed.link,
                 rss_feed.updated_raw,
@@ -391,7 +403,7 @@ pub const FeedDb = struct {
             });
 
             try self.addItems(obj.feed_id, rss_feed.items);
-            log.info("Update finished: '{s}'", .{obj.location});
+            log.info("Updated: '{s}'", .{obj.location});
         }
     }
 
@@ -408,21 +420,18 @@ pub const FeedDb = struct {
         try db.delete(&self.db, query, .{ feed_id, g.max_items_per_feed, feed_id });
     }
 
-    pub fn cleanItems(self: *Self, allocator: Allocator) !void {
+    pub fn cleanItems(self: *Self) !void {
         const query =
             \\SELECT
             \\  feed_id, count(feed_id) as count
             \\FROM item
             \\GROUP BY feed_id
-            \\HAVING count(feed_id) > ?{usize}
+            \\HAVING count(feed_id) > ?{u16}
         ;
 
-        const DbResult = struct {
-            feed_id: usize,
-            count: usize,
-        };
+        const DbResult = struct { feed_id: usize, count: usize };
 
-        const results = try db.selectAll(DbResult, allocator, &self.db, query, .{g.max_items_per_feed});
+        const results = try self.db.selectAll(DbResult, query, .{g.max_items_per_feed});
 
         const del_query =
             \\DELETE FROM item
@@ -433,7 +442,7 @@ pub const FeedDb = struct {
             \\)
         ;
         for (results) |r| {
-            try db.delete(&self.db, del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
+            try self.db.exec(del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
         }
     }
 
@@ -488,7 +497,7 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .success = ok };
 }
 
-test "@active FeedDb fake net test" {
+test "FeedDb fake net test" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -546,14 +555,12 @@ test "@active FeedDb fake net test" {
     }
 }
 
-// TODO?: remove/redo?
-test "FeedDb(local): add, update, remove" {
+test "FeedDb local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-
     var feed_db = try FeedDb.init(allocator, null);
 
     // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
@@ -568,50 +575,34 @@ test "FeedDb(local): add, update, remove" {
 
     var feed = try parse.parse(&arena, contents);
 
-    const all_items = feed.items;
-    feed.items = all_items[0..3];
     const id = try feed_db.addFeed(feed, abs_path);
     try feed_db.addFeedLocal(id, mtime_sec);
-    try feed_db.addItems(id, feed.items);
+    const last_items = feed.items[3..];
+    var tmp_items = try allocator.alloc(parse.Feed.Item, last_items.len);
+    std.mem.copy(parse.Feed.Item, tmp_items, last_items);
+    try feed_db.addItems(id, tmp_items);
 
-    const LocalResult = struct {
-        location: []const u8,
-        link: ?[]const u8,
-        title: []const u8,
-        updated_raw: ?[]const u8,
-        id: usize,
-        updated_timestamp: ?i64,
-    };
-
-    const all_feeds_query = "select location, link, title, updated_raw, id, updated_timestamp from feed";
+    const LocalItem = struct { title: []const u8 };
+    const all_items_query = "select title from item order by id DESC";
 
     // Feed local
     {
-        const feed_dbfeeds = try db.selectAll(LocalResult, allocator, &feed_db.db, all_feeds_query, .{});
-        try expect(feed_dbfeeds.len == 1);
-        const first = feed_dbfeeds[0];
-        try expect(first.id == 1);
-        try expect(mem.eql(u8, abs_path, first.location));
-        try expect(mem.eql(u8, feed.link.?, first.link.?));
-        try expect(mem.eql(u8, feed.title, first.title));
-        try expect(mem.eql(u8, feed.updated_raw.?, first.updated_raw.?));
-        try expect(feed.updated_timestamp.? == first.updated_timestamp.?);
+        const items = try feed_db.db.selectAll(LocalItem, all_items_query, .{});
+        try expect(items.len == last_items.len);
+        for (items) |item, i| {
+            try expectEqualStrings(item.title, last_items[i].title);
+        }
     }
 
-    const LocalUpdateResult = struct {
-        feed_id: usize,
-        update_interval: usize,
-        last_update: i64,
-        last_modified_timestamp: i64,
-    };
-
+    const LocalUpdateResult = struct { feed_id: usize, update_interval: usize, last_update: i64, last_modified_timestamp: i64 };
     const local_query = "select feed_id, update_interval, last_update, last_modified_timestamp from feed_update_local";
 
     // Local feed update
     {
-        const feed_dbfeeds = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
-        try expect(feed_dbfeeds.len == 1);
-        const first = feed_dbfeeds[0];
+        const count = try feed_db.db.one(usize, "select count(*) from feed_update_local", .{});
+        try expect(count.? == 1);
+        const feed_dbfeeds = try feed_db.db.one(LocalUpdateResult, local_query, .{});
+        const first = feed_dbfeeds.?;
         try expect(first.feed_id == 1);
         try expect(first.update_interval == 600);
         const current_time = std.time.timestamp();
@@ -619,85 +610,35 @@ test "FeedDb(local): add, update, remove" {
         try expect(first.last_modified_timestamp == mtime_sec);
     }
 
-    const ItemsResult = struct {
-        link: ?[]const u8,
-        title: []const u8,
-        guid: ?[]const u8,
-        id: usize,
-        feed_id: usize,
-        pub_date: ?[]const u8,
-        pub_date_utc: ?i64,
-    };
-
-    const all_items_query = "select link, title, guid, id, feed_id, pub_date, pub_date_utc from item order by pub_date_utc";
+    try feed_db.updateLocalFeeds(.{ .force = true });
 
     // Items
     {
-        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
+        const items = try feed_db.db.selectAll(LocalItem, all_items_query, .{});
         try expect(items.len == feed.items.len);
-    }
-
-    try feed_db.updateAllFeeds(allocator, .{ .force = true });
-    feed.items = all_items;
-
-    // Items
-    {
-        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
-        try expect(items.len == feed.items.len);
-
-        parse.Feed.sortItemsByDate(feed.items);
-        for (items) |feed_dbitem, i| {
+        for (items) |item, i| {
             const f_item = feed.items[i];
-            try expect(equalNullString(feed_dbitem.link, f_item.link));
-            try expect(equalNullString(feed_dbitem.guid, f_item.id));
-            try std.testing.expectEqualStrings(feed_dbitem.title, f_item.title);
-            try expect(equalNullString(feed_dbitem.pub_date, f_item.updated_raw));
-            try expect(std.meta.eql(feed_dbitem.pub_date_utc, f_item.updated_timestamp));
-            try expect(feed_dbitem.feed_id == 1);
+            try expectEqualStrings(item.title, f_item.title);
         }
     }
 
-    // Local feed update
     {
-        const local_updates = try db.selectAll(LocalUpdateResult, allocator, &feed_db.db, local_query, .{});
-        try expect(local_updates.len == 1);
-        const first = local_updates[0];
+        const feed_dbfeeds = try feed_db.db.one(LocalUpdateResult, local_query, .{});
+        const first = feed_dbfeeds.?;
         try expect(first.feed_id == 1);
-        try expect(first.update_interval == 600);
         const current_time = std.time.timestamp();
         try expect(first.last_update <= current_time);
-        try expect(first.last_modified_timestamp == mtime_sec);
     }
-
-    const item_count_query = "select count(id) from item";
-
-    // Delete items that are over max item limit
-    {
-        var item_count = try db.count(&feed_db.db, item_count_query);
-        try expect(feed.items.len == item_count);
-
-        // cleanItemsByFeedId()
-        g.max_items_per_feed = 4;
-        try feed_db.cleanItemsByFeedId(1);
-        item_count = try db.count(&feed_db.db, item_count_query);
-        try expect(g.max_items_per_feed == item_count);
-
-        // cleanItems()
-        g.max_items_per_feed = 2;
-        try feed_db.cleanItems(allocator);
-        item_count = try db.count(&feed_db.db, item_count_query);
-        try expect(g.max_items_per_feed == item_count);
-    }
+    try feed_db.cleanItems();
 
     // Delete feed
     {
-        try feed_db.deleteFeed(1);
-
-        const feed_count = try db.count(&feed_db.db, "select count(id) from feed");
-        try expect(feed_count == 0);
-        const local_update_count = try db.count(&feed_db.db, "select count(feed_id) from feed_update_local");
-        try expect(local_update_count == 0);
-        const item_count = try db.count(&feed_db.db, item_count_query);
-        try expect(item_count == 0);
+        try feed_db.deleteFeed(id);
+        const count_item = try feed_db.db.one(usize, "select count(id) from item", .{});
+        try expect(count_item.? == 0);
+        const count_feed = try feed_db.db.one(usize, "select count(id) from feed", .{});
+        try expect(count_feed.? == 0);
+        const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_local", .{});
+        try expect(count_http.? == 0);
     }
 }
