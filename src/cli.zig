@@ -1100,15 +1100,22 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8
 
     const url = try makeValidUrl(arena.allocator(), input_url);
     try writer.print("Adding feed '{s}'\n", .{url});
-    errdefer writer.print("Failed to add new feed {s}", .{url}) catch unreachable;
+    errdefer writer.print("Failed to add new feed {s}\n", .{url}) catch @panic("Failed to print message about failing to add new feed\n");
+    // TODO: check db for url?
     const resp = try getFeedHttp(&arena, url, writer, reader);
-    // TODO: add .not_modified
-    if (resp != .ok) {
-        try writer.print("Failed to resolve url {s}", .{url});
-        if (resp == .fail) {
-            try writer.print("Failed message: {s}\n", .{resp.fail});
-        }
-        return error.FailedHttpRequest;
+    switch (resp) {
+        .fail => |msg| {
+            try writer.print("Failed to add new feed {s}\n", .{url});
+            try writer.print("Failed to resolve url {s}\n", .{url});
+            try writer.print("Failed message: {s}\n", .{msg});
+            return;
+        },
+        .not_modified => {
+            try writer.print("Failed to add new feed {s}\n", .{url});
+            try writer.print("Request returned not modified which should not be happening when adding new feed\n", .{});
+            return;
+        },
+        .ok => {},
     }
     if (!mem.eql(u8, url, resp.ok.location)) {
         try writer.print(" New url '{s}'\n", .{resp.ok.location});
