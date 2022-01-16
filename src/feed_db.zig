@@ -21,15 +21,17 @@ pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
 };
 
+// TODO?: rename to Storage?
 pub const FeedDb = struct {
     const Self = @This();
-    db: sql.Db,
+    // db: sql.Db,
+    db: db.Db,
     allocator: Allocator,
 
     pub fn init(allocator: Allocator, location: ?[]const u8) !Self {
         var sql_db = try db.createDb(allocator, location);
         try db.setup(&sql_db);
-        return Self{ .db = sql_db, .allocator = allocator };
+        return Self{ .db = db.Db{ .sql_db = sql_db, .allocator = allocator }, .allocator = allocator };
     }
 
     pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !usize {
@@ -50,10 +52,7 @@ pub const FeedDb = struct {
             \\RETURNING id;
         ;
         const args = .{ feed.title, location, feed.link, feed.updated_raw, feed.updated_timestamp };
-        return db.one(usize, &self.db, query, args) catch |err| {
-            log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
-            return err;
-        } orelse error.NoReturnId;
+        return (try self.db.one(usize, query, args)) orelse error.NoReturnId;
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
@@ -92,7 +91,7 @@ pub const FeedDb = struct {
         feed_id: usize,
         last_modified: i64,
     ) !void {
-        try db.insert(&self.db, Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
+        try self.db.exec(Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
             feed_id, last_modified,
         });
     }
@@ -129,8 +128,6 @@ pub const FeedDb = struct {
             \\)
         ;
         if (hasGuidOrLink) {
-            // TODO?: construct whole insert query?
-            // How will on conflict work with it? Goes to the end or each item requires one?
             const conflict_update =
                 \\ DO UPDATE SET
                 \\  title = excluded.title,
@@ -144,13 +141,10 @@ pub const FeedDb = struct {
             const query = insert_query ++ "\nON CONFLICT(guid) " ++ conflict_update ++ "\nON CONFLICT(link)" ++ conflict_update ++ ";";
 
             for (items) |item| {
-                self.db.exec(query, .{}, .{
+                try self.db.exec(query, .{
                     feed_id, item.title,       item.link,
                     item.id, item.updated_raw, item.updated_timestamp,
-                }) catch |err| {
-                    log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
-                    return err;
-                };
+                });
             }
             const del_query =
                 \\DELETE FROM item
@@ -161,13 +155,11 @@ pub const FeedDb = struct {
                 \\        LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
                 \\  )
             ;
-            try self.db.exec(del_query, .{}, .{ feed_id, g.max_items_per_feed, feed_id });
+            try self.db.exec(del_query, .{ feed_id, g.max_items_per_feed, feed_id });
         } else {
             print("No guid or link\n", .{});
             const del_query = "DELETE FROM item WHERE feed_id = ?;";
-            try self.db.exec(del_query, .{}, .{feed_id});
-            // TODO?: construct whole insert query?
-            // How will on conflict work with it? Goes to the end or each item requires one?
+            try self.db.exec(del_query, .{feed_id});
             const query =
                 \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
                 \\VALUES (
@@ -177,13 +169,10 @@ pub const FeedDb = struct {
                 \\);
             ;
             for (items) |item| {
-                self.db.exec(query, .{}, .{
+                try self.db.exec(query, .{
                     feed_id, item.title,       item.link,
                     item.id, item.updated_raw, item.updated_timestamp,
-                }) catch |err| {
-                    log.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.db.getDetailedError().message, query });
-                    return err;
-                };
+                });
             }
         }
     }
@@ -464,7 +453,7 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-test "addItems()" {
+test "@active addItems()" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -485,8 +474,7 @@ test "addItems()" {
 
     var feed = try parse.parse(&arena, contents);
 
-    const all_items = feed.items;
-    print("len: {d}\n", .{all_items.len});
+    // const all_items = feed.items;
     const id = try feed_db.addFeed(feed, abs_path);
     try feed_db.addFeedLocal(id, mtime_sec);
     var tail = try allocator.alloc(parse.Feed.Item, feed.items.len - 3);
@@ -514,14 +502,14 @@ test "addItems()" {
 
     // Items
     {
-        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
+        const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
 
         for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
     }
     try feed_db.addItems(id, feed.items);
     print("==================\n", .{});
     {
-        const items = try db.selectAll(ItemsResult, allocator, &feed_db.db, all_items_query, .{});
+        const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
 
         for (items) |item| print(out_fmt, .{ item.title, item.feed_id, item.pub_date, item.created_at });
     }

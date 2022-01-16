@@ -7,6 +7,45 @@ const expect = testing.expect;
 const shame = @import("shame.zig");
 const Table = @import("queries.zig").Table;
 
+pub const Db = struct {
+    const Self = @This();
+    sql_db: sql.Db,
+    allocator: Allocator,
+
+    pub fn exec(self: *Self, comptime query: []const u8, args: anytype) !void {
+        // @setEvalBranchQuota(2000);
+        self.sql_db.exec(query, .{}, args) catch |err| {
+            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            return err;
+        };
+    }
+
+    // Non-alloc select query that returns one or no rows
+    pub fn one(self: *Self, comptime T: type, comptime query: []const u8, args: anytype) !?T {
+        return self.sql_db.one(T, query, .{}, args) catch |err| {
+            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            return err;
+        };
+    }
+
+    pub fn selectAll(
+        self: *Self,
+        comptime T: type,
+        comptime query: []const u8,
+        opts: anytype,
+    ) ![]T {
+        var stmt = self.sql_db.prepare(query) catch |err| {
+            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            return err;
+        };
+        defer stmt.deinit();
+        return stmt.all(T, self.allocator, .{}, opts) catch |err| {
+            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            return err;
+        };
+    }
+};
+
 pub fn createDb(allocator: Allocator, loc: ?[]const u8) !sql.Db {
     if (loc) |path| {
         const abs_loc = try shame.makeFilePathZ(allocator, path);
@@ -59,15 +98,17 @@ pub fn setup(db: *sql.Db) !void {
     try insert(db, Table.setting.insert, .{version});
 }
 
+// TODO: redo or move to Db
 pub fn verifyTables(db: *sql.Db) bool {
-    const select_table = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
-    inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasField(decl.data.Type, "create")) {
-            const row = one(usize, db, select_table, .{decl.name});
-            if (row == null) return false;
-            break;
-        }
-    }
+    _ = db;
+    // const select_table = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
+    // inline for (@typeInfo(Table).Struct.decls) |decl| {
+    //     if (@hasField(decl.data.Type, "create")) {
+    //         const row = one(usize, db, select_table, .{decl.name});
+    //         if (row == null) return false;
+    //         break;
+    //     }
+    // }
 
     return true;
 }
@@ -83,14 +124,6 @@ test "create and veriftyTables" {
     expect(verifyTables(&db));
 }
 
-// Non-alloc select query that returns one or no rows
-pub fn one(comptime T: type, db: *sql.Db, comptime query: []const u8, args: anytype) !?T {
-    return db.one(T, query, .{}, args) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
 pub fn count(db: *sql.Db, comptime query: []const u8) !usize {
     const result = db.one(usize, query, .{}, .{}) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
@@ -99,33 +132,15 @@ pub fn count(db: *sql.Db, comptime query: []const u8) !usize {
     return result.?;
 }
 
-pub fn select(comptime T: type, allocator: Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
+pub fn oneAlloc(comptime T: type, allocator: Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
     return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
 
-pub fn selectAll(
-    comptime T: type,
-    allocator: Allocator,
-    db: *sql.Db,
-    comptime query: []const u8,
-    opts: anytype,
-) ![]T {
-    var stmt = db.prepare(query) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-    defer stmt.deinit();
-    return stmt.all(T, allocator, .{}, opts) catch |err| {
-        l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
 pub fn insert(db: *sql.Db, comptime query: []const u8, args: anytype) !void {
-    @setEvalBranchQuota(2000);
+    // @setEvalBranchQuota(2000);
 
     db.exec(query, .{}, args) catch |err| {
         l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
