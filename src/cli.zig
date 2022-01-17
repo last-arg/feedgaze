@@ -16,6 +16,8 @@ const expect = std.testing.expect;
 const assert = std.debug.assert;
 const Storage = @import("feed_db.zig").Storage;
 
+// TODO: reorganize Cli and its functions
+// Use file root as struct or create separate struct (Cli)?
 pub fn makeCli(
     allocator: Allocator,
     feed_db: *Storage,

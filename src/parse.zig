@@ -233,10 +233,6 @@ pub const Feed = struct {
     // Atom: title (required)
     // Rss: title (required)
     title: []const u8,
-    // Atom: id (required). Has to be URI.
-    // Rss: link (required). Not the best option but should do
-    // TODO: don't make id optional?
-    id: ?[]const u8,
     // Atom: updated (required)
     // Rss: pubDate (optional)
     updated_raw: ?[]const u8 = null,
@@ -341,7 +337,6 @@ pub const Atom = struct {
         var field: Field = .ignore;
 
         var feed_title: ?[]const u8 = null;
-        var feed_id: ?[]const u8 = null;
         var feed_date_raw: ?[]const u8 = null;
         var feed_link: ?[]const u8 = null;
         var feed_link_rel: []const u8 = "alternate";
@@ -443,16 +438,13 @@ pub const Atom = struct {
                     switch (state) {
                         .feed => {
                             switch (field) {
-                                .id => {
-                                    feed_id = value;
-                                },
                                 .title => {
                                     feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
                                 },
                                 .updated => {
                                     feed_date_raw = value;
                                 },
-                                .ignore, .link, .published => {},
+                                .ignore, .link, .published, .id => {},
                             }
                         },
                         .entry => {
@@ -495,7 +487,6 @@ pub const Atom = struct {
 
         var result = Feed{
             .title = feed_title orelse return error.InvalidAtomFeed,
-            .id = feed_id,
             .link = feed_link,
             .updated_raw = feed_date_raw,
             .updated_timestamp = updated_timestamp,
@@ -576,7 +567,7 @@ pub const Atom = struct {
     }
 };
 
-test "Atom.parse" {
+test "@active Atom.parse" {
     l.warn("\n", .{});
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -584,7 +575,6 @@ test "Atom.parse" {
     const contents = @embedFile("../test/atom.xml");
     const result = try Atom.parse(&arena, contents);
     try testing.expectEqualStrings("Example Feed", result.title);
-    try testing.expectEqualStrings("urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6", result.id.?);
     try testing.expectEqualStrings("http://example.org/feed/", result.link.?);
     try testing.expectEqualStrings("2012-12-13T18:30:02Z", result.updated_raw.?);
 
@@ -597,7 +587,6 @@ test "Atom.parse" {
         const item = result.items[0];
         try testing.expectEqualStrings("Atom-Powered Robots Run Amok", item.title);
         try testing.expectEqualStrings("http://example.org/2003/12/13/atom03", item.link.?);
-        try testing.expectEqualStrings("urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?);
         try testing.expectEqualStrings("2008-11-13T18:30:02Z", item.updated_raw.?);
     }
 
@@ -605,7 +594,6 @@ test "Atom.parse" {
         const item = result.items[1];
         try testing.expectEqualStrings("Entry one&#39;s 1", item.title);
         try testing.expectEqualStrings("http://example.org/2008/12/13/entry-1", item.link.?);
-        try testing.expectEqualStrings("urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?);
         try testing.expectEqualStrings("2005-12-13T18:30:02Z", item.updated_raw.?);
     }
 }
@@ -853,7 +841,6 @@ pub const Rss = struct {
 
         const result = Feed{
             .title = feed_title orelse return error.InvalidRssFeed,
-            .id = null,
             .link = feed_link,
             .updated_raw = date_raw,
             .items = items.toOwnedSlice(),
@@ -988,7 +975,7 @@ pub const Rss = struct {
     }
 };
 
-test "Rss.parse" {
+test "@active Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const contents = @embedFile("../test/sample-rss-2.xml");
