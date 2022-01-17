@@ -446,10 +446,7 @@ pub const Atom = struct {
                                     feed_id = value;
                                 },
                                 .title => {
-                                    // TODO: whole title can be in pieces.
-                                    // Not confirmed but if it happens in item title should also happend here
-                                    // Save start and end index of title
-                                    feed_title = value;
+                                    feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
                                 },
                                 .updated => {
                                     feed_date_raw = value;
@@ -463,10 +460,7 @@ pub const Atom = struct {
                                     id = value;
                                 },
                                 .title => {
-                                    // TODO: whole title can be in pieces.
-                                    // Save start and end index of title
-                                    print("atom: |{s}|\n", .{value});
-                                    title = value;
+                                    title = xmlCharacterData(&xml_parser, contents, value, "title");
                                 },
                                 .updated => {
                                     updated_raw = value;
@@ -508,6 +502,29 @@ pub const Atom = struct {
         };
 
         return result;
+    }
+
+    fn xmlCharacterData(
+        xml_parser: *xml.Parser,
+        contents: []const u8,
+        start_value: []const u8,
+        close_tag: []const u8,
+    ) []const u8 {
+        var end_value = start_value;
+        while (xml_parser.next()) |item_event| {
+            switch (item_event) {
+                .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
+                .character_data => |title_value| end_value = title_value,
+                else => std.debug.panic("Xml(Atom): Failed to parse {s}'s value\n", .{close_tag}),
+            }
+        }
+
+        if (start_value.ptr == end_value.ptr) return start_value;
+
+        const content_ptr = @ptrToInt(contents.ptr);
+        const start_index = @ptrToInt(start_value.ptr) - content_ptr;
+        const end_index = @ptrToInt(end_value.ptr) + end_value.len - content_ptr;
+        return contents[start_index..end_index];
     }
 
     // Atom updated_timestamp: http://www.faqs.org/rfcs/rfc3339.html
@@ -562,10 +579,9 @@ test "Atom.parse" {
     l.warn("\n", .{});
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
 
     const contents = @embedFile("../test/atom.xml");
-    const result = try Atom.parse(allocator, contents);
+    const result = try Atom.parse(&arena, contents);
     try testing.expectEqualStrings("Example Feed", result.title);
     try testing.expectEqualStrings("urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6", result.id.?);
     try testing.expectEqualStrings("http://example.org/feed/", result.link.?);
@@ -578,18 +594,18 @@ test "Atom.parse" {
 
     {
         const item = result.items[0];
-        try expect(mem.eql(u8, "Atom-Powered Robots Run Amok", item.title));
-        try expect(mem.eql(u8, "http://example.org/2003/12/13/atom03", item.link.?));
-        try expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
-        try expect(mem.eql(u8, "2008-11-13T18:30:02Z", item.updated_raw.?));
+        try testing.expectEqualStrings("Atom-Powered Robots Run Amok", item.title);
+        try testing.expectEqualStrings("http://example.org/2003/12/13/atom03", item.link.?);
+        try testing.expectEqualStrings("urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?);
+        try testing.expectEqualStrings("2008-11-13T18:30:02Z", item.updated_raw.?);
     }
 
     {
         const item = result.items[1];
-        try expect(mem.eql(u8, "Entry 1", item.title));
-        try expect(mem.eql(u8, "http://example.org/2008/12/13/entry-1", item.link.?));
-        try expect(mem.eql(u8, "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?));
-        try expect(mem.eql(u8, "2005-12-13T18:30:02Z", item.updated_raw.?));
+        try testing.expectEqualStrings("Entry one&#39;s 1", item.title);
+        try testing.expectEqualStrings("http://example.org/2008/12/13/entry-1", item.link.?);
+        try testing.expectEqualStrings("urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a", item.id.?);
+        try testing.expectEqualStrings("2005-12-13T18:30:02Z", item.updated_raw.?);
     }
 }
 
@@ -857,7 +873,7 @@ pub const Rss = struct {
             switch (item_event) {
                 .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
                 .character_data => |title_value| end_value = title_value,
-                else => std.debug.panic("Xml(RSS): Failed to parse item's title value\n", .{}),
+                else => std.debug.panic("Xml(RSS): Failed to parse {s}'s value\n", .{close_tag}),
             }
         }
 
@@ -971,7 +987,7 @@ pub const Rss = struct {
     }
 };
 
-test "@active Rss.parse" {
+test "Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const contents = @embedFile("../test/sample-rss-2.xml");
