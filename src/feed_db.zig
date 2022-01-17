@@ -222,13 +222,15 @@ pub const Storage = struct {
         ;
 
         const current_time = std.time.timestamp();
+        var stack_fallback = std.heap.stackFallback(256, self.allocator);
+        const stack_allocator = stack_fallback.get();
         var stmt = try self.db.sql_db.prepare(query_all);
         defer stmt.deinit();
         var iter = try stmt.iterator(UrlFeed, .{});
-        while (try iter.nextAlloc(self.allocator, .{})) |row| {
+        while (try iter.nextAlloc(stack_allocator, .{})) |row| {
             defer {
-                if (row.etag) |etag| self.allocator.free(etag);
-                self.allocator.free(row.location);
+                if (row.etag) |etag| stack_allocator.free(etag);
+                stack_allocator.free(row.location);
             }
 
             log.info("Updating: '{s}'", .{row.location});
@@ -349,12 +351,13 @@ pub const Storage = struct {
             \\WHERE feed_id = ?
         ;
 
+        var stack_fallback = std.heap.stackFallback(256, self.allocator);
+        const stack_allocator = stack_fallback.get();
         var stmt = try self.db.sql_db.prepare(Table.feed_update_local.selectAllWithLocation);
         defer stmt.deinit();
         var iter = try stmt.iterator(LocalFeed, .{});
-        while (try iter.nextAlloc(self.allocator, .{})) |row| {
-            defer self.allocator.free(row.location);
-
+        while (try iter.nextAlloc(stack_allocator, .{})) |row| {
+            defer stack_allocator.free(row.location);
             log.info("Updating: '{s}'", .{row.location});
             const file = try std.fs.openFileAbsolute(row.location, .{});
             defer file.close();
@@ -556,7 +559,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "@active Storage local" {
+test "Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
