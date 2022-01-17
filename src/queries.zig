@@ -84,21 +84,6 @@ pub const Table = struct {
             \\  AND pub_date_utc != ?
         ;
     };
-    pub const setting = struct {
-        pub const create =
-            \\CREATE TABLE IF NOT EXISTS setting(
-            \\  version INTEGER NOT NULL DEFAULT 1
-            \\);
-        ;
-        pub const insert =
-            \\INSERT INTO setting (version) VALUES (?{usize});
-        ;
-        pub const select =
-            \\SELECT
-            \\  version
-            \\FROM setting;
-        ;
-    };
 
     pub const feed_update_local = struct {
         pub const create =
