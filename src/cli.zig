@@ -354,11 +354,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn cleanItems(self: *Self) !void {
-            self.feed_db.cleanItems(self.allocator) catch {
-                log.warn("Failed to remove extra feed items.", .{});
+            try self.writer.print("Cleaning feeds' links.\n", .{});
+            self.feed_db.cleanItems() catch {
+                log.warn("Failed to clean feeds' links.", .{});
                 return;
             };
-            try self.writer.print("Clean feeds of extra links/items.\n", .{});
+            try self.writer.print("Feeds' items cleaned\n", .{});
         }
 
         pub fn printAllItems(self: *Self) !void {
@@ -659,25 +660,48 @@ test "Cli.cleanItems" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
-    var feed_db = try Storage.init(allocator, null);
-    // TODO: populate db with data
+    var storage = try Storage.init(allocator, null);
+    const parse_feed = parse.Feed{ .title = "Feed title", .id = null };
+    const id1 = try storage.addFeed(parse_feed, "feed_location");
+    const id2 = try storage.addFeed(parse_feed, "another_location");
+
+    const feed_db = @import("feed_db.zig");
+    feed_db.g.max_items_per_feed = 2;
+    var first_title1 = "items1: first title";
+    const items1: []parse.Feed.Item = &[_]parse.Feed.Item{
+        .{ .title = first_title1 },
+        .{ .title = "items1: second title" },
+        .{ .title = "items1: third title" },
+    };
+
+    var first_title2 = "items2: first title";
+    const items2 = &[_]parse.Feed.Item{.{ .title = first_title2 }};
+
+    try storage.addItems(id1, items1);
+    try storage.addItems(id2, items2);
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
-        .feed_db = &feed_db,
+        .feed_db = &storage,
         .writer = undefined,
         .reader = undefined,
     };
 
-    var first = "Clean feeds of extra links/items.\n";
+    var first = "Cleaning feeds' links.\n";
     var text_io = TestIO{
-        .expected_actions = &[_]TestIO.Action{.{ .write = first }},
+        .expected_actions = &[_]TestIO.Action{ .{ .write = first }, .{ .write = "Feeds' items cleaned\n" } },
     };
 
     cli.writer = text_io.writer();
     try cli.cleanItems();
+    const count_query = "select count(feed_id) from item WHERE feed_id = ?";
+
+    const count1 = try storage.db.one(usize, count_query, .{id1});
+    try expect(count1.? == feed_db.g.max_items_per_feed);
+    const count2 = try storage.db.one(usize, count_query, .{id2});
+    try expect(count2.? == items2.len);
 }
 
 test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
@@ -1138,7 +1162,7 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u
     try writer.print("Feed added {s}\n", .{url});
 }
 
-test "@active addFeedHttp()" {
+test "addFeedHttp()" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
 

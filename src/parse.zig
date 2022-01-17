@@ -235,6 +235,7 @@ pub const Feed = struct {
     title: []const u8,
     // Atom: id (required). Has to be URI.
     // Rss: link (required). Not the best option but should do
+    // TODO: don't make id optional?
     id: ?[]const u8,
     // Atom: updated (required)
     // Rss: pubDate (optional)
@@ -243,7 +244,7 @@ pub const Feed = struct {
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
-    items: []Item,
+    items: []Item = &[_]Item{},
 
     pub const Item = struct {
         // Atom: title (required)
@@ -1100,3 +1101,5 @@ test "isRss(), isAtom()" {
     try expect(isRss(@embedFile("../test/sample-rss-091.xml")));
     try expect(isAtom(@embedFile("../test/atom.xml")));
 }
+
+// TODO: test streaming
