@@ -27,10 +27,8 @@ pub const Storage = struct {
     db: db.Db,
     allocator: Allocator,
 
-    pub fn init(allocator: Allocator, location: ?[]const u8) !Self {
-        var sql_db = try db.createDb(allocator, location);
-        try db.setup(&sql_db);
-        return Self{ .db = db.Db{ .sql_db = sql_db, .allocator = allocator }, .allocator = allocator };
+    pub fn init(allocator: Allocator, location: ?[:0]const u8) !Self {
+        return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
     pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !usize {
@@ -196,7 +194,7 @@ pub const Storage = struct {
     }
 
     pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
-        const DbResultUrl = struct {
+        const UrlFeed = struct {
             location: []const u8,
             etag: ?[]const u8,
             feed_id: usize,
@@ -223,27 +221,29 @@ pub const Storage = struct {
             \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
         ;
 
-        // TODO: use sqlite iterator instead?
-        // Could save memory. Would release after feed's update is done
-        const url_updates = try self.db.selectAll(DbResultUrl, query_all, .{});
-        // defer allocator.free(url_updates);
-
         const current_time = std.time.timestamp();
+        var stmt = try self.db.sql_db.prepare(query_all);
+        defer stmt.deinit();
+        var iter = try stmt.iterator(UrlFeed, .{});
+        while (try iter.nextAlloc(self.allocator, .{})) |row| {
+            defer {
+                if (row.etag) |etag| self.allocator.free(etag);
+                self.allocator.free(row.location);
+            }
 
-        for (url_updates) |obj| {
-            log.info("Updating: '{s}'", .{obj.location});
+            log.info("Updating: '{s}'", .{row.location});
             if (!opts.force) {
                 const check_date: i64 = blk: {
-                    if (obj.cache_control_max_age) |sec| {
+                    if (row.cache_control_max_age) |sec| {
                         // Uses cache_control_max_age, last_update
-                        break :blk obj.last_update + sec;
+                        break :blk row.last_update + sec;
                     }
-                    if (obj.expires_utc) |sec| {
+                    if (row.expires_utc) |sec| {
                         break :blk sec;
                     }
-                    break :blk obj.last_update + @intCast(i64, obj.update_interval);
+                    break :blk row.last_update + @intCast(i64, row.update_interval);
                 };
-                if (obj.expires_utc != null and check_date > obj.expires_utc.?) {
+                if (row.expires_utc != null and check_date > row.expires_utc.?) {
                     log.info("\tSkip update: Not needed", .{});
                     continue;
                 } else if (check_date > current_time) {
@@ -254,7 +254,7 @@ pub const Storage = struct {
 
             var date_buf: [29]u8 = undefined;
             const last_modified: ?[]const u8 = blk: {
-                if (obj.last_modified_utc) |last_modified_utc| {
+                if (row.last_modified_utc) |last_modified_utc| {
                     const date = Datetime.fromTimestamp(last_modified_utc);
                     const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
                     const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
@@ -273,7 +273,7 @@ pub const Storage = struct {
 
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const resp_union = try opts.resolveUrl(&arena, obj.location, last_modified, obj.etag);
+            const resp_union = try opts.resolveUrl(&arena, row.location, last_modified, row.etag);
 
             switch (resp_union) {
                 .not_modified => {
@@ -303,12 +303,12 @@ pub const Storage = struct {
                 resp.etag,
                 current_time,
                 // where
-                obj.feed_id,
+                row.feed_id,
             });
 
             if (!opts.force) {
-                if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-                    rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+                if (rss_feed.updated_timestamp != null and row.feed_updated_timestamp != null and
+                    rss_feed.updated_timestamp.? == row.feed_updated_timestamp.?)
                 {
                     log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                     continue;
@@ -321,16 +321,16 @@ pub const Storage = struct {
                 rss_feed.updated_raw,
                 rss_feed.updated_timestamp,
                 // where
-                obj.feed_id,
+                row.feed_id,
             });
 
-            try self.addItems(obj.feed_id, rss_feed.items);
-            log.info("Updated: '{s}'", .{obj.location});
+            try self.addItems(row.feed_id, rss_feed.items);
+            log.info("Updated: '{s}'", .{row.location});
         }
     }
 
     pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
-        const DbResultLocal = struct {
+        const LocalFeed = struct {
             location: []const u8,
             feed_id: usize,
             feed_updated_timestamp: ?i64,
@@ -338,11 +338,6 @@ pub const Storage = struct {
             last_update: i64,
             last_modified_timestamp: ?i64,
         };
-
-        const local_updates = try self.db.selectAll(DbResultLocal, Table.feed_update_local.selectAllWithLocation, .{});
-        // defer allocator.free(local_updates);
-
-        if (local_updates.len == 0) return;
 
         var contents = try ArrayList(u8).initCapacity(self.allocator, 4096);
         defer contents.deinit();
@@ -354,13 +349,18 @@ pub const Storage = struct {
             \\WHERE feed_id = ?
         ;
 
-        for (local_updates) |obj| {
-            log.info("Updating: '{s}'", .{obj.location});
-            const file = try std.fs.openFileAbsolute(obj.location, .{});
+        var stmt = try self.db.sql_db.prepare(Table.feed_update_local.selectAllWithLocation);
+        defer stmt.deinit();
+        var iter = try stmt.iterator(LocalFeed, .{});
+        while (try iter.nextAlloc(self.allocator, .{})) |row| {
+            defer self.allocator.free(row.location);
+
+            log.info("Updating: '{s}'", .{row.location});
+            const file = try std.fs.openFileAbsolute(row.location, .{});
             defer file.close();
             var file_stat = try file.stat();
             if (!opts.force) {
-                if (obj.last_modified_timestamp) |last_modified| {
+                if (row.last_modified_timestamp) |last_modified| {
                     const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
                     if (last_modified == mtime_sec) {
                         log.info("\tSkipping update: File hasn't been modified", .{});
@@ -379,12 +379,12 @@ pub const Storage = struct {
             try self.db.exec(query_update_local, .{
                 mtime_sec,
                 // where
-                obj.feed_id,
+                row.feed_id,
             });
 
             if (!opts.force) {
-                if (rss_feed.updated_timestamp != null and obj.feed_updated_timestamp != null and
-                    rss_feed.updated_timestamp.? == obj.feed_updated_timestamp.?)
+                if (rss_feed.updated_timestamp != null and row.feed_updated_timestamp != null and
+                    rss_feed.updated_timestamp.? == row.feed_updated_timestamp.?)
                 {
                     log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                     continue;
@@ -397,11 +397,11 @@ pub const Storage = struct {
                 rss_feed.updated_raw,
                 rss_feed.updated_timestamp,
                 // where
-                obj.feed_id,
+                row.feed_id,
             });
 
-            try self.addItems(obj.feed_id, rss_feed.items);
-            log.info("Updated: '{s}'", .{obj.location});
+            try self.addItems(row.feed_id, rss_feed.items);
+            log.info("Updated: '{s}'", .{row.location});
         }
     }
 
@@ -556,7 +556,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "Storage local" {
+test "@active Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
