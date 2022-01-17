@@ -1,15 +1,13 @@
 const std = @import("std");
 const sql = @import("sqlite");
 const Allocator = std.mem.Allocator;
-const l = std.log;
+const log = std.log;
 const testing = std.testing;
 const print = std.debug.print;
 const expect = testing.expect;
 const shame = @import("shame.zig");
 const Table = @import("queries.zig").Table;
 
-// TODO: make SQL_ERRORs into log.err()
-// TODO: rename 'l' to 'log'
 pub const Db = struct {
     const Self = @This();
     sql_db: sql.Db,
@@ -36,7 +34,7 @@ pub const Db = struct {
 
     pub fn exec(self: *Self, comptime query: []const u8, args: anytype) !void {
         self.sql_db.exec(query, .{}, args) catch |err| {
-            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
             return err;
         };
     }
@@ -44,14 +42,14 @@ pub const Db = struct {
     // Non-alloc select query that returns one or no rows
     pub fn one(self: *Self, comptime T: type, comptime query: []const u8, args: anytype) !?T {
         return self.sql_db.one(T, query, .{}, args) catch |err| {
-            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
             return err;
         };
     }
 
     pub fn oneAlloc(comptime T: type, allocator: Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
         return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
-            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
             return err;
         };
     }
@@ -63,12 +61,12 @@ pub const Db = struct {
         opts: anytype,
     ) ![]T {
         var stmt = self.sql_db.prepare(query) catch |err| {
-            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
             return err;
         };
         defer stmt.deinit();
         return stmt.all(T, self.allocator, .{}, opts) catch |err| {
-            l.warn("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
             return err;
         };
     }
@@ -86,7 +84,7 @@ pub fn setup(db: *Db) !void {
             if (@hasDecl(decl.data.Type, "create")) {
                 const sql_create = @field(decl.data.Type, "create");
                 db.sql_db.exec(sql_create, .{}, .{}) catch |err| {
-                    l.warn("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.sql_db.getDetailedError().message, sql_create });
+                    log.err("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.sql_db.getDetailedError().message, sql_create });
                     return err;
                 };
             }
@@ -106,7 +104,7 @@ pub fn verifyTables(db: *sql.Db) bool {
     return true;
 }
 
-test "create and veriftyTables" {
+test "@active create and veriftyTables" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
