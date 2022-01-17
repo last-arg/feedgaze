@@ -14,11 +14,11 @@ const db = @import("db.zig");
 const shame = @import("shame.zig");
 const expect = std.testing.expect;
 const assert = std.debug.assert;
-const FeedDb = @import("feed_db.zig").FeedDb;
+const Storage = @import("feed_db.zig").Storage;
 
 pub fn makeCli(
     allocator: Allocator,
-    feed_db: *FeedDb,
+    feed_db: *Storage,
     writer: anytype,
     reader: anytype,
 ) Cli(@TypeOf(writer), @TypeOf(reader)) {
@@ -41,7 +41,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         const Self = @This();
 
         allocator: Allocator,
-        feed_db: *FeedDb,
+        feed_db: *Storage,
         writer: Writer,
         reader: Reader,
 
@@ -580,7 +580,7 @@ const TestCounts = struct {
     url: usize = 0,
 };
 
-fn expectCounts(feed_db: *FeedDb, counts: TestCounts) !void {
+fn expectCounts(feed_db: *Storage, counts: TestCounts) !void {
     const feed_count_query = "select count(id) from feed";
     const local_count_query = "select count(feed_id) from feed_update_local";
     const url_count_query = "select count(feed_id) from feed_update_http";
@@ -604,7 +604,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
         .allocator = allocator,
@@ -661,7 +661,7 @@ test "Cli.cleanItems" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
     // TODO: populate db with data
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
@@ -689,7 +689,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
     const do_print = false;
     var counts = TestCounts{};
 
@@ -794,7 +794,7 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
     const do_print = true;
     var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
@@ -1095,7 +1095,7 @@ pub fn parseFeedResponseBody(
     };
 }
 
-pub fn addFeedHttp(allocator: Allocator, feed_db: *FeedDb, input_url: []const u8, writer: anytype, reader: anytype) !void {
+pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u8, writer: anytype, reader: anytype) !void {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
@@ -1153,7 +1153,7 @@ test "@active addFeedHttp()" {
     };
     const writer = text_io.writer();
     const reader = text_io.reader();
-    var feed_db = try FeedDb.init(base_allocator, null);
+    var feed_db = try Storage.init(base_allocator, null);
 
     try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
 }

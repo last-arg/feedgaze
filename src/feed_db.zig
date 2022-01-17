@@ -22,10 +22,8 @@ pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
 };
 
-// TODO?: rename to Storage?
-pub const FeedDb = struct {
+pub const Storage = struct {
     const Self = @This();
-    // db: sql.Db,
     db: db.Db,
     allocator: Allocator,
 
@@ -497,7 +495,7 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .ok = ok };
 }
 
-test "FeedDb fake net test" {
+test "Storage fake net" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -505,7 +503,7 @@ test "FeedDb fake net test" {
     const allocator = arena.allocator();
 
     const test_data = testDataRespOk();
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
     var feed = try parse.parse(&arena, test_data.body);
 
     var savepoint = try feed_db.db.sql_db.savepoint("test_net");
@@ -558,13 +556,13 @@ test "FeedDb fake net test" {
     savepoint.commit();
 }
 
-test "FeedDb local" {
+test "Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    var feed_db = try FeedDb.init(allocator, null);
+    var feed_db = try Storage.init(allocator, null);
 
     // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
     const rel_path = "test/sample-rss-2.xml";

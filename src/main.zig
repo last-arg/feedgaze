@@ -5,7 +5,7 @@ const mem = std.mem;
 const process = std.process;
 const Allocator = std.mem.Allocator;
 const command = @import("cli.zig");
-const FeedDb = @import("feed_db.zig").FeedDb;
+const Storage = @import("feed_db.zig").Storage;
 const Cli = command.Cli;
 
 pub const log_level = std.log.Level.debug;
@@ -30,7 +30,7 @@ pub fn main() anyerror!void {
     //     .{ .read = true, .truncate = false },
     // );
 
-    var feed_db = try FeedDb.init(allocator, abs_location);
+    var feed_db = try Storage.init(allocator, abs_location);
 
     var iter = process.args();
     _ = iter.skip();
