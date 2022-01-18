@@ -32,7 +32,7 @@ pub fn makeCli(
     };
 }
 
-pub const UpdateOptions = struct {
+pub const CliOptions = struct {
     url: bool = true,
     local: bool = true,
     force: bool = false,
@@ -305,7 +305,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         // TODO: Cli.updateFeeds
-        pub fn updateFeeds(self: *Self, opts: UpdateOptions) !void {
+        pub fn updateFeeds(self: *Self, opts: CliOptions) !void {
             if (opts.url) {
                 self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
                     log.err("Failed to update feeds", .{});
@@ -575,6 +575,7 @@ test "Cli.cleanItems" {
     try expect(count2.? == items2.len);
 }
 
+// TODO: remove or redo
 test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
@@ -681,6 +682,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     try expectCounts(&feed_db, counts);
 }
 
+// TODO: remove or redo
 test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     std.testing.log_level = .debug;
     const g = @import("feed_db.zig").g;
@@ -1010,7 +1012,7 @@ test "add new feed" {
     try cli.addFeed(url);
 }
 
-test "add new feed: already exists, update instead" {
+test "add new feed: feed exists, update instead" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
 

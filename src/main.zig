@@ -51,10 +51,10 @@ pub fn main() anyerror!void {
                 const value = try value_err;
                 try cli.addFeed(value);
             } else {
-                log.err("Subcommand add missing feed location", .{});
+                log.err("Subcommand add missing feed (url or file) location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
-            var opts = command.UpdateOptions{};
+            var opts = command.CliOptions{};
             while (iter.next(allocator)) |value_err| {
                 const value = try value_err;
                 if (mem.eql(u8, "--all", value)) {
