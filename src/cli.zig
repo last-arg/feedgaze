@@ -1140,31 +1140,34 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u
         },
         .ok => {},
     }
-    if (!mem.eql(u8, url, resp.ok.location)) {
-        log.info("New url '{s}'", .{resp.ok.location});
-    }
+    const location = resp.ok.location;
     log.info("Feed fetched", .{});
+    log.info("Feed location '{s}'", .{location});
 
     log.info("Parsing feed", .{});
     var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
     log.info("Feed parsed", .{});
 
-    // TODO: check if resp.ok.location in db already?
-    // true => update feed instead
-    // false => add feed
-
-    log.info("Saving feed", .{});
     if (feed.link == null) feed.link = url;
+
     var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
     defer savepoint.rollback();
-    const feed_id = try feed_db.addFeed(feed, resp.ok.location);
-    try feed_db.addFeedUrl(feed_id, resp.ok);
-    try feed_db.addItems(feed_id, feed.items);
+    const query = "select id, updated_timestamp from feed where location = ? limit 1;";
+    if (try feed_db.db.one(Storage.UpdateFeedRow, query, .{location})) |row| {
+        try writer.print("Feed already exists\nUpdating feed instead\n", .{});
+        try feed_db.updateUrlFeed(row, resp.ok, feed, .{ .force = true });
+        try writer.print("Feed updated {s}\n", .{location});
+    } else {
+        log.info("Saving feed", .{});
+        const feed_id = try feed_db.addFeed(feed, location);
+        try feed_db.addFeedUrl(feed_id, resp.ok);
+        try feed_db.addItems(feed_id, feed.items);
+        try writer.print("Feed added {s}\n", .{location});
+    }
     savepoint.commit();
-    try writer.print("Feed added {s}\n", .{url});
 }
 
-test "addFeedHttp()" {
+test "addFeedHttp() add" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
 
@@ -1180,6 +1183,27 @@ test "addFeedHttp()" {
     const writer = text_io.writer();
     const reader = text_io.reader();
     var feed_db = try Storage.init(base_allocator, null);
+    try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
+}
 
+test "@active addFeedHttp() update" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+
+    const url = "https://lobste.rs/";
+    var actions = [_]TestIO.Action{
+        .{ .write = "Adding feed " ++ url ++ "\n" },
+        .{ .write = "Feed already exists\nUpdating feed instead\n" },
+        .{ .write = "Feed updated " ++ url ++ "\n" },
+    };
+    var text_io = TestIO{
+        .do_print = true,
+        .expected_actions = &actions,
+    };
+    const writer = text_io.writer();
+    const reader = text_io.reader();
+    var feed_db = try Storage.init(base_allocator, null);
+    const feed = parse.Feed{ .title = "Lobster title" };
+    _ = try feed_db.addFeed(feed, url);
     try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
 }

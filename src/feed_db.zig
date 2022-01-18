@@ -22,6 +22,7 @@ pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
 };
 
+// TODO: sqlite primary keys are 64 bit
 pub const Storage = struct {
     const Self = @This();
     db: db.Db,
@@ -181,7 +182,7 @@ pub const Storage = struct {
         }
     }
 
-    const UpdateOptions = struct {
+    pub const UpdateOptions = struct {
         force: bool = false,
         // For testing purposes
         resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
@@ -248,7 +249,7 @@ pub const Storage = struct {
             \\  feed.location as location,
             \\  etag,
             \\  feed_id,
-            \\  feed.updated_timestamp as feed_update_timestamp,
+            \\  feed.updated_timestamp as feed_updated_timestamp,
             \\  update_interval,
             \\  last_update,
             \\  expires_utc,
@@ -265,7 +266,6 @@ pub const Storage = struct {
         defer stmt.deinit();
         var iter = try stmt.iterator(UrlFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
-            print("end_index: {d} | buffer.len: {d}\n", .{ stack_fallback.fixed_buffer_allocator.end_index, stack_fallback.fixed_buffer_allocator.buffer.len });
             defer {
                 // IMPORTANT: Have to free memory in reverse, important when using FixedBufferAllocator.
                 // FixedBufferAllocator uses end_index to keep track of available memory
@@ -279,6 +279,7 @@ pub const Storage = struct {
 
             log.info("Updating: '{s}'", .{row.location});
             if (!opts.force) {
+                // TODO: maybe can move these checks into SQL?
                 const check_date: i64 = blk: {
                     if (row.cache_control_max_age) |sec| {
                         // Uses cache_control_max_age, last_update
@@ -342,38 +343,55 @@ pub const Storage = struct {
                 else => try parse.parse(&arena, resp.body),
             };
 
-            try self.db.exec(Table.feed_update_http.update_id, .{
-                resp.cache_control_max_age,
-                resp.expires_utc,
-                resp.last_modified_utc,
-                resp.etag,
-                current_time,
-                // where
-                row.feed_id,
-            });
-
-            if (!opts.force) {
-                if (rss_feed.updated_timestamp != null and row.feed_updated_timestamp != null and
-                    rss_feed.updated_timestamp.? == row.feed_updated_timestamp.?)
-                {
-                    log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
-                    continue;
-                }
-            }
-
-            try self.db.exec(Table.feed.update_where_id, .{
-                rss_feed.title,
-                rss_feed.link,
-                rss_feed.updated_raw,
-                rss_feed.updated_timestamp,
-                // where
-                row.feed_id,
-            });
-
-            try self.addItems(row.feed_id, rss_feed.items);
+            const update_feed_row = .{ .feed_id = row.feed_id, .updated_timestamp = row.feed_updated_timestamp };
+            try self.updateUrlFeed(update_feed_row, resp, rss_feed, opts);
             log.info("Updated: '{s}'", .{row.location});
         }
-        print("end_index: {d} | buffer.len: {d}\n", .{ stack_fallback.fixed_buffer_allocator.end_index, stack_fallback.fixed_buffer_allocator.buffer.len });
+    }
+
+    pub const UpdateFeedRow = struct { feed_id: usize, updated_timestamp: ?i64 };
+    pub fn updateUrlFeed(
+        self: *Self,
+        row: UpdateFeedRow,
+        resp: http.Ok,
+        feed: parse.Feed,
+        opts: UpdateOptions,
+    ) !void {
+        const query_http_update =
+            \\UPDATE feed_update_http SET
+            \\  cache_control_max_age = ?,
+            \\  expires_utc = ?,
+            \\  last_modified_utc = ?,
+            \\  etag = ?,
+            \\  last_update = (strftime('%s', 'now'))
+            \\WHERE feed_id = ?
+        ;
+        try self.db.exec(query_http_update, .{
+            resp.cache_control_max_age,
+            resp.expires_utc,
+            resp.last_modified_utc,
+            resp.etag,
+            // where
+            row.feed_id,
+        });
+
+        if (!opts.force) {
+            if (feed.updated_timestamp != null and row.updated_timestamp != null and
+                feed.updated_timestamp.? == row.updated_timestamp.?)
+            {
+                log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                return;
+            }
+        }
+
+        try self.db.exec(Table.feed.update_where_id, .{
+            feed.title,       feed.link,
+            feed.updated_raw, feed.updated_timestamp,
+            // where
+            row.feed_id,
+        });
+
+        try self.addItems(row.feed_id, feed.items);
     }
 
     pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
