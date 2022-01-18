@@ -1127,20 +1127,14 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u
 
     const url = try makeValidUrl(arena.allocator(), input_url);
     try writer.print("Adding feed {s}\n", .{url});
-    errdefer log.err("Failed to add new feed {s}\n", .{url});
-    // TODO: check db for url == location?
-    // Check before making http request?
-    // Check after making http request?
     const resp = try getFeedHttp(&arena, url, writer, reader);
     switch (resp) {
         .fail => |msg| {
-            log.err("Failed to add new feed {s}", .{url});
             log.err("Failed to resolve url {s}", .{url});
             log.err("Failed message: {s}", .{msg});
             return;
         },
         .not_modified => {
-            log.err("Failed to add new feed {s}", .{url});
             log.err("Request returned not modified which should not be happening when adding new feed", .{});
             return;
         },
@@ -1154,6 +1148,10 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u
     log.info("Parsing feed", .{});
     var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
     log.info("Feed parsed", .{});
+
+    // TODO: check if resp.ok.location in db already?
+    // true => update feed instead
+    // false => add feed
 
     log.info("Saving feed", .{});
     if (feed.link == null) feed.link = url;
