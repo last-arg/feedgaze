@@ -562,7 +562,10 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .ok = ok };
 }
 
-test "@active Storage fake net" {
+// Can't run this test with cli.zig addFeedHttp tests
+// Will throw a type signature error pertaining to UpdateOptions.resolveUrl function
+// Don't run feed_db.zig and cli.zig tests that touch UpdateOptions together
+test "Storage fake net" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

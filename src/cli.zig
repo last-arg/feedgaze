@@ -72,127 +72,77 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
             if (abs_path_err) |abs_path| {
                 log.info("Add feed: '{s}'", .{abs_path});
-                errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
-                // Add local feed
-                const contents = try shame.getFileContents(self.allocator, abs_path);
-                const feed = try parse.parse(self.allocator, contents);
-                log.info("\tFeed.items: {}", .{feed.items.len});
+                // errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
+                // // Add local feed
+                // const contents = try shame.getFileContents(self.allocator, abs_path);
+                // const feed = try parse.parse(self.allocator, contents);
+                // log.info("\tFeed.items: {}", .{feed.items.len});
 
-                const id = try self.feed_db.addFeed(feed, abs_path);
+                // const id = try self.feed_db.addFeed(feed, abs_path);
 
-                const mtime_sec = blk: {
-                    const file = try fs.openFileAbsolute(abs_path, .{});
-                    defer file.close();
-                    const stat = try file.stat();
-                    break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
-                };
+                // const mtime_sec = blk: {
+                //     const file = try fs.openFileAbsolute(abs_path, .{});
+                //     defer file.close();
+                //     const stat = try file.stat();
+                //     break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+                // };
 
-                try self.feed_db.addFeedLocal(id, mtime_sec);
-                try self.feed_db.addItems(id, feed.items);
-                try self.feed_db.cleanItemsByFeedId(id);
-                try self.writer.print("Added local feed: {s}", .{abs_path});
+                // try self.feed_db.addFeedLocal(id, mtime_sec);
+                // try self.feed_db.addItems(id, feed.items);
+                // try self.feed_db.cleanItemsByFeedId(id);
+                // try self.writer.print("Added local feed: {s}", .{abs_path});
             } else |err| switch (err) {
-                error.FileNotFound => {
-                    log.info("Add feed: '{s}'", .{location_input});
-                    errdefer log.warn("Failed to add url feed: {s}", .{location_input});
-                    const url = try resolveLocation(self.allocator, location_input);
-                    log.info("url: '{s}?{s}'", .{ url.path, url.query });
-
-                    const resp = try resolveRequestToFeed(self.allocator, url, self.writer, self.reader);
-                    if (resp.body == null or resp.body.?.len == 0) {
-                        log.warn("No body to parse", .{});
-                        return error.NoBody;
-                    }
-
-                    // Parse feed data
-                    const feed = switch (resp.content_type) {
-                        .xml_atom => try parse.Atom.parse(self.allocator, resp.body.?),
-                        .xml_rss => try parse.Rss.parse(self.allocator, resp.body.?),
-                        .xml => try parse.parse(self.allocator, resp.body.?),
-                        .unknown => {
-                            log.warn("Unknown content type was returned\n", .{});
-                            return error.UnknownHttpContent;
-                        },
-                        .html => unreachable,
-                    };
-
-                    const location = blk: {
-                        if (resp.url.query.len == 0) {
-                            break :blk try fmt.allocPrint(self.allocator, "{s}://{s}{s}", .{
-                                resp.url.scheme,
-                                resp.url.host.name,
-                                resp.url.path,
-                            });
-                        } else {
-                            break :blk try fmt.allocPrint(self.allocator, "{s}://{s}{s}?{s}", .{
-                                resp.url.scheme,
-                                resp.url.host.name,
-                                resp.url.path,
-                                resp.url.query,
-                            });
-                        }
-                    };
-                    defer self.allocator.free(location);
-
-                    // Add feed
-                    const feed_id = try self.feed_db.addFeed(feed, location);
-                    try self.feed_db.addFeedUrl(feed_id, resp);
-                    try self.feed_db.addItems(feed_id, feed.items);
-                    try self.feed_db.cleanItemsByFeedId(feed_id);
-
-                    try self.writer.print("Added url feed: {s}\n", .{location});
-                },
+                error.FileNotFound => try self.addFeedHttp(location_input),
                 else => return err,
             }
         }
 
-        fn resolveLocation(allocator: Allocator, location: []const u8) !Uri {
-            var url = try http.makeUri(location);
-            if (std.ascii.endsWithIgnoreCase(url.host.name, "reddit.com")) {
-                log.info("reddit.com", .{});
-                const path_end = ".rss";
-                const path = url.path;
-                url.host.name = "old.reddit.com";
-                if (url.query.len == 0) url.query = "sort=new";
-                if (!std.ascii.endsWithIgnoreCase(path, ".rss")) {
-                    log.info("add .rss", .{});
-                    url.path = try fmt.allocPrint(allocator, "{s}/{s}", .{ path, path_end });
-                }
+        pub fn addFeedHttp(self: *Self, input_url: []const u8) !void {
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            const writer = self.writer;
+            const feed_db = self.feed_db;
+
+            const url = try makeValidUrl(arena.allocator(), input_url);
+            try writer.print("Adding feed {s}\n", .{url});
+            const resp = try getFeedHttp(&arena, url, writer, self.reader);
+            switch (resp) {
+                .fail => |msg| {
+                    log.err("Failed to resolve url {s}", .{url});
+                    log.err("Failed message: {s}", .{msg});
+                    return;
+                },
+                .not_modified => {
+                    log.err("Request returned not modified which should not be happening when adding new feed", .{});
+                    return;
+                },
+                .ok => {},
             }
+            const location = resp.ok.location;
+            log.info("Feed fetched", .{});
+            log.info("Feed location '{s}'", .{location});
 
-            return url;
-        }
+            log.info("Parsing feed", .{});
+            var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
+            log.info("Feed parsed", .{});
 
-        fn resolveRequestToFeed(
-            allocator: Allocator,
-            url: Uri,
-            writer: anytype,
-            reader: anytype,
-        ) anyerror!http.FeedResponse {
-            const req = http.FeedRequest{ .url = url };
-            const resp = try http.resolveRequest(allocator, req);
+            if (feed.link == null) feed.link = url;
 
-            if (resp.content_type == .html) {
-                const page_data = try parse.Html.parseLinks(allocator, resp.body.?);
-                log.info("{}", .{page_data.links.len});
-                if (page_data.links.len == 0) {
-                    // log.err("Found no RSS or Atom feed links", .{});
-                    try writer.print("Found no RSS or Atom feed links\n", .{});
-                    return error.NoRssOrAtomLinksFound;
-                }
-                const link = blk: {
-                    const index = try chooseFeedLink(page_data.links.len, writer, reader);
-                    break :blk page_data.links[index];
-                };
-                var rss_uri = try http.makeUri(link.href);
-                if (rss_uri.host.name.len == 0) {
-                    rss_uri.scheme = resp.url.scheme;
-                    rss_uri.host.name = resp.url.host.name;
-                }
-                return try resolveRequestToFeed(allocator, rss_uri, writer, reader);
+            var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
+            defer savepoint.rollback();
+            const query = "select id, updated_timestamp from feed where location = ? limit 1;";
+            if (try feed_db.db.one(Storage.UpdateFeedRow, query, .{location})) |row| {
+                try writer.print("Feed already exists\nUpdating feed instead\n", .{});
+                try feed_db.updateUrlFeed(row, resp.ok, feed, .{ .force = true });
+                try writer.print("Feed updated {s}\n", .{location});
+            } else {
+                log.info("Saving feed", .{});
+                const feed_id = try feed_db.addFeed(feed, location);
+                try feed_db.addFeedUrl(feed_id, resp.ok);
+                try feed_db.addItems(feed_id, feed.items);
+                try writer.print("Feed added {s}\n", .{location});
             }
-
-            return resp;
+            savepoint.commit();
         }
 
         const FeedData = union(enum) {
@@ -224,90 +174,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        fn chooseFeedLink(
-            nr_of_links: usize,
-            writer: anytype,
-            reader: anytype,
-        ) !usize {
-            var buf: [64]u8 = undefined;
-            const result_index = blk: {
-                while (true) {
-                    try writer.print("Enter link number: ", .{});
-                    const bytes = try reader.read(&buf);
-                    const input = buf[0 .. bytes - 1];
-                    const nr = fmt.parseUnsigned(u16, input, 10) catch {
-                        try writer.print(
-                            "Invalid number: '{s}'. Try again.\n",
-                            .{input},
-                        );
-                        continue;
-                    };
-                    if (nr < 1 or nr > nr_of_links) {
-                        try writer.print(
-                            "Number out of range: '{d}'. Try again.\n",
-                            .{nr},
-                        );
-                        continue;
-                    }
-                    break :blk nr - 1;
-                }
-            };
-
-            return result_index;
-
-            // switch (feed_data) {
-            //     .page => |page| {
-            //         try writer.print("Choose feed to add\n", .{});
-            //         const title = page.title orelse "<no-page-title>";
-            //         try writer.print("{s}\n{s}\n", .{ title, url.host.name });
-            //         for (page.links) |link, i| {
-            //             const link_title = page.links[i].title orelse "<no-title>";
-            //             if (link.href[0] != '/') {
-            //                 try writer.print("\t{d}. {s} -> {s}\n", .{ i + 1, link_title, link.href });
-            //             } else {
-            //                 try writer.print("\t{d}. {s} -> {s}://{s}{s}\n", .{
-            //                     i + 1,
-            //                     link_title,
-            //                     url.scheme,
-            //                     url.host.name,
-            //                     link.href,
-            //                 });
-            //             }
-            //         }
-
-            //         var buf: [64]u8 = undefined;
-            //         const result_index = blk: {
-            //             while (true) {
-            //                 try writer.print("Enter link number: ", .{});
-            //                 const bytes = try reader.read(&buf);
-            //                 const input = buf[0 .. bytes - 1];
-            //                 const nr = fmt.parseUnsigned(u16, input, 10) catch |err| {
-            //                     try writer.print(
-            //                         "Invalid number: '{s}'. Try again.\n",
-            //                         .{input},
-            //                     );
-            //                     continue;
-            //                 };
-            //                 if (nr < 1 or nr > page.links.len) {
-            //                     try writer.print(
-            //                         "Number out of range: '{d}'. Try again.\n",
-            //                         .{nr},
-            //                     );
-            //                     continue;
-            //                 }
-            //                 break :blk nr - 1;
-            //             }
-            //         };
-
-            //         return result_index;
-            //     },
-            //     .host => |host| {
-            //         log.info("{}", .{host});
-            //         return 0;
-            //     },
-            // }
-        }
-
+        // TODO: Cli.deleteFeed
         pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
             const results = try self.feed_db.search(self.allocator, search_input);
 
@@ -437,6 +304,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
+        // TODO: Cli.updateFeeds
         pub fn updateFeeds(self: *Self, opts: UpdateOptions) !void {
             if (opts.url) {
                 self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
@@ -485,6 +353,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
+        // TODO: Cli.search
         pub fn search(self: *Self, term: []const u8) !void {
             const results = try self.feed_db.search(self.allocator, term);
             if (results.len == 0) {
@@ -978,8 +847,6 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
     try expectCounts(&feed_db, counts);
 }
 
-// When deallocing have to check if input and output urls are different.
-// Because no allocations will be made if url is valid
 fn makeValidUrl(allocator: Allocator, url: []const u8) ![]const u8 {
     const no_http = !std.ascii.startsWithIgnoreCase(url, "http");
     const substr = "://";
@@ -992,7 +859,7 @@ fn makeValidUrl(allocator: Allocator, url: []const u8) ![]const u8 {
     } else if (no_slash) {
         return try fmt.allocPrint(allocator, "{s}/", .{url});
     }
-    return url;
+    return try fmt.allocPrint(allocator, "{s}", .{url});
 }
 
 test "makeValidUrl()" {
@@ -1121,55 +988,11 @@ pub fn parseFeedResponseBody(
     };
 }
 
-pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u8, writer: anytype, reader: anytype) !void {
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    const url = try makeValidUrl(arena.allocator(), input_url);
-    try writer.print("Adding feed {s}\n", .{url});
-    const resp = try getFeedHttp(&arena, url, writer, reader);
-    switch (resp) {
-        .fail => |msg| {
-            log.err("Failed to resolve url {s}", .{url});
-            log.err("Failed message: {s}", .{msg});
-            return;
-        },
-        .not_modified => {
-            log.err("Request returned not modified which should not be happening when adding new feed", .{});
-            return;
-        },
-        .ok => {},
-    }
-    const location = resp.ok.location;
-    log.info("Feed fetched", .{});
-    log.info("Feed location '{s}'", .{location});
-
-    log.info("Parsing feed", .{});
-    var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
-    log.info("Feed parsed", .{});
-
-    if (feed.link == null) feed.link = url;
-
-    var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
-    defer savepoint.rollback();
-    const query = "select id, updated_timestamp from feed where location = ? limit 1;";
-    if (try feed_db.db.one(Storage.UpdateFeedRow, query, .{location})) |row| {
-        try writer.print("Feed already exists\nUpdating feed instead\n", .{});
-        try feed_db.updateUrlFeed(row, resp.ok, feed, .{ .force = true });
-        try writer.print("Feed updated {s}\n", .{location});
-    } else {
-        log.info("Saving feed", .{});
-        const feed_id = try feed_db.addFeed(feed, location);
-        try feed_db.addFeedUrl(feed_id, resp.ok);
-        try feed_db.addItems(feed_id, feed.items);
-        try writer.print("Feed added {s}\n", .{location});
-    }
-    savepoint.commit();
-}
-
-test "addFeedHttp() add" {
+test "add new feed" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
 
     const url = "https://lobste.rs/";
     var actions = [_]TestIO.Action{
@@ -1182,11 +1005,12 @@ test "addFeedHttp() add" {
     };
     const writer = text_io.writer();
     const reader = text_io.reader();
-    var feed_db = try Storage.init(base_allocator, null);
-    try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
+    var feed_db = try Storage.init(arena.allocator(), null);
+    var cli = makeCli(arena.allocator(), &feed_db, writer, reader);
+    try cli.addFeed(url);
 }
 
-test "@active addFeedHttp() update" {
+test "add new feed: already exists, update instead" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
 
@@ -1205,5 +1029,6 @@ test "@active addFeedHttp() update" {
     var feed_db = try Storage.init(base_allocator, null);
     const feed = parse.Feed{ .title = "Lobster title" };
     _ = try feed_db.addFeed(feed, url);
-    try addFeedHttp(base_allocator, &feed_db, url, writer, reader);
+    var cli = makeCli(base_allocator, &feed_db, writer, reader);
+    try cli.addFeed(url);
 }
