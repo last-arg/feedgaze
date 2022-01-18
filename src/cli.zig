@@ -1128,7 +1128,9 @@ pub fn addFeedHttp(allocator: Allocator, feed_db: *Storage, input_url: []const u
     const url = try makeValidUrl(arena.allocator(), input_url);
     try writer.print("Adding feed {s}\n", .{url});
     errdefer log.err("Failed to add new feed {s}\n", .{url});
-    // TODO: check db for url?
+    // TODO: check db for url == location?
+    // Check before making http request?
+    // Check after making http request?
     const resp = try getFeedHttp(&arena, url, writer, reader);
     switch (resp) {
         .fail => |msg| {

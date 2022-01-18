@@ -193,6 +193,42 @@ pub const Storage = struct {
         try self.cleanItems();
     }
 
+    fn deallocFieldsLen(comptime T: type) u8 {
+        const meta = std.meta;
+        const fields = comptime meta.fields(T);
+        comptime var result = 0;
+        inline for (fields) |field| {
+            const is_slice = field.field_type == []const u8 or field.field_type == ?[]const u8 or
+                field.field_type == []u8 or field.field_type == ?[]u8;
+
+            if (is_slice) result += 1;
+        }
+        return result;
+    }
+
+    const DeAllocField = struct { is_optional: bool, name: []const u8 };
+    fn deallocFields(comptime T: type) [deallocFieldsLen(T)]DeAllocField {
+        const meta = std.meta;
+        const fields = comptime meta.fields(T);
+        const len = comptime deallocFieldsLen(T);
+        comptime var result: [len]DeAllocField = undefined;
+        inline for (fields) |field, i| {
+            const is_slice = field.field_type == []const u8 or field.field_type == ?[]const u8 or
+                field.field_type == []u8 or field.field_type == ?[]u8;
+
+            if (is_slice) {
+                const is_optional = switch (@typeInfo(field.field_type)) {
+                    .Pointer => false,
+                    .Optional => true,
+                    else => @compileError("Parsing UrlFeed struct failed."),
+                };
+                // Reverse fields' order
+                result[len - 1 - i] = .{ .is_optional = is_optional, .name = field.name };
+            }
+        }
+        return result;
+    }
+
     pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
         const UrlFeed = struct {
             location: []const u8,
@@ -206,6 +242,7 @@ pub const Storage = struct {
             cache_control_max_age: ?i64,
         };
 
+        const dealloc_fields = comptime deallocFields(UrlFeed);
         const query_all =
             \\SELECT
             \\  feed.location as location,
@@ -228,9 +265,16 @@ pub const Storage = struct {
         defer stmt.deinit();
         var iter = try stmt.iterator(UrlFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
+            print("end_index: {d} | buffer.len: {d}\n", .{ stack_fallback.fixed_buffer_allocator.end_index, stack_fallback.fixed_buffer_allocator.buffer.len });
             defer {
-                if (row.etag) |etag| stack_allocator.free(etag);
-                stack_allocator.free(row.location);
+                // IMPORTANT: Have to free memory in reverse, important when using FixedBufferAllocator.
+                // FixedBufferAllocator uses end_index to keep track of available memory
+                //
+                // dealloc_fields are in reverse order
+                inline for (dealloc_fields) |field| {
+                    const val = @field(row, field.name);
+                    if (field.is_optional) stack_allocator.free(val.?) else stack_allocator.free(val);
+                }
             }
 
             log.info("Updating: '{s}'", .{row.location});
@@ -329,6 +373,7 @@ pub const Storage = struct {
             try self.addItems(row.feed_id, rss_feed.items);
             log.info("Updated: '{s}'", .{row.location});
         }
+        print("end_index: {d} | buffer.len: {d}\n", .{ stack_fallback.fixed_buffer_allocator.end_index, stack_fallback.fixed_buffer_allocator.buffer.len });
     }
 
     pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
@@ -338,7 +383,7 @@ pub const Storage = struct {
             feed_updated_timestamp: ?i64,
             update_interval: usize,
             last_update: i64,
-            last_modified_timestamp: ?i64,
+            last_odified_timestamp: ?i64,
         };
 
         var contents = try ArrayList(u8).initCapacity(self.allocator, 4096);
@@ -484,6 +529,7 @@ fn testDataRespOk() http.Ok {
         .location = location,
         .body = contents,
         .content_type = http.ContentType.xml_rss,
+        .etag = "etag_value",
     };
 }
 
@@ -498,7 +544,7 @@ pub fn testResolveRequest(
     return http.FeedResponse{ .ok = ok };
 }
 
-test "Storage fake net" {
+test "@active Storage fake net" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
