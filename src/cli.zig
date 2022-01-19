@@ -153,7 +153,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             savepoint.commit();
         }
 
-        // TODO: Cli.deleteFeed
         pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
             const results = try self.feed_db.search(self.allocator, search_input);
 
@@ -191,9 +190,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
             }
 
-            // const del_query =
-            //     \\DELETE FROM feed WHERE id = ?;
-            // ;
             if (delete_nr > 0) {
                 const result = results[delete_nr - 1];
                 try self.feed_db.deleteFeed(result.id);
