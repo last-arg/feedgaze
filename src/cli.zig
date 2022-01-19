@@ -413,12 +413,10 @@ fn expectCounts(feed_db: *Storage, counts: TestCounts) !void {
     const local_count = try feed_db.db.one(usize, local_count_query, .{});
     const url_count = try feed_db.db.one(usize, url_count_query, .{});
     const item_feed_count = try feed_db.db.one(usize, item_count_query, .{});
-    print("feed_count: {} == {}\n", .{ feed_count, counts.feed });
     try expect(feed_count == counts.feed);
     try expect(local_count == counts.local);
     try expect(feed_count == counts.local + counts.url);
     try expect(url_count == counts.url);
-    print("item_feed_count: {} == {}\n", .{ item_feed_count, counts.feed });
     try expect(item_feed_count == counts.feed);
 }
 
@@ -634,7 +632,6 @@ test "local feed: add, update, delete" {
     try expectCounts(&feed_db, counts);
 }
 
-// TODO: fix tests
 test "live(url): add, update, delete" {
     std.testing.log_level = .debug;
     const g = @import("feed_db.zig").g;
@@ -677,13 +674,6 @@ test "live(url): add, update, delete" {
         counts.feed += 1;
         counts.url += 1;
     }
-
-    // TODO: different urls, same feed items
-    // https://old.reddit.com/r/programming/.rss
-    // https://www.reddit.com/r/programming/.rss
-    // Solutions:
-    // 1. Before adding feed, check if item guid or link already exists
-    // 2. Make feed_id + guid and feed_id + link into unique keys in item table
 
     {
         // remove last slash to get HTTP redirect
@@ -801,7 +791,7 @@ test "live(url): add, update, delete" {
 
         cli.writer = text_io.writer();
         cli.reader = text_io.reader();
-        try cli.deleteFeed("programming");
+        try cli.deleteFeed("old.reddit");
         counts.feed -= 1;
         counts.url -= 1;
     }
@@ -905,11 +895,9 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
 
     if (html_data) |data| {
         if (data.links.len > 0) {
-            // user input
-            print("location: {s}\n", .{resp.ok.location});
             const uri = try Uri.parse(resp.ok.location, true);
+            // user input
             const index = try pickFeedLink(arena.allocator(), data, uri, writer, reader);
-            print("index: {}", .{index});
             const new_url = try makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
