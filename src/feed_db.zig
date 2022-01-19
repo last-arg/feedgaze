@@ -234,7 +234,7 @@ pub const Storage = struct {
             location: []const u8,
             etag: ?[]const u8,
             feed_id: u64,
-            feed_updated_timestamp: ?i64,
+            updated_timestamp: ?i64,
             update_interval: usize,
             last_update: i64,
             expires_utc: ?i64,
@@ -248,7 +248,7 @@ pub const Storage = struct {
             \\  feed.location as location,
             \\  etag,
             \\  feed_id,
-            \\  feed.updated_timestamp as feed_updated_timestamp,
+            \\  feed.updated_timestamp as updated_timestamp,
             \\  update_interval,
             \\  last_update,
             \\  expires_utc,
@@ -346,7 +346,10 @@ pub const Storage = struct {
                 else => try parse.parse(&arena, resp.body),
             };
 
-            const update_feed_row = .{ .feed_id = row.feed_id, .updated_timestamp = row.feed_updated_timestamp };
+            const update_feed_row = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp };
+            // TODO: add transaction
+            // or add transaction out of while loop
+            // and use rollback when one of updates fails
             try self.updateUrlFeed(update_feed_row, resp, rss_feed, opts);
             log.info("Updated: '{s}'", .{row.location});
         }
@@ -752,4 +755,125 @@ test "different urls, same feed items" {
     const item_count_query = "select count(id) from item";
     const item_count = try storage.db.one(u32, item_count_query, .{});
     try expectEqual(items.len * 2, item_count.?);
+}
+
+// TODO: idea. make column that counts down seconds till next upate
+// update (calculate new countdown value) all rows
+// get rows that have zero or negative countdown
+// update those rows
+// \\WITH const AS (SELECT COALESCE(last_update + cache_control_max_age, expires_utc, last_update + update_interval) as check_date, strftime('%s', 'now') as current from feed_update_http)
+// current_utc - last_update - cache_control_max_age
+// expires_utc - current_utc
+// current_utc - last_update - update_interval
+test "@active" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var storage = try Storage.init(allocator, null);
+
+    const location1 = "location1";
+    const items_base = [_]parse.Feed.Item{
+        .{ .title = "title1", .id = "same_id1" },
+        .{ .title = "title2", .id = "same_id2" },
+    };
+    const parsed_feed = parse.Feed{
+        .title = "Same stuff",
+    };
+    const id1 = try storage.addFeed(parsed_feed, location1);
+    const ok = http.Ok{
+        .location = "feed_location",
+        .body = "",
+        // .expires_utc = 1,
+    };
+    try storage.addFeedUrl(id1, ok);
+    var items: [items_base.len]parse.Feed.Item = undefined;
+    mem.copy(parse.Feed.Item, &items, &items_base);
+    try storage.addItems(id1, &items);
+
+    // const query_all =
+    //     \\SELECT
+    //     \\  feed.location as location,
+    //     \\  etag,
+    //     \\  feed_id,
+    //     \\  feed.updated_timestamp as updated_timestamp,
+    //     \\  update_interval,
+    //     \\  last_update,
+    //     \\  expires_utc,
+    //     \\  last_modified_utc,
+    //     \\  cache_control_max_age
+    //     \\FROM feed_update_http
+    //     \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
+    // ;
+    // const UrlFeed = struct {
+    //     location: []const u8,
+    //     etag: ?[]const u8,
+    //     feed_id: u64,
+    //     updated_timestamp: ?i64,
+    //     update_interval: usize,
+    //     last_update: i64,
+    //     expires_utc: ?i64,
+    //     last_modified_utc: ?i64,
+    //     cache_control_max_age: ?i64,
+    // };
+    const query_all =
+        \\WITH const AS (SELECT COALESCE(last_update + cache_control_max_age, expires_utc, last_update + update_interval) as check_date, strftime('%s', 'now') as current from feed_update_http)
+        \\SELECT
+        \\last_update,
+        \\cache_control_max_age,
+        \\update_interval,
+        \\last_update + cache_control_max_age as check_cache,
+        \\expires_utc,
+        \\last_update + update_interval as cache_interval,
+        \\const.check_date,
+        \\const.current,
+        \\(expires_utc is not null and const.check_date < expires_utc) as cond1,
+        \\(const.check_date < strftime('%s','now')) as cond2
+        \\FROM feed_update_http, const
+        \\where (expires_utc is not null and const.check_date < expires_utc)
+        \\or (const.check_date < const.current)
+    ;
+    const T = struct {
+        last_update: i64,
+        cache_control_max_age: ?i64,
+        update_interval: u32,
+        check_cache: i64,
+        expires_utc: ?i64,
+        check_interval: i64,
+        check_date: i64,
+        current: i64,
+        cond1: bool,
+        cond2: bool,
+    };
+    const all = try storage.db.selectAll(T, query_all, .{});
+    const one = all[0];
+    print("check_cache:    {d}\n", .{one.check_cache});
+    print("expires_utc:    {d}\n", .{one.expires_utc});
+    print("check_interval: {d}\n", .{one.check_interval});
+    print("check_date:     {d}\n", .{one.check_date});
+    print("current:        {d}\n", .{one.current});
+    print("cond1 db:       {}\n", .{one.cond1});
+    print("cond2 db:       {}\n", .{one.cond2});
+    print("cond1:          {}\n", .{one.expires_utc != null and one.check_date < one.expires_utc.?});
+    print("cond2:          {}\n", .{one.check_date < one.current});
+
+    // const check_date: i64 = blk: {
+    //     if (row.cache_control_max_age) |sec| {
+    //         // Uses cache_control_max_age, last_update
+    //         break :blk row.last_update + sec;
+    //     }
+    //     if (row.expires_utc) |sec| {
+    //         break :blk sec;
+    //     }
+    //     break :blk row.last_update + @intCast(i64, row.update_interval);
+    // };
+    // if (row.expires_utc != null and check_date > row.expires_utc.?) {
+    //     log.info("\tSkip update: Not needed", .{});
+    //     continue;
+    // } else if (check_date > current_time) {
+    //     log.info("\tSkip update: Not needed", .{});
+    //     continue;
+    // }
+
 }
