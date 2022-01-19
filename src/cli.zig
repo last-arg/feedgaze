@@ -322,11 +322,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 const TestIO = struct {
     const Self = @This();
     const warn_fmt =
+        \\
         \\====== expected this output: =========
         \\{s}
         \\======== instead found this: =========
         \\{s}
         \\======================================
+        \\
     ;
 
     const Action = union {
@@ -354,7 +356,7 @@ const TestIO = struct {
         if (self.expected_actions.len == 0) return error.NoExpectedWrites;
         const i = self.action_index;
         if (i >= self.expected_actions.len) {
-            log.err("Index out of bound. Didn't print: {s}", .{bytes});
+            log.err("TestIO: Index out of bound. Didn't print: {s}", .{bytes});
             return bytes.len;
         }
         const expected = self.expected_actions[i].write;
@@ -411,10 +413,12 @@ fn expectCounts(feed_db: *Storage, counts: TestCounts) !void {
     const local_count = try feed_db.db.one(usize, local_count_query, .{});
     const url_count = try feed_db.db.one(usize, url_count_query, .{});
     const item_feed_count = try feed_db.db.one(usize, item_count_query, .{});
+    print("feed_count: {} == {}\n", .{ feed_count, counts.feed });
     try expect(feed_count == counts.feed);
     try expect(local_count == counts.local);
     try expect(feed_count == counts.local + counts.url);
     try expect(url_count == counts.url);
+    print("item_feed_count: {} == {}\n", .{ item_feed_count, counts.feed });
     try expect(item_feed_count == counts.feed);
 }
 
@@ -630,8 +634,8 @@ test "local feed: add, update, delete" {
     try expectCounts(&feed_db, counts);
 }
 
-// TODO: remove or redo
-test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+// TODO: fix tests
+test "@active live(url): add, update, delete" {
     std.testing.log_level = .debug;
     const g = @import("feed_db.zig").g;
     const base_allocator = std.testing.allocator;
@@ -641,10 +645,10 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     var feed_db = try Storage.init(allocator, null);
     const do_print = true;
-    var write_first = "Choose feed to add\n";
+    // var write_first = "Choose feed to add\n";
     var enter_link = "Enter link number: ";
     var read_valid = "1\n";
-    var added_url = "Added url feed: ";
+    const added_url = "Adding feed ";
     var counts = TestCounts{};
 
     var cli = Cli(TestIO.Writer, TestIO.Reader){
@@ -656,14 +660,15 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     {
         // Test reddit.com
-        const url_end = ".rss?sort=new";
         const location = "https://www.reddit.com/r/programming/.rss";
+        var actions = [_]TestIO.Action{
+            .{ .write = added_url },
+            .{ .write = location ++ "\n" },
+            .{ .write = "Feed added " ++ location ++ "\n" },
+        };
         var text_io = TestIO{
             .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = added_url },
-                .{ .write = "https://old.reddit.com/r/programming/" ++ url_end ++ "\n" },
-            },
+            .expected_actions = &actions,
         };
 
         cli.writer = text_io.writer();
@@ -673,7 +678,12 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         counts.url += 1;
     }
 
-    if (true) return;
+    // TODO: different urls, same feed items
+    // https://old.reddit.com/r/programming/.rss
+    // https://www.reddit.com/r/programming/.rss
+    // Solutions:
+    // 1. Before adding feed, check if item guid or link already exists
+    // 2. Make feed_id + guid and feed_id + link into unique keys in item table
 
     {
         // remove last slash to get HTTP redirect
@@ -682,9 +692,9 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         var text_io = TestIO{
             .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
-                .{ .write = write_first },
-                .{ .write = "programming\nold.reddit.com\n" },
-                .{ .write = "\t1. RSS -> " ++ rss_url ++ "\n" },
+                .{ .write = added_url ++ "http://" ++ location ++ "\n" },
+                .{ .write = "programming\n" ++ "https://" ++ location ++ "\n" },
+                .{ .write = "  1. [Atom] " ++ rss_url ++ " | RSS\n" },
                 .{ .write = enter_link },
                 .{ .read = "abc\n" },
                 .{ .write = "Invalid number: 'abc'. Try again.\n" },
@@ -693,7 +703,7 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
                 .{ .write = "Number out of range: '12'. Try again.\n" },
                 .{ .write = enter_link },
                 .{ .read = read_valid },
-                .{ .write = added_url ++ rss_url ++ "\n" },
+                .{ .write = "Feed added " ++ rss_url ++ "\n" },
             },
         };
 
@@ -703,6 +713,8 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         counts.feed += 1;
         counts.url += 1;
     }
+
+    try expectCounts(&feed_db, counts);
 
     {
         // Feed url has to constructed because Html.Link.href is
@@ -712,12 +724,12 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
         var text_io = TestIO{
             .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
-                .{ .write = write_first },
-                .{ .write = "Savage Divinity | Royal Road\nwww.royalroad.com\n" },
-                .{ .write = "\t1. Updates for Savage Divinity -> " ++ rss_url ++ "\n" },
+                .{ .write = added_url ++ location ++ "\n" },
+                .{ .write = "Savage Divinity | Royal Road\n" ++ location ++ "\n" },
+                .{ .write = "  1. [RSS] " ++ rss_url ++ " | Updates for Savage Divinity\n" },
                 .{ .write = enter_link },
                 .{ .read = read_valid },
-                .{ .write = added_url ++ rss_url ++ "\n" },
+                .{ .write = "Feed added " ++ rss_url ++ "\n" },
             },
         };
 
@@ -732,7 +744,7 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     {
         const query = "select count(feed_id) from item group by feed_id";
-        const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
+        const results = try feed_db.db.selectAll(u32, query, .{});
         for (results) |item_count| {
             try expect(item_count <= g.max_items_per_feed);
         }
@@ -748,7 +760,7 @@ test "url: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
             },
         };
         cli.writer = text_io.writer();
-        try cli.updateFeeds(.{ .force = false });
+        try cli.updateFeeds();
     }
 
     {
@@ -822,22 +834,35 @@ test "makeValidUrl()" {
     }
 }
 
+const url_fmt = "{s}://{s}{s}";
+fn makeWholeUrl(allocator: Allocator, uri: Uri, link: []const u8) ![]const u8 {
+    if (link[0] == '/') {
+        return try fmt.allocPrint(allocator, url_fmt, .{ uri.scheme, uri.host.name, link });
+    }
+    return try fmt.allocPrint(allocator, "{s}", .{link});
+}
+
 fn pickFeedLink(
+    allocator: Allocator,
     page: parse.Html.Page,
-    url: []const u8,
+    uri: Uri,
     writer: anytype,
     reader: anytype,
-) ![]const u8 {
+) !u32 {
     const no_title = "<no-title>";
     const page_title = page.title orelse no_title;
-    try writer.print("{s}\n{s}\n", .{ page_title, url });
+    try writer.print("{s}\n" ++ url_fmt ++ "\n", .{ page_title, uri.scheme, uri.host.name, uri.path });
 
+    var stack_fallback = std.heap.stackFallback(128, allocator);
+    const stack_allocator = stack_fallback.get();
     for (page.links) |link, i| {
+        const whole_link = try makeWholeUrl(stack_allocator, uri, link.href);
+        defer stack_allocator.free(whole_link);
         const link_title = link.title orelse no_title;
         try writer.print("  {d}. [{s}] {s} | {s}\n", .{
             i + 1,
             parse.Html.MediaType.toString(link.media_type),
-            link.href,
+            whole_link,
             link_title,
         });
     }
@@ -867,7 +892,7 @@ fn pickFeedLink(
         }
     };
 
-    return page.links[index].href;
+    return index;
 }
 
 fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
@@ -881,8 +906,11 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
     if (html_data) |data| {
         if (data.links.len > 0) {
             // user input
-            const new_url = try pickFeedLink(data, resp.ok.location, writer, reader);
-            // make new http request
+            print("location: {s}\n", .{resp.ok.location});
+            const uri = try Uri.parse(resp.ok.location, true);
+            const index = try pickFeedLink(arena.allocator(), data, uri, writer, reader);
+            print("index: {}", .{index});
+            const new_url = try makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
             try writer.print("Found no feed links in html\n", .{});
