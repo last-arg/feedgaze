@@ -1,21 +1,19 @@
 # Initial
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
-[ ] HTTP(S) request
-  [?] HTTP (plain secure)? use https only?
-  [?] Replace zig BearSSL implementation - (https://github.com/stef/zphinx-zerver/blob/master/ssl.zig)
 [ ] Feeds
   [ ] Github
       - https://github.community/t/rss-feeds-for-github-projects/292
       - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
   [ ] Reddit
       - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
-  [?] [Json feed](https://www.jsonfeed.org/)
+  [ ] [Json feed](https://www.jsonfeed.org/)
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
 [ ] parse.zig
     [ ] Fix: parsing Feed.link. rel = self/alternative
 [ ] UI
   [ ] CLI - initial
   [ ] TUI - NotCurses
+    * Example: https://github.com/dundalek/notcurses-zig-example
   [ ] Web browser (http server) - later
 [ ] Zig
   [ ] XML parsing
@@ -23,7 +21,6 @@
     - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
   [ ] Https client
     - https://github.com/truemedian/zfetch
-    - https://github.com/ducdetronquito/requestz
     - https://github.com/haze/zelda
   [ ] Async
     - https://github.com/kprotty/zap
