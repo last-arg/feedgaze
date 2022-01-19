@@ -153,35 +153,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             savepoint.commit();
         }
 
-        const FeedData = union(enum) {
-            host_feeds: []const Host.Feed,
-            page_links: []const parse.Html.Link,
-        };
-
-        fn printFeedChoices(title: ?[]const u8, url: Uri, feed_data: FeedData, fill_text: []const u8, writer: anytype) !void {
-            try writer.print("Choose feed to add\n", .{});
-            const feed_title = title orelse "<no-page-title>";
-            try writer.print("{s}\n{s}\n", .{ feed_title, url.host.name });
-            switch (feed_data) {
-                .host_feeds => |feeds| {
-                    for (feeds) |feed, i| {
-                        try writer.print("\t{d}. {s}{s}{s} -> {s}{s}{s}\n", .{
-                            i + 1,
-                            feed.title.start,
-                            fill_text,
-                            feed.title.end,
-                            feed.link.start,
-                            fill_text,
-                            feed.link.end,
-                        });
-                    }
-                },
-                .page_links => |_| {
-                    //
-                },
-            }
-        }
-
         // TODO: Cli.deleteFeed
         pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
             const results = try self.feed_db.search(self.allocator, search_input);
