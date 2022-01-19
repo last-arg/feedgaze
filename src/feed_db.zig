@@ -401,7 +401,7 @@ pub const Storage = struct {
             feed_updated_timestamp: ?i64,
             update_interval: usize,
             last_update: i64,
-            last_odified_timestamp: ?i64,
+            last_modified_timestamp: ?i64,
         };
 
         var contents = try ArrayList(u8).initCapacity(self.allocator, 4096);
@@ -525,7 +525,7 @@ pub const Storage = struct {
         const search_term = try fmt.allocPrint(allocator, "%{s}%", .{term});
         defer allocator.free(search_term);
 
-        const results = try db.selectAll(SearchResult, allocator, &self.db, query, .{
+        const results = try self.db.selectAll(SearchResult, query, .{
             search_term,
             search_term,
             search_term,

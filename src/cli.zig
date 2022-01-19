@@ -46,6 +46,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         feed_db: *Storage,
         writer: Writer,
         reader: Reader,
+        options: CliOptions = CliOptions{},
 
         const Host = struct {
             title: []const u8,
@@ -71,30 +72,32 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
             const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
             if (abs_path_err) |abs_path| {
-                log.info("Add feed: '{s}'", .{abs_path});
-                // errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
-                // // Add local feed
-                // const contents = try shame.getFileContents(self.allocator, abs_path);
-                // const feed = try parse.parse(self.allocator, contents);
-                // log.info("\tFeed.items: {}", .{feed.items.len});
-
-                // const id = try self.feed_db.addFeed(feed, abs_path);
-
-                // const mtime_sec = blk: {
-                //     const file = try fs.openFileAbsolute(abs_path, .{});
-                //     defer file.close();
-                //     const stat = try file.stat();
-                //     break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
-                // };
-
-                // try self.feed_db.addFeedLocal(id, mtime_sec);
-                // try self.feed_db.addItems(id, feed.items);
-                // try self.feed_db.cleanItemsByFeedId(id);
-                // try self.writer.print("Added local feed: {s}", .{abs_path});
+                try self.addFeedLocal(abs_path);
             } else |err| switch (err) {
                 error.FileNotFound => try self.addFeedHttp(location_input),
                 else => return err,
             }
+        }
+
+        pub fn addFeedLocal(self: *Self, abs_path: []const u8) !void {
+            log.info("Add local feed: '{s}'", .{abs_path});
+            errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            const contents = try shame.getFileContents(arena.allocator(), abs_path);
+            const feed = try parse.parse(&arena, contents);
+
+            const mtime_sec = blk: {
+                const file = try fs.openFileAbsolute(abs_path, .{});
+                defer file.close();
+                const stat = try file.stat();
+                break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+            };
+
+            const id = try self.feed_db.addFeed(feed, abs_path);
+            try self.feed_db.addFeedLocal(id, mtime_sec);
+            try self.feed_db.addItems(id, feed.items);
+            try self.writer.print("Added local feed: {s}", .{abs_path});
         }
 
         pub fn addFeedHttp(self: *Self, input_url: []const u8) !void {
@@ -307,14 +310,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         // TODO: Cli.updateFeeds
         pub fn updateFeeds(self: *Self, opts: CliOptions) !void {
             if (opts.url) {
-                self.feed_db.updateUrlFeeds(self.allocator, .{ .force = opts.force }) catch {
+                self.feed_db.updateUrlFeeds(.{ .force = opts.force }) catch {
                     log.err("Failed to update feeds", .{});
                     return;
                 };
                 try self.writer.print("Updated url feeds\n", .{});
             }
             if (opts.local) {
-                self.feed_db.updateLocalFeeds(self.allocator, .{ .force = opts.force }) catch {
+                self.feed_db.updateLocalFeeds(.{ .force = opts.force }) catch {
                     log.err("Failed to update local feeds", .{});
                     return;
                 };
@@ -458,10 +461,10 @@ fn expectCounts(feed_db: *Storage, counts: TestCounts) !void {
     const url_count_query = "select count(feed_id) from feed_update_http";
     const item_count_query = "select count(DISTINCT feed_id) from item";
 
-    const feed_count = try db.count(&feed_db.db, feed_count_query);
-    const local_count = try db.count(&feed_db.db, local_count_query);
-    const url_count = try db.count(&feed_db.db, url_count_query);
-    const item_feed_count = try db.count(&feed_db.db, item_count_query);
+    const feed_count = try feed_db.db.one(usize, feed_count_query, .{});
+    const local_count = try feed_db.db.one(usize, local_count_query, .{});
+    const url_count = try feed_db.db.one(usize, url_count_query, .{});
+    const item_feed_count = try feed_db.db.one(usize, item_count_query, .{});
     try expect(feed_count == counts.feed);
     try expect(local_count == counts.local);
     try expect(feed_count == counts.local + counts.url);
@@ -575,15 +578,14 @@ test "Cli.cleanItems" {
     try expect(count2.? == items2.len);
 }
 
-// TODO: remove or redo
-test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
+test "local feed: add, update, delete" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
     var feed_db = try Storage.init(allocator, null);
     const do_print = false;
@@ -617,7 +619,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     {
         const query = "select count(feed_id) from item group by feed_id";
-        const results = try db.selectAll(usize, allocator, &feed_db.db, query, .{});
+        const results = try feed_db.db.selectAll(usize, query, .{});
         for (results) |item_count| {
             try expect(item_count <= g.max_items_per_feed);
         }
