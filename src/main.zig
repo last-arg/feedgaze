@@ -31,19 +31,12 @@ pub fn main() anyerror!void {
     // );
 
     var feed_db = try Storage.init(allocator, abs_location);
+    var writer = std.io.getStdOut().writer();
+    const reader = std.io.getStdIn().reader();
+    var cli = command.makeCli(allocator, &feed_db, writer, reader);
 
     var iter = process.args();
     _ = iter.skip();
-
-    var writer = std.io.getStdOut().writer();
-    const reader = std.io.getStdIn().reader();
-    // var cli = Cli{
-    //     .allocator = allocator,
-    //     .feed_db = &feed_db,
-    //     .writer = writer,
-    // };
-    var cli = command.makeCli(allocator, &feed_db, writer, reader);
-
     while (iter.next(allocator)) |arg_err| {
         const arg = try arg_err;
         if (mem.eql(u8, "add", arg)) {
@@ -54,19 +47,20 @@ pub fn main() anyerror!void {
                 log.err("Subcommand add missing feed (url or file) location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
-            var opts = command.CliOptions{};
+            var opts = command.CliOptions{ .url = false, .local = false };
             while (iter.next(allocator)) |value_err| {
                 const value = try value_err;
-                if (mem.eql(u8, "--all", value)) {
+                if (mem.eql(u8, "--url", value)) {
                     opts.url = true;
-                    opts.local = true;
-                } else if (mem.eql(u8, "--url", value)) {
-                    opts.local = false;
                 } else if (mem.eql(u8, "--local", value)) {
-                    opts.url = false;
+                    opts.local = true;
                 } else if (mem.eql(u8, "--force", value)) {
                     opts.force = true;
                 }
+            }
+            if (!opts.url and !opts.local) {
+                opts.url = true;
+                opts.local = true;
             }
             try cli.updateFeeds(opts);
         } else if (mem.eql(u8, "clean", arg)) {

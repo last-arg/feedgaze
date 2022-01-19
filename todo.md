@@ -30,11 +30,9 @@
  
 # Future (Maybe)
 [ ] Image (icon/logo)
-  [ ] download or just save link
-  [ ] if save:
-    [?] save to database?
-    [?] save to file?
-  [ ] If image missing from feed try to get site's icon
+  [ ] download or save
+  [ ] save: database or file or both
+  [ ] feed has no image, try html page
 [ ] (Popular) Sites that don't support feeds (twitter, instagram, soundcloud).
   [ ] Let user defined 'feed' area?
 [ ] Mark feeds to use OS notification system on new link(s)
