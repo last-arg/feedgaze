@@ -70,12 +70,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             location_input: []const u8,
         ) !void {
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-            const abs_path_err = fs.cwd().realpath(location_input, &path_buf);
-            if (abs_path_err) |abs_path| {
-                try self.addFeedLocal(abs_path);
-            } else |err| switch (err) {
-                error.FileNotFound => try self.addFeedHttp(location_input),
-                else => return err,
+            if (self.options.local) {
+                if (fs.cwd().realpath(location_input, &path_buf)) |abs_path| {
+                    try self.addFeedLocal(abs_path);
+                    return;
+                } else |err| switch (err) {
+                    error.FileNotFound => {}, // Skip to checking self.options.url
+                    else => return err,
+                }
+            }
+            if (self.options.url) {
+                try self.addFeedHttp(location_input);
             }
         }
 
