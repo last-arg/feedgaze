@@ -283,17 +283,16 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        // TODO: Cli.updateFeeds
-        pub fn updateFeeds(self: *Self, opts: CliOptions) !void {
-            if (opts.url) {
-                self.feed_db.updateUrlFeeds(.{ .force = opts.force }) catch {
+        pub fn updateFeeds(self: *Self) !void {
+            if (self.options.url) {
+                self.feed_db.updateUrlFeeds(.{ .force = self.options.force }) catch {
                     log.err("Failed to update feeds", .{});
                     return;
                 };
                 try self.writer.print("Updated url feeds\n", .{});
             }
-            if (opts.local) {
-                self.feed_db.updateLocalFeeds(.{ .force = opts.force }) catch {
+            if (self.options.local) {
+                self.feed_db.updateLocalFeeds(.{ .force = self.options.force }) catch {
                     log.err("Failed to update local feeds", .{});
                     return;
                 };
@@ -611,7 +610,7 @@ test "local feed: add, update, delete" {
             },
         };
         cli.writer = text_io.writer();
-        try cli.updateFeeds(.{ .force = false });
+        try cli.updateFeeds();
     }
 
     {
