@@ -23,7 +23,6 @@ pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
 };
 
-// TODO: sqlite primary keys are 64 bit
 pub const Storage = struct {
     const Self = @This();
     db: db.Db,
@@ -33,7 +32,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !usize {
+    pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !u64 {
         const query =
             \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
             \\VALUES (
@@ -51,19 +50,19 @@ pub const Storage = struct {
             \\RETURNING id;
         ;
         const args = .{ feed.title, location, feed.link, feed.updated_raw, feed.updated_timestamp };
-        return (try self.db.one(usize, query, args)) orelse error.NoReturnId;
+        return (try self.db.one(u64, query, args)) orelse error.NoReturnId;
     }
 
-    pub fn deleteFeed(self: *Self, id: usize) !void {
+    pub fn deleteFeed(self: *Self, id: u64) !void {
         try self.db.exec("DELETE FROM feed WHERE id = ?", .{id});
     }
 
-    pub fn addFeedUrl(self: *Self, feed_id: usize, resp: http.Ok) !void {
+    pub fn addFeedUrl(self: *Self, feed_id: u64, resp: http.Ok) !void {
         const query =
             \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?,
             \\  ?,
             \\  ?,
@@ -83,14 +82,14 @@ pub const Storage = struct {
 
     pub fn addFeedLocal(
         self: *Self,
-        feed_id: usize,
+        feed_id: u64,
         last_modified: i64,
     ) !void {
         const query =
             \\INSERT INTO feed_update_local
             \\  (feed_id, last_modified_timestamp)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?{i64}
             \\)
             \\ON CONFLICT(feed_id) DO UPDATE SET
@@ -103,7 +102,7 @@ pub const Storage = struct {
         });
     }
 
-    pub fn addItems(self: *Self, feed_id: usize, feed_items: []parse.Feed.Item) !void {
+    pub fn addItems(self: *Self, feed_id: u64, feed_items: []parse.Feed.Item) !void {
         const items = feed_items[0..std.math.min(feed_items.len, g.max_items_per_feed)];
         // Modifies item order in memory. Don't use after this if order is important.
         std.mem.reverse(parse.Feed.Item, items);
@@ -129,7 +128,7 @@ pub const Storage = struct {
         const insert_query =
             \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?{[]const u8},
             \\  ?, ?, ?, ?
             \\)
@@ -169,7 +168,7 @@ pub const Storage = struct {
             const query =
                 \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
                 \\VALUES (
-                \\  ?{usize},
+                \\  ?{u64},
                 \\  ?{[]const u8},
                 \\  ?, ?, ?, ?
                 \\);
@@ -235,7 +234,7 @@ pub const Storage = struct {
         const UrlFeed = struct {
             location: []const u8,
             etag: ?[]const u8,
-            feed_id: usize,
+            feed_id: u64,
             feed_updated_timestamp: ?i64,
             update_interval: usize,
             last_update: i64,
@@ -354,7 +353,7 @@ pub const Storage = struct {
         }
     }
 
-    pub const UpdateFeedRow = struct { feed_id: usize, updated_timestamp: ?i64 };
+    pub const UpdateFeedRow = struct { feed_id: u64, updated_timestamp: ?i64 };
     pub fn updateUrlFeed(
         self: *Self,
         row: UpdateFeedRow,
@@ -402,7 +401,7 @@ pub const Storage = struct {
     pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
         const LocalFeed = struct {
             location: []const u8,
-            feed_id: usize,
+            feed_id: u64,
             feed_updated_timestamp: ?i64,
             update_interval: usize,
             last_update: i64,
@@ -476,7 +475,7 @@ pub const Storage = struct {
         }
     }
 
-    pub fn cleanItemsByFeedId(self: *Self, feed_id: usize) !void {
+    pub fn cleanItemsByFeedId(self: *Self, feed_id: u64) !void {
         const query =
             \\DELETE FROM item
             \\WHERE id IN
@@ -498,7 +497,7 @@ pub const Storage = struct {
             \\HAVING count(feed_id) > ?{u16}
         ;
 
-        const DbResult = struct { feed_id: usize, count: usize };
+        const DbResult = struct { feed_id: u64, count: usize };
 
         const results = try self.db.selectAll(DbResult, query, .{g.max_items_per_feed});
 
@@ -519,7 +518,7 @@ pub const Storage = struct {
         location: []const u8,
         title: []const u8,
         link: ?[]const u8,
-        id: usize,
+        id: u64,
     };
 
     pub fn search(self: *Self, allocator: Allocator, term: []const u8) ![]SearchResult {
@@ -621,11 +620,11 @@ test "Storage fake net" {
     // delete feed
     try feed_db.deleteFeed(id);
     {
-        const count_item = try feed_db.db.one(usize, "select count(id) from item", .{});
+        const count_item = try feed_db.db.one(u32, "select count(id) from item", .{});
         try expect(count_item.? == 0);
-        const count_feed = try feed_db.db.one(usize, "select count(id) from feed", .{});
+        const count_feed = try feed_db.db.one(u32, "select count(id) from feed", .{});
         try expect(count_feed.? == 0);
-        const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_http", .{});
+        const count_http = try feed_db.db.one(u32, "select count(feed_id) from feed_update_http", .{});
         try expect(count_http.? == 0);
     }
     savepoint.commit();
@@ -672,12 +671,12 @@ test "Storage local" {
         }
     }
 
-    const LocalUpdateResult = struct { feed_id: usize, update_interval: usize, last_update: i64, last_modified_timestamp: i64 };
+    const LocalUpdateResult = struct { feed_id: u64, update_interval: u32, last_update: i64, last_modified_timestamp: i64 };
     const local_query = "select feed_id, update_interval, last_update, last_modified_timestamp from feed_update_local";
 
     // Local feed update
     {
-        const count = try feed_db.db.one(usize, "select count(*) from feed_update_local", .{});
+        const count = try feed_db.db.one(u32, "select count(*) from feed_update_local", .{});
         try expect(count.? == 1);
         const feed_dbfeeds = try feed_db.db.one(LocalUpdateResult, local_query, .{});
         const first = feed_dbfeeds.?;
@@ -712,17 +711,17 @@ test "Storage local" {
     // Delete feed
     {
         try feed_db.deleteFeed(id);
-        const count_item = try feed_db.db.one(usize, "select count(id) from item", .{});
+        const count_item = try feed_db.db.one(u32, "select count(id) from item", .{});
         try expect(count_item.? == 0);
-        const count_feed = try feed_db.db.one(usize, "select count(id) from feed", .{});
+        const count_feed = try feed_db.db.one(u32, "select count(id) from feed", .{});
         try expect(count_feed.? == 0);
-        const count_http = try feed_db.db.one(usize, "select count(feed_id) from feed_update_local", .{});
+        const count_http = try feed_db.db.one(u32, "select count(feed_id) from feed_update_local", .{});
         try expect(count_http.? == 0);
     }
     savepoint.commit();
 }
 
-test "@active different urls, same feed items" {
+test "different urls, same feed items" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -748,11 +747,11 @@ test "@active different urls, same feed items" {
 
     const feed_count_query = "select count(id) from feed";
     const item_feed_count_query = "select count(DISTINCT feed_id) from item";
-    const feed_count = try storage.db.one(usize, feed_count_query, .{});
-    const item_feed_count = try storage.db.one(usize, item_feed_count_query, .{});
+    const feed_count = try storage.db.one(u32, feed_count_query, .{});
+    const item_feed_count = try storage.db.one(u32, item_feed_count_query, .{});
     try expectEqual(feed_count.?, item_feed_count.?);
     const item_count_query = "select count(id) from item";
-    const item_count = try storage.db.one(usize, item_count_query, .{});
+    const item_count = try storage.db.one(u32, item_count_query, .{});
     try expectEqual(items.len * 2, item_count.?);
 }
 

@@ -19,7 +19,7 @@ pub const Table = struct {
         pub const insert =
             \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?{[]const u8},
             \\  ?,
             \\  ?,
@@ -30,7 +30,7 @@ pub const Table = struct {
         pub const insert_minimal =
             \\INSERT INTO item (feed_id, title, pub_date, pub_date_utc)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?{[]const u8},
             \\  ?,
             \\  ?
@@ -55,7 +55,7 @@ pub const Table = struct {
         ;
         pub const upsert_guid =
             \\INSERT INTO item (feed_id, title, guid, link, pub_date, pub_date_utc)
-            \\VALUES ( ?{usize}, ?{[]const u8}, ?, ?, ?, ? )
+            \\VALUES ( ?{u64}, ?{[]const u8}, ?, ?, ?, ? )
             \\ON CONFLICT(guid) DO UPDATE SET
             \\  title = excluded.title,
             \\  link = excluded.link,
@@ -68,7 +68,7 @@ pub const Table = struct {
         // NOTE: no guid inserted because if this query is run guid == null
         pub const upsert_link =
             \\INSERT INTO item (feed_id, title, link, pub_date, pub_date_utc)
-            \\VALUES ( ?{usize}, ?{[]const u8}, ?, ?, ? )
+            \\VALUES ( ?{u64}, ?{[]const u8}, ?, ?, ? )
             \\ON CONFLICT(link) DO UPDATE SET
             \\  title = excluded.title,
             \\  pub_date = excluded.pub_date,
@@ -101,7 +101,7 @@ pub const Table = struct {
             \\INSERT INTO feed_update_local
             \\  (feed_id, last_modified_timestamp)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?{i64}
             \\)
         ;
@@ -141,7 +141,7 @@ pub const Table = struct {
             \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
             \\VALUES (
-            \\  ?{usize},
+            \\  ?{u64},
             \\  ?,
             \\  ?,
             \\  ?,
@@ -248,7 +248,7 @@ pub const Table = struct {
             \\ WHERE location = ?{[]const u8}
         ;
         pub const where_id =
-            \\ WHERE id = ?{usize}
+            \\ WHERE id = ?{u64}
         ;
         pub const update_where_id =
             \\UPDATE feed SET
@@ -256,7 +256,7 @@ pub const Table = struct {
             \\  link = ?,
             \\  updated_raw = ?,
             \\  updated_timestamp = ?
-            \\WHERE id = ?{usize}
+            \\WHERE id = ?{u64}
         ;
     };
 };
