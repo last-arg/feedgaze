@@ -440,6 +440,7 @@ pub const Atom = struct {
                             switch (field) {
                                 .title => {
                                     feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    field = .ignore;
                                 },
                                 .updated => {
                                     feed_date_raw = value;
@@ -454,6 +455,7 @@ pub const Atom = struct {
                                 },
                                 .title => {
                                     title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    field = .ignore;
                                 },
                                 .updated => {
                                     updated_raw = value;
@@ -779,6 +781,7 @@ pub const Rss = struct {
                             switch (channel_field) {
                                 .title => {
                                     feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    channel_field = ._ignore;
                                 },
                                 .link => {
                                     feed_link = value;
@@ -799,6 +802,7 @@ pub const Rss = struct {
                             switch (item_field) {
                                 .title => {
                                     item_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    item_field = ._ignore;
                                 },
                                 .link => {
                                     item_link = value;
