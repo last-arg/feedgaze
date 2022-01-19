@@ -754,5 +754,3 @@ test "different urls, same feed items" {
     const item_count = try storage.db.one(u32, item_count_query, .{});
     try expectEqual(items.len * 2, item_count.?);
 }
-
-// TODO: explore using replace instead of update on conflicts

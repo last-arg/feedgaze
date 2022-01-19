@@ -185,7 +185,6 @@ pub fn makeRequest(
             }
         }
 
-        // TODO: instead of allocating body content try to stream it to parser
         const req_reader = req.reader();
         switch (content_encoding) {
             .none => {
