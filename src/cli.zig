@@ -635,7 +635,7 @@ test "local feed: add, update, delete" {
 }
 
 // TODO: fix tests
-test "@active live(url): add, update, delete" {
+test "live(url): add, update, delete" {
     std.testing.log_level = .debug;
     const g = @import("feed_db.zig").g;
     const base_allocator = std.testing.allocator;

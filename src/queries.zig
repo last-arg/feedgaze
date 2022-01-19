@@ -6,12 +6,14 @@ pub const Table = struct {
             \\  id INTEGER PRIMARY KEY,
             \\  feed_id INTEGER NOT NULL,
             \\  title TEXT NOT NULL,
-            \\  link TEXT UNIQUE DEFAULT NULL,
-            \\  guid TEXT UNIQUE DEFAULT NULL,
+            \\  link TEXT DEFAULT NULL,
+            \\  guid TEXT DEFAULT NULL,
             \\  pub_date TEXT DEFAULT NULL,
             \\  pub_date_utc INTEGER DEFAULT NULL,
             \\  created_at INTEGER DEFAULT (strftime('%s', 'now')),
-            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE,
+            \\  UNIQUE(feed_id, guid),
+            \\  UNIQUE(feed_id, link)
             \\);
         ;
         pub const insert =

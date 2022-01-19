@@ -12,6 +12,7 @@ const shame = @import("shame.zig");
 const time = std.time;
 const parse = @import("parse.zig");
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
 const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
@@ -123,7 +124,7 @@ pub const Storage = struct {
                 }
             };
 
-            break :blk hasGuid and hasLink;
+            break :blk hasGuid or hasLink;
         };
         const insert_query =
             \\INSERT INTO item (feed_id, title, link, guid, pub_date, pub_date_utc)
@@ -144,7 +145,7 @@ pub const Storage = struct {
                 \\  excluded.feed_id = feed_id
                 \\  AND excluded.pub_date_utc != pub_date_utc
             ;
-            const query = insert_query ++ "\nON CONFLICT(guid) " ++ conflict_update ++ "\nON CONFLICT(link)" ++ conflict_update ++ ";";
+            const query = insert_query ++ "\nON CONFLICT(feed_id, guid) " ++ conflict_update ++ "\nON CONFLICT(feed_id, link)" ++ conflict_update ++ ";";
 
             for (items) |item| {
                 try self.db.exec(query, .{
@@ -720,3 +721,39 @@ test "Storage local" {
     }
     savepoint.commit();
 }
+
+test "@active different urls, same feed items" {
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var storage = try Storage.init(allocator, null);
+
+    const location1 = "location1";
+    const items_base = [_]parse.Feed.Item{
+        .{ .title = "title1", .id = "same_id1" },
+        .{ .title = "title2", .id = "same_id2" },
+    };
+    const parsed_feed = parse.Feed{
+        .title = "Same stuff",
+    };
+    const id1 = try storage.addFeed(parsed_feed, location1);
+    var items: [items_base.len]parse.Feed.Item = undefined;
+    mem.copy(parse.Feed.Item, &items, &items_base);
+    try storage.addItems(id1, &items);
+    const location2 = "location2";
+    const id2 = try storage.addFeed(parsed_feed, location2);
+    try storage.addItems(id2, &items);
+
+    const feed_count_query = "select count(id) from feed";
+    const item_feed_count_query = "select count(DISTINCT feed_id) from item";
+    const feed_count = try storage.db.one(usize, feed_count_query, .{});
+    const item_feed_count = try storage.db.one(usize, item_feed_count_query, .{});
+    try expectEqual(feed_count.?, item_feed_count.?);
+    const item_count_query = "select count(id) from item";
+    const item_count = try storage.db.one(usize, item_count_query, .{});
+    try expectEqual(items.len * 2, item_count.?);
+}
+
+// TODO: explore using replace instead of update on conflicts
