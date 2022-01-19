@@ -210,26 +210,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const Result = struct {
                 title: []const u8,
                 link: ?[]const u8,
-                id: usize,
+                id: u64,
             };
 
             // most recently updated feed
-            const most_recent_feeds_query =
-                \\SELECT
-                \\	title,
-                \\  link,
-                \\	id
-                \\FROM
-                \\	feed
-            ;
-
-            const most_recent_feeds = try db.selectAll(
-                Result,
-                self.allocator,
-                &self.feed_db.db,
-                most_recent_feeds_query,
-                .{},
-            );
+            const most_recent_feeds_query = "SELECT title, link, id FROM feed;";
+            const most_recent_feeds = try self.feed_db.db.selectAll(Result, most_recent_feeds_query, .{});
 
             if (most_recent_feeds.len == 0) {
                 try self.writer.print("There are 0 feeds\n", .{});
@@ -239,9 +225,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             // grouped by feed_id
             const all_items_query =
                 \\SELECT
-                \\	title,
-                \\	link,
-                \\  feed_id
+                \\	title, link, feed_id
                 \\FROM
                 \\	item
                 \\ORDER BY
@@ -250,13 +234,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  created_at DESC
             ;
 
-            const all_items = try db.selectAll(
-                Result,
-                self.allocator,
-                &self.feed_db.db,
-                all_items_query,
-                .{},
-            );
+            const all_items = try self.feed_db.db.selectAll(Result, all_items_query, .{});
 
             for (most_recent_feeds) |feed| {
                 const id = feed.id;
@@ -302,13 +280,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 location: []const u8,
                 link: ?[]const u8,
             };
-            const query =
-                \\SELECT title, location, link FROM feed
-            ;
-            var stmt = try self.feed_db.db.prepare(query);
+            const query = "SELECT title, location, link FROM feed;";
+            var stmt = try self.feed_db.db.sql_db.prepare(query);
             defer stmt.deinit();
             const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
-                log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.getDetailedError().message, query });
+                log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.sql_db.getDetailedError().message, query });
                 return err;
             };
             try self.writer.print("There are {} feed(s)\n", .{all_items.len});
@@ -327,7 +303,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        // TODO: Cli.search
         pub fn search(self: *Self, term: []const u8) !void {
             const results = try self.feed_db.search(self.allocator, term);
             if (results.len == 0) {
@@ -474,8 +449,8 @@ test "Cli.printAllItems, Cli.printFeeds" {
         var text_io = TestIO{
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = first },
-                .{ .write = "  Star City\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
-                .{ .write = "  Sky watchers in Europe, Asia, \n  <no-link>\n\n" },
+                .{ .write = "  Star City&#39;s Test\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
+                .{ .write = "  Sky watchers in Europe, Asia, and parts of Alaska \n  <no-link>\n\n" },
                 .{ .write = "  TEST THIS\n  <no-link>\n\n" },
                 .{ .write = "  Astronauts' Dirty Laundry\n  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp\n\n" },
                 .{ .write = "  The Engine That Does More\n  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp\n\n" },
