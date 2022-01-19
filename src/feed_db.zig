@@ -273,7 +273,11 @@ pub const Storage = struct {
                 // dealloc_fields are in reverse order
                 inline for (dealloc_fields) |field| {
                     const val = @field(row, field.name);
-                    if (field.is_optional) stack_allocator.free(val.?) else stack_allocator.free(val);
+                    if (field.is_optional) {
+                        if (val) |v| stack_allocator.free(v);
+                    } else {
+                        stack_allocator.free(val);
+                    }
                 }
             }
 
