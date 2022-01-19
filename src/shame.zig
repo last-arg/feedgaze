@@ -35,7 +35,7 @@ test "getFileContents(): relative and absolute path" {
     defer arena.deinit();
     const allocator = &arena.allocator;
 
-    const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    const abs_path = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
     const abs_content = try getFileContents(allocator, abs_path);
     const rel_path = "test/sample-rss-2.xml";
     const rel_content = try getFileContents(allocator, rel_path);

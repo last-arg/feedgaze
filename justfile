@@ -2,7 +2,7 @@ default:
 	echo 'Hello, world!'
 
 run-local:
-  zig build && ./zig-out/bin/feed_app add test/sample-rss-2.xml
+  zig build && ./zig-out/bin/feedgaze add test/sample-rss-2.xml
 
 watch-local:
   watchexec -c -r -w src/ -e zig just run-local
@@ -14,10 +14,10 @@ watch-test file="" filter="":
   watchexec -c -r -w src/ -e zig just test {{file}} {{filter}}
 
 watch-update:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feed_app update --force'
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feedgaze update --force'
 
 watch-search:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feed_app search dev'
+	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feedgaze search dev'
 
 watch-build:
     watchexec -c -r -w src/ -e zig 'zig build'

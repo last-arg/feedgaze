@@ -1,8 +1,8 @@
-repo: feed_app
-doc: "feed_app"
+repo: feedgaze
+doc: "feedgaze"
 shell: fish
 
 tabs:
   - tab: edit
     dir: src/
-    doc: "feed_app/src/"
+    doc: "feedgaze/src/"

@@ -22,7 +22,7 @@ pub fn main() anyerror!void {
     const allocator = arena.allocator();
     log.info("test", .{});
 
-    const abs_location = "/media/hdd/code/feed_app/tmp/test.db_conn";
+    const abs_location = "/media/hdd/code/feedgaze/tmp/test.db_conn";
     // TODO: make default location somewhere in home directory
     // const abs_location = try makeFilePath(allocator, default_feed_dblocation);
     // const feed_dbfile = try std.fs.createFileAbsolute(

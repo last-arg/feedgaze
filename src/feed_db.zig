@@ -634,7 +634,7 @@ test "Storage local" {
     const allocator = arena.allocator();
     var feed_db = try Storage.init(allocator, null);
 
-    // const abs_path = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+    // const abs_path = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
     const rel_path = "test/sample-rss-2.xml";
     var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
     const abs_path = try fs.cwd().realpath(rel_path, &path_buf);

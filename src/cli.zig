@@ -487,7 +487,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
 
     {
         const location = "test/sample-rss-2.xml";
-        const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+        const rss_url = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
         var w = "Added local feed: " ++ rss_url ++ "\n";
         var text_io = TestIO{ .expected_actions = &[_]TestIO.Action{.{ .write = w }} };
 
@@ -517,7 +517,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
         var text_io = TestIO{
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = first },
-                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: /media/hdd/code/feed_app/test/sample-rss-2.xml\n\n" },
+                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: /media/hdd/code/feedgaze/test/sample-rss-2.xml\n\n" },
             },
         };
         cli.writer = text_io.writer();
@@ -598,7 +598,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
 
     {
         const location = "test/sample-rss-2.xml";
-        const rss_url = "/media/hdd/code/feed_app/test/sample-rss-2.xml";
+        const rss_url = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
         var w = "Added local feed: " ++ rss_url ++ "\n";
         var text_io = TestIO{
             .do_print = do_print,
@@ -659,7 +659,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
             .do_print = do_print,
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = "Found 1 result(s):\n\n" },
-                .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | /media/hdd/code/feed_app/test/sample-rss-2.xml\n" },
+                .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | /media/hdd/code/feedgaze/test/sample-rss-2.xml\n" },
                 .{ .write = enter_nr },
                 .{ .read = "1a\n" },
                 .{ .write = "Invalid number entered: '1a'. Try again.\n" },
@@ -668,7 +668,7 @@ test "local: Cli.addFeed(), Cli.deleteFeed(), Cli.updateFeeds()" {
                 .{ .write = "Entered number out of range. Try again.\n" },
                 .{ .write = enter_nr },
                 .{ .read = "1\n" },
-                .{ .write = "Deleted feed '/media/hdd/code/feed_app/test/sample-rss-2.xml'\n" },
+                .{ .write = "Deleted feed '/media/hdd/code/feedgaze/test/sample-rss-2.xml'\n" },
             },
         };
 
