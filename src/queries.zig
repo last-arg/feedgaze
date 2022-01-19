@@ -10,7 +10,7 @@ pub const Table = struct {
             \\  guid TEXT DEFAULT NULL,
             \\  pub_date TEXT DEFAULT NULL,
             \\  pub_date_utc INTEGER DEFAULT NULL,
-            \\  created_at INTEGER DEFAULT (strftime('%s', 'now')),
+            \\  modified_at INTEGER DEFAULT (strftime('%s', 'now')),
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE,
             \\  UNIQUE(feed_id, guid),
             \\  UNIQUE(feed_id, link)

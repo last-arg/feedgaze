@@ -231,7 +231,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\ORDER BY
                 \\	feed_id DESC,
                 \\	pub_date_utc DESC,
-                \\  created_at DESC
+                \\  modified_at DESC
             ;
 
             const all_items = try self.feed_db.db.selectAll(Result, all_items_query, .{});

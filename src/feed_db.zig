@@ -139,10 +139,9 @@ pub const Storage = struct {
                 \\  title = excluded.title,
                 \\  pub_date = excluded.pub_date,
                 \\  pub_date_utc = excluded.pub_date_utc,
-                \\  created_at = (strftime('%s', 'now'))
+                \\  modified_at = (strftime('%s', 'now'))
                 \\WHERE
-                \\  excluded.feed_id = feed_id
-                \\  AND excluded.pub_date_utc != pub_date_utc
+                \\  excluded.pub_date_utc != pub_date_utc
             ;
             const query = insert_query ++ "\nON CONFLICT(feed_id, guid) " ++ conflict_update ++ "\nON CONFLICT(feed_id, link)" ++ conflict_update ++ ";";
 
@@ -506,7 +505,7 @@ pub const Storage = struct {
             \\WHERE id IN (SELECT id
             \\  FROM item
             \\  WHERE feed_id = ?
-            \\  ORDER BY pub_date_utc ASC, created_at ASC LIMIT ?
+            \\  ORDER BY pub_date_utc ASC, modified_at ASC LIMIT ?
             \\)
         ;
         for (results) |r| {
