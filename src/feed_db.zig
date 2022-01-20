@@ -230,39 +230,44 @@ pub const Storage = struct {
     }
 
     pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
+        if (!opts.force) {
+            // Update every update_countdown value
+            const update_countdown_query =
+                \\WITH const AS (SELECT strftime('%s', 'now') as current_utc)
+                \\UPDATE feed_update_http SET update_countdown = COALESCE(
+                \\  const.current_utc - last_update + cache_control_max_age,
+                \\  expires_utc - const.current_utc,
+                \\  const.current_utc - last_update + update_interval
+                \\) from const;
+            ;
+            try self.db.exec(update_countdown_query, .{});
+        }
         const UrlFeed = struct {
             location: []const u8,
             etag: ?[]const u8,
             feed_id: u64,
             updated_timestamp: ?i64,
-            update_interval: usize,
-            last_update: i64,
-            expires_utc: ?i64,
             last_modified_utc: ?i64,
-            cache_control_max_age: ?i64,
         };
 
-        const dealloc_fields = comptime deallocFields(UrlFeed);
-        const query_all =
+        const base_query =
             \\SELECT
             \\  feed.location as location,
             \\  etag,
             \\  feed_id,
             \\  feed.updated_timestamp as updated_timestamp,
-            \\  update_interval,
-            \\  last_update,
-            \\  expires_utc,
-            \\  last_modified_utc,
-            \\  cache_control_max_age
+            \\  last_modified_utc
             \\FROM feed_update_http
-            \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
+            \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id
         ;
 
-        const current_time = std.time.timestamp();
+        const query = if (opts.force) base_query else base_query ++ "\nWHERE update_countdown < 0;";
+        var stmt = try self.db.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+
+        const dealloc_fields = comptime deallocFields(UrlFeed);
         var stack_fallback = std.heap.stackFallback(256, self.allocator);
         const stack_allocator = stack_fallback.get();
-        var stmt = try self.db.sql_db.prepare(query_all);
-        defer stmt.deinit();
         var iter = try stmt.iterator(UrlFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
             defer {
@@ -281,27 +286,6 @@ pub const Storage = struct {
             }
 
             log.info("Updating: '{s}'", .{row.location});
-            if (!opts.force) {
-                // TODO: maybe can move these checks into SQL?
-                const check_date: i64 = blk: {
-                    if (row.cache_control_max_age) |sec| {
-                        // Uses cache_control_max_age, last_update
-                        break :blk row.last_update + sec;
-                    }
-                    if (row.expires_utc) |sec| {
-                        break :blk sec;
-                    }
-                    break :blk row.last_update + @intCast(i64, row.update_interval);
-                };
-                if (row.expires_utc != null and check_date > row.expires_utc.?) {
-                    log.info("\tSkip update: Not needed", .{});
-                    continue;
-                } else if (check_date > current_time) {
-                    log.info("\tSkip update: Not needed", .{});
-                    continue;
-                }
-            }
-
             var date_buf: [29]u8 = undefined;
             const last_modified: ?[]const u8 = blk: {
                 if (row.last_modified_utc) |last_modified_utc| {
@@ -547,8 +531,8 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
 }
 
 fn testDataRespOk() http.Ok {
-    const location = "https://lobste.rs/";
     const contents = @embedFile("../test/sample-rss-2.xml");
+    const location = "https://lobste.rs/";
     return http.Ok{
         .location = location,
         .body = contents,
@@ -559,12 +543,11 @@ fn testDataRespOk() http.Ok {
 
 pub fn testResolveRequest(
     _: *std.heap.ArenaAllocator,
-    url: []const u8,
-    _: ?[]const u8,
-    _: ?[]const u8,
+    _: []const u8, // url
+    _: ?[]const u8, // last_modified
+    _: ?[]const u8, // etag
 ) !http.FeedResponse {
     const ok = testDataRespOk();
-    try std.testing.expectEqualStrings(url, ok.location);
     return http.FeedResponse{ .ok = ok };
 }
 
@@ -757,15 +740,7 @@ test "different urls, same feed items" {
     try expectEqual(items.len * 2, item_count.?);
 }
 
-// TODO: idea. make column that counts down seconds till next upate
-// update (calculate new countdown value) all rows
-// get rows that have zero or negative countdown
-// update those rows
-// \\WITH const AS (SELECT COALESCE(last_update + cache_control_max_age, expires_utc, last_update + update_interval) as check_date, strftime('%s', 'now') as current from feed_update_http)
-// current_utc - last_update - cache_control_max_age
-// expires_utc - current_utc
-// current_utc - last_update - update_interval
-test "@active" {
+test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -773,107 +748,58 @@ test "@active" {
     const allocator = arena.allocator();
     var storage = try Storage.init(allocator, null);
 
-    const location1 = "location1";
-    const items_base = [_]parse.Feed.Item{
-        .{ .title = "title1", .id = "same_id1" },
-        .{ .title = "title2", .id = "same_id2" },
-    };
-    const parsed_feed = parse.Feed{
-        .title = "Same stuff",
-    };
-    const id1 = try storage.addFeed(parsed_feed, location1);
-    const ok = http.Ok{
-        .location = "feed_location",
-        .body = "",
-        // .expires_utc = 1,
-    };
-    try storage.addFeedUrl(id1, ok);
-    var items: [items_base.len]parse.Feed.Item = undefined;
-    mem.copy(parse.Feed.Item, &items, &items_base);
-    try storage.addItems(id1, &items);
+    {
+        const location1 = "location1";
+        const parsed_feed = parse.Feed{ .title = "Title: location 1" };
+        const id1 = try storage.addFeed(parsed_feed, location1);
+        const ok1 = http.Ok{
+            .location = "feed_location1",
+            .body = "",
+            .expires_utc = std.math.maxInt(i64), // no update
+        };
+        try storage.addFeedUrl(id1, ok1);
+    }
+    {
+        const location1 = "location2";
+        const parsed_feed = parse.Feed{ .title = "Title: location 2" };
+        const id1 = try storage.addFeed(parsed_feed, location1);
+        const ok1 = http.Ok{
+            .location = "feed_location2",
+            .body = "",
+            .cache_control_max_age = 300,
+        };
+        try storage.addFeedUrl(id1, ok1);
+        // will update feed
+        const query = "update feed_update_http set last_update = ? where feed_id = ?;";
+        try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
+    }
 
-    // const query_all =
-    //     \\SELECT
-    //     \\  feed.location as location,
-    //     \\  etag,
-    //     \\  feed_id,
-    //     \\  feed.updated_timestamp as updated_timestamp,
-    //     \\  update_interval,
-    //     \\  last_update,
-    //     \\  expires_utc,
-    //     \\  last_modified_utc,
-    //     \\  cache_control_max_age
-    //     \\FROM feed_update_http
-    //     \\LEFT JOIN feed ON feed_update_http.feed_id = feed.id;
-    // ;
-    // const UrlFeed = struct {
-    //     location: []const u8,
-    //     etag: ?[]const u8,
-    //     feed_id: u64,
-    //     updated_timestamp: ?i64,
-    //     update_interval: usize,
-    //     last_update: i64,
-    //     expires_utc: ?i64,
-    //     last_modified_utc: ?i64,
-    //     cache_control_max_age: ?i64,
-    // };
-    const query_all =
-        \\WITH const AS (SELECT COALESCE(last_update + cache_control_max_age, expires_utc, last_update + update_interval) as check_date, strftime('%s', 'now') as current from feed_update_http)
-        \\SELECT
-        \\last_update,
-        \\cache_control_max_age,
-        \\update_interval,
-        \\last_update + cache_control_max_age as check_cache,
-        \\expires_utc,
-        \\last_update + update_interval as cache_interval,
-        \\const.check_date,
-        \\const.current,
-        \\(expires_utc is not null and const.check_date < expires_utc) as cond1,
-        \\(const.check_date < strftime('%s','now')) as cond2
-        \\FROM feed_update_http, const
-        \\where (expires_utc is not null and const.check_date < expires_utc)
-        \\or (const.check_date < const.current)
-    ;
-    const T = struct {
-        last_update: i64,
-        cache_control_max_age: ?i64,
-        update_interval: u32,
-        check_cache: i64,
-        expires_utc: ?i64,
-        check_interval: i64,
-        check_date: i64,
-        current: i64,
-        cond1: bool,
-        cond2: bool,
-    };
-    const all = try storage.db.selectAll(T, query_all, .{});
-    const one = all[0];
-    print("check_cache:    {d}\n", .{one.check_cache});
-    print("expires_utc:    {d}\n", .{one.expires_utc});
-    print("check_interval: {d}\n", .{one.check_interval});
-    print("check_date:     {d}\n", .{one.check_date});
-    print("current:        {d}\n", .{one.current});
-    print("cond1 db:       {}\n", .{one.cond1});
-    print("cond2 db:       {}\n", .{one.cond2});
-    print("cond1:          {}\n", .{one.expires_utc != null and one.check_date < one.expires_utc.?});
-    print("cond2:          {}\n", .{one.check_date < one.current});
+    {
+        const location1 = "location3";
+        const parsed_feed = parse.Feed{ .title = "Title: location 3" };
+        const id1 = try storage.addFeed(parsed_feed, location1);
+        const ok1 = http.Ok{
+            .location = "feed_location3",
+            .body = "",
+        };
+        try storage.addFeedUrl(id1, ok1);
+        // will update feed
+        const query = "update feed_update_http set last_update = ? where feed_id = ?;";
+        try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
+    }
 
-    // const check_date: i64 = blk: {
-    //     if (row.cache_control_max_age) |sec| {
-    //         // Uses cache_control_max_age, last_update
-    //         break :blk row.last_update + sec;
-    //     }
-    //     if (row.expires_utc) |sec| {
-    //         break :blk sec;
-    //     }
-    //     break :blk row.last_update + @intCast(i64, row.update_interval);
-    // };
-    // if (row.expires_utc != null and check_date > row.expires_utc.?) {
-    //     log.info("\tSkip update: Not needed", .{});
-    //     continue;
-    // } else if (check_date > current_time) {
-    //     log.info("\tSkip update: Not needed", .{});
-    //     continue;
-    // }
+    try storage.updateUrlFeeds(Storage.UpdateOptions{ .resolveUrl = testResolveRequest });
+    const query_last_update = "select last_update from feed_update_http";
+    {
+        const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
+        for (last_updates) |last_update| try expect(last_update < std.math.maxInt(u32));
+    }
 
+    try storage.db.exec("update feed_update_http set last_update = 0;", .{});
+    try storage.updateUrlFeeds(Storage.UpdateOptions{ .resolveUrl = testResolveRequest, .force = true });
+
+    {
+        const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
+        for (last_updates) |last_update| try expect(last_update > 0);
+    }
 }

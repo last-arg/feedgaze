@@ -41,7 +41,7 @@ pub const Table = struct {
             \\  title,
             \\  link,
             \\  pub_date,
-            \\  created_at,
+            \\  modified_at,
             \\  feed_id,
             \\  id
             \\FROM item
@@ -128,6 +128,7 @@ pub const Table = struct {
         pub const create =
             \\CREATE TABLE IF NOT EXISTS feed_update_http (
             \\  feed_id INTEGER UNIQUE,
+            \\  update_countdown INTEGER DEFAULT 0,
             \\  update_interval INTEGER DEFAULT 600,
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
             \\  cache_control_max_age INTEGER DEFAULT NULL,
