@@ -43,7 +43,7 @@ pub const Ok = struct {
     body: []const u8,
     content_type: ContentType = .unknown,
 
-    cache_control_max_age: ?usize = null,
+    cache_control_max_age: ?u32 = null,
     expires_utc: ?i64 = null,
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
@@ -178,7 +178,7 @@ pub fn makeRequest(
                     const v = mem.trimLeft(u8, v_raw, " \r\n\t");
                     if (ascii.startsWithIgnoreCase(v, "max-age") or ascii.startsWithIgnoreCase(v, "s-maxage")) {
                         const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-                        result.cache_control_max_age = try fmt.parseInt(usize, v[eq_index + 1 ..], 10);
+                        result.cache_control_max_age = try fmt.parseInt(u32, v[eq_index + 1 ..], 10);
                         break;
                     }
                 }
