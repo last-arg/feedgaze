@@ -10,6 +10,7 @@ const dateStrToTimeStamp = @import("parse.zig").Rss.pubDateToTimestamp;
 const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const print = std.debug.print;
+const Datetime = @import("datetime").datetime.Datetime;
 
 pub const FeedResponse = union(enum) {
     ok: Ok,
@@ -69,9 +70,23 @@ const max_redirects = 3;
 pub fn resolveRequest(
     arena: *ArenaAllocator,
     url: []const u8,
-    last_modified: ?[]const u8,
+    last_modified_utc: ?i64,
     etag: ?[]const u8,
 ) !FeedResponse {
+    var date_buf: [29]u8 = undefined;
+    const last_modified: ?[]const u8 = blk: {
+        if (last_modified_utc) |time_utc| {
+            const date = Datetime.fromTimestamp(time_utc);
+            const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
+            const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
+                date.date.weekdayName()[0..3],
+                date.date.day, date.date.monthName()[0..3], date.date.year,
+                date.time.hour, date.time.minute, date.time.second,
+            });
+            break :blk date_str;
+        }
+        break :blk null;
+    };
     var resp = try makeRequest(arena, url, last_modified, etag);
     var redirect_count: u16 = 0;
     while (redirect_count < max_redirects) : (redirect_count += 1) {
@@ -83,7 +98,7 @@ pub fn resolveRequest(
             },
             .temporary_redirect => |temp| {
                 log.info("Temporary redirect to {s}", .{temp.location});
-                resp = try makeRequest(arena, temp.location, temp.last_modified, temp.etag);
+                resp = try makeRequest(arena, temp.location, last_modified, etag);
             },
         }
     } else {

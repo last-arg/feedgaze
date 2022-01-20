@@ -1,4 +1,5 @@
 // TODO?: put default values into constants?
+// TODO: clean up queries
 pub const Table = struct {
     pub const item = struct {
         pub const create =

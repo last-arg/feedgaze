@@ -14,8 +14,6 @@ const parse = @import("parse.zig");
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
-const datetime = @import("datetime").datetime;
-const Datetime = datetime.Datetime;
 const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 
@@ -286,28 +284,10 @@ pub const Storage = struct {
             }
 
             log.info("Updating: '{s}'", .{row.location});
-            var date_buf: [29]u8 = undefined;
-            const last_modified: ?[]const u8 = blk: {
-                if (row.last_modified_utc) |last_modified_utc| {
-                    const date = Datetime.fromTimestamp(last_modified_utc);
-                    const date_fmt = "{s}, {d:0>2} {s} {d} {d:0>2}:{d:0>2}:{d:0>2} GMT";
-                    const date_str = try std.fmt.bufPrint(&date_buf, date_fmt, .{
-                        date.date.weekdayName()[0..3],
-                        date.date.day,
-                        date.date.monthName()[0..3],
-                        date.date.year,
-                        date.time.hour,
-                        date.time.minute,
-                        date.time.second,
-                    });
-                    break :blk date_str;
-                }
-                break :blk null;
-            };
-
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const resp_union = try opts.resolveUrl(&arena, row.location, last_modified, row.etag);
+            // TODO: pull out resolveUrl and parsing into separate function?
+            const resp_union = try opts.resolveUrl(&arena, row.location, row.last_modified_utc, row.etag);
 
             switch (resp_union) {
                 .not_modified => {
@@ -544,7 +524,7 @@ fn testDataRespOk() http.Ok {
 pub fn testResolveRequest(
     _: *std.heap.ArenaAllocator,
     _: []const u8, // url
-    _: ?[]const u8, // last_modified
+    _: ?i64, // last_modified
     _: ?[]const u8, // etag
 ) !http.FeedResponse {
     const ok = testDataRespOk();
