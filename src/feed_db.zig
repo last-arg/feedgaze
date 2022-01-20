@@ -310,11 +310,11 @@ pub const Storage = struct {
                 else => try parse.parse(&arena, resp.body),
             };
 
+            var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
+            defer savepoint.rollback();
             const update_feed_row = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp };
-            // TODO: add transaction
-            // or add transaction out of while loop
-            // and use rollback when one of updates fails
             try self.updateUrlFeed(update_feed_row, resp, rss_feed, opts);
+            savepoint.commit();
             log.info("Updated: '{s}'", .{row.location});
         }
     }
@@ -409,12 +409,15 @@ pub const Storage = struct {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             var rss_feed = try parse.parse(&arena, contents.items);
 
+            var savepoint = try self.db.sql_db.savepoint("updateLocalFeeds");
+            defer savepoint.rollback();
             try self.db.exec(query_update_local, .{ mtime_sec, row.feed_id });
 
             if (!opts.force) {
                 if (rss_feed.updated_timestamp != null and row.feed_updated_timestamp != null and
                     rss_feed.updated_timestamp.? == row.feed_updated_timestamp.?)
                 {
+                    savepoint.commit();
                     log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                     continue;
                 }
@@ -430,6 +433,7 @@ pub const Storage = struct {
             });
 
             try self.addItems(row.feed_id, rss_feed.items);
+            savepoint.commit();
             log.info("Updated: '{s}'", .{row.location});
         }
     }
@@ -588,7 +592,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "@active Storage local" {
+test "Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
