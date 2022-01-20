@@ -369,12 +369,10 @@ pub const Storage = struct {
             location: []const u8,
             feed_id: u64,
             feed_updated_timestamp: ?i64,
-            update_interval: usize,
-            last_update: i64,
             last_modified_timestamp: ?i64,
         };
 
-        var contents = try ArrayList(u8).initCapacity(self.allocator, 4096);
+        var contents = ArrayList(u8).init(self.allocator);
         defer contents.deinit();
 
         const query_update_local =
@@ -395,9 +393,9 @@ pub const Storage = struct {
             const file = try std.fs.openFileAbsolute(row.location, .{});
             defer file.close();
             var file_stat = try file.stat();
+            const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
             if (!opts.force) {
                 if (row.last_modified_timestamp) |last_modified| {
-                    const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
                     if (last_modified == mtime_sec) {
                         log.info("\tSkipping update: File hasn't been modified", .{});
                         continue;
@@ -410,13 +408,8 @@ pub const Storage = struct {
             try file.reader().readAllArrayList(&contents, file_stat.size);
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             var rss_feed = try parse.parse(&arena, contents.items);
-            const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
 
-            try self.db.exec(query_update_local, .{
-                mtime_sec,
-                // where
-                row.feed_id,
-            });
+            try self.db.exec(query_update_local, .{ mtime_sec, row.feed_id });
 
             if (!opts.force) {
                 if (rss_feed.updated_timestamp != null and row.feed_updated_timestamp != null and
@@ -595,7 +588,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "Storage local" {
+test "@active Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

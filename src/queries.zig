@@ -116,8 +116,6 @@ pub const Table = struct {
             \\  feed.location as location,
             \\  feed_id,
             \\  feed.updated_timestamp as feed_update_timestamp,
-            \\  update_interval,
-            \\  last_update,
             \\  last_modified_timestamp
             \\FROM feed_update_local
             \\LEFT JOIN feed ON feed_update_local.feed_id = feed.id;
