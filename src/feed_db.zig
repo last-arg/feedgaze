@@ -246,6 +246,21 @@ pub const Storage = struct {
             feed_id: u64,
             updated_timestamp: ?i64,
             last_modified_utc: ?i64,
+
+            pub fn deinit(row: @This(), allocator: Allocator) void {
+                // Fetches allocated fields in reverse order
+                const dealloc_fields = comptime deallocFields(@This());
+                // IMPORTANT: Have to free memory in reverse, important when using FixedBufferAllocator.
+                // FixedBufferAllocator stack part uses end_index to keep track of available memory
+                inline for (dealloc_fields) |field| {
+                    const val = @field(row, field.name);
+                    if (field.is_optional) {
+                        if (val) |v| allocator.free(v);
+                    } else {
+                        allocator.free(val);
+                    }
+                }
+            }
         };
 
         const base_query =
@@ -263,25 +278,11 @@ pub const Storage = struct {
         var stmt = try self.db.sql_db.prepareDynamic(query);
         defer stmt.deinit();
 
-        const dealloc_fields = comptime deallocFields(UrlFeed);
         var stack_fallback = std.heap.stackFallback(256, self.allocator);
         const stack_allocator = stack_fallback.get();
         var iter = try stmt.iterator(UrlFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
-            defer {
-                // IMPORTANT: Have to free memory in reverse, important when using FixedBufferAllocator.
-                // FixedBufferAllocator uses end_index to keep track of available memory
-                //
-                // dealloc_fields are in reverse order
-                inline for (dealloc_fields) |field| {
-                    const val = @field(row, field.name);
-                    if (field.is_optional) {
-                        if (val) |v| stack_allocator.free(v);
-                    } else {
-                        stack_allocator.free(val);
-                    }
-                }
-            }
+            defer row.deinit(stack_allocator);
 
             log.info("Updating: '{s}'", .{row.location});
             var arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -376,6 +377,11 @@ pub const Storage = struct {
             feed_id: u64,
             feed_updated_timestamp: ?i64,
             last_modified_timestamp: ?i64,
+
+            pub fn deinit(row: @This(), allocator: Allocator) void {
+                // If LocalFeed gets more allocatable fields use deallocFields()
+                allocator.free(row.location);
+            }
         };
 
         var contents = ArrayList(u8).init(self.allocator);
@@ -394,7 +400,7 @@ pub const Storage = struct {
         defer stmt.deinit();
         var iter = try stmt.iterator(LocalFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
-            defer stack_allocator.free(row.location);
+            defer row.deinit(stack_allocator);
             log.info("Updating: '{s}'", .{row.location});
             const file = try std.fs.openFileAbsolute(row.location, .{});
             defer file.close();
