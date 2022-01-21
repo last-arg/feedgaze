@@ -8,8 +8,6 @@
       - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
   [ ] [Json feed](https://www.jsonfeed.org/)
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
-[ ] parse.zig
-    [ ] Fix: parsing Feed.link. rel = self/alternative
 [ ] UI
   [ ] CLI - initial
   [ ] TUI - NotCurses
@@ -25,8 +23,6 @@
   [ ] Async
     - https://github.com/kprotty/zap
     - https://github.com/lithdew/pike
-[ ] SQLite
-  - [Setting suggestions](https://news.ycombinator.com/item?id=26103776)
  
 # Future (Maybe)
 [ ] Image (icon/logo)
