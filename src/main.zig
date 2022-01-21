@@ -37,19 +37,16 @@ pub fn main() anyerror!void {
 
     var iter = process.args();
     _ = iter.skip();
-    while (iter.next(allocator)) |arg_err| {
-        const arg = try arg_err;
+    while (try iter.next(allocator)) |arg| {
         if (mem.eql(u8, "add", arg)) {
-            if (iter.next(allocator)) |value_err| {
-                const value = try value_err;
+            if (try iter.next(allocator)) |value| {
                 try cli.addFeed(value);
             } else {
                 log.err("Subcommand add missing feed (url or file) location", .{});
             }
         } else if (mem.eql(u8, "update", arg)) {
             var opts = command.CliOptions{ .url = false, .local = false };
-            while (iter.next(allocator)) |value_err| {
-                const value = try value_err;
+            while (try iter.next(allocator)) |value| {
                 if (mem.eql(u8, "--url", value)) {
                     opts.url = true;
                 } else if (mem.eql(u8, "--local", value)) {
@@ -62,26 +59,24 @@ pub fn main() anyerror!void {
                 opts.url = true;
                 opts.local = true;
             }
-            try cli.updateFeeds(opts);
+            cli.options = opts;
+            try cli.updateFeeds();
         } else if (mem.eql(u8, "clean", arg)) {
             try cli.cleanItems();
         } else if (mem.eql(u8, "search", arg)) {
-            if (iter.next(allocator)) |value_err| {
-                const term = try value_err;
-                try cli.search(term);
+            if (try iter.next(allocator)) |value| {
+                try cli.search(value);
             } else {
                 log.err("Subcommand search missing term", .{});
             }
         } else if (mem.eql(u8, "delete", arg)) {
-            if (iter.next(allocator)) |value_err| {
-                const value = try value_err;
+            if (try iter.next(allocator)) |value| {
                 try cli.deleteFeed(value);
             } else {
                 log.err("Subcommand delete missing argument location", .{});
             }
         } else if (mem.eql(u8, "print", arg)) {
-            if (iter.next(allocator)) |value_err| {
-                const value = try value_err;
+            if (try iter.next(allocator)) |value| {
                 if (mem.eql(u8, "feeds", value)) {
                     try cli.printFeeds();
                     return;

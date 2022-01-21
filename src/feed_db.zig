@@ -322,8 +322,9 @@ pub const Storage = struct {
         }
     }
 
+    pub const CurrentData = struct { feed_id: u64, updated_timestamp: ?i64 };
     const UpdateData = struct {
-        current: struct { feed_id: u64, updated_timestamp: ?i64 },
+        current: CurrentData,
         feed: parse.Feed,
         headers: http.RespHeaders,
     };

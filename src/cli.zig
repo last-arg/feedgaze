@@ -136,15 +136,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
             defer savepoint.rollback();
-            const query = "select id, updated_timestamp from feed where location = ? limit 1;";
-            if (try feed_db.db.one(Storage.UpdateFeedRow, query, .{location})) |row| {
+            const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
+            if (try feed_db.db.one(Storage.CurrentData, query, .{location})) |row| {
                 try writer.print("Feed already exists\nUpdating feed instead\n", .{});
-                try feed_db.updateUrlFeed(row, resp.ok, feed, .{ .force = true });
+                try feed_db.updateUrlFeed(.{
+                    .current = row,
+                    .headers = resp.ok.headers,
+                    .feed = feed,
+                }, .{ .force = true });
                 try writer.print("Feed updated {s}\n", .{location});
             } else {
                 log.info("Saving feed", .{});
                 const feed_id = try feed_db.addFeed(feed, location);
-                try feed_db.addFeedUrl(feed_id, resp.ok);
+                try feed_db.addFeedUrl(feed_id, resp.ok.headers);
                 try feed_db.addItems(feed_id, feed.items);
                 try writer.print("Feed added {s}\n", .{location});
             }
