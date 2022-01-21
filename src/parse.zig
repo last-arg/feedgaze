@@ -878,11 +878,13 @@ pub const Rss = struct {
     }
 
     pub fn pubDateToTimestamp(str: []const u8) !i64 {
-        const datetime_raw = try Rss.parseDateToUtc(str);
-        const date_time_utc = datetime_raw.shiftTimezone(&timezones.UTC);
-        return @intCast(i64, date_time_utc.toTimestamp());
+        const dt = try Rss.parseDateToUtc(str);
+        const date_time_gmt = dt.shiftTimezone(&timezones.GMT);
+        return @intCast(i64, date_time_gmt.toTimestamp());
     }
 
+    // Isn't the same as Datetime.parseModifiedSince(). In HTTP header timezone is always GMT.
+    // In Rss spec timezones might not be GMT.
     pub fn parseDateToUtc(str: []const u8) !Datetime {
         var iter = mem.split(u8, str, " ");
 
