@@ -62,7 +62,6 @@ pub const Table = struct {
         ;
         pub const update_where_id =
             \\UPDATE feed SET
-            \\  title = ?{[]const u8},
             \\  link = ?,
             \\  updated_raw = ?,
             \\  updated_timestamp = ?

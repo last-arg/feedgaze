@@ -356,10 +356,7 @@ pub const Storage = struct {
         }
 
         try self.db.exec(Table.feed.update_where_id, .{
-            data.feed.title,       data.feed.link,
-            data.feed.updated_raw, data.feed.updated_timestamp,
-            // where
-            data.current.feed_id,
+            data.feed.link, data.feed.updated_raw, data.feed.updated_timestamp, data.current.feed_id,
         });
 
         try self.addItems(data.current.feed_id, data.feed.items);
@@ -440,12 +437,7 @@ pub const Storage = struct {
             }
 
             try self.db.exec(Table.feed.update_where_id, .{
-                rss_feed.title,
-                rss_feed.link,
-                rss_feed.updated_raw,
-                rss_feed.updated_timestamp,
-                // where
-                row.feed_id,
+                rss_feed.link, rss_feed.updated_raw, rss_feed.updated_timestamp, row.feed_id,
             });
 
             try self.addItems(row.feed_id, rss_feed.items);
@@ -608,7 +600,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "@active Storage local" {
+test "Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
