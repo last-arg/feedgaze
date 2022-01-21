@@ -94,10 +94,7 @@ pub const Storage = struct {
             \\  last_modified_timestamp = excluded.last_modified_timestamp,
             \\  last_update = (strftime('%s', 'now'))
         ;
-        _ = query;
-        try self.db.exec(Table.feed_update_local.insert ++ Table.feed_update_local.on_conflict_feed_id, .{
-            feed_id, last_modified,
-        });
+        try self.db.exec(query, .{ feed_id, last_modified });
     }
 
     pub fn addItems(self: *Self, feed_id: u64, feed_items: []parse.Feed.Item) !void {
@@ -391,9 +388,19 @@ pub const Storage = struct {
             \\WHERE feed_id = ?
         ;
 
+        const query_all =
+            \\SELECT
+            \\  feed.location as location,
+            \\  feed_id,
+            \\  feed.updated_timestamp as feed_update_timestamp,
+            \\  last_modified_timestamp
+            \\FROM feed_update_local
+            \\LEFT JOIN feed ON feed_update_local.feed_id = feed.id;
+        ;
+
         var stack_fallback = std.heap.stackFallback(256, self.allocator);
         const stack_allocator = stack_fallback.get();
-        var stmt = try self.db.sql_db.prepare(Table.feed_update_local.selectAllWithLocation);
+        var stmt = try self.db.sql_db.prepare(query_all);
         defer stmt.deinit();
         var iter = try stmt.iterator(LocalFeed, .{});
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
@@ -601,7 +608,7 @@ test "Storage fake net" {
     savepoint.commit();
 }
 
-test "Storage local" {
+test "@active Storage local" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
