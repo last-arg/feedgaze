@@ -79,6 +79,8 @@ pub fn setup(db: *Db) !void {
         _ = try db.sql_db.pragma(usize, .{}, "foreign_keys", "1");
         _ = try db.sql_db.pragma(usize, .{}, "journal_mode", "WAL");
         _ = try db.sql_db.pragma(usize, .{}, "synchronous", "normal");
+        _ = try db.sql_db.pragma(usize, .{}, "temp_store", "2");
+        _ = try db.sql_db.pragma(usize, .{}, "cache_size", "-32000");
 
         inline for (@typeInfo(Table).Struct.decls) |decl| {
             if (@hasDecl(decl.data.Type, "create")) {

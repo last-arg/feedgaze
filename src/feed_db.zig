@@ -287,6 +287,12 @@ pub const Storage = struct {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             // TODO: pull out resolveUrl and parsing into separate function?
+            // maybe try updateUrlFeed(UpdateUrlData, UpdateOptions)
+            // const = struct {
+            //     current: struct{feed_id, updated_timestamp},
+            //     ok: http.Ok,
+            //     feed: parse.Feed,
+            // };
             const resp_union = try opts.resolveUrl(&arena, row.location, row.last_modified_utc, row.etag);
 
             switch (resp_union) {
