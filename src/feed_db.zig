@@ -55,7 +55,7 @@ pub const Storage = struct {
         try self.db.exec("DELETE FROM feed WHERE id = ?", .{id});
     }
 
-    pub fn addFeedUrl(self: *Self, feed_id: u64, resp: http.Ok) !void {
+    pub fn addFeedUrl(self: *Self, feed_id: u64, headers: http.RespHeaders) !void {
         const query =
             \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
@@ -74,7 +74,7 @@ pub const Storage = struct {
             \\  last_update = (strftime('%s', 'now'))
         ;
         try self.db.exec(query, .{
-            feed_id, resp.cache_control_max_age, resp.expires_utc, resp.last_modified_utc, resp.etag,
+            feed_id, headers.cache_control_max_age, headers.expires_utc, headers.last_modified_utc, headers.etag,
         });
     }
 
@@ -281,6 +281,7 @@ pub const Storage = struct {
         var stack_fallback = std.heap.stackFallback(256, self.allocator);
         const stack_allocator = stack_fallback.get();
         var iter = try stmt.iterator(UrlFeed, .{});
+
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
             defer row.deinit(stack_allocator);
 
@@ -288,12 +289,6 @@ pub const Storage = struct {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             // TODO: pull out resolveUrl and parsing into separate function?
-            // maybe try updateUrlFeed(UpdateUrlData, UpdateOptions)
-            // const = struct {
-            //     current: struct{feed_id, updated_timestamp},
-            //     ok: http.Ok,
-            //     feed: parse.Feed,
-            // };
             const resp_union = try opts.resolveUrl(&arena, row.location, row.last_modified_utc, row.etag);
 
             switch (resp_union) {
@@ -319,21 +314,23 @@ pub const Storage = struct {
 
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
             defer savepoint.rollback();
-            const update_feed_row = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp };
-            try self.updateUrlFeed(update_feed_row, resp, rss_feed, opts);
+            const update_data = UpdateData{
+                .current = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp },
+                .headers = resp.headers,
+                .feed = rss_feed,
+            };
+            try self.updateUrlFeed(update_data, opts);
             savepoint.commit();
             log.info("Updated: '{s}'", .{row.location});
         }
     }
 
-    pub const UpdateFeedRow = struct { feed_id: u64, updated_timestamp: ?i64 };
-    pub fn updateUrlFeed(
-        self: *Self,
-        row: UpdateFeedRow,
-        resp: http.Ok,
+    const UpdateData = struct {
+        current: struct { feed_id: u64, updated_timestamp: ?i64 },
         feed: parse.Feed,
-        opts: UpdateOptions,
-    ) !void {
+        headers: http.RespHeaders,
+    };
+    pub fn updateUrlFeed(self: *Self, data: UpdateData, opts: UpdateOptions) !void {
         const query_http_update =
             \\UPDATE feed_update_http SET
             \\  cache_control_max_age = ?,
@@ -344,17 +341,17 @@ pub const Storage = struct {
             \\WHERE feed_id = ?
         ;
         try self.db.exec(query_http_update, .{
-            resp.cache_control_max_age,
-            resp.expires_utc,
-            resp.last_modified_utc,
-            resp.etag,
+            data.headers.cache_control_max_age,
+            data.headers.expires_utc,
+            data.headers.last_modified_utc,
+            data.headers.etag,
             // where
-            row.feed_id,
+            data.current.feed_id,
         });
 
         if (!opts.force) {
-            if (feed.updated_timestamp != null and row.updated_timestamp != null and
-                feed.updated_timestamp.? == row.updated_timestamp.?)
+            if (data.feed.updated_timestamp != null and data.current.updated_timestamp != null and
+                data.feed.updated_timestamp.? == data.current.updated_timestamp.?)
             {
                 log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
                 return;
@@ -362,13 +359,13 @@ pub const Storage = struct {
         }
 
         try self.db.exec(Table.feed.update_where_id, .{
-            feed.title,       feed.link,
-            feed.updated_raw, feed.updated_timestamp,
+            data.feed.title,       data.feed.link,
+            data.feed.updated_raw, data.feed.updated_timestamp,
             // where
-            row.feed_id,
+            data.current.feed_id,
         });
 
-        try self.addItems(row.feed_id, feed.items);
+        try self.addItems(data.current.feed_id, data.feed.items);
     }
 
     pub fn updateLocalFeeds(self: *Self, opts: UpdateOptions) !void {
@@ -526,7 +523,7 @@ fn testDataRespOk() http.Ok {
         .location = location,
         .body = contents,
         .content_type = http.ContentType.xml_rss,
-        .etag = "etag_value",
+        .headers = .{ .etag = "etag_value" },
     };
 }
 
@@ -557,7 +554,7 @@ test "Storage fake net" {
     var savepoint = try feed_db.db.sql_db.savepoint("test_net");
     defer savepoint.rollback();
     const id = try feed_db.addFeed(feed, test_data.location);
-    try feed_db.addFeedUrl(id, test_data);
+    try feed_db.addFeedUrl(id, test_data.headers);
 
     const ItemsResult = struct { title: []const u8 };
     const all_items_query = "select title from item order by id DESC";

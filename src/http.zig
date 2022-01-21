@@ -39,15 +39,18 @@ const TemporaryRedirect = struct {
     etag: ?[]const u8 = null, // Doesn't own memory
 };
 
-pub const Ok = struct {
-    location: []const u8,
-    body: []const u8,
-    content_type: ContentType = .unknown,
-
+pub const RespHeaders = struct {
     cache_control_max_age: ?u32 = null,
     expires_utc: ?i64 = null,
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
+};
+
+pub const Ok = struct {
+    location: []const u8,
+    body: []const u8,
+    content_type: ContentType = .unknown,
+    headers: RespHeaders = .{},
 };
 
 pub const ContentEncoding = enum {
@@ -182,18 +185,18 @@ pub fn makeRequest(
                     }
                 }
             } else if (ascii.eqlIgnoreCase("etag", header.name)) {
-                result.etag = header.value;
+                result.headers.etag = header.value;
             } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
-                result.last_modified_utc = dateStrToTimeStamp(header.value) catch continue;
+                result.headers.last_modified_utc = dateStrToTimeStamp(header.value) catch continue;
             } else if (ascii.eqlIgnoreCase("expires", header.name)) {
-                result.expires_utc = dateStrToTimeStamp(header.value) catch continue;
+                result.headers.expires_utc = dateStrToTimeStamp(header.value) catch continue;
             } else if (ascii.eqlIgnoreCase("cache-control", header.name)) {
                 var it = mem.split(u8, header.value, ",");
                 while (it.next()) |v_raw| {
                     const v = mem.trimLeft(u8, v_raw, " \r\n\t");
                     if (ascii.startsWithIgnoreCase(v, "max-age") or ascii.startsWithIgnoreCase(v, "s-maxage")) {
                         const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-                        result.cache_control_max_age = try fmt.parseInt(u32, v[eq_index + 1 ..], 10);
+                        result.headers.cache_control_max_age = try fmt.parseInt(u32, v[eq_index + 1 ..], 10);
                         break;
                     }
                 }
