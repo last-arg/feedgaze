@@ -72,49 +72,14 @@ pub fn main() !void {
         return error.SubcommandRequiresInput;
     }
 
-    // TODO: add flag for sqlite db file location
-    var db_location: []const u8 = blk: {
-        if (args.option("--db")) |loc| {
-            _ = loc;
-            // TODO
-        }
-        const db_file = block: {
-            if (try known_folders.getPath(allocator, .local_configuration)) |path| {
-                break :block try std.fs.path.join(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
-            }
-            if (try known_folders.getPath(allocator, .home)) |path| {
-                // TODO: '.config' might be different on other platforms
-                break :block try std.fs.path.join(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
-            }
-            log.err("Failed to find local configuration or home directory\n", .{});
-            return error.MissingConfigAndHomeDir;
-        };
-        const db_dir = std.fs.path.dirname(db_file).?;
-        std.fs.makeDirAbsolute(db_dir) catch |err| switch (err) {
-            error.PathAlreadyExists => {},
-            else => {
-                log.err("Failed to create directory in '{s}' for database file feedgaze.sqlite", .{db_dir});
-                return err;
-            },
-        };
-        break :blk db_file;
+    var storage = blk: {
+        var tmp_arena = std.heap.ArenaAllocator.init(base_allocator);
+        defer tmp_arena.deinit();
+        const tmp_allocator = tmp_arena.allocator();
+        var db_location = try getDatabaseLocation(tmp_allocator, args.option("--db"));
+        const loc = try std.fmt.allocPrintZ(allocator, "{s}", .{db_location});
+        break :blk try Storage.init(allocator, loc);
     };
-
-    print("db_location: {s}\n", .{db_location});
-
-    // TODO: handle db path
-    // const abs_location = "/media/hdd/code/feedgaze/tmp/test.db_conn";
-    // const abs_location = null;
-    // TODO: make default location somewhere in home directory
-    // const abs_location = try makeFilePath(allocator, default_feed_dblocation);
-    // const feed_dbfile = try std.fs.createFileAbsolute(
-    //     abs_location,
-    //     .{ .read = true, .truncate = false },
-    // );
-    // TODO: create db
-    // var storage = try Storage.init(allocator, abs_location);
-    // var writer = std.io.getStdOut().writer();
-    // const reader = std.io.getStdIn().reader();
 
     const cli_options = .{
         .force = args.flag("--force"),
@@ -125,6 +90,9 @@ pub fn main() !void {
     print("subcommand: {s}\n", .{subcommand});
     print("options: {}\n", .{cli_options});
 
+    _ = storage;
+    // var writer = std.io.getStdOut().writer();
+    // const reader = std.io.getStdIn().reader();
     // var cli = command.makeCli(allocator, &storage, writer, reader);
     switch (subcommand) {
         .add => {},
@@ -219,4 +187,68 @@ pub fn main() !void {
     //         return error.UnknownArgument;
     //     }
     // }
+}
+
+fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![]const u8 {
+    if (db_option) |loc| {
+        const db_file = block: {
+            if (std.fs.path.isAbsolute(loc)) {
+                break :block loc;
+            }
+            break :block try std.fs.path.join(allocator, &.{ try std.process.getCwdAlloc(allocator), loc });
+        };
+        std.fs.accessAbsolute(db_file, .{}) catch |err| switch (err) {
+            error.FileNotFound => {
+                const stderr = std.io.getStdErr().writer();
+                try stderr.print("Provided path '{s}' doesn't exist\n", .{db_file});
+                var buf: [1]u8 = undefined;
+                while (true) {
+                    try stderr.print("Do you want to create database in '{s}' (Y/n)? ", .{db_file});
+                    _ = try std.io.getStdIn().read(&buf);
+                    const first = buf[0];
+                    // Clear characters from stdin
+                    while ((try std.io.getStdIn().read(&buf)) != 0) if (buf[0] == '\n') break;
+                    const char = std.ascii.toLower(first);
+                    if (char == 'y') {
+                        break;
+                    } else if (char == 'n') {
+                        print("Exit app\n", .{});
+                        std.os.exit(0);
+                    }
+                    try stderr.print("Invalid input '{s}' try again.\n", .{db_file});
+                }
+            },
+            else => return err,
+        };
+        const db_dir = std.fs.path.dirname(db_file).?;
+        std.fs.makeDirAbsolute(db_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => {
+                log.err("Failed to create directory in '{s}' for database file feedgaze.sqlite", .{db_dir});
+                return err;
+            },
+        };
+        return db_file;
+    }
+    // Get default database location
+    const db_file = block: {
+        if (try known_folders.getPath(allocator, .local_configuration)) |path| {
+            break :block try std.fs.path.join(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
+        }
+        if (try known_folders.getPath(allocator, .home)) |path| {
+            // TODO: '.config' is different on other platforms
+            break :block try std.fs.path.join(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
+        }
+        log.err("Failed to find local configuration or home directory\n", .{});
+        return error.MissingConfigAndHomeDir;
+    };
+    const db_dir = std.fs.path.dirname(db_file).?;
+    std.fs.makeDirAbsolute(db_dir) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            log.err("Failed to create directory in '{s}' for database file feedgaze.sqlite", .{db_dir});
+            return err;
+        },
+    };
+    return db_file;
 }
