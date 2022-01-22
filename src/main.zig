@@ -9,8 +9,12 @@ const command = @import("cli.zig");
 const Storage = @import("feed_db.zig").Storage;
 const Cli = command.Cli;
 const clap = @import("clap");
+const known_folders = @import("known-folders");
 
 pub const log_level = std.log.Level.debug;
+pub const known_folders_config = .{
+    .xdg_on_mac = true,
+};
 
 // TODO: need to replace disk db, doesn't work with new code anymore
 // TODO: auto add some data for fast cli testing
@@ -69,11 +73,34 @@ pub fn main() !void {
     }
 
     // TODO: add flag for sqlite db file location
-    const db_location = args.option("--db") orelse blk: {
-        // TODO: https://github.com/ziglibs/known-folders
-        break :blk "fake/location/db.sqlite";
-        // return error.NoDbFileLocation;
+    var db_location: []const u8 = blk: {
+        if (args.option("--db")) |loc| {
+            _ = loc;
+            // TODO
+        }
+        const db_file = block: {
+            if (try known_folders.getPath(allocator, .local_configuration)) |path| {
+                break :block try std.fs.path.join(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
+            }
+            if (try known_folders.getPath(allocator, .home)) |path| {
+                // TODO: '.config' might be different on other platforms
+                break :block try std.fs.path.join(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
+            }
+            log.err("Failed to find local configuration or home directory\n", .{});
+            return error.MissingConfigAndHomeDir;
+        };
+        const db_dir = std.fs.path.dirname(db_file).?;
+        std.fs.makeDirAbsolute(db_dir) catch |err| switch (err) {
+            error.PathAlreadyExists => {},
+            else => {
+                log.err("Failed to create directory in '{s}' for database file feedgaze.sqlite", .{db_dir});
+                return err;
+            },
+        };
+        break :blk db_file;
     };
+
+    print("db_location: {s}\n", .{db_location});
 
     // TODO: handle db path
     // const abs_location = "/media/hdd/code/feedgaze/tmp/test.db_conn";
@@ -96,7 +123,6 @@ pub fn main() !void {
     };
 
     print("subcommand: {s}\n", .{subcommand});
-    print("location: {s}\n", .{db_location});
     print("options: {}\n", .{cli_options});
 
     // var cli = command.makeCli(allocator, &storage, writer, reader);
