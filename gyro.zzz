@@ -24,3 +24,8 @@ deps:
       url: "https://github.com/Hejsil/zig-clap.git"
       ref: master
       root: clap.zig
+  known-folders:
+    git:
+      url: "https://github.com/ziglibs/known-folders.git"
+      ref: master
+      root: known-folders.zig
