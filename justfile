@@ -13,11 +13,8 @@ test file="" filter="":
 watch-test file="" filter="":
   watchexec -c -r -w src/ -e zig just test {{file}} {{filter}}
 
-watch-update:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feedgaze update --force'
-
-watch-search:
-	watchexec -c -r -w src/ -e zig 'zig build && ./zig-out/bin/feedgaze search dev'
+watch-cli args="":
+	watchexec -c -r -w src/ -e zig 'zig build run -- {{args}}'
 
 watch-build:
     watchexec -c -r -w src/ -e zig 'zig build'
