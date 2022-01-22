@@ -14,6 +14,7 @@
     * Example: https://github.com/dundalek/notcurses-zig-example
   [ ] Web browser (http server) - later
     - https://github.com/Vexu/routez
+    - https://github.com/frmdstryr/zhp
 [ ] Zig
   [ ] XML parsing
     - https://github.com/wooky/zupnp/tree/master/src/xml
