@@ -57,10 +57,18 @@ pub const pkgs = struct {
         },
     };
 
+    pub const clap = Pkg{
+        .name = "clap",
+        .path = FileSource{
+            .path = ".gyro/zig-clap-Hejsil-github.com-0b08e8e3/pkg/clap.zig",
+        },
+    };
+
     pub fn addAllTo(artifact: *std.build.LibExeObjStep) void {
         artifact.addPackage(pkgs.sqlite);
         artifact.addPackage(pkgs.datetime);
         artifact.addPackage(pkgs.zuri);
         artifact.addPackage(pkgs.zfetch);
+        artifact.addPackage(pkgs.clap);
     }
 };

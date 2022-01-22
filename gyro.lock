@@ -6,3 +6,4 @@ git https://github.com/Vexu/zuri.git master src/zuri.zig d5cce7e58c07506d620cec3
 git https://github.com/truemedian/zfetch.git master src/main.zig 271cab5da4d12c8f08e67aa0cd5268da100e52f1
 git https://github.com/MasterQ32/zig-network.git master network.zig b9c52822f3bb3ce25164a2f1f6eedee4d1c0a279
 git https://github.com/marler8997/iguanaTLS.git master src/main.zig 2b37c575b3df76a4ee040b5a72a4fc277ed4057b
+git https://github.com/Hejsil/zig-clap.git master clap.zig 0b08e8e330597ee2a6b6e6828e2a33dab6ae54f6
