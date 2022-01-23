@@ -77,8 +77,7 @@ pub fn main() !void {
         defer tmp_arena.deinit();
         const tmp_allocator = tmp_arena.allocator();
         var db_location = try getDatabaseLocation(tmp_allocator, args.option("--db"));
-        const loc = try std.fmt.allocPrintZ(allocator, "{s}", .{db_location});
-        break :blk try Storage.init(allocator, loc);
+        break :blk try Storage.init(allocator, db_location);
     };
 
     const cli_options = .{
@@ -189,13 +188,13 @@ pub fn main() !void {
     // }
 }
 
-fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![]const u8 {
+fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const u8 {
     if (db_option) |loc| {
         const db_file = block: {
             if (std.fs.path.isAbsolute(loc)) {
-                break :block loc;
+                break :block try std.mem.joinZ(allocator, loc, &.{});
             }
-            break :block try std.fs.path.join(allocator, &.{ try std.process.getCwdAlloc(allocator), loc });
+            break :block try std.fs.path.joinZ(allocator, &.{ try std.process.getCwdAlloc(allocator), loc });
         };
         std.fs.accessAbsolute(db_file, .{}) catch |err| switch (err) {
             error.FileNotFound => {
@@ -233,11 +232,11 @@ fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![]const u8
     // Get default database location
     const db_file = block: {
         if (try known_folders.getPath(allocator, .local_configuration)) |path| {
-            break :block try std.fs.path.join(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
+            break :block try std.fs.path.joinZ(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
         }
         if (try known_folders.getPath(allocator, .home)) |path| {
             // TODO: '.config' is different on other platforms
-            break :block try std.fs.path.join(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
+            break :block try std.fs.path.joinZ(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
         }
         log.err("Failed to find local configuration or home directory\n", .{});
         return error.MissingConfigAndHomeDir;
