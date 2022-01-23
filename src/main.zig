@@ -20,12 +20,12 @@ pub const known_folders_config = .{
 // TODO: auto add some data for fast cli testing
 
 pub fn main() !void {
-    const base_allocator = std.heap.page_allocator;
-    // const base_allocator = std.testing.allocator;
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const base_allocator = gpa.allocator();
+    // const base_allocator = std.heap.page_allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
-    _ = allocator;
+    const arena_allocator = arena.allocator();
 
     const params = comptime [_]clap.Param(clap.Help){
         clap.parseParam("-h, --help     Display this help and exit.") catch unreachable,
@@ -79,10 +79,10 @@ pub fn main() !void {
         const tmp_allocator = tmp_arena.allocator();
         const path_opt = args.option("--db");
         if (path_opt) |path| {
-            if (mem.eql(u8, ":memory:", path)) break :blk try Storage.init(allocator, null);
+            if (mem.eql(u8, ":memory:", path)) break :blk try Storage.init(arena_allocator, null);
         }
         var db_location = try getDatabaseLocation(tmp_allocator, path_opt);
-        break :blk try Storage.init(allocator, db_location);
+        break :blk try Storage.init(arena_allocator, db_location);
     };
 
     const cli_options = .{
@@ -93,7 +93,7 @@ pub fn main() !void {
 
     var writer = std.io.getStdOut().writer();
     const reader = std.io.getStdIn().reader();
-    var cli = command.makeCli(allocator, &storage, cli_options, writer, reader);
+    var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcommand) {
         .add => try cli.addFeed(inputs[0]),
         .update => try cli.updateFeeds(),

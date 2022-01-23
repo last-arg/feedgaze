@@ -25,6 +25,8 @@
   [ ] Async
     - https://github.com/kprotty/zap
     - https://github.com/lithdew/pike
+[ ] Simple Test Server
+    - python3 -m http.server
  
 # Future (Maybe)
 [ ] Image (icon/logo)
