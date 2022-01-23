@@ -76,7 +76,11 @@ pub fn main() !void {
         var tmp_arena = std.heap.ArenaAllocator.init(base_allocator);
         defer tmp_arena.deinit();
         const tmp_allocator = tmp_arena.allocator();
-        var db_location = try getDatabaseLocation(tmp_allocator, args.option("--db"));
+        const path_opt = args.option("--db");
+        if (path_opt) |path| {
+            if (mem.eql(u8, ":memory:", path)) break :blk try Storage.init(allocator, null);
+        }
+        var db_location = try getDatabaseLocation(tmp_allocator, path_opt);
         break :blk try Storage.init(allocator, db_location);
     };
 
