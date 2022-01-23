@@ -58,6 +58,7 @@ pub fn main() !void {
         return error.InvalidSubcommand;
     };
 
+    // TODO: use more than one value for inputs in fns where possible?
     const inputs = args.positionals()[1..];
     const commands = [_]Subcommand{ .add, .delete, .search };
     const require_input = blk: {
@@ -90,106 +91,18 @@ pub fn main() !void {
         .local = args.flag("--local") or !args.flag("--url"),
     };
 
-    print("subcommand: {s}\n", .{subcommand});
-    print("options: {}\n", .{cli_options});
-
-    _ = storage;
-    // var writer = std.io.getStdOut().writer();
-    // const reader = std.io.getStdIn().reader();
-    // var cli = command.makeCli(allocator, &storage, writer, reader);
+    var writer = std.io.getStdOut().writer();
+    const reader = std.io.getStdIn().reader();
+    var cli = command.makeCli(allocator, &storage, cli_options, writer, reader);
     switch (subcommand) {
-        .add => {},
-        .update => {},
-        .delete => {},
-        .search => {},
-        .clean => {},
-        .print => {},
+        .add => try cli.addFeed(inputs[0]),
+        .update => try cli.updateFeeds(),
+        .delete => try cli.deleteFeed(inputs[0]),
+        .search => try cli.search(inputs[0]),
+        .clean => try cli.cleanItems(),
+        // TODO: also have printFeeds()
+        .print => try cli.printAllItems(),
     }
-
-    // If flag isn't use use default location
-    // {
-    // if (db_flag) {
-    //     // resolve to absolute path
-    //     if (make_sure_file_exists) {
-    //         return file_abs_loc;
-    //     } else {
-    //         "Do you want to create database in '<absolute path>'"
-    //         if (create) {
-    //             // makeDirs()
-    //             return file_abs_loc;
-    //         } else {
-    //             // exit err code
-    //         }
-    //     }
-    // } else {
-    //     if (XDG_CONFIG_HOME) {
-    //         return XDG_CONFIG_HOME;
-    //     } else if (HOME) {
-    //         return $HOME/.config;
-    //     } else {
-    //         log.err("No XDG_CONFIG_HOME or HOME environment variable set\n", .{});
-    //         log.err("Set one of the variables or use flag --db <location>\n", .{});
-    //         // exit err code
-    //     }
-    //     // construct file loc: <abs_config_dir>/feedgaze/feedgaze.sqlite
-    //     // makeDirs()
-    // }
-    // }
-
-    // var iter = process.args();
-    // _ = iter.skip();
-    // while (try iter.next(allocator)) |arg| {
-    //     if (mem.eql(u8, "add", arg)) {
-    //         if (try iter.next(allocator)) |value| {
-    //             ;
-    //         } else {
-    //             log.err("Subcommand add missing feed (url or file) location", .{});
-    //         }
-    //     } else if (mem.eql(u8, "update", arg)) {
-    //         var opts = command.CliOptions{ .url = false, .local = false };
-    //         while (try iter.next(allocator)) |value| {
-    //             if (mem.eql(u8, "--url", value)) {
-    //                 opts.url = true;
-    //             } else if (mem.eql(u8, "--local", value)) {
-    //                 opts.local = true;
-    //             } else if (mem.eql(u8, "--force", value)) {
-    //                 opts.force = true;
-    //             }
-    //         }
-    //         if (!opts.url and !opts.local) {
-    //             opts.url = true;
-    //             opts.local = true;
-    //         }
-    //         cli.options = opts;
-    //         try cli.updateFeeds();
-    //     } else if (mem.eql(u8, "clean", arg)) {
-    //         try cli.cleanItems();
-    //     } else if (mem.eql(u8, "search", arg)) {
-    //         if (try iter.next(allocator)) |value| {
-    //             try cli.search(value);
-    //         } else {
-    //             log.err("Subcommand search missing term", .{});
-    //         }
-    //     } else if (mem.eql(u8, "delete", arg)) {
-    //         if (try iter.next(allocator)) |value| {
-    //             try cli.deleteFeed(value);
-    //         } else {
-    //             log.err("Subcommand delete missing argument location", .{});
-    //         }
-    //     } else if (mem.eql(u8, "print", arg)) {
-    //         if (try iter.next(allocator)) |value| {
-    //             if (mem.eql(u8, "feeds", value)) {
-    //                 try cli.printFeeds();
-    //                 return;
-    //             }
-    //         }
-
-    //         try cli.printAllItems();
-    //     } else {
-    //         log.err("Unknown argument: {s}", .{arg});
-    //         return error.UnknownArgument;
-    //     }
-    // }
 }
 
 fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const u8 {

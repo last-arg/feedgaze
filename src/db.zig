@@ -75,7 +75,7 @@ pub const Db = struct {
 pub fn setup(db: *Db) !void {
     const user_version = try db.sql_db.pragma(usize, .{}, "user_version", null);
     if (user_version == null or user_version.? == 0) {
-        log.info("Creating new database\n", .{});
+        log.info("Creating new database", .{});
         _ = try db.sql_db.pragma(usize, .{}, "user_version", "1");
         _ = try db.sql_db.pragma(usize, .{}, "foreign_keys", "1");
         _ = try db.sql_db.pragma(usize, .{}, "journal_mode", "WAL");

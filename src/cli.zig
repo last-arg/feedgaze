@@ -19,12 +19,14 @@ const Storage = @import("feed_db.zig").Storage;
 pub fn makeCli(
     allocator: Allocator,
     feed_db: *Storage,
+    options: CliOptions,
     writer: anytype,
     reader: anytype,
 ) Cli(@TypeOf(writer), @TypeOf(reader)) {
     return Cli(@TypeOf(writer), @TypeOf(reader)){
         .allocator = allocator,
         .feed_db = feed_db,
+        .options = options,
         .writer = writer,
         .reader = reader,
     };
