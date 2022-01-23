@@ -154,7 +154,9 @@ pub fn makeRequest(
                 const value = header.value[0..len];
                 if (ascii.eqlIgnoreCase("text/html", value)) {
                     result.content_type = .html;
-                } else if (ascii.eqlIgnoreCase("application/rss+xml", value)) {
+                } else if (ascii.eqlIgnoreCase("application/rss+xml", value)
+                    or ascii.eqlIgnoreCase("application/x-rss+xml", value)) {
+                    // NOTE: Just in case check for deprecated mime type 'application/x-rss+xml'
                     result.content_type = .xml_rss;
                 } else if (ascii.eqlIgnoreCase("application/atom+xml", value)) {
                     result.content_type = .xml_atom;
