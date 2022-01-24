@@ -130,6 +130,7 @@ pub fn makeRequest(
     try headers.appendValue("Accept", "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html");
 
     if (etag) |value| try headers.appendValue("If-None-Match", value);
+    // Ignored if there is 'If-None-Match'
     if (last_modified) |value| try headers.appendValue("If-Modified-Since", value);
 
     var req = try zfetch.Request.init(allocator, url, null);

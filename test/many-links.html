@@ -2,21 +2,15 @@
 <html lang="en">
 <head>
   <link rel="shortcut icon" href="/favicon.ico" />
-  <title>Page title</title>
-  <link rel="alternate" type="application/rss+xml"
-    title="Root Rss" href="/rss" />
-  <link rel="alternate" type="application/rss+xml"
-    title="Comments Rss"
-    href="/comments.rss" />
+  <title>Parse Feed Links</title>
+  <link rel="alternate" type="application/rss+xml" title="Rss 2" href="/rss2.rss" />
+  <link rel="alternate" type="application/xml" title="Rss 2" href="/rss2.xml" />
+  <link rel="alternate" type="application/atom+xml" title="Atom feed" href="/atom.atom" />
 </head>
 <body>
-<h1>Parse Rss Links</h1>
-  <link rel="alternate" type="application/rss+xml" title="body-link" href="/body-link.rss" />
-  <a rel="alternate" type="application/rss+xml" href="/body-a.rss" />
-    body-a
-  </a>
-  <a rel="alternate" type="application/rss+xml" title="Duplicate will not added" href="/body-a.rss" />
-    Duplicate. Will not  add
-  </a>
+  <h1>Parse Feed Links</h1>
+  <link rel="alternate" type="application/rss+xml" title="Duplicate" href="/rss2.rss" />
+  <link rel="alternate" type="application/atom+xml" title="Not Duplicate" href="/rss2.rss" />
+  <a rel="alternate" type="application/xml" title="Atom feed" href="/atom.xml" />Atom feed (xml)</a>
 </body>
 </html>

@@ -45,6 +45,14 @@ pub const Html = struct {
                 .unknown => "Unknown",
             };
         }
+
+        pub fn toMimetype(media_type: MediaType) []const u8 {
+            return switch (media_type) {
+                .atom => "application/atom+xml",
+                .rss => "application/rss+xml",
+                .unknown => "Unknown",
+            };
+        }
     };
 
     pub fn mediaTypeToString(mt: MediaType) []const u8 {
@@ -156,7 +164,11 @@ pub const Html = struct {
             const has_link = blk: {
                 if (link_href) |href| {
                     for (links.items) |link| {
-                        if (mem.eql(u8, link.href, href)) {
+                        if (mem.eql(u8, link.href, href) and
+                            link.media_type != .unknown and
+                            link_type != null and
+                            mem.eql(u8, link.media_type.toMimetype(), link_type.?))
+                        {
                             break :blk true;
                         }
                     }
@@ -214,13 +226,19 @@ pub const Html = struct {
 };
 
 test "Html.parse" {
+    const expectEqual = std.testing.expectEqual;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-    const html = @embedFile("../test/lobste.rs.html");
-    const page = try Html.parseLinks(allocator, html);
-    try expect(4 == page.links.len);
-    try expect(Html.MediaType.rss == page.links[0].media_type);
+    {
+        // Test duplicate link
+        const html = @embedFile("../test/many-links.html");
+        const page = try Html.parseLinks(allocator, html);
+        try expectEqual(@as(usize, 5), page.links.len);
+        try expectEqual(Html.MediaType.rss, page.links[0].media_type);
+        try expectEqual(Html.MediaType.unknown, page.links[1].media_type);
+        try expectEqual(Html.MediaType.atom, page.links[2].media_type);
+    }
 }
 
 // TODO?: add field interval (ttl/)
