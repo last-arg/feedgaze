@@ -17,7 +17,9 @@ watch-cli args="":
 	watchexec -c -r -w src/ -e zig 'zig build run -- {{args}}'
 
 watch-build:
-    watchexec -c -r -w src/ -e zig 'zig build'
+  watchexec -c -r -w src/ -e zig 'zig build'
 
-update:
-  git submodule foreach git pull origin master
+# Ctrl+c doesn't work with just test-server when run in foreground
+# Start a test server in background
+test-server:
+  ./test-server/redbean.com -dD ./test/ 
