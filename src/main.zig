@@ -29,7 +29,7 @@ pub fn main() !void {
 
     const params = comptime [_]clap.Param(clap.Help){
         clap.parseParam("-h, --help     Display this help and exit.") catch unreachable,
-        clap.parseParam("--db <STR>     Point to sqlite database location. Default: '~/.config/feedgaze/feedgaze.sqlite'") catch unreachable,
+        clap.parseParam("--db <STR>     Point to sqlite database location. Default: '~/.config/feedgaze/feedgaze.sqlite'.") catch unreachable,
         clap.parseParam("-u, --url      Apply action only to url feeds.") catch unreachable,
         clap.parseParam("-l, --local    Apply action only to local feeds.") catch unreachable,
         clap.parseParam("-f, --force    Force update all feeds. Subcommand: update") catch unreachable,
@@ -47,7 +47,7 @@ pub fn main() !void {
     defer args.deinit();
 
     if (args.positionals().len == 0) {
-        log.err("No subcommand entered.\n", .{});
+        log.err("No subcommand entered.", .{});
         return error.MissingSubCommand;
     }
 
@@ -60,17 +60,21 @@ pub fn main() !void {
 
     // TODO: use more than one value for inputs in fns where possible?
     const inputs = args.positionals()[1..];
-    const commands = [_]Subcommand{ .add, .delete, .search };
-    const require_input = blk: {
-        for (commands) |com| {
+    const commands_with_pos = [_]Subcommand{ .add, .delete, .search };
+    const has_subcommand = blk: {
+        for (commands_with_pos) |com| {
             if (com == subcommand) break :blk true;
         }
         break :blk false;
     };
 
-    if (require_input and inputs.len == 0) {
+    if (has_subcommand and inputs.len == 0) {
         log.err("Subcommand '{s}' requires input(s)\n", .{subcommand_arg});
         return error.SubcommandRequiresInput;
+    }
+
+    for (inputs) |value| {
+        log.info("{s}", .{value});
     }
 
     var storage = blk: {

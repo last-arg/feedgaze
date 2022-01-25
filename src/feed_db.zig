@@ -44,11 +44,16 @@ pub const Storage = struct {
             \\   link = excluded.link,
             \\   updated_raw = excluded.updated_raw,
             \\   updated_timestamp = excluded.updated_timestamp
-            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\WHERE updated_timestamp != excluded.updated_timestamp;
             \\RETURNING id;
         ;
         const args = .{ feed.title, location, feed.link, feed.updated_raw, feed.updated_timestamp };
-        return (try self.db.one(u64, query, args)) orelse error.NoReturnId;
+        // Make sure function returns id.
+        // 'query' returns id only if insert or update is made. If update doesn't get pass
+        // where condition no id is returned.
+        const id = (try self.db.one(u64, query, args)) orelse
+            (try self.db.one(u64, "select id from feed where location == ?{[]const u8} limit 1;", .{location}));
+        return id orelse error.NoReturnId;
     }
 
     pub fn deleteFeed(self: *Self, id: u64) !void {
