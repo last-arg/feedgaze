@@ -1,12 +1,6 @@
 default:
 	echo 'Hello, world!'
 
-run-local:
-  zig build && ./zig-out/bin/feedgaze add test/sample-rss-2.xml
-
-watch-local:
-  watchexec -c -r -w src/ -e zig just run-local
-
 test file="" filter="":
   zig build test -- {{file}} {{filter}}
 
@@ -22,4 +16,4 @@ watch-build:
 # Ctrl+c doesn't work with just test-server when run in foreground
 # Start a test server in background
 test-server:
-  ./test-server/redbean.com -dD ./test/ 
+  ./test-server/redbean.com -dD ./test/ -L tmp/redbean.com.log
