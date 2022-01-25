@@ -67,26 +67,35 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         pub fn addFeed(
             self: *Self,
-            location_input: []const u8,
+            locations: []const []const u8,
         ) !void {
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-            if (self.options.local) {
-                if (fs.cwd().realpath(location_input, &path_buf)) |abs_path| {
-                    try self.addFeedLocal(abs_path);
-                    return;
-                } else |err| switch (err) {
-                    error.FileNotFound => {}, // Skip to checking self.options.url
-                    else => return err,
+            for (locations) |location| {
+                if (self.options.local) {
+                    if (fs.cwd().realpath(location, &path_buf)) |abs_path| {
+                        try self.addFeedLocal(abs_path);
+                        try self.writer.print("Added local feed: {s}\n", .{abs_path});
+                        continue;
+                    } else |err| switch (err) {
+                        error.FileNotFound => {}, // Skip to checking self.options.url
+                        else => {
+                            log.err("Failed to add local feed '{s}'.", .{location});
+                            log.err("Error: '{s}'.", .{err});
+                            continue;
+                        },
+                    }
                 }
-            }
-            if (self.options.url) {
-                try self.addFeedHttp(location_input);
+                if (self.options.url) {
+                    self.addFeedHttp(location) catch |err| {
+                        log.err("Failed to add url feed '{s}'.", .{location});
+                        log.err("Error: '{s}'.", .{err});
+                    };
+                    try self.writer.print("Added url feed: {s}\n", .{location});
+                }
             }
         }
 
         pub fn addFeedLocal(self: *Self, abs_path: []const u8) !void {
-            log.info("Add local feed: '{s}'", .{abs_path});
-            errdefer log.warn("Failed to add local feed: {s}", .{abs_path});
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const contents = try shame.getFileContents(arena.allocator(), abs_path);
@@ -102,7 +111,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const id = try self.feed_db.addFeed(feed, abs_path);
             try self.feed_db.addFeedLocal(id, mtime_sec);
             try self.feed_db.addItems(id, feed.items);
-            try self.writer.print("Added local feed: {s}", .{abs_path});
         }
 
         pub fn addFeedHttp(self: *Self, input_url: []const u8) !void {

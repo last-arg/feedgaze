@@ -99,7 +99,7 @@ pub fn main() !void {
     const reader = std.io.getStdIn().reader();
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcommand) {
-        .add => try cli.addFeed(inputs[0]),
+        .add => try cli.addFeed(inputs),
         .update => try cli.updateFeeds(),
         .delete => try cli.deleteFeed(inputs[0]),
         .search => try cli.search(inputs[0]),
