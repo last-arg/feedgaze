@@ -15,5 +15,9 @@ watch-build:
 
 # Ctrl+c doesn't work with just test-server when run in foreground
 # Start a test server in background
+pid_path := "tmp/redbean.pid"
 test-server:
-  ./test-server/redbean.com -dD ./test/ -L tmp/redbean.com.log
+  ./test-server/redbean.com -dD ./test/ -L tmp/redbean.log -P {{pid_path}}
+
+test-server-shutdown:
+  kill -TERM $(cat {{pid_path}})
