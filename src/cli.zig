@@ -13,6 +13,7 @@ const print = std.debug.print;
 const db = @import("db.zig");
 const shame = @import("shame.zig");
 const expect = std.testing.expect;
+const expectEqual = std.testing.expectEqual;
 const assert = std.debug.assert;
 const Storage = @import("feed_db.zig").Storage;
 
@@ -333,6 +334,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
 const TestIO = struct {
     const Self = @This();
+    // TODO: look at std.testing.expectFmt()
     const warn_fmt =
         \\
         \\====== expected this output: =========
@@ -368,7 +370,7 @@ const TestIO = struct {
         if (self.expected_actions.len == 0) return error.NoExpectedWrites;
         const i = self.action_index;
         if (i >= self.expected_actions.len) {
-            log.err("TestIO: Index out of bound. Didn't print: {s}", .{bytes});
+            log.err("TestIO: Index out of bound.\nDidn't print: {s}", .{bytes});
             return bytes.len;
         }
         const expected = self.expected_actions[i].write;
@@ -488,329 +490,6 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "Cli.cleanItems" {
-    std.testing.log_level = .debug;
-
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var storage = try Storage.init(allocator, null);
-    const parse_feed = parse.Feed{ .title = "Feed title", .id = null };
-    const id1 = try storage.addFeed(parse_feed, "feed_location");
-    const id2 = try storage.addFeed(parse_feed, "another_location");
-
-    const feed_db = @import("feed_db.zig");
-    feed_db.g.max_items_per_feed = 2;
-    var first_title1 = "items1: first title";
-    const items1: []parse.Feed.Item = &[_]parse.Feed.Item{
-        .{ .title = first_title1 },
-        .{ .title = "items1: second title" },
-        .{ .title = "items1: third title" },
-    };
-
-    var first_title2 = "items2: first title";
-    const items2 = &[_]parse.Feed.Item{.{ .title = first_title2 }};
-
-    try storage.addItems(id1, items1);
-    try storage.addItems(id2, items2);
-
-    var cli = Cli(TestIO.Writer, TestIO.Reader){
-        .allocator = allocator,
-        .feed_db = &storage,
-        .writer = undefined,
-        .reader = undefined,
-    };
-
-    var first = "Cleaning feeds' links.\n";
-    var text_io = TestIO{
-        .expected_actions = &[_]TestIO.Action{ .{ .write = first }, .{ .write = "Feeds' items cleaned\n" } },
-    };
-
-    cli.writer = text_io.writer();
-    try cli.cleanItems();
-    const count_query = "select count(feed_id) from item WHERE feed_id = ?";
-
-    const count1 = try storage.db.one(usize, count_query, .{id1});
-    try expect(count1.? == feed_db.g.max_items_per_feed);
-    const count2 = try storage.db.one(usize, count_query, .{id2});
-    try expect(count2.? == items2.len);
-}
-
-test "local feed: add, update, delete" {
-    const g = @import("feed_db.zig").g;
-    std.testing.log_level = .debug;
-
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var feed_db = try Storage.init(allocator, null);
-    const do_print = false;
-    var counts = TestCounts{};
-
-    var cli = Cli(TestIO.Writer, TestIO.Reader){
-        .allocator = allocator,
-        .feed_db = &feed_db,
-        .writer = undefined,
-        .reader = undefined,
-    };
-
-    {
-        const location = "test/sample-rss-2.xml";
-        const rss_url = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
-        var w = "Added local feed: " ++ rss_url ++ "\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = w },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        try cli.addFeed(location);
-        counts.feed += 1;
-        counts.local += 1;
-    }
-
-    try expectCounts(&feed_db, counts);
-
-    {
-        const query = "select count(feed_id) from item group by feed_id";
-        const results = try feed_db.db.selectAll(usize, query, .{});
-        for (results) |item_count| {
-            try expect(item_count <= g.max_items_per_feed);
-        }
-    }
-
-    {
-        var first = "Updated url feeds\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-                .{ .write = "Updated local feeds\n" },
-            },
-        };
-        cli.writer = text_io.writer();
-        try cli.updateFeeds();
-    }
-
-    {
-        // Found no feed to delete
-        const search_value = "doesnt_exist";
-        var first = "Found no matches for '" ++ search_value ++ "' to delete.\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.deleteFeed(search_value);
-    }
-
-    {
-        // Delete a feed
-        var enter_nr = "Enter feed number to delete? ";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = "Found 1 result(s):\n\n" },
-                .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | /media/hdd/code/feedgaze/test/sample-rss-2.xml\n" },
-                .{ .write = enter_nr },
-                .{ .read = "1a\n" },
-                .{ .write = "Invalid number entered: '1a'. Try again.\n" },
-                .{ .write = enter_nr },
-                .{ .read = "14\n" },
-                .{ .write = "Entered number out of range. Try again.\n" },
-                .{ .write = enter_nr },
-                .{ .read = "1\n" },
-                .{ .write = "Deleted feed '/media/hdd/code/feedgaze/test/sample-rss-2.xml'\n" },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.deleteFeed("liftoff");
-        counts.feed -= 1;
-        counts.local -= 1;
-    }
-
-    try expectCounts(&feed_db, counts);
-}
-
-test "live(url): add, update, delete" {
-    std.testing.log_level = .debug;
-    const g = @import("feed_db.zig").g;
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var feed_db = try Storage.init(allocator, null);
-    const do_print = true;
-    // var write_first = "Choose feed to add\n";
-    var enter_link = "Enter link number: ";
-    var read_valid = "1\n";
-    const added_url = "Adding feed ";
-    var counts = TestCounts{};
-
-    var cli = Cli(TestIO.Writer, TestIO.Reader){
-        .allocator = allocator,
-        .feed_db = &feed_db,
-        .writer = undefined,
-        .reader = undefined,
-    };
-
-    {
-        // Test reddit.com
-        const location = "https://www.reddit.com/r/programming/.rss";
-        var actions = [_]TestIO.Action{
-            .{ .write = added_url },
-            .{ .write = location ++ "\n" },
-            .{ .write = "Feed added " ++ location ++ "\n" },
-        };
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.addFeed(location);
-        counts.feed += 1;
-        counts.url += 1;
-    }
-
-    {
-        // remove last slash to get HTTP redirect
-        const location = "old.reddit.com/r/programming/";
-        const rss_url = "https://old.reddit.com/r/programming/.rss";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = added_url ++ "http://" ++ location ++ "\n" },
-                .{ .write = "programming\n" ++ "https://" ++ location ++ "\n" },
-                .{ .write = "  1. [Atom] " ++ rss_url ++ " | RSS\n" },
-                .{ .write = enter_link },
-                .{ .read = "abc\n" },
-                .{ .write = "Invalid number: 'abc'. Try again.\n" },
-                .{ .write = enter_link },
-                .{ .read = "12\n" },
-                .{ .write = "Number out of range: '12'. Try again.\n" },
-                .{ .write = enter_link },
-                .{ .read = read_valid },
-                .{ .write = "Feed added " ++ rss_url ++ "\n" },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.addFeed(location);
-        counts.feed += 1;
-        counts.url += 1;
-    }
-
-    try expectCounts(&feed_db, counts);
-
-    {
-        // Feed url has to constructed because Html.Link.href is
-        // absolute path - '/syndication/5701'
-        const location = "https://www.royalroad.com/fiction/5701/savage-divinity";
-        const rss_url = "https://www.royalroad.com/syndication/5701";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = added_url ++ location ++ "\n" },
-                .{ .write = "Savage Divinity | Royal Road\n" ++ location ++ "\n" },
-                .{ .write = "  1. [RSS] " ++ rss_url ++ " | Updates for Savage Divinity\n" },
-                .{ .write = enter_link },
-                .{ .read = read_valid },
-                .{ .write = "Feed added " ++ rss_url ++ "\n" },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.addFeed(location);
-        counts.feed += 1;
-        counts.url += 1;
-    }
-
-    try expectCounts(&feed_db, counts);
-
-    {
-        const query = "select count(feed_id) from item group by feed_id";
-        const results = try feed_db.db.selectAll(u32, query, .{});
-        for (results) |item_count| {
-            try expect(item_count <= g.max_items_per_feed);
-        }
-    }
-
-    {
-        var first = "Updated url feeds\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-                .{ .write = "Updated local feeds\n" },
-            },
-        };
-        cli.writer = text_io.writer();
-        try cli.updateFeeds();
-    }
-
-    {
-        // Found no feed to delete
-        const search_value = "doesnt_exist";
-        var first = "Found no matches for '" ++ search_value ++ "' to delete.\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.deleteFeed(search_value);
-    }
-
-    {
-        // Delete a feed
-        var enter_nr = "Enter feed number to delete? ";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = "Found 1 result(s):\n\n" },
-                .{ .write = "1. programming | https://old.reddit.com/r/programming/.rss | https://old.reddit.com/r/programming/.rss\n" },
-                .{ .write = enter_nr },
-                .{ .read = "1a\n" },
-                .{ .write = "Invalid number entered: '1a'. Try again.\n" },
-                .{ .write = enter_nr },
-                .{ .read = "14\n" },
-                .{ .write = "Entered number out of range. Try again.\n" },
-                .{ .write = enter_nr },
-                .{ .read = "1\n" },
-                .{ .write = "Deleted feed 'https://old.reddit.com/r/programming/.rss'\n" },
-            },
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.deleteFeed("old.reddit");
-        counts.feed -= 1;
-        counts.url -= 1;
-    }
-
-    try expectCounts(&feed_db, counts);
-}
-
 fn makeValidUrl(allocator: Allocator, url: []const u8) ![]const u8 {
     const no_http = !std.ascii.startsWithIgnoreCase(url, "http");
     const substr = "://";
@@ -921,7 +600,7 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
     return resp;
 }
 
-test "getFeedHttp()" {
+test "getFeedHttp() when html is returned" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = ArenaAllocator.init(base_allocator);
@@ -967,28 +646,6 @@ pub fn parseFeedResponseBody(
     };
 }
 
-test "add new feed" {
-    std.testing.log_level = .debug;
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-
-    const url = "https://lobste.rs/";
-    var actions = [_]TestIO.Action{
-        .{ .write = "Adding feed " ++ url ++ "\n" },
-        .{ .write = "Feed added " ++ url ++ "\n" },
-    };
-    var text_io = TestIO{
-        .do_print = true,
-        .expected_actions = &actions,
-    };
-    const writer = text_io.writer();
-    const reader = text_io.reader();
-    var feed_db = try Storage.init(arena.allocator(), null);
-    var cli = makeCli(arena.allocator(), &feed_db, writer, reader);
-    try cli.addFeed(url);
-}
-
 test "add new feed: feed exists, update instead" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
@@ -1010,4 +667,228 @@ test "add new feed: feed exists, update instead" {
     _ = try feed_db.addFeed(feed, url);
     var cli = makeCli(base_allocator, &feed_db, writer, reader);
     try cli.addFeed(url);
+}
+
+test "local and url: add, update, delete" {
+    const g = @import("feed_db.zig").g;
+    std.testing.log_level = .debug;
+
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var storage = try Storage.init(allocator, null);
+    const do_print = true;
+    var cli = Cli(TestIO.Writer, TestIO.Reader){
+        .allocator = allocator,
+        .feed_db = &storage,
+        .writer = undefined,
+        .reader = undefined,
+    };
+
+    // local 'test/rss2.xml' and url 'http://localhost:8080/rss2.rss' have same content
+
+    // add local feed
+    const rel_path = "test/rss2.xml";
+    const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
+    {
+        g.max_items_per_feed = 1;
+        var w = "Added local feed: " ++ abs_path ++ "\n";
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &[_]TestIO.Action{
+                .{ .write = w },
+            },
+        };
+
+        cli.writer = text_io.writer();
+        try cli.addFeed(&.{rel_path});
+    }
+
+    const added_url = "Adding feed ";
+    // add url feed
+    const url = "http://localhost:8080/rss2.rss";
+    {
+        g.max_items_per_feed = 2;
+        var actions = [_]TestIO.Action{
+            .{ .write = added_url },
+            .{ .write = url ++ "\n" },
+            .{ .write = "Feed added " ++ url ++ "\n" },
+            .{ .write = "Added url feed: " ++ url ++ "\n" },
+        };
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &actions,
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.addFeed(&.{url});
+    }
+
+    const FeedResult = struct {
+        id: u64,
+        title: []const u8,
+        link: ?[]const u8,
+        updated_raw: ?[]const u8,
+        updated_timestamp: ?i64,
+    };
+
+    const ItemResult = struct {
+        title: []const u8,
+        link: ?[]const u8,
+        guid: ?[]const u8,
+        pub_date: ?[]const u8,
+        pub_date_utc: ?i64,
+    };
+
+    var local_id: u64 = undefined;
+    var url_id: u64 = undefined;
+
+    // test if local and url feeds' table fields have same values
+    {
+        const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
+        const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
+        try expectEqual(@as(usize, 2), feeds.len);
+        const local_result = feeds[0];
+        const url_result = feeds[1];
+        local_id = local_result.id;
+        url_id = url_result.id;
+        try std.testing.expectEqualStrings(local_result.title, url_result.title);
+        if (local_result.link) |link| try std.testing.expectEqualStrings(link, url_result.link.?);
+        if (local_result.updated_raw) |updated_raw| try std.testing.expectEqualStrings(updated_raw, url_result.updated_raw.?);
+        if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
+    }
+
+    // test row count in feed_update_local and feed_update_http tables
+    {
+        const feed_url_local_counts_query = "select count(feed_update_local.feed_id) as local_count, count(feed_update_http.feed_id) as url_count from feed_update_local, feed_update_http";
+        const counts = try storage.db.one(struct { local_count: u32, url_count: u32 }, feed_url_local_counts_query, .{});
+        try expectEqual(@as(usize, 1), counts.?.local_count);
+        try expectEqual(@as(usize, 1), counts.?.url_count);
+    }
+
+    // test if two feeds' first(newest) items are same
+    const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
+    {
+        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 1), local_items.len);
+        try expectEqual(@as(usize, 2), url_items.len);
+        const l_item = local_items[0];
+        const u_item = url_items[0];
+        try std.testing.expectEqualStrings(l_item.title, u_item.title);
+        if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+        if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+        if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+        if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+    }
+
+    g.max_items_per_feed = 10;
+    // TODO: return html first then choose a feed link '/rss2.rss'
+    // Remove: test "getFeedHttp() when html is returned"
+    // TODO: also test feed adding turning into update
+    // Remove: test "add new feed: feed exists, update instead"
+
+    // Test updating feeds
+    {
+        var actions = [_]TestIO.Action{
+            .{ .write = "Updated url feeds\n" },
+            .{ .write = "Updated local feeds\n" },
+        };
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &actions,
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        cli.options.force = true;
+        try cli.updateFeeds();
+        cli.options.force = false;
+
+        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 6), local_items.len);
+        try expectEqual(local_items.len, url_items.len);
+        for (local_items) |l_item, i| {
+            const u_item = url_items[i];
+            try std.testing.expectEqualStrings(l_item.title, u_item.title);
+            if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+            if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+            if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+            if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+        }
+    }
+
+    // TODO: test cleanItems().
+    // set g.max_items_per_feed
+
+    // delete local feed.
+    var enter_nr = "Enter feed number to delete? ";
+    {
+        var actions = [_]TestIO.Action{
+            .{ .write = "Found 2 result(s):\n\n" },
+            .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ abs_path ++ "\n" },
+            .{ .write = "2. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
+            .{ .write = enter_nr },
+            .{ .read = "1a\n" },
+            .{ .write = "Invalid number entered: '1a'. Try again.\n" },
+            .{ .write = enter_nr },
+            .{ .read = "14\n" },
+            .{ .write = "Entered number out of range. Try again.\n" },
+            .{ .write = enter_nr },
+            .{ .read = "1\n" },
+            .{ .write = "Deleted feed '" ++ abs_path ++ "'\n" },
+        };
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &actions,
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed("rss2");
+    }
+
+    // delete url feed.
+    {
+        var actions = [_]TestIO.Action{
+            .{ .write = "Found 1 result(s):\n\n" },
+            .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
+            .{ .write = enter_nr },
+            .{ .read = "1\n" },
+            .{ .write = "Deleted feed '" ++ url ++ "'\n" },
+        };
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &actions,
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.deleteFeed("rss2");
+    }
+
+    const AllCounts = struct {
+        feed: u32,
+        item: u32,
+        update_http: u32,
+        update_local: u32,
+    };
+
+    // test that local and url feeds where deleted
+    {
+        const all_counts_query =
+            \\ select
+            \\ count(feed.id) as feed,
+            \\ count(item.feed_id) as item,
+            \\ count(feed_update_local.feed_id) as update_http,
+            \\ count(feed_update_http.feed_id) as update_local
+            \\ from feed, item, feed_update_local, feed_update_http;
+        ;
+        const all_counts = try storage.db.one(AllCounts, all_counts_query, .{});
+        try expectEqual(AllCounts{ .feed = 0, .item = 0, .update_http = 0, .update_local = 0 }, all_counts.?);
+    }
 }

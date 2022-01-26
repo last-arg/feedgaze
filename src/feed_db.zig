@@ -286,7 +286,6 @@ pub const Storage = struct {
 
         while (try iter.nextAlloc(stack_allocator, .{})) |row| {
             defer row.deinit(stack_allocator);
-
             log.info("Updating: '{s}'", .{row.location});
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
@@ -356,7 +355,7 @@ pub const Storage = struct {
             if (data.feed.updated_timestamp != null and data.current.updated_timestamp != null and
                 data.feed.updated_timestamp.? == data.current.updated_timestamp.?)
             {
-                log.info("\tSkipping update: Feed updated/pubDate hasn't changed", .{});
+                log.info("\tSkipping update: Feed publish date hasn't changed", .{});
                 return;
             }
         }
