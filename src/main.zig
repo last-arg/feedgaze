@@ -51,7 +51,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
-    const Subcommand = enum { add, update, delete, search, clean, print };
+    const Subcommand = enum { add, update, delete, search, clean, @"print-items", @"print-feeds" };
     const subcommand_arg = args.positionals()[0];
     const subcommand = std.meta.stringToEnum(Subcommand, subcommand_arg) orelse {
         log.err("Invalid subcommand '{s}' entered.\n", .{subcommand_arg});
@@ -101,11 +101,13 @@ pub fn main() !void {
     switch (subcommand) {
         .add => try cli.addFeed(inputs),
         .update => try cli.updateFeeds(),
+        // TODO: multiple values will be OR-ed
         .delete => try cli.deleteFeed(inputs[0]),
+        // TODO: multiple values will be OR-ed
         .search => try cli.search(inputs[0]),
         .clean => try cli.cleanItems(),
-        // TODO: also have printFeeds()
-        .print => try cli.printAllItems(),
+        .@"print-feeds" => try cli.printFeeds(),
+        .@"print-items" => try cli.printAllItems(),
     }
 }
 
