@@ -149,7 +149,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer savepoint.rollback();
             const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
             if (try feed_db.db.one(Storage.CurrentData, query, .{location})) |row| {
-                try writer.print("Feed exists. Updating feed {s}\n", .{location});
+                try writer.print("Feed already exists. Updating feed {s}\n", .{location});
                 try feed_db.updateUrlFeed(.{
                     .current = row,
                     .headers = resp.ok.headers,
@@ -173,10 +173,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
                 return;
             }
-            try self.writer.print("Found {} result(s):\n\n", .{results.len});
+            try self.writer.print("Found {} result(s):\n", .{results.len});
             for (results) |result, i| {
                 const link = result.link orelse "<no-link>";
-                try self.writer.print("{}. {s} | {s} | {s}\n", .{
+                try self.writer.print("  {}. {s} | {s} | {s}\n", .{
                     i + 1,
                     result.title,
                     link,
@@ -743,7 +743,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
             .{ .write = links_write },
             .{ .write = "Enter link number: " },
             .{ .read = "1\n" },
-            .{ .write = "Feed exists. Updating feed " ++ html_feed_url ++ "\n" },
+            .{ .write = "Feed already exists. Updating feed " ++ html_feed_url ++ "\n" },
             .{ .write = "Feed updated " ++ html_feed_url ++ "\n" },
         };
 
@@ -808,9 +808,9 @@ test "@active local and url: add, update, delete, html links, add into update" {
     var enter_nr = "Enter feed number to delete? ";
     {
         var actions = [_]TestIO.Action{
-            .{ .write = "Found 2 result(s):\n\n" },
-            .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ abs_path ++ "\n" },
-            .{ .write = "2. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
+            .{ .write = "Found 2 result(s):\n" },
+            .{ .write = "  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ abs_path ++ "\n" },
+            .{ .write = "  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
             .{ .write = enter_nr },
             .{ .read = "1a\n" },
             .{ .write = "Invalid number entered: '1a'. Try again.\n" },
@@ -834,8 +834,8 @@ test "@active local and url: add, update, delete, html links, add into update" {
     // delete url feed.
     {
         var actions = [_]TestIO.Action{
-            .{ .write = "Found 1 result(s):\n\n" },
-            .{ .write = "1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
+            .{ .write = "Found 1 result(s):\n" },
+            .{ .write = "  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
             .{ .write = enter_nr },
             .{ .read = "1\n" },
             .{ .write = "Deleted feed '" ++ url ++ "'\n" },
