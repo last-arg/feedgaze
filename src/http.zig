@@ -100,7 +100,7 @@ pub fn resolveRequest(
         const nr_str = comptime fmt.comptimePrint("{d}", .{max_redirects});
         return FeedResponse{ .fail = "Too many redirects. Max number of redirects allowed is " ++ nr_str };
     }
-    std.debug.assert(resp == .ok or resp == .fail);
+    std.debug.assert(resp == .ok or resp == .fail or resp == .not_modified);
     return @ptrCast(*FeedResponse, &resp).*;
 }
 

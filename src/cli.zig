@@ -91,7 +91,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         log.err("Failed to add url feed '{s}'.", .{location});
                         log.err("Error: '{s}'.", .{err});
                     };
-                    try self.writer.print("Added url feed: {s}\n", .{location});
                 }
             }
         }
@@ -121,6 +120,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const feed_db = self.feed_db;
 
             const url = try makeValidUrl(arena.allocator(), input_url);
+            // TODO: change to 'Try to fetch feed'
             try writer.print("Adding feed {s}\n", .{url});
             const resp = try getFeedHttp(&arena, url, writer, self.reader);
             switch (resp) {
@@ -149,7 +149,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer savepoint.rollback();
             const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
             if (try feed_db.db.one(Storage.CurrentData, query, .{location})) |row| {
-                try writer.print("Feed already exists\nUpdating feed instead\n", .{});
+                try writer.print("Feed exists. Updating feed {s}\n", .{location});
                 try feed_db.updateUrlFeed(.{
                     .current = row,
                     .headers = resp.ok.headers,
@@ -515,12 +515,26 @@ test "makeValidUrl()" {
     }
 }
 
-const url_fmt = "{s}://{s}{s}";
 fn makeWholeUrl(allocator: Allocator, uri: Uri, link: []const u8) ![]const u8 {
     if (link[0] == '/') {
-        return try fmt.allocPrint(allocator, url_fmt, .{ uri.scheme, uri.host.name, link });
+        if (uri.port) |port| {
+            if (port != 443 and port != 80) {
+                return try fmt.allocPrint(allocator, "{s}://{s}:{d}{s}", .{ uri.scheme, uri.host.name, uri.port, link });
+            }
+        }
+        return try fmt.allocPrint(allocator, "{s}://{s}{s}", .{ uri.scheme, uri.host.name, link });
     }
     return try fmt.allocPrint(allocator, "{s}", .{link});
+}
+
+fn printUrl(uri: Uri, writer: anytype) !void {
+    try writer.print("{s}://{s}", .{ uri.scheme, uri.host.name });
+    if (uri.port) |port| {
+        if (port != 443 and port != 80) {
+            try writer.print(":{d}", .{port});
+        }
+    }
+    try writer.print("{s}", .{uri.path});
 }
 
 // TODO: use it in deleteFeed fn also if possible
@@ -533,7 +547,9 @@ fn pickFeedLink(
 ) !u32 {
     const no_title = "<no-title>";
     const page_title = page.title orelse no_title;
-    try writer.print("{s}\n" ++ url_fmt ++ "\n", .{ page_title, uri.scheme, uri.host.name, uri.path });
+    try writer.print("{s} | ", .{page_title});
+    try printUrl(uri, writer);
+    try writer.print("\n", .{});
 
     var stack_fallback = std.heap.stackFallback(128, allocator);
     const stack_allocator = stack_fallback.get();
@@ -600,37 +616,6 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
     return resp;
 }
 
-test "getFeedHttp() when html is returned" {
-    std.testing.log_level = .debug;
-    const base_allocator = std.testing.allocator;
-    var arena = ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-
-    var enter_link = "Enter link number: ";
-    var read_valid = "1\n";
-    var text_io = TestIO{
-        .do_print = true,
-        .expected_actions = &[_]TestIO.Action{
-            .{ .write = "Commits · truemedian/zfetch · GitHub\nhttps://github.com/truemedian/zfetch/commits\n" },
-            .{ .write = "  1. [Atom] https://github.com/truemedian/zfetch/commits/master.atom | Recent Commits to zfetch:master\n" },
-            .{ .write = enter_link },
-            .{ .read = "abc\n" },
-            .{ .write = "Invalid number: 'abc'. Try again.\n" },
-            .{ .write = enter_link },
-            .{ .read = "12\n" },
-            .{ .write = "Number out of range: '12'. Try again.\n" },
-            .{ .write = enter_link },
-            .{ .read = read_valid },
-        },
-    };
-    const writer = text_io.writer();
-    const reader = text_io.reader();
-
-    const r = try getFeedHttp(&arena, "https://github.com/truemedian/zfetch/commits", writer, reader); // return html
-    if (r == .fail) print("Getting feed failed: {s}\n", .{r.fail});
-    // print("{}\n", .{r});
-}
-
 pub fn parseFeedResponseBody(
     arena: *ArenaAllocator,
     body: []const u8,
@@ -646,30 +631,7 @@ pub fn parseFeedResponseBody(
     };
 }
 
-test "add new feed: feed exists, update instead" {
-    std.testing.log_level = .debug;
-    const base_allocator = std.testing.allocator;
-
-    const url = "https://lobste.rs/";
-    var actions = [_]TestIO.Action{
-        .{ .write = "Adding feed " ++ url ++ "\n" },
-        .{ .write = "Feed already exists\nUpdating feed instead\n" },
-        .{ .write = "Feed updated " ++ url ++ "\n" },
-    };
-    var text_io = TestIO{
-        .do_print = true,
-        .expected_actions = &actions,
-    };
-    const writer = text_io.writer();
-    const reader = text_io.reader();
-    var feed_db = try Storage.init(base_allocator, null);
-    const feed = parse.Feed{ .title = "Lobster title" };
-    _ = try feed_db.addFeed(feed, url);
-    var cli = makeCli(base_allocator, &feed_db, writer, reader);
-    try cli.addFeed(url);
-}
-
-test "local and url: add, update, delete" {
+test "@active local and url: add, update, delete, html links, add into update" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
@@ -786,10 +748,40 @@ test "local and url: add, update, delete" {
     }
 
     g.max_items_per_feed = 10;
-    // TODO: return html first then choose a feed link '/rss2.rss'
-    // Remove: test "getFeedHttp() when html is returned"
-    // TODO: also test feed adding turning into update
-    // Remove: test "add new feed: feed exists, update instead"
+    {
+        const html_url = "http://localhost:8080/many-links.html";
+        const links_write =
+            \\  1. [RSS] http://localhost:8080/rss2.rss | Rss 2
+            \\  2. [Unknown] http://localhost:8080/rss2.xml | Rss 2
+            \\  3. [Atom] http://localhost:8080/atom.atom | Atom feed
+            \\  4. [Atom] http://localhost:8080/rss2.rss | Not Duplicate
+            \\  5. [Unknown] http://localhost:8080/atom.xml | Atom feed
+            \\
+        ;
+        const html_feed_url = "http://localhost:8080/rss2.rss";
+        var actions = [_]TestIO.Action{
+            .{ .write = added_url },
+            .{ .write = html_url ++ "\n" },
+            .{ .write = "Parse Feed Links | " ++ html_url ++ "\n" },
+            .{ .write = links_write },
+            .{ .write = "Enter link number: " },
+            .{ .read = "1\n" },
+            .{ .write = "Feed exists. Updating feed " ++ html_feed_url ++ "\n" },
+            .{ .write = "Feed updated " ++ html_feed_url ++ "\n" },
+        };
+
+        var text_io = TestIO{
+            .do_print = do_print,
+            .expected_actions = &actions,
+        };
+
+        cli.writer = text_io.writer();
+        cli.reader = text_io.reader();
+        try cli.addFeed(&.{html_url});
+
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 6), url_items.len);
+    }
 
     // Test updating feeds
     {
