@@ -625,7 +625,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
 
     // local 'test/rss2.xml' and url 'http://localhost:8080/rss2.rss' have same content
 
-    // add local feed
+    // Test add local feed
     // ./feedgaze add test/rss2.xml
     const rel_path = "test/rss2.xml";
     const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
@@ -644,7 +644,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
     }
 
     const added_url = "Adding feed ";
-    // add url feed
+    // Test add url feed
     // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
@@ -684,7 +684,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
     var local_id: u64 = undefined;
     var url_id: u64 = undefined;
 
-    // test if local and url feeds' table fields have same values
+    // Test if local and url feeds' table fields have same values
     {
         const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
         const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
@@ -699,7 +699,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
     }
 
-    // test row count in feed_update_local and feed_update_http tables
+    // Test row count in feed_update_local and feed_update_http tables
     {
         const feed_url_local_counts_query = "select count(feed_update_local.feed_id) as local_count, count(feed_update_http.feed_id) as url_count from feed_update_local, feed_update_http";
         const counts = try storage.db.one(struct { local_count: u32, url_count: u32 }, feed_url_local_counts_query, .{});
@@ -707,7 +707,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try expectEqual(@as(usize, 1), counts.?.url_count);
     }
 
-    // test if two feeds' first(newest) items are same
+    // Test if two (local and url) feeds' first(newest) items are same
     const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
     {
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
@@ -724,6 +724,8 @@ test "@active local and url: add, update, delete, html links, add into update" {
     }
 
     g.max_items_per_feed = 10;
+    // Test parsing links from html
+    // Test feed already existing
     // ./feedgaze add http://localhost:8080/many-links.html
     {
         const html_url = "http://localhost:8080/many-links.html";
@@ -760,7 +762,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try expectEqual(@as(usize, 6), url_items.len);
     }
 
-    // Test updating feeds
+    // Test update feeds
     // ./feedgaze update
     {
         var actions = [_]TestIO.Action{
@@ -792,7 +794,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         }
     }
 
-    // Test cleaning items
+    // Test clean items
     // ./feedgaze clean
     {
         g.max_items_per_feed = 2;
@@ -803,7 +805,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try expectEqual(@as(usize, g.max_items_per_feed), url_items.len);
     }
 
-    // delete local feed.
+    // Test delete local feed
     // ./feedgaze delete rss2
     var enter_nr = "Enter feed number to delete? ";
     {
@@ -831,7 +833,8 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try cli.deleteFeed("rss2");
     }
 
-    // delete url feed.
+    // Test delete url feed
+    // ./feedgaze delete rss2
     {
         var actions = [_]TestIO.Action{
             .{ .write = "Found 1 result(s):\n" },
@@ -857,7 +860,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
         update_local: u32,
     };
 
-    // test that local and url feeds where deleted
+    // Test that local and url feeds were deleted
     {
         const all_counts_query =
             \\ select
