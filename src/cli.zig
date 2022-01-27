@@ -814,8 +814,15 @@ test "@active local and url: add, update, delete, html links, add into update" {
         }
     }
 
-    // TODO: test cleanItems().
-    // set g.max_items_per_feed
+    // Test cleaning items
+    {
+        g.max_items_per_feed = 2;
+        try storage.cleanItems();
+        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, g.max_items_per_feed), local_items.len);
+        try expectEqual(@as(usize, g.max_items_per_feed), url_items.len);
+    }
 
     // delete local feed.
     var enter_nr = "Enter feed number to delete? ";
