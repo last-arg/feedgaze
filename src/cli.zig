@@ -411,30 +411,7 @@ const TestIO = struct {
     }
 };
 
-const TestCounts = struct {
-    feed: usize = 0,
-    local: usize = 0,
-    url: usize = 0,
-};
-
-fn expectCounts(feed_db: *Storage, counts: TestCounts) !void {
-    const feed_count_query = "select count(id) from feed";
-    const local_count_query = "select count(feed_id) from feed_update_local";
-    const url_count_query = "select count(feed_id) from feed_update_http";
-    const item_count_query = "select count(DISTINCT feed_id) from item";
-
-    const feed_count = try feed_db.db.one(usize, feed_count_query, .{});
-    const local_count = try feed_db.db.one(usize, local_count_query, .{});
-    const url_count = try feed_db.db.one(usize, url_count_query, .{});
-    const item_feed_count = try feed_db.db.one(usize, item_count_query, .{});
-    try expect(feed_count == counts.feed);
-    try expect(local_count == counts.local);
-    try expect(feed_count == counts.local + counts.url);
-    try expect(url_count == counts.url);
-    try expect(item_feed_count == counts.feed);
-}
-
-test "Cli.printAllItems, Cli.printFeeds" {
+test "@active Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -450,14 +427,14 @@ test "Cli.printAllItems, Cli.printFeeds" {
         .reader = undefined,
     };
 
+    const location = "test/rss2.xml";
+    const rss_url = "/media/hdd/code/feedgaze/test/rss2.xml";
     {
-        const location = "test/sample-rss-2.xml";
-        const rss_url = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
         var w = "Added local feed: " ++ rss_url ++ "\n";
         var text_io = TestIO{ .expected_actions = &[_]TestIO.Action{.{ .write = w }} };
 
         cli.writer = text_io.writer();
-        try cli.addFeed(location);
+        try cli.addFeed(&.{location});
     }
 
     {
@@ -482,7 +459,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
         var text_io = TestIO{
             .expected_actions = &[_]TestIO.Action{
                 .{ .write = first },
-                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: /media/hdd/code/feedgaze/test/sample-rss-2.xml\n\n" },
+                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: " ++ rss_url ++ "\n\n" },
             },
         };
         cli.writer = text_io.writer();
@@ -631,7 +608,7 @@ pub fn parseFeedResponseBody(
     };
 }
 
-test "@active local and url: add, update, delete, html links, add into update" {
+test "local and url: add, update, delete, html links, add into update" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
