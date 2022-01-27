@@ -411,7 +411,7 @@ const TestIO = struct {
     }
 };
 
-test "@active Cli.printAllItems, Cli.printFeeds" {
+test "Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -504,19 +504,19 @@ fn makeWholeUrl(allocator: Allocator, uri: Uri, link: []const u8) ![]const u8 {
     return try fmt.allocPrint(allocator, "{s}", .{link});
 }
 
-fn printUrl(uri: Uri, writer: anytype) !void {
+fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     try writer.print("{s}://{s}", .{ uri.scheme, uri.host.name });
     if (uri.port) |port| {
         if (port != 443 and port != 80) {
             try writer.print(":{d}", .{port});
         }
     }
-    try writer.print("{s}", .{uri.path});
+    const out_path = if (path) |p| p else uri.path;
+    try writer.print("{s}", .{out_path});
 }
 
 // TODO: use it in deleteFeed fn also if possible
 fn pickFeedLink(
-    allocator: Allocator,
     page: parse.Html.Page,
     uri: Uri,
     writer: anytype,
@@ -525,21 +525,18 @@ fn pickFeedLink(
     const no_title = "<no-title>";
     const page_title = page.title orelse no_title;
     try writer.print("{s} | ", .{page_title});
-    try printUrl(uri, writer);
+    try printUrl(writer, uri, null);
     try writer.print("\n", .{});
 
-    var stack_fallback = std.heap.stackFallback(128, allocator);
-    const stack_allocator = stack_fallback.get();
     for (page.links) |link, i| {
-        const whole_link = try makeWholeUrl(stack_allocator, uri, link.href);
-        defer stack_allocator.free(whole_link);
         const link_title = link.title orelse no_title;
-        try writer.print("  {d}. [{s}] {s} | {s}\n", .{
-            i + 1,
-            parse.Html.MediaType.toString(link.media_type),
-            whole_link,
-            link_title,
-        });
+        try writer.print("  {d}. [{s}] ", .{ i + 1, parse.Html.MediaType.toString(link.media_type) });
+        if (link.href[0] == '/') {
+            try printUrl(writer, uri, link.href);
+        } else {
+            try writer.print("{s}", .{link.href});
+        }
+        try writer.print(" | {s}\n", .{link_title});
     }
 
     // TODO?: can input several numbers. Comma or space separated, or both?
@@ -582,7 +579,7 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
         if (data.links.len > 0) {
             const uri = try Uri.parse(resp.ok.location, true);
             // user input
-            const index = try pickFeedLink(arena.allocator(), data, uri, writer, reader);
+            const index = try pickFeedLink(data, uri, writer, reader);
             const new_url = try makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
@@ -608,7 +605,7 @@ pub fn parseFeedResponseBody(
     };
 }
 
-test "local and url: add, update, delete, html links, add into update" {
+test "@active local and url: add, update, delete, html links, add into update" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
@@ -629,6 +626,7 @@ test "local and url: add, update, delete, html links, add into update" {
     // local 'test/rss2.xml' and url 'http://localhost:8080/rss2.rss' have same content
 
     // add local feed
+    // ./feedgaze add test/rss2.xml
     const rel_path = "test/rss2.xml";
     const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
     {
@@ -647,6 +645,7 @@ test "local and url: add, update, delete, html links, add into update" {
 
     const added_url = "Adding feed ";
     // add url feed
+    // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
         g.max_items_per_feed = 2;
@@ -725,6 +724,7 @@ test "local and url: add, update, delete, html links, add into update" {
     }
 
     g.max_items_per_feed = 10;
+    // ./feedgaze add http://localhost:8080/many-links.html
     {
         const html_url = "http://localhost:8080/many-links.html";
         const links_write =
@@ -761,6 +761,7 @@ test "local and url: add, update, delete, html links, add into update" {
     }
 
     // Test updating feeds
+    // ./feedgaze update
     {
         var actions = [_]TestIO.Action{
             .{ .write = "Updated url feeds\n" },
@@ -792,6 +793,7 @@ test "local and url: add, update, delete, html links, add into update" {
     }
 
     // Test cleaning items
+    // ./feedgaze clean
     {
         g.max_items_per_feed = 2;
         try storage.cleanItems();
@@ -802,6 +804,7 @@ test "local and url: add, update, delete, html links, add into update" {
     }
 
     // delete local feed.
+    // ./feedgaze delete rss2
     var enter_nr = "Enter feed number to delete? ";
     {
         var actions = [_]TestIO.Action{
