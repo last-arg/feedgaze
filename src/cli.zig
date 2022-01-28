@@ -346,8 +346,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     var fbs = std.io.fixedBufferStream(&buf);
 
     var feed_db = try Storage.init(allocator, null);
-    const FbsSliceU8 = std.io.FixedBufferStream([]u8);
-    var cli = Cli(FbsSliceU8.Writer, FbsSliceU8.Reader){
+    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
         .allocator = allocator,
         .feed_db = &feed_db,
         .writer = fbs.writer(),
@@ -551,8 +550,7 @@ test "local and url: add, update, delete, html links, add into update" {
     var fbs = std.io.fixedBufferStream(&buf);
 
     var storage = try Storage.init(allocator, null);
-    const FbsSliceU8 = std.io.FixedBufferStream([]u8);
-    var cli = Cli(FbsSliceU8.Writer, FbsSliceU8.Reader){
+    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
         .allocator = allocator,
         .feed_db = &storage,
         .writer = fbs.writer(),
