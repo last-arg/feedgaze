@@ -14,6 +14,7 @@ const db = @import("db.zig");
 const shame = @import("shame.zig");
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
+const expectEqualStrings = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 const Storage = @import("feed_db.zig").Storage;
 
@@ -188,10 +189,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var delete_nr: usize = 0;
             while (true) {
                 try self.writer.print("Enter feed number to delete? ", .{});
-                const bytes = try self.reader.read(&buf);
-                if (buf[0] == '\n') continue;
+                const input = try self.reader.readUntilDelimiter(&buf, '\n');
+                const value = std.mem.trim(u8, input, &std.ascii.spaces);
+                if (value.len == 0) continue;
 
-                if (fmt.parseUnsigned(usize, buf[0 .. bytes - 1], 10)) |nr| {
+                if (fmt.parseUnsigned(usize, value, 10)) |nr| {
                     if (nr >= 1 and nr <= results.len) {
                         delete_nr = nr;
                         break;
@@ -199,7 +201,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try self.writer.print("Entered number out of range. Try again.\n", .{});
                     continue;
                 } else |_| {
-                    try self.writer.print("Invalid number entered: '{s}'. Try again.\n", .{buf[0 .. bytes - 1]});
+                    try self.writer.print("Invalid number entered: '{s}'. Try again.\n", .{value});
                 }
             }
 
@@ -300,6 +302,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.sql_db.getDetailedError().message, query });
                 return err;
             };
+            // TODO: fix text for one and multiple
             try self.writer.print("There are {} feed(s)\n", .{all_items.len});
 
             const print_fmt =
@@ -332,85 +335,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     };
 }
 
-const TestIO = struct {
-    const Self = @This();
-    // TODO: look at std.testing.expectFmt()
-    const warn_fmt =
-        \\
-        \\====== expected this output: =========
-        \\{s}
-        \\======== instead found this: =========
-        \\{s}
-        \\======================================
-        \\
-    ;
-
-    const Action = union {
-        write: []const u8,
-        read: []const u8,
-    };
-
-    expected_actions: []Action,
-    action_index: usize = 0,
-    do_print: bool = false,
-
-    pub fn writer(self: *Self) Writer {
-        return .{ .context = self };
-    }
-
-    pub const Writer = std.io.Writer(*Self, Error, write);
-    pub const Error = error{
-        TooMuchData,
-        DifferentData,
-        NoExpectedWrites,
-        IndexOutOfBounds,
-    };
-
-    fn write(self: *Self, bytes: []const u8) Error!usize {
-        if (self.expected_actions.len == 0) return error.NoExpectedWrites;
-        const i = self.action_index;
-        if (i >= self.expected_actions.len) {
-            log.err("TestIO: Index out of bound.\nDidn't print: {s}", .{bytes});
-            return bytes.len;
-        }
-        const expected = self.expected_actions[i].write;
-
-        if (expected.len < bytes.len) {
-            print(warn_fmt, .{ expected, bytes });
-            return error.TooMuchData;
-        }
-
-        if (!mem.eql(u8, expected[0..bytes.len], bytes)) {
-            print(warn_fmt, .{ expected[0..bytes.len], bytes });
-            return error.DifferentData;
-        }
-
-        self.expected_actions[i].write = self.expected_actions[i].write[bytes.len..];
-        if (expected.len == bytes.len) {
-            self.action_index += 1;
-        }
-
-        if (self.do_print) print("{s}", .{bytes});
-        return bytes.len;
-    }
-
-    pub fn reader(self: *Self) Reader {
-        return .{ .context = self };
-    }
-
-    const Reader = std.io.Reader(*Self, Error, read);
-
-    fn read(self: *Self, dest: []u8) Error!usize {
-        const i = self.action_index;
-        const src = self.expected_actions[i].read;
-        const size = src.len;
-        mem.copy(u8, dest[0..size], src);
-        self.action_index += 1;
-        if (self.do_print) print("{s}", .{src});
-        return size;
-    }
-};
-
 test "Cli.printAllItems, Cli.printFeeds" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
@@ -418,52 +342,67 @@ test "Cli.printAllItems, Cli.printFeeds" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    var feed_db = try Storage.init(allocator, null);
+    var buf: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
 
-    var cli = Cli(TestIO.Writer, TestIO.Reader){
+    var feed_db = try Storage.init(allocator, null);
+    const FbsSliceU8 = std.io.FixedBufferStream([]u8);
+    var cli = Cli(FbsSliceU8.Writer, FbsSliceU8.Reader){
         .allocator = allocator,
         .feed_db = &feed_db,
-        .writer = undefined,
-        .reader = undefined,
+        .writer = fbs.writer(),
+        .reader = fbs.reader(),
     };
 
     const location = "test/rss2.xml";
     const rss_url = "/media/hdd/code/feedgaze/test/rss2.xml";
     {
-        var w = "Added local feed: " ++ rss_url ++ "\n";
-        var text_io = TestIO{ .expected_actions = &[_]TestIO.Action{.{ .write = w }} };
-
-        cli.writer = text_io.writer();
+        const expected = fmt.comptimePrint("Added local feed: {s}\n", .{rss_url});
+        fbs.reset();
         try cli.addFeed(&.{location});
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
     {
-        var first = "Liftoff News - http://liftoff.msfc.nasa.gov/\n";
-        var text_io = TestIO{
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-                .{ .write = "  Star City&#39;s Test\n  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp\n\n" },
-                .{ .write = "  Sky watchers in Europe, Asia, and parts of Alaska \n  <no-link>\n\n" },
-                .{ .write = "  TEST THIS\n  <no-link>\n\n" },
-                .{ .write = "  Astronauts' Dirty Laundry\n  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp\n\n" },
-                .{ .write = "  The Engine That Does More\n  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp\n\n" },
-                .{ .write = "  TEST THIS1\n  <no-link>\n\n" },
-            },
-        };
-        cli.writer = text_io.writer();
+        const expected = fmt.comptimePrint(
+            \\Liftoff News - http://liftoff.msfc.nasa.gov/
+            \\  Star City&#39;s Test
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
+            \\
+            \\  Sky watchers in Europe, Asia, and parts of Alaska{s}
+            \\  <no-link>
+            \\
+            \\  TEST THIS
+            \\  <no-link>
+            \\
+            \\  Astronauts' Dirty Laundry
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp
+            \\
+            \\  The Engine That Does More
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp
+            \\
+            \\  TEST THIS1
+            \\  <no-link>
+            \\
+            \\
+        , .{" "}); // Because kakoune remove spaces from end of line
+        fbs.reset();
         try cli.printAllItems();
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
     {
-        var first = "There are 1 feed(s)\n";
-        var text_io = TestIO{
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = first },
-                .{ .write = "Liftoff News\n  link: http://liftoff.msfc.nasa.gov/\n  location: " ++ rss_url ++ "\n\n" },
-            },
-        };
-        cli.writer = text_io.writer();
+        const expected = fmt.comptimePrint(
+            \\There are 1 feed(s)
+            \\Liftoff News
+            \\  link: http://liftoff.msfc.nasa.gov/
+            \\  location: {s}
+            \\
+            \\
+        , .{rss_url});
+        fbs.reset();
         try cli.printFeeds();
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 }
 
@@ -539,25 +478,19 @@ fn pickFeedLink(
         try writer.print(" | {s}\n", .{link_title});
     }
 
-    // TODO?: can input several numbers. Comma or space separated, or both?
+    // TODO?: can input several numbers. Space separated, or both?
     var buf: [64]u8 = undefined;
     const index = blk: {
         while (true) {
             try writer.print("Enter link number: ", .{});
-            const bytes = try reader.read(&buf);
-            const input = buf[0 .. bytes - 1];
-            const nr = fmt.parseUnsigned(u16, input, 10) catch {
-                try writer.print(
-                    "Invalid number: '{s}'. Try again.\n",
-                    .{input},
-                );
+            const input = try reader.readUntilDelimiter(&buf, '\n');
+            const value = std.mem.trim(u8, input, &std.ascii.spaces);
+            const nr = fmt.parseUnsigned(u16, value, 10) catch {
+                try writer.print("Invalid number: '{s}'. Try again.\n", .{input});
                 continue;
             };
             if (nr < 1 or nr > page.links.len) {
-                try writer.print(
-                    "Number out of range: '{d}'. Try again.\n",
-                    .{nr},
-                );
+                try writer.print("Number out of range: '{d}'. Try again.\n", .{nr});
                 continue;
             }
             break :blk nr - 1;
@@ -605,7 +538,7 @@ pub fn parseFeedResponseBody(
     };
 }
 
-test "@active local and url: add, update, delete, html links, add into update" {
+test "local and url: add, update, delete, html links, add into update" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
@@ -614,13 +547,16 @@ test "@active local and url: add, update, delete, html links, add into update" {
     defer arena.deinit();
     const allocator = arena.allocator();
 
+    var buf: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+
     var storage = try Storage.init(allocator, null);
-    const do_print = true;
-    var cli = Cli(TestIO.Writer, TestIO.Reader){
+    const FbsSliceU8 = std.io.FixedBufferStream([]u8);
+    var cli = Cli(FbsSliceU8.Writer, FbsSliceU8.Reader){
         .allocator = allocator,
         .feed_db = &storage,
-        .writer = undefined,
-        .reader = undefined,
+        .writer = fbs.writer(),
+        .reader = fbs.reader(),
     };
 
     // local 'test/rss2.xml' and url 'http://localhost:8080/rss2.rss' have same content
@@ -631,38 +567,26 @@ test "@active local and url: add, update, delete, html links, add into update" {
     const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
     {
         g.max_items_per_feed = 1;
-        var w = "Added local feed: " ++ abs_path ++ "\n";
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &[_]TestIO.Action{
-                .{ .write = w },
-            },
-        };
-
-        cli.writer = text_io.writer();
+        const expected = "Added local feed: " ++ abs_path ++ "\n";
+        // Copying is required when reading from stdout
+        mem.copy(u8, fbs.buffer, expected);
         try cli.addFeed(&.{rel_path});
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
-    const added_url = "Adding feed ";
     // Test add url feed
     // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
         g.max_items_per_feed = 2;
-        var actions = [_]TestIO.Action{
-            .{ .write = added_url },
-            .{ .write = url ++ "\n" },
-            .{ .write = "Feed added " ++ url ++ "\n" },
-            .{ .write = "Added url feed: " ++ url ++ "\n" },
-        };
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
+        const expected = fmt.comptimePrint(
+            \\Adding feed {s}
+            \\Feed added {s}
+            \\
+        , .{url} ** 2);
+        fbs.reset();
         try cli.addFeed(&.{url});
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
     const FeedResult = struct {
@@ -729,35 +653,25 @@ test "@active local and url: add, update, delete, html links, add into update" {
     // ./feedgaze add http://localhost:8080/many-links.html
     {
         const html_url = "http://localhost:8080/many-links.html";
-        const links_write =
+        const expected =
+            \\Adding feed http://localhost:8080/many-links.html
+            \\Parse Feed Links | http://localhost:8080/many-links.html
             \\  1. [RSS] http://localhost:8080/rss2.rss | Rss 2
             \\  2. [Unknown] http://localhost:8080/rss2.xml | Rss 2
             \\  3. [Atom] http://localhost:8080/atom.atom | Atom feed
             \\  4. [Atom] http://localhost:8080/rss2.rss | Not Duplicate
             \\  5. [Unknown] http://localhost:8080/atom.xml | Atom feed
+            \\Enter link number: 1
+            \\Feed already exists. Updating feed http://localhost:8080/rss2.rss
+            \\Feed updated http://localhost:8080/rss2.rss
             \\
         ;
-        const html_feed_url = "http://localhost:8080/rss2.rss";
-        var actions = [_]TestIO.Action{
-            .{ .write = added_url },
-            .{ .write = html_url ++ "\n" },
-            .{ .write = "Parse Feed Links | " ++ html_url ++ "\n" },
-            .{ .write = links_write },
-            .{ .write = "Enter link number: " },
-            .{ .read = "1\n" },
-            .{ .write = "Feed already exists. Updating feed " ++ html_feed_url ++ "\n" },
-            .{ .write = "Feed updated " ++ html_feed_url ++ "\n" },
-        };
 
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
+        fbs.reset();
+        // Copying is required when reading from stdout
+        mem.copy(u8, fbs.buffer, expected);
         try cli.addFeed(&.{html_url});
-
+        try expectEqualStrings(expected, fbs.getWritten());
         const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
         try expectEqual(@as(usize, 6), url_items.len);
     }
@@ -765,21 +679,17 @@ test "@active local and url: add, update, delete, html links, add into update" {
     // Test update feeds
     // ./feedgaze update
     {
-        var actions = [_]TestIO.Action{
-            .{ .write = "Updated url feeds\n" },
-            .{ .write = "Updated local feeds\n" },
-        };
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
+        const expected =
+            \\Updated url feeds
+            \\Updated local feeds
+            \\
+        ;
+        fbs.reset();
         cli.options.force = true;
         try cli.updateFeeds();
         cli.options.force = false;
 
+        try expectEqualStrings(expected, fbs.getWritten());
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
         const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
         try expectEqual(@as(usize, 6), local_items.len);
@@ -807,50 +717,40 @@ test "@active local and url: add, update, delete, html links, add into update" {
 
     // Test delete local feed
     // ./feedgaze delete rss2
-    var enter_nr = "Enter feed number to delete? ";
+    const enter_nr = "Enter feed number to delete?";
     {
-        var actions = [_]TestIO.Action{
-            .{ .write = "Found 2 result(s):\n" },
-            .{ .write = "  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ abs_path ++ "\n" },
-            .{ .write = "  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
-            .{ .write = enter_nr },
-            .{ .read = "1a\n" },
-            .{ .write = "Invalid number entered: '1a'. Try again.\n" },
-            .{ .write = enter_nr },
-            .{ .read = "14\n" },
-            .{ .write = "Entered number out of range. Try again.\n" },
-            .{ .write = enter_nr },
-            .{ .read = "1\n" },
-            .{ .write = "Deleted feed '" ++ abs_path ++ "'\n" },
-        };
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
-        try cli.deleteFeed("rss2");
+        const expected = fmt.comptimePrint(
+            \\Found 2 result(s):
+            \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\{s} 1a
+            \\Invalid number entered: '1a'. Try again.
+            \\{s} 14
+            \\Entered number out of range. Try again.
+            \\{s} 1
+            \\Deleted feed '{s}'
+            \\
+        , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
+        fbs.reset();
+        mem.copy(u8, fbs.buffer, expected);
+        cli.deleteFeed("rss2") catch print("|{s}|\n", .{fbs.getWritten()});
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
     // Test delete url feed
     // ./feedgaze delete rss2
     {
-        var actions = [_]TestIO.Action{
-            .{ .write = "Found 1 result(s):\n" },
-            .{ .write = "  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | " ++ url ++ "\n" },
-            .{ .write = enter_nr },
-            .{ .read = "1\n" },
-            .{ .write = "Deleted feed '" ++ url ++ "'\n" },
-        };
-        var text_io = TestIO{
-            .do_print = do_print,
-            .expected_actions = &actions,
-        };
-
-        cli.writer = text_io.writer();
-        cli.reader = text_io.reader();
+        const expected = fmt.comptimePrint(
+            \\Found 1 result(s):
+            \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\{s} 1
+            \\Deleted feed '{s}'
+            \\
+        , .{ url, enter_nr, url });
+        fbs.reset();
+        mem.copy(u8, fbs.buffer, expected);
         try cli.deleteFeed("rss2");
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 
     const AllCounts = struct {

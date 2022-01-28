@@ -33,6 +33,9 @@ pub fn main() !void {
         clap.parseParam("-u, --url      Apply action only to url feeds.") catch unreachable,
         clap.parseParam("-l, --local    Apply action only to local feeds.") catch unreachable,
         clap.parseParam("-f, --force    Force update all feeds. Subcommand: update") catch unreachable,
+        // TODO: implement '--default' flag. Can have none to multiple values. Do comma separate values?
+        // Probably have to use StreamingClap
+        clap.parseParam("-d, --default <NUM> Automatically select (space separated) values.") catch unreachable,
         clap.parseParam("<POS>") catch unreachable,
     };
 
