@@ -1,5 +1,5 @@
-// TODO?: put default values into constants?
-// only default value would be update_interval
+const comptimePrint = @import("std").fmt.comptimePrint;
+pub const update_interval = 600;
 pub const Table = struct {
     pub const item = struct {
         pub const create =
@@ -20,24 +20,24 @@ pub const Table = struct {
     };
 
     pub const feed_update_local = struct {
-        pub const create =
+        pub const create = comptimePrint(
             \\CREATE TABLE IF NOT EXISTS feed_update_local (
             \\  feed_id INTEGER UNIQUE,
-            \\  update_interval INTEGER DEFAULT 600,
+            \\  update_interval INTEGER DEFAULT {d},
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
             \\  last_modified_timestamp INTEGER,
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
             \\);
-        ;
+        , .{update_interval});
     };
 
     pub const feed_update_http = struct {
         const name = "feed_update_http";
-        pub const create =
+        pub const create = comptimePrint(
             \\CREATE TABLE IF NOT EXISTS feed_update_http (
             \\  feed_id INTEGER UNIQUE,
             \\  update_countdown INTEGER DEFAULT 0,
-            \\  update_interval INTEGER DEFAULT 600,
+            \\  update_interval INTEGER DEFAULT {d},
             \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
             \\  cache_control_max_age INTEGER DEFAULT NULL,
             \\  expires_utc INTEGER DEFAULT NULL,
@@ -45,7 +45,7 @@ pub const Table = struct {
             \\  etag TEXT DEFAULT NULL,
             \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
             \\);
-        ;
+        , .{update_interval});
     };
 
     pub const feed = struct {

@@ -621,7 +621,7 @@ test "Storage local" {
     var feed_db = try Storage.init(allocator, null);
 
     // const abs_path = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
-    const rel_path = "test/sample-rss-2.xml";
+    const rel_path = "test/rss2.xml";
     var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
     const abs_path = try fs.cwd().realpath(rel_path, &path_buf);
     const contents = try shame.getFileContents(allocator, abs_path);
@@ -663,7 +663,7 @@ test "Storage local" {
         const feed_dbfeeds = try feed_db.db.one(LocalUpdateResult, local_query, .{});
         const first = feed_dbfeeds.?;
         try expect(first.feed_id == 1);
-        try expect(first.update_interval == 600);
+        try expect(first.update_interval == @import("queries.zig").update_interval);
         const current_time = std.time.timestamp();
         try expect(first.last_update <= current_time);
         try expect(first.last_modified_timestamp == mtime_sec);
