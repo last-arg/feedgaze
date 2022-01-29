@@ -160,9 +160,11 @@ fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const 
         if (try known_folders.getPath(allocator, .local_configuration)) |path| {
             break :block try std.fs.path.joinZ(allocator, &.{ path, "feedgaze", "feedgaze.sqlite" });
         }
-        if (try known_folders.getPath(allocator, .home)) |path| {
-            // TODO: '.config' is different on other platforms
-            break :block try std.fs.path.joinZ(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
+        const builtin = @import("builtin");
+        if (builtin.target.os.tag == .linux) {
+            if (try known_folders.getPath(allocator, .home)) |path| {
+                break :block try std.fs.path.joinZ(allocator, &.{ path, ".config", "feedgaze", "feedgaze.sqlite" });
+            }
         }
         log.err("Failed to find local configuration or home directory\n", .{});
         return error.MissingConfigAndHomeDir;
