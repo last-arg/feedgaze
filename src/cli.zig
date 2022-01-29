@@ -121,8 +121,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const feed_db = self.feed_db;
 
             const url = try makeValidUrl(arena.allocator(), input_url);
-            // TODO: change to 'Try to fetch feed'
-            try writer.print("Adding feed {s}\n", .{url});
+            try writer.print("Fetching feed {s}\n", .{url});
             const resp = try getFeedHttp(&arena, url, writer, self.reader);
             switch (resp) {
                 .fail => |msg| {
