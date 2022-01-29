@@ -294,23 +294,30 @@ pub const Storage = struct {
 
             switch (resp_union) {
                 .not_modified => {
-                    log.info("Skipping update: Feed hasn't been modified", .{});
+                    log.info("Skipping update. Feed hasn't been modified.", .{});
                     continue;
                 },
                 .fail => |msg| {
-                    log.info("Failed http request: {s}", .{msg});
+                    log.info("Skipping update. Failed http request: {s}.", .{msg});
                     continue;
                 },
                 .ok => {},
             }
 
-            // TODO: catch errors and continue loop
-            // There might be errors where continuing loop isn't a good idea
             const resp = resp_union.ok;
             const rss_feed = switch (resp.content_type) {
-                .xml_atom => try parse.Atom.parse(&arena, resp.body),
-                .xml_rss => try parse.Rss.parse(&arena, resp.body),
-                else => try parse.parse(&arena, resp.body),
+                .xml_atom => parse.Atom.parse(&arena, resp.body) catch {
+                    log.warn("Skipping update. Failed to parse Atom feed.", .{});
+                    continue;
+                },
+                .xml_rss => parse.Rss.parse(&arena, resp.body) catch {
+                    log.warn("Skipping update. Failed to parse RSS feed.", .{});
+                    continue;
+                },
+                else => parse.parse(&arena, resp.body) catch {
+                    log.warn("Skipping update. Failed to parse XML file.", .{});
+                    continue;
+                },
             };
 
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
