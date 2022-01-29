@@ -301,8 +301,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.sql_db.getDetailedError().message, query });
                 return err;
             };
-            // TODO: fix text for one and multiple
-            try self.writer.print("There are {} feed(s)\n", .{all_items.len});
+
+            if (all_items.len == 0) {
+                try self.writer.print("There are no feeds to print\n", .{});
+                return;
+            } else if (all_items.len == 1) {
+                try self.writer.print("There is 1 feed\n", .{});
+            } else {
+                try self.writer.print("There are {d} feeds\n", .{all_items.len});
+            }
 
             const print_fmt =
                 \\{s}
@@ -323,9 +330,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             if (results.len == 0) {
                 try self.writer.print("Found no matches\n", .{});
                 return;
+            } else if (results.len == 1) {
+                try self.writer.print("Found 1 match:\n", .{});
+            } else {
+                try self.writer.print("Found {d} matches:\n", .{results.len});
             }
 
-            try self.writer.print("Found {} match(es):\n", .{results.len});
             // TODO?: display data as table
             for (results) |result| {
                 try self.writer.print("{s}\n\tid: {}\n\tlink: {s}\n\tfeed link: {s}\n", .{ result.title, result.id, result.link, result.location });
@@ -391,7 +401,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
 
     {
         const expected = fmt.comptimePrint(
-            \\There are 1 feed(s)
+            \\There is 1 feed
             \\Liftoff News
             \\  link: http://liftoff.msfc.nasa.gov/
             \\  location: {s}
