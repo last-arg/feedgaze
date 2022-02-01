@@ -17,6 +17,9 @@ const expectEqualStrings = std.testing.expectEqualStrings;
 const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 
+// TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
+// Storage would be specific functions. Db would be utility/helper/wrapper functions
+
 pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
 };
