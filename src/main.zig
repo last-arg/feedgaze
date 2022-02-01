@@ -33,15 +33,22 @@ pub fn main() !void {
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     // TODO: implement '--default' flag. Can have none to multiple values. Do comma separate values?   clap.parseParam("-f, --force    Force update all feeds. Subcommand: update") catch unreachable,
 
-    comptime var add_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
-    const AddCmd = FlagSet(&add_flags);
-    comptime var print_feeds_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
-    const PrintFeedsCmd = FlagSet(&print_feeds_flags);
+    comptime var same_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
+    const AddCmd = FlagSet(&same_flags);
+    const UpdateCmd = FlagSet(&same_flags);
+    const DeleteCmd = FlagSet(&same_flags);
+    const SearchCmd = FlagSet(&same_flags);
+    const CleanCmd = FlagSet(&same_flags);
+    const PrintFeedsCmd = FlagSet(&same_flags);
+    const PrintItemsCmd = FlagSet(&same_flags);
 
-    comptime var add_cmd = AddCmd{ .name = "add" };
-    _ = add_cmd;
-    comptime var print_feeds_cmd = PrintFeedsCmd{ .name = "print-feeds" };
-    _ = print_feeds_cmd;
+    const add_cmd = AddCmd{ .name = "add" };
+    const update_cmd = UpdateCmd{ .name = "update" };
+    const delete_cmd = DeleteCmd{ .name = "delete" };
+    const search_cmd = SearchCmd{ .name = "search" };
+    const clean_cmd = CleanCmd{ .name = "clean" };
+    const print_feeds_cmd = PrintFeedsCmd{ .name = "print-feeds" };
+    const print_items_cmd = PrintItemsCmd{ .name = "print-items" };
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -61,12 +68,12 @@ pub fn main() !void {
 
     const cmds = struct {
         add: AddCmd = add_cmd,
-        update: AddCmd = add_cmd,
-        delete: AddCmd = add_cmd,
-        search: AddCmd = add_cmd,
-        clean: AddCmd = add_cmd,
+        update: UpdateCmd = update_cmd,
+        delete: DeleteCmd = delete_cmd,
+        search: SearchCmd = search_cmd,
+        clean: CleanCmd = clean_cmd,
         @"print-feeds": PrintFeedsCmd = print_feeds_cmd,
-        @"print-items": PrintFeedsCmd = print_feeds_cmd,
+        @"print-items": PrintItemsCmd = print_items_cmd,
     }{};
 
     var args_rest: [][:0]const u8 = undefined;
