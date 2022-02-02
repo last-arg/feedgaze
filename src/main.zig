@@ -31,24 +31,19 @@ pub fn main() !void {
     const db_flag = newFlag("db", "~/.config/feedgaze/feedgaze.sqlite", "Point to sqlite database location.");
     const url_flag = newFlag("url", true, "Apply action only to url feeds.");
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
-    // TODO: implement '--default' flag. Can have none to multiple values. Do comma separate values?   clap.parseParam("-f, --force    Force update all feeds. Subcommand: update") catch unreachable,
+    const force_flag = newFlag("force", false, "Force update all feeds.");
+    // TODO: implement '--default' flag for add and delete command. Can have none to multiple values. Do comma separate values?
 
+    // TODO: Might be consolidate same types after adding --default flag
     comptime var same_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
+    comptime var update_flags = same_flags ++ [_]FlagOpt{force_flag};
     const AddCmd = FlagSet(&same_flags);
-    const UpdateCmd = FlagSet(&same_flags);
+    const UpdateCmd = FlagSet(&update_flags);
     const DeleteCmd = FlagSet(&same_flags);
     const SearchCmd = FlagSet(&same_flags);
     const CleanCmd = FlagSet(&same_flags);
     const PrintFeedsCmd = FlagSet(&same_flags);
     const PrintItemsCmd = FlagSet(&same_flags);
-
-    const add_cmd = AddCmd{ .name = "add" };
-    const update_cmd = UpdateCmd{ .name = "update" };
-    const delete_cmd = DeleteCmd{ .name = "delete" };
-    const search_cmd = SearchCmd{ .name = "search" };
-    const clean_cmd = CleanCmd{ .name = "clean" };
-    const print_feeds_cmd = PrintFeedsCmd{ .name = "print-feeds" };
-    const print_items_cmd = PrintItemsCmd{ .name = "print-items" };
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -67,13 +62,13 @@ pub fn main() !void {
     };
 
     const cmds = struct {
-        add: AddCmd = add_cmd,
-        update: UpdateCmd = update_cmd,
-        delete: DeleteCmd = delete_cmd,
-        search: SearchCmd = search_cmd,
-        clean: CleanCmd = clean_cmd,
-        @"print-feeds": PrintFeedsCmd = print_feeds_cmd,
-        @"print-items": PrintItemsCmd = print_items_cmd,
+        add: AddCmd = .{ .name = "add" },
+        update: UpdateCmd = .{ .name = "update" },
+        delete: DeleteCmd = .{ .name = "delete" },
+        search: SearchCmd = .{ .name = "search" },
+        clean: CleanCmd = .{ .name = "clean" },
+        @"print-feeds": PrintFeedsCmd = .{ .name = "print-items" },
+        @"print-items": PrintItemsCmd = .{ .name = "print-items" },
     }{};
 
     var args_rest: [][:0]const u8 = undefined;
