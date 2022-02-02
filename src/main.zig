@@ -22,7 +22,6 @@ pub const known_folders_config = .{
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const base_allocator = gpa.allocator();
-    // const base_allocator = std.heap.page_allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const arena_allocator = arena.allocator();
@@ -48,15 +47,26 @@ pub fn main() !void {
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
 
-    // TODO: need to check if help flag vas entered
     if (args.len == 1) {
         log.err("No subcommand entered.", .{});
+        try usage();
         return error.MissingSubCommand;
     }
 
     const Subcommand = enum { add, update, delete, search, clean, @"print-feeds", @"print-items" };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
+        // Check if help flag was entered
+        comptime var root_flags = [_]FlagOpt{help_flag};
+        var root_cmd = FlagSet(&root_flags){};
+        try root_cmd.parse(args[1..]);
+        const help_flag_opt = root_cmd.getFlag("help");
+        if (help_flag_opt) |flag| {
+            if (try flag.getBoolean()) {
+                try usage();
+                return;
+            }
+        }
         log.err("Unknown subcommand '{s}'.", .{subcmd_str});
         return error.UnknownSubCommand;
     };
@@ -105,6 +115,8 @@ pub fn main() !void {
             // https://github.com/ziglang/zig/issues/9524
         }
     }
+
+    // TODO: print usage() if help flag true
 
     const subcom_input_required = [_]Subcommand{ .add, .delete, .search };
     for (subcom_input_required) |required| {
@@ -375,4 +387,10 @@ pub fn newFlag(name: []const u8, default_value: anytype, description: []const u8
         .description = description,
         .default_value = default_value,
     };
+}
+
+pub fn usage() !void {
+    const stderr = std.io.getStdErr();
+    const writer = stderr.writer();
+    try writer.writeAll("TODO: print usage\n");
 }
