@@ -226,6 +226,7 @@ const FlagOpt = struct {
     input_value: ?[]const u8 = null,
 };
 
+// TODO: for saving different types in same field check https://github.com/ziglang/zig/issues/10705
 fn FlagSet(comptime inputs: []FlagOpt) type {
     const FlagValue = union(enum) {
         boolean: bool,
@@ -239,17 +240,21 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
         default_value: FlagValue,
         input_value: ?[]const u8 = null,
 
+        fn parseBoolean(value: []const u8) ?bool {
+            const true_values = .{ "1", "t", "T", "true", "TRUE", "True" };
+            const false_values = .{ "0", "f", "F", "false", "FALSE", "False" };
+            // TODO?: toLower(input)?
+            inline for (true_values) |t_value| if (mem.eql(u8, value, t_value)) return true;
+            inline for (false_values) |f_value| if (mem.eql(u8, value, f_value)) return false;
+            return null;
+        }
+
         pub fn getBoolean(self: Self) !bool {
             if (self.default_value != .boolean) {
                 return error.NotBooleanValueType;
             }
             if (self.input_value) |input| {
-                const valid_values = .{ "1", "0", "t", "f", "T", "F", "true", "false", "TRUE", "FALSE", "True", "False" };
-                // TODO?: toLower(input)?
-                inline for (valid_values) |value| {
-                    if (mem.eql(u8, value, input)) return true;
-                }
-                return false;
+                return parseBoolean(input) orelse self.default_value.boolean;
             }
             return self.default_value.boolean;
         }
