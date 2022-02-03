@@ -60,9 +60,8 @@ pub fn main() !void {
         comptime var root_flags = [_]FlagOpt{help_flag};
         var root_cmd = FlagSet(&root_flags){};
         try root_cmd.parse(args[1..]);
-        const help_flag_opt = root_cmd.getFlag("help");
-        if (help_flag_opt) |flag| {
-            if (try flag.getBoolean()) {
+        if (root_cmd.getFlag("help")) |f| {
+            if (try f.getBoolean()) {
                 try usage();
                 return;
             }
@@ -83,6 +82,7 @@ pub fn main() !void {
 
     var args_rest: [][:0]const u8 = undefined;
     var db_path: []const u8 = undefined;
+    var has_help = false;
     var cli_options = command.CliOptions{
         .force = false,
         .url = true,
@@ -95,6 +95,9 @@ pub fn main() !void {
             var cmd = @field(cmds, name);
             try cmd.parse(args[2..]);
             args_rest = cmd.args;
+            if (cmd.getFlag("help")) |f| {
+                has_help = try f.getBoolean();
+            }
             db_path = try cmd.getFlag("db").?.getString();
             var local = cli_options.local;
             if (cmd.getFlag("local")) |value| {
@@ -116,7 +119,10 @@ pub fn main() !void {
         }
     }
 
-    // TODO: print usage() if help flag true
+    if (has_help) {
+        try usage();
+        return;
+    }
 
     const subcom_input_required = [_]Subcommand{ .add, .delete, .search };
     for (subcom_input_required) |required| {
