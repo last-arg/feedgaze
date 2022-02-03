@@ -33,7 +33,6 @@ pub fn main() !void {
     const force_flag = newFlag("force", false, "Force update all feeds.");
     // TODO: implement '--default' flag for add and delete command. Can have none to multiple values. Do comma separate values?
 
-    // TODO: Might be consolidate same types after adding --default flag
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const BaseCmd = FlagSet(&base_flags);
@@ -144,9 +143,7 @@ pub fn main() !void {
     switch (subcmd) {
         .add => try cli.addFeed(args_rest),
         .update => try cli.updateFeeds(),
-        // TODO: multiple values will be OR-ed
         .delete => try cli.deleteFeed(args_rest),
-        // TODO: multiple values will be OR-ed
         .search => try cli.search(args_rest),
         .clean => try cli.cleanItems(),
         .@"print-feeds" => try cli.printFeeds(),
