@@ -507,19 +507,49 @@ pub const Storage = struct {
         id: u64,
     };
 
-    pub fn search(self: *Self, allocator: Allocator, term: []const u8) ![]SearchResult {
-        const query =
-            \\SELECT location, title, link, id FROM feed
-            \\WHERE location LIKE ? OR link LIKE ? OR title LIKE ?
-        ;
-        const search_term = try fmt.allocPrint(allocator, "%{s}%", .{term});
-        defer allocator.free(search_term);
+    pub fn search(self: *Self, allocator: Allocator, terms: [][]const u8) ![]SearchResult {
+        // TODO: open to sql injection
+        const query_start = "SELECT location, title, link, id FROM feed WHERE ";
+        const query_location_start = "location LIKE '%";
+        const query_link_start = "link LIKE '%";
+        const query_title_start = "title LIKE '%";
+        const query_like_end = "%'";
+        const query_or = " OR ";
 
-        const results = try self.db.selectAll(SearchResult, query, .{
-            search_term,
-            search_term,
-            search_term,
-        });
+        var total_cap = query_start.len;
+        for (terms) |term| {
+            total_cap += query_location_start.len + query_link_start.len + query_title_start.len + query_like_end.len * 3 + query_or.len * 3 + term.len * 3;
+        }
+        var query_arr = try ArrayList(u8).initCapacity(allocator, total_cap);
+        defer query_arr.deinit();
+        query_arr.appendSliceAssumeCapacity(query_start);
+        for (terms) |term, i| {
+            if (i > 0) query_arr.appendSliceAssumeCapacity(query_or);
+            query_arr.appendSliceAssumeCapacity(query_location_start);
+            query_arr.appendSliceAssumeCapacity(term);
+            query_arr.appendSliceAssumeCapacity(query_like_end);
+
+            query_arr.appendSliceAssumeCapacity(query_or);
+            query_arr.appendSliceAssumeCapacity(query_link_start);
+            query_arr.appendSliceAssumeCapacity(term);
+            query_arr.appendSliceAssumeCapacity(query_like_end);
+
+            query_arr.appendSliceAssumeCapacity(query_or);
+            query_arr.appendSliceAssumeCapacity(query_title_start);
+            query_arr.appendSliceAssumeCapacity(term);
+            query_arr.appendSliceAssumeCapacity(query_like_end);
+        }
+
+        var stmt = self.db.sql_db.prepareDynamic(query_arr.items) catch |err| {
+            log.err("SQL_ERROR: {s}\nFailed query:\n{s}", .{ self.db.sql_db.getDetailedError().message, query_arr.items });
+            return err;
+        };
+        defer stmt.deinit();
+
+        const results = stmt.all(SearchResult, allocator, .{}, .{}) catch |err| {
+            log.err("SQL_ERROR: {s}\n", .{self.db.sql_db.getDetailedError().message});
+            return err;
+        };
         return results;
     }
 };

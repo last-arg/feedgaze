@@ -166,11 +166,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             savepoint.commit();
         }
 
-        pub fn deleteFeed(self: *Self, search_input: []const u8) !void {
-            const results = try self.feed_db.search(self.allocator, search_input);
+        pub fn deleteFeed(self: *Self, search_inputs: [][]const u8) !void {
+            const results = try self.feed_db.search(self.allocator, search_inputs);
 
             if (results.len == 0) {
-                try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_input});
+                try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_inputs});
                 return;
             }
             try self.writer.print("Found {} result(s):\n", .{results.len});
@@ -325,8 +325,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn search(self: *Self, term: []const u8) !void {
-            const results = try self.feed_db.search(self.allocator, term);
+        pub fn search(self: *Self, terms: [][]const u8) !void {
+            const results = try self.feed_db.search(self.allocator, terms);
             if (results.len == 0) {
                 try self.writer.print("Found no matches\n", .{});
                 return;

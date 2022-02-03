@@ -34,15 +34,10 @@ pub fn main() !void {
     // TODO: implement '--default' flag for add and delete command. Can have none to multiple values. Do comma separate values?
 
     // TODO: Might be consolidate same types after adding --default flag
-    comptime var same_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
-    comptime var update_flags = same_flags ++ [_]FlagOpt{force_flag};
-    const AddCmd = FlagSet(&same_flags);
+    comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
+    comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
+    const BaseCmd = FlagSet(&base_flags);
     const UpdateCmd = FlagSet(&update_flags);
-    const DeleteCmd = FlagSet(&same_flags);
-    const SearchCmd = FlagSet(&same_flags);
-    const CleanCmd = FlagSet(&same_flags);
-    const PrintFeedsCmd = FlagSet(&same_flags);
-    const PrintItemsCmd = FlagSet(&same_flags);
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -71,13 +66,13 @@ pub fn main() !void {
     };
 
     const cmds = struct {
-        add: AddCmd = .{ .name = "add" },
+        add: BaseCmd = .{ .name = "add" },
         update: UpdateCmd = .{ .name = "update" },
-        delete: DeleteCmd = .{ .name = "delete" },
-        search: SearchCmd = .{ .name = "search" },
-        clean: CleanCmd = .{ .name = "clean" },
-        @"print-feeds": PrintFeedsCmd = .{ .name = "print-items" },
-        @"print-items": PrintItemsCmd = .{ .name = "print-items" },
+        delete: BaseCmd = .{ .name = "delete" },
+        search: BaseCmd = .{ .name = "search" },
+        clean: BaseCmd = .{ .name = "clean" },
+        @"print-feeds": BaseCmd = .{ .name = "print-items" },
+        @"print-items": BaseCmd = .{ .name = "print-items" },
     }{};
 
     var args_rest: [][:0]const u8 = undefined;
@@ -89,7 +84,7 @@ pub fn main() !void {
         .local = true,
     };
 
-    // Parse args
+    // Parse input args
     inline for (comptime std.meta.fieldNames(Subcommand)) |name| {
         if (subcmd == std.meta.stringToEnum(Subcommand, name)) {
             var cmd = @field(cmds, name);
@@ -150,9 +145,9 @@ pub fn main() !void {
         .add => try cli.addFeed(args_rest),
         .update => try cli.updateFeeds(),
         // TODO: multiple values will be OR-ed
-        .delete => try cli.deleteFeed(args_rest[0]),
+        .delete => try cli.deleteFeed(args_rest),
         // TODO: multiple values will be OR-ed
-        .search => try cli.search(args_rest[0]),
+        .search => try cli.search(args_rest),
         .clean => try cli.cleanItems(),
         .@"print-feeds" => try cli.printFeeds(),
         .@"print-items" => try cli.printAllItems(),
