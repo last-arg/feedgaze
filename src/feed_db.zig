@@ -508,7 +508,6 @@ pub const Storage = struct {
     };
 
     pub fn search(self: *Self, allocator: Allocator, terms: [][]const u8) ![]SearchResult {
-        // TODO: open to sql injection
         const query_start = "SELECT location, title, link, id FROM feed WHERE ";
         const like_query = "location LIKE '%{s}%' OR link LIKE '%{s}%' OR title LIKE '%{s}%'";
         const query_or = " OR ";
@@ -520,12 +519,20 @@ pub const Storage = struct {
         var query_arr = try ArrayList(u8).initCapacity(allocator, total_cap);
         defer query_arr.deinit();
         const writer = query_arr.writer();
-        writer.writeAll(query_start) catch unreachable;
-        const first = terms[0];
-        writer.print(like_query, .{ first, first, first }) catch unreachable;
+        {
+            writer.writeAll(query_start) catch unreachable;
+            // Guard against sql injection
+            const safe_term = sql.c.sqlite3_mprintf("%q", @ptrCast([*]const u8, terms[0].ptr));
+            defer sql.c.sqlite3_free(safe_term);
+            writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
+        }
         for (terms[1..]) |term| {
+            // Guard against sql injection
+            const safe_term = sql.c.sqlite3_mprintf("%q", @ptrCast([*]const u8, term.ptr));
+            defer sql.c.sqlite3_free(safe_term);
+            print("{s}\n", .{safe_term});
             writer.writeAll(query_or) catch unreachable;
-            writer.print(like_query, .{ term, term, term }) catch unreachable;
+            writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }
 
         var stmt = self.db.sql_db.prepareDynamic(query_arr.items) catch |err| {
