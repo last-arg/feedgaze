@@ -185,31 +185,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 });
             }
             var buf: [32]u8 = undefined;
-
-            var delete_nr: usize = 0;
-            while (true) {
-                try self.writer.print("Enter feed number to delete? ", .{});
-                const input = try self.reader.readUntilDelimiter(&buf, '\n');
-                const value = std.mem.trim(u8, input, &std.ascii.spaces);
-                if (value.len == 0) continue;
-
-                if (fmt.parseUnsigned(usize, value, 10)) |nr| {
-                    if (nr >= 1 and nr <= results.len) {
-                        delete_nr = nr;
-                        break;
-                    }
-                    try self.writer.print("Entered number out of range. Try again.\n", .{});
-                    continue;
-                } else |_| {
-                    try self.writer.print("Invalid number entered: '{s}'. Try again.\n", .{value});
-                }
+            var index = try pickNumber(&buf, results.len, self.options.default, self.writer, self.reader);
+            while (index == null) {
+                index = try pickNumber(&buf, results.len, null, self.writer, self.reader);
             }
 
-            if (delete_nr > 0) {
-                const result = results[delete_nr - 1];
-                try self.feed_db.deleteFeed(result.id);
-                try self.writer.print("Deleted feed '{s}'\n", .{result.location});
-            }
+            const result = results[index.?];
+            try self.feed_db.deleteFeed(result.id);
+            try self.writer.print("Deleted feed '{s}'\n", .{result.location});
         }
 
         pub fn cleanItems(self: *Self) !void {
@@ -462,7 +445,6 @@ fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     try writer.print("{s}", .{out_path});
 }
 
-// TODO: use it in deleteFeed fn also if possible
 fn pickFeedLink(
     page: parse.Html.Page,
     uri: Uri,

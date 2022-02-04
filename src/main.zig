@@ -231,6 +231,12 @@ const FlagOpt = struct {
 //   to figure out return type during comptime. To achive this would have to make Flag type
 //   take a comptime type arg. Then probably would have to store different types into
 //   different type arrays in FlagSet.
+
+// TODO?: try to add null type that would be parsed as bool or value
+// Flags can be:
+// '--flag-null' - default value will be used
+// '--flag-null 2' - 2 will be used
+// <no flag> - default value will be used
 fn FlagSet(comptime inputs: []FlagOpt) type {
     const FlagValue = union(enum) {
         boolean: bool,
