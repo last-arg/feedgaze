@@ -31,11 +31,13 @@ pub fn main() !void {
     const url_flag = newFlag("url", true, "Apply action only to url feeds.");
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = newFlag("force", false, "Force update all feeds.");
-    // TODO: implement '--default' flag for add and delete command. Can have none to multiple values. Do comma separate values?
+    const default_flag = newFlag("default", @as(u32, 1), "Force update all feeds.");
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
-    comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const BaseCmd = FlagSet(&base_flags);
+    comptime var base_with_default_flags = base_flags ++ [_]FlagOpt{default_flag};
+    const BaseWithDefaultCmd = FlagSet(&base_with_default_flags);
+    comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
 
     var args = try process.argsAlloc(std.testing.allocator);
@@ -65,9 +67,9 @@ pub fn main() !void {
     };
 
     const cmds = struct {
-        add: BaseCmd = .{ .name = "add" },
+        add: BaseWithDefaultCmd = .{ .name = "add" },
         update: UpdateCmd = .{ .name = "update" },
-        delete: BaseCmd = .{ .name = "delete" },
+        delete: BaseWithDefaultCmd = .{ .name = "delete" },
         search: BaseCmd = .{ .name = "search" },
         clean: BaseCmd = .{ .name = "clean" },
         @"print-feeds": BaseCmd = .{ .name = "print-items" },
@@ -77,11 +79,7 @@ pub fn main() !void {
     var args_rest: [][:0]const u8 = undefined;
     var db_path: []const u8 = undefined;
     var has_help = false;
-    var cli_options = command.CliOptions{
-        .force = false,
-        .url = true,
-        .local = true,
-    };
+    var cli_options = command.CliOptions{};
 
     // Parse input args
     inline for (comptime std.meta.fieldNames(Subcommand)) |name| {
@@ -105,6 +103,10 @@ pub fn main() !void {
             cli_options.local = local or !url;
             if (cmd.getFlag("force")) |force| {
                 cli_options.force = try force.getBoolean();
+            }
+
+            if (cmd.getFlag("default")) |value| {
+                cli_options.default = try value.getInt();
             }
 
             // Don't use break, continue, return inside inline loops
@@ -236,6 +238,7 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
     const FlagValue = union(enum) {
         boolean: bool,
         string: []const u8,
+        int: i32,
     };
 
     const Flag = struct {
@@ -269,6 +272,13 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
             }
             return self.input_value orelse self.default_value.string;
         }
+
+        pub fn getInt(self: Self) !i32 {
+            if (self.input_value) |value| {
+                return try std.fmt.parseInt(i32, value, 10);
+            }
+            return self.default_value.int;
+        }
     };
 
     comptime var precomputed = blk: {
@@ -284,6 +294,7 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
                     }
                     @compileError("Expecting a u8 slice ([]const u8, []u8), got slice with " ++ @typeName(child_type));
                 },
+                .Int => .{ .int = @intCast(i64, flag.default_value) },
                 else => unreachable,
             };
             flags[i] = Flag{

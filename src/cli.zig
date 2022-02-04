@@ -38,6 +38,7 @@ pub const CliOptions = struct {
     url: bool = true,
     local: bool = true,
     force: bool = false,
+    default: ?i32 = null,
 };
 
 pub fn Cli(comptime Writer: type, comptime Reader: type) type {
@@ -122,7 +123,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             const url = try makeValidUrl(arena.allocator(), input_url);
             try writer.print("Fetching feed {s}\n", .{url});
-            const resp = try getFeedHttp(&arena, url, writer, self.reader);
+            const resp = try getFeedHttp(&arena, url, writer, self.reader, self.options.default);
             switch (resp) {
                 .fail => |msg| {
                     log.err("Failed to resolve url {s}", .{url});
@@ -467,6 +468,7 @@ fn pickFeedLink(
     uri: Uri,
     writer: anytype,
     reader: anytype,
+    default_pick: ?i32,
 ) !u32 {
     const no_title = "<no-title>";
     const page_title = page.title orelse no_title;
@@ -487,27 +489,35 @@ fn pickFeedLink(
 
     // TODO?: can input several numbers. Space separated, or both?
     var buf: [64]u8 = undefined;
-    const index = blk: {
-        while (true) {
-            try writer.print("Enter link number: ", .{});
-            const input = try reader.readUntilDelimiter(&buf, '\n');
-            const value = std.mem.trim(u8, input, &std.ascii.spaces);
-            const nr = fmt.parseUnsigned(u16, value, 10) catch {
-                try writer.print("Invalid number: '{s}'. Try again.\n", .{input});
-                continue;
-            };
-            if (nr < 1 or nr > page.links.len) {
-                try writer.print("Number out of range: '{d}'. Try again.\n", .{nr});
-                continue;
-            }
-            break :blk nr - 1;
-        }
-    };
-
-    return index;
+    var index = try pickNumber(&buf, page.links.len, default_pick, writer, reader);
+    while (index == null) {
+        index = try pickNumber(&buf, page.links.len, null, writer, reader);
+    }
+    return index.?;
 }
 
-fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype) !http.FeedResponse {
+fn pickNumber(buf: []u8, page_links_len: usize, default_pick: ?i32, writer: anytype, reader: anytype) !?u32 {
+    var nr: u32 = 0;
+    try writer.print("Enter link number: ", .{});
+    if (default_pick) |value| {
+        nr = @intCast(u32, value);
+        try writer.print("{d}\n", .{value});
+    } else {
+        const input = try reader.readUntilDelimiter(buf, '\n');
+        const value = std.mem.trim(u8, input, &std.ascii.spaces);
+        nr = fmt.parseUnsigned(u32, value, 10) catch {
+            try writer.print("Invalid number: '{s}'. Try again.\n", .{input});
+            return null;
+        };
+    }
+    if (nr < 1 or nr > page_links_len) {
+        try writer.print("Number out of range: '{d}'. Try again.\n", .{nr});
+        return null;
+    }
+    return nr - 1;
+}
+
+fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype, default_pick: ?i32) !http.FeedResponse {
     // make http request
     var resp = try http.resolveRequest(arena, url, null, null);
     const html_data = if (resp == .ok and resp.ok.content_type == .html)
@@ -519,7 +529,7 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
         if (data.links.len > 0) {
             const uri = try Uri.parse(resp.ok.location, true);
             // user input
-            const index = try pickFeedLink(data, uri, writer, reader);
+            const index = try pickFeedLink(data, uri, writer, reader, default_pick);
             const new_url = try makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
