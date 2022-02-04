@@ -528,9 +528,8 @@ pub const Storage = struct {
         }
         for (terms[1..]) |term| {
             // Guard against sql injection
-            const safe_term = sql.c.sqlite3_mprintf("%q", @ptrCast([*]const u8, term.ptr));
+            const safe_term = sql.c.sqlite3_mprintf("%q", term.ptr);
             defer sql.c.sqlite3_free(safe_term);
-            print("{s}\n", .{safe_term});
             writer.writeAll(query_or) catch unreachable;
             writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }

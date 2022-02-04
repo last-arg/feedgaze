@@ -1112,30 +1112,3 @@ test "isRss(), isAtom()" {
     try expect(isRss(@embedFile("../test/sample-rss-091.xml")));
     try expect(isAtom(@embedFile("../test/atom.xml")));
 }
-
-// TODO: test streaming
-// test "@active" {
-//     const json_raw = @embedFile("../test/json_feed.json");
-//     var stream = std.io.fixedBufferStream(json_raw);
-
-//     var dest: [128]u8 = undefined;
-//     {
-//         const read = try stream.read(&dest);
-//         print("read: {d}\n", .{read});
-//         print("{s}\n", .{dest[0..read]});
-//     }
-//     stream.reset();
-//     {
-//         _ = try stream.read(&dest);
-//         const read = try stream.read(&dest);
-//         print("read: {d}\n", .{read});
-//         print("{s}\n", .{dest[0..read]});
-//     }
-//     stream.reset();
-//     {
-//         const read = try stream.read(&dest);
-//         print("read: {d}\n", .{read});
-//         print("{s}\n", .{dest[0..read]});
-//     }
-//     // const json = std.json;
-// }

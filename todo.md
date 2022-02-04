@@ -1,5 +1,4 @@
 # Initial
-[ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
 [ ] Feeds
   [ ] Github
       - https://github.community/t/rss-feeds-for-github-projects/292
@@ -27,6 +26,7 @@
     - https://github.com/lithdew/pike
  
 # Future (Maybe)
+[ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
 [ ] Image (icon/logo)
   [ ] download or save
   [ ] save: database or file or both

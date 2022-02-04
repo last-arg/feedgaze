@@ -225,6 +225,13 @@ const FlagOpt = struct {
 };
 
 // TODO: for saving different types in same field check https://github.com/ziglang/zig/issues/10705
+// * Tried to save default_value as '?*const anyopaque'. Also default_type fields as 'type'.
+//   The problem became default_type which requires comptime. Try to replace default_type
+//   'type' with 'TypeInfo'
+// * Try to create one functions (getValue) to get flag value. Current setup doesn't allow
+//   to figure out return type during comptime. To achive this would have to make Flag type
+//   take a comptime type arg. Then probably would have to store different types into
+//   different type arrays in FlagSet.
 fn FlagSet(comptime inputs: []FlagOpt) type {
     const FlagValue = union(enum) {
         boolean: bool,
@@ -241,7 +248,6 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
         fn parseBoolean(value: []const u8) ?bool {
             const true_values = .{ "1", "t", "T", "true", "TRUE", "True" };
             const false_values = .{ "0", "f", "F", "false", "FALSE", "False" };
-            // TODO?: toLower(input)?
             inline for (true_values) |t_value| if (mem.eql(u8, value, t_value)) return true;
             inline for (false_values) |f_value| if (mem.eql(u8, value, f_value)) return false;
             return null;

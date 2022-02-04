@@ -336,9 +336,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try self.writer.print("Found {d} matches:\n", .{results.len});
             }
 
-            // TODO?: display data as table
             for (results) |result| {
-                try self.writer.print("{s}\n\tid: {}\n\tlink: {s}\n\tfeed link: {s}\n", .{ result.title, result.id, result.link, result.location });
+                try self.writer.print("{s}\n  id: {}\n  link: {s}\n  feed link: {s}\n", .{ result.title, result.id, result.link, result.location });
             }
         }
     };
