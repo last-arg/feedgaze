@@ -320,25 +320,19 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
 
         pub fn parse(self: *Self, args: [][:0]const u8) !void {
             self.args = args;
-            // TODO: not good condition, some subcommands need end pos args
-            while (self.args.len > 0) {
-                self.parseFlag() catch |err| switch (err) {
-                    error.NoMoreFlags => break,
-                    else => return err,
-                };
-            }
+            while (try self.parseFlag()) {}
         }
 
         pub fn getFlags(_: Self) []Flag {
             return &flags;
         }
 
-        fn parseFlag(self: *Self) !void {
-            if (self.args.len == 0) return;
+        fn parseFlag(self: *Self) !bool {
+            if (self.args.len == 0) return false;
             const args = self.args;
             const str = args[0];
             // Check if value is valid flag
-            if (str.len < 2 or str[0] != '-') return error.NoMoreFlags;
+            if (str.len < 2 or str[0] != '-') return false;
             var minuses: u8 = 1;
             if (str[1] == '-') {
                 minuses += 1;
@@ -386,6 +380,7 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
             }
 
             flag.input_value = value;
+            return true;
         }
 
         fn getFlagPtr(name: []const u8) ?*Flag {
