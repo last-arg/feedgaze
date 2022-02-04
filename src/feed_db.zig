@@ -510,34 +510,22 @@ pub const Storage = struct {
     pub fn search(self: *Self, allocator: Allocator, terms: [][]const u8) ![]SearchResult {
         // TODO: open to sql injection
         const query_start = "SELECT location, title, link, id FROM feed WHERE ";
-        const query_location_start = "location LIKE '%";
-        const query_link_start = "link LIKE '%";
-        const query_title_start = "title LIKE '%";
-        const query_like_end = "%'";
+        const like_query = "location LIKE '%{s}%' OR link LIKE '%{s}%' OR title LIKE '%{s}%'";
         const query_or = " OR ";
-
         var total_cap = query_start.len;
         for (terms) |term| {
-            total_cap += query_location_start.len + query_link_start.len + query_title_start.len + query_like_end.len * 3 + query_or.len * 3 + term.len * 3;
+            total_cap += like_query.len + query_or.len * 3 + term.len * 3;
         }
+
         var query_arr = try ArrayList(u8).initCapacity(allocator, total_cap);
         defer query_arr.deinit();
-        query_arr.appendSliceAssumeCapacity(query_start);
-        for (terms) |term, i| {
-            if (i > 0) query_arr.appendSliceAssumeCapacity(query_or);
-            query_arr.appendSliceAssumeCapacity(query_location_start);
-            query_arr.appendSliceAssumeCapacity(term);
-            query_arr.appendSliceAssumeCapacity(query_like_end);
-
-            query_arr.appendSliceAssumeCapacity(query_or);
-            query_arr.appendSliceAssumeCapacity(query_link_start);
-            query_arr.appendSliceAssumeCapacity(term);
-            query_arr.appendSliceAssumeCapacity(query_like_end);
-
-            query_arr.appendSliceAssumeCapacity(query_or);
-            query_arr.appendSliceAssumeCapacity(query_title_start);
-            query_arr.appendSliceAssumeCapacity(term);
-            query_arr.appendSliceAssumeCapacity(query_like_end);
+        const writer = query_arr.writer();
+        writer.writeAll(query_start) catch unreachable;
+        const first = terms[0];
+        writer.print(like_query, .{ first, first, first }) catch unreachable;
+        for (terms[1..]) |term| {
+            writer.writeAll(query_or) catch unreachable;
+            writer.print(like_query, .{ term, term, term }) catch unreachable;
         }
 
         var stmt = self.db.sql_db.prepareDynamic(query_arr.items) catch |err| {
