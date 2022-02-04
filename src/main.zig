@@ -16,9 +16,6 @@ pub const known_folders_config = .{
     .xdg_on_mac = true,
 };
 
-// TODO: need to replace disk db, doesn't work with new code anymore
-// TODO: auto add some data for fast cli testing
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const base_allocator = gpa.allocator();

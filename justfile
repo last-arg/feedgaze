@@ -21,3 +21,7 @@ test-server:
 
 test-server-shutdown:
   kill -TERM $(cat {{pid_path}})
+
+test-db:
+  -just test-server # make sure test server is running
+  zig build run -- add --db tmp/test.db http://localhost:8080/atom.atom test/rss2.xml
