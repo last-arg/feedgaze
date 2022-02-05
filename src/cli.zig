@@ -71,12 +71,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn addFeed(
             self: *Self,
             locations: []const []const u8,
+            tags: []const u8, // comma separated
         ) !void {
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
             for (locations) |location| {
                 if (self.options.local) {
                     if (fs.cwd().realpath(location, &path_buf)) |abs_path| {
-                        try self.addFeedLocal(abs_path);
+                        try self.addFeedLocal(abs_path, tags);
                         try self.writer.print("Added local feed: {s}\n", .{abs_path});
                         continue;
                     } else |err| switch (err) {
@@ -89,7 +90,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 }
                 if (self.options.url) {
-                    self.addFeedHttp(location) catch |err| {
+                    self.addFeedHttp(location, tags) catch |err| {
                         log.err("Failed to add url feed '{s}'.", .{location});
                         log.err("Error: '{s}'.", .{err});
                     };
@@ -97,7 +98,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn addFeedLocal(self: *Self, abs_path: []const u8) !void {
+        pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const contents = try shame.getFileContents(arena.allocator(), abs_path);
@@ -110,12 +111,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
             };
 
+            // TODO: add savepoint
             const id = try self.feed_db.addFeed(feed, abs_path);
             try self.feed_db.addFeedLocal(id, mtime_sec);
             try self.feed_db.addItems(id, feed.items);
+            try self.feed_db.addTags(id, tags);
         }
 
-        pub fn addFeedHttp(self: *Self, input_url: []const u8) !void {
+        pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const writer = self.writer;
@@ -156,12 +159,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .headers = resp.ok.headers,
                     .feed = feed,
                 }, .{ .force = true });
+                try self.feed_db.addTags(row.feed_id, tags);
                 try writer.print("Feed updated {s}\n", .{location});
             } else {
                 log.info("Saving feed", .{});
                 const feed_id = try feed_db.addFeed(feed, location);
                 try feed_db.addFeedUrl(feed_id, resp.ok.headers);
                 try feed_db.addItems(feed_id, feed.items);
+                try self.feed_db.addTags(feed_id, tags);
                 try writer.print("Feed added {s}\n", .{location});
             }
             savepoint.commit();

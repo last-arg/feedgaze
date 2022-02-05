@@ -29,11 +29,22 @@ pub fn main() !void {
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = newFlag("force", false, "Force update all feeds.");
     const default_flag = newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
+    const tags_flag = newFlag("tags", "", "Add tags to feed (comma separated).");
+
+    // TODO: --tags
+    // add,
+    // ??? print-feeds, print-items, search - QueryCmd
+    // TODO: new command 'tag'
+    // --id <feed's id>
+    // --location <feed's location>
+    // current flags: help, db,
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     const BaseCmd = FlagSet(&base_flags);
-    comptime var base_with_default_flags = base_flags ++ [_]FlagOpt{default_flag};
-    const BaseWithDefaultCmd = FlagSet(&base_with_default_flags);
+    comptime var delete_flags = base_flags ++ [_]FlagOpt{default_flag};
+    const DeleteCmd = FlagSet(&delete_flags);
+    comptime var add_flags = delete_flags ++ [_]FlagOpt{tags_flag};
+    const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
 
@@ -64,9 +75,9 @@ pub fn main() !void {
     };
 
     const cmds = struct {
-        add: BaseWithDefaultCmd = .{ .name = "add" },
+        add: AddCmd = .{ .name = "add" },
         update: UpdateCmd = .{ .name = "update" },
-        delete: BaseWithDefaultCmd = .{ .name = "delete" },
+        delete: DeleteCmd = .{ .name = "delete" },
         search: BaseCmd = .{ .name = "search" },
         clean: BaseCmd = .{ .name = "clean" },
         @"print-feeds": BaseCmd = .{ .name = "print-items" },
@@ -76,6 +87,7 @@ pub fn main() !void {
     var args_rest: [][:0]const u8 = undefined;
     var db_path: []const u8 = undefined;
     var has_help = false;
+    var tags: []const u8 = "";
     var cli_options = command.CliOptions{};
 
     // Parse input args
@@ -104,6 +116,14 @@ pub fn main() !void {
 
             if (cmd.getFlag("default")) |value| {
                 cli_options.default = try value.getInt();
+            }
+
+            if (cmd.getFlag("default")) |value| {
+                cli_options.default = try value.getInt();
+            }
+
+            if (cmd.getFlag("tags")) |value| {
+                tags = try value.getString();
             }
 
             // Don't use break, continue, return inside inline loops
@@ -140,7 +160,7 @@ pub fn main() !void {
     const reader = std.io.getStdIn().reader();
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcmd) {
-        .add => try cli.addFeed(args_rest),
+        .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
         .delete => try cli.deleteFeed(args_rest),
         .search => try cli.search(args_rest),
