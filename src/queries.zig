@@ -68,4 +68,16 @@ pub const Table = struct {
             \\WHERE id = ?{u64}
         ;
     };
+
+    pub const feed_tag = struct {
+        pub const create =
+            \\CREATE TABLE IF NOT EXISTS feed_tag (
+            \\  feed_id INTEGER NOT NULL,
+            \\  tag TEXT NOT NULL,
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE,
+            \\  UNIQUE(feed_id, tag)
+            \\);
+            \\
+        ;
+    };
 };

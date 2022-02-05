@@ -233,6 +233,7 @@ const FlagOpt = struct {
 //   different type arrays in FlagSet.
 
 // TODO?: try to add null type that would be parsed as bool or value
+// Can cause problems when it is last flag without arguement but there is pos/input value
 // Flags can be:
 // '--flag-null' - default value will be used
 // '--flag-null 2' - 2 will be used

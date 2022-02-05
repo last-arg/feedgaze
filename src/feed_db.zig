@@ -184,6 +184,16 @@ pub const Storage = struct {
         }
     }
 
+    pub fn addTags(self: *Self, id: u64, tags: [][]const u8) !void {
+        const query =
+            \\INSERT INTO feed_tag VALUES (?, ?)
+            \\ON CONFLICT(feed_id, tag) DO NOTHING;
+        ;
+        for (tags) |tag| {
+            try self.db.exec(query, .{ id, tag });
+        }
+    }
+
     pub const UpdateOptions = struct {
         force: bool = false,
         // For testing purposes
@@ -667,6 +677,9 @@ test "Storage local" {
     var tmp_items = try allocator.alloc(parse.Feed.Item, last_items.len);
     std.mem.copy(parse.Feed.Item, tmp_items, last_items);
     try feed_db.addItems(id, tmp_items);
+    var tag_local: []const u8 = "local";
+    const insert_tags = &[_][]const u8{ tag_local, tag_local, "not-net" };
+    try feed_db.addTags(id, insert_tags);
 
     const LocalItem = struct { title: []const u8 };
     const all_items_query = "select title from item order by id DESC";
@@ -678,6 +691,11 @@ test "Storage local" {
         for (items) |item, i| {
             try expectEqualStrings(item.title, last_items[i].title);
         }
+
+        const tags = try feed_db.db.selectAll(struct { tag: []const u8 }, "select tag from feed_tag", .{});
+        try expectEqual(@as(usize, 2), tags.len);
+        try expectEqualStrings(tags[0].tag, tag_local);
+        try expectEqualStrings(tags[1].tag, "not-net");
     }
 
     const LocalUpdateResult = struct { feed_id: u64, update_interval: u32, last_update: i64, last_modified_timestamp: i64 };
