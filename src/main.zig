@@ -28,7 +28,7 @@ pub fn main() !void {
     const url_flag = newFlag("url", true, "Apply action only to url feeds.");
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = newFlag("force", false, "Force update all feeds.");
-    const default_flag = newFlag("default", @as(u32, 1), "Force update all feeds.");
+    const default_flag = newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     const BaseCmd = FlagSet(&base_flags);
