@@ -531,17 +531,18 @@ pub const Storage = struct {
         var query_arr = try ArrayList(u8).initCapacity(allocator, total_cap);
         defer query_arr.deinit();
         const writer = query_arr.writer();
+        var buf: [256]u8 = undefined;
         {
             writer.writeAll(query_start) catch unreachable;
             // Guard against sql injection
-            const safe_term = sql.c.sqlite3_mprintf("%q", @ptrCast([*]const u8, terms[0].ptr));
-            defer sql.c.sqlite3_free(safe_term);
+            // 'term' will be cut if longer than 'buf'
+            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%q", terms[0].ptr);
             writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }
         for (terms[1..]) |term| {
             // Guard against sql injection
-            const safe_term = sql.c.sqlite3_mprintf("%q", term.ptr);
-            defer sql.c.sqlite3_free(safe_term);
+            // 'term' will be cut if longer than 'buf'
+            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%q", term.ptr);
             writer.writeAll(query_or) catch unreachable;
             writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }
