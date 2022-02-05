@@ -185,6 +185,7 @@ pub const Storage = struct {
     }
 
     pub fn addTags(self: *Self, id: u64, tags: [][]const u8) !void {
+        if (tags.len == 0) return;
         const query =
             \\INSERT INTO feed_tag VALUES (?, ?)
             \\ON CONFLICT(feed_id, tag) DO NOTHING;
