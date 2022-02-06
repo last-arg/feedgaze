@@ -29,10 +29,8 @@ pub fn main() !void {
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = newFlag("force", false, "Force update all feeds.");
     const default_flag = newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
-    const tags_flag = newFlag("tags", "", "Add tags to feed (comma separated).");
+    const add_tags_flag = newFlag("tags", "", "Add (comma separated) tags to feed .");
 
-    // TODO: --tags
-    // ??? print-feeds, print-items, search - QueryCmd
     // TODO: new command 'tag'
     // --id <feed's id>
     // --location <feed's location>
@@ -40,9 +38,9 @@ pub fn main() !void {
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     const BaseCmd = FlagSet(&base_flags);
-    comptime var delete_flags = base_flags ++ [_]FlagOpt{default_flag};
-    const DeleteCmd = FlagSet(&delete_flags);
-    comptime var add_flags = delete_flags ++ [_]FlagOpt{tags_flag};
+    comptime var remove_flags = base_flags ++ [_]FlagOpt{default_flag};
+    const RemoveCmd = FlagSet(&remove_flags);
+    comptime var add_flags = remove_flags ++ [_]FlagOpt{add_tags_flag};
     const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
@@ -56,7 +54,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
-    const Subcommand = enum { add, update, delete, search, clean, @"print-feeds", @"print-items" };
+    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items" };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -76,10 +74,10 @@ pub fn main() !void {
     const cmds = struct {
         add: AddCmd = .{ .name = "add" },
         update: UpdateCmd = .{ .name = "update" },
-        delete: DeleteCmd = .{ .name = "delete" },
+        remove: RemoveCmd = .{ .name = "remove" },
         search: BaseCmd = .{ .name = "search" },
         clean: BaseCmd = .{ .name = "clean" },
-        @"print-feeds": BaseCmd = .{ .name = "print-items" },
+        @"print-feeds": BaseCmd = .{ .name = "print-feeds" },
         @"print-items": BaseCmd = .{ .name = "print-items" },
     }{};
 
@@ -136,7 +134,7 @@ pub fn main() !void {
         return;
     }
 
-    const subcom_input_required = [_]Subcommand{ .add, .delete, .search };
+    const subcom_input_required = [_]Subcommand{ .add, .remove, .search };
     for (subcom_input_required) |required| {
         if (required == subcmd and args_rest.len == 0) {
             log.err("Subcommand '{s}' requires input(s)", .{subcmd_str});
@@ -161,7 +159,7 @@ pub fn main() !void {
     switch (subcmd) {
         .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
-        .delete => try cli.deleteFeed(args_rest),
+        .remove => try cli.deleteFeed(args_rest),
         .search => try cli.search(args_rest),
         .clean => try cli.cleanItems(),
         .@"print-feeds" => try cli.printFeeds(),
