@@ -560,6 +560,42 @@ pub const Storage = struct {
         return results;
     }
 
+    pub fn addTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
+        const feed_id = (try self.db.one(u64, "select id from feed where location = ?;", .{location})) orelse {
+            log.err("Failed to find feed with location '{s}'", .{location});
+            return;
+        };
+        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ feed_id, tag });
+        }
+    }
+
+    pub fn addTagsById(self: *Self, tags: [][]const u8, feed_id: u64) !void {
+        _ = (try self.db.one(void, "select id from feed where id = ?;", .{feed_id})) orelse {
+            log.err("Failed to find feed with id '{d}'", .{feed_id});
+            return;
+        };
+        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ feed_id, tag });
+        }
+    }
+
+    pub fn removeTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
+        const query = "DELETE FROM feed_tag WHERE tag = ? AND location = (SELECT id FROM feed WHERE location = ?);";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ tag, location });
+        }
+    }
+
+    pub fn removeTagsById(self: *Self, tags: [][]const u8, id: u64) !void {
+        const query = "DELETE FROM feed_tag WHERE tag = ? AND id = ?;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ tag, id });
+        }
+    }
+
     pub fn removeTags(self: *Self, tags: [][]const u8) !void {
         const query = "DELETE FROM feed_tag WHERE tag = ?;";
         for (tags) |tag| {

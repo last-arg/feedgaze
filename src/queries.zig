@@ -75,6 +75,7 @@ pub const Table = struct {
             \\  feed_id INTEGER NOT NULL,
             \\  tag TEXT NOT NULL,
             \\  UNIQUE(feed_id, tag)
+            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE
             \\);
             \\
         ;

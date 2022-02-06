@@ -39,11 +39,16 @@ pub fn main() !void {
     const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
-    // TODO: --id - remove tags from feed_id
-    // with --id but no pos inputs -> remove all tags?
-    // use --all flag instead of no pos inputs?
-    comptime var remove_tag_flags = [_]FlagOpt{ help_flag, db_flag };
-    const RemoveTagCmd = FlagSet(&remove_tag_flags);
+    comptime var tag_flags = [_]FlagOpt{
+        help_flag,
+        db_flag,
+        newFlag("add", false, "Add tag."),
+        newFlag("remove", false, "Remove tag."),
+        newFlag("id", @as(u64, 0), "Feed's id."),
+        newFlag("location", "", "Feed's location."),
+        newFlag("remove-all", false, "Will remove all tags from feed. Has to have --id or --location flag."),
+    };
+    const TagCmd = FlagSet(&tag_flags);
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -54,7 +59,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
-    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", @"remove-tag" };
+    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -79,14 +84,18 @@ pub fn main() !void {
         clean: BaseCmd = .{ .name = "clean" },
         @"print-feeds": BaseCmd = .{ .name = "print-feeds" },
         @"print-items": BaseCmd = .{ .name = "print-items" },
-        @"remove-tag": RemoveTagCmd = .{ .name = "remove-tag" },
+        tag: TagCmd = .{ .name = "tag" },
     }{};
 
     var args_rest: [][:0]const u8 = undefined;
     var db_path: []const u8 = undefined;
     var has_help = false;
+    var is_tag_add = false;
+    var is_tag_remove = false;
+    var is_tag_remove_all = false;
     var tags: []const u8 = "";
     var cli_options = command.CliOptions{};
+    var tag_args = command.TagArgs{};
 
     // Parse input args
     inline for (comptime std.meta.fieldNames(Subcommand)) |name| {
@@ -116,12 +125,29 @@ pub fn main() !void {
                 cli_options.default = try value.getInt();
             }
 
-            if (cmd.getFlag("default")) |value| {
-                cli_options.default = try value.getInt();
-            }
-
             if (cmd.getFlag("tags")) |value| {
                 tags = try value.getString();
+            }
+
+            // Tag command flags
+            if (cmd.getFlag("add")) |some| {
+                is_tag_add = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("remove")) |some| {
+                is_tag_remove = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("remove-all")) |some| {
+                is_tag_remove_all = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("location")) |some| {
+                tag_args.location = try some.getString();
+            }
+
+            if (cmd.getFlag("id")) |some| {
+                tag_args.id = @intCast(u64, try some.getInt());
             }
 
             // Don't use break, continue, return inside inline loops
@@ -135,11 +161,46 @@ pub fn main() !void {
         return;
     }
 
-    const subcom_input_required = [_]Subcommand{ .add, .remove, .search, .@"remove-tag" };
+    const subcom_input_required = [_]Subcommand{ .add, .remove, .search };
     for (subcom_input_required) |required| {
         if (required == subcmd and args_rest.len == 0) {
             log.err("Subcommand '{s}' requires input(s)", .{subcmd_str});
             return error.SubcommandRequiresInput;
+        }
+    }
+
+    // Check tag command conditions
+    if (subcmd == .tag) {
+        if (!(is_tag_add or is_tag_remove or is_tag_remove_all)) {
+            log.err("Subcommand '{s}' requires --add, --remove or --remove-all flag", .{subcmd_str});
+            return error.MissingFlag;
+        } else if (is_tag_add and is_tag_remove) {
+            log.err("Subcommand '{s}' can't have both --add and --remove flag", .{subcmd_str});
+            return error.ConflictWithFlags;
+        } else if (is_tag_add and is_tag_remove_all) {
+            log.err("Subcommand '{s}' can't have both --add and --remove-all flag", .{subcmd_str});
+            return error.ConflictWithFlags;
+        } else if (is_tag_add and is_tag_remove_all) {
+            log.err("Subcommand '{s}' can't have both --remove and --remove-all flag", .{subcmd_str});
+            return error.ConflictWithFlags;
+        } else if (tag_args.location.len == 0 and tag_args.id == 0) {
+            if (is_tag_remove_all) {
+                log.err("Subcommand '{s}' with --remove-all flag requires --id or --location flag", .{subcmd_str});
+                return error.MissingFlag;
+            } else if (is_tag_add) {
+                log.err("Subcommand '{s}' with --add flag requires --id or --location flag", .{subcmd_str});
+                return error.MissingFlag;
+            }
+        } else if ((is_tag_add or is_tag_remove) and args_rest.len == 0) {
+            log.err("Subcommand '{s}' with flag --add or --remove requires input(s)", .{subcmd_str});
+        }
+
+        if (is_tag_add) {
+            tag_args.action = .add;
+        } else if (is_tag_remove) {
+            tag_args.action = .remove;
+        } else if (is_tag_remove_all) {
+            tag_args.action = .remove_all;
         }
     }
 
@@ -163,9 +224,9 @@ pub fn main() !void {
         .remove => try cli.deleteFeed(args_rest),
         .search => try cli.search(args_rest),
         .clean => try cli.cleanItems(),
+        .tag => try cli.tagCmd(args_rest, tag_args),
         .@"print-feeds" => try cli.printFeeds(),
         .@"print-items" => try cli.printAllItems(),
-        .@"remove-tag" => try cli.removeTags(args_rest),
     }
 }
 

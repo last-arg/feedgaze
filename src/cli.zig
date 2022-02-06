@@ -41,6 +41,12 @@ pub const CliOptions = struct {
     default: ?i32 = null,
 };
 
+pub const TagArgs = struct {
+    action: enum { add, remove, remove_all, none } = .none,
+    location: []const u8 = "",
+    id: u64 = 0,
+};
+
 pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         const Self = @This();
@@ -340,8 +346,27 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn removeTags(self: *Self, tags: [][]const u8) !void {
-            try self.feed_db.removeTags(tags);
+        pub fn tagCmd(self: *Self, tags: [][]const u8, args: TagArgs) !void {
+            assert(args.id != 0 or args.location.len != 0);
+            assert(args.action != .none);
+            switch (args.action) {
+                .add => {
+                    if (args.id != 0) {
+                        try self.feed_db.addTagsById(tags, args.id);
+                    } else if (args.location.len != 0) {
+                        try self.feed_db.addTagsByLocation(tags, args.location);
+                    }
+                },
+                .remove => {
+                    if (args.id != 0) {
+                        try self.feed_db.removeTagsById(tags, args.id);
+                    } else if (args.location.len != 0) {
+                        try self.feed_db.removeTagsByLocation(tags, args.location);
+                    }
+                },
+                .remove_all => try self.feed_db.removeTags(tags),
+                .none => unreachable,
+            }
         }
     };
 }
