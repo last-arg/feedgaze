@@ -24,4 +24,4 @@ test-server-shutdown:
 
 test-db:
   -just test-server # make sure test server is running
-  zig build run -- add --db tmp/test.db http://localhost:8080/atom.atom test/rss2.xml
+  zig build run -- add --db tmp/test.db --tags t1,t2 http://localhost:8080/atom.atom test/rss2.xml
