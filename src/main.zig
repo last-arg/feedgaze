@@ -24,7 +24,7 @@ pub fn main() !void {
     const arena_allocator = arena.allocator();
 
     const help_flag = newFlag("help", false, "Display this help and exit.");
-    const db_flag = newFlag("db", "~/.config/feedgaze/feedgaze.sqlite", "Point to sqlite database location.");
+    const db_flag = newFlag("db", "~/.config/feedgaze/feedgaze.sqlite", "Sqlite database location.");
     const url_flag = newFlag("url", true, "Apply action only to url feeds.");
     const local_flag = newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = newFlag("force", false, "Force update all feeds.");
