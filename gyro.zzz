@@ -19,11 +19,6 @@ deps:
       url: "https://github.com/truemedian/zfetch.git"
       ref: master
       root: src/main.zig
-  clap:
-    git:
-      url: "https://github.com/Hejsil/zig-clap.git"
-      ref: master
-      root: clap.zig
   known-folders:
     git:
       url: "https://github.com/ziglibs/known-folders.git"
