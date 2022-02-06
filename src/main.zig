@@ -32,7 +32,6 @@ pub fn main() !void {
     const tags_flag = newFlag("tags", "", "Add tags to feed (comma separated).");
 
     // TODO: --tags
-    // add,
     // ??? print-feeds, print-items, search - QueryCmd
     // TODO: new command 'tag'
     // --id <feed's id>

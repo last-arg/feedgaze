@@ -279,11 +279,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         pub fn printFeeds(self: *Self) !void {
             const Result = struct {
+                id: u64,
                 title: []const u8,
                 location: []const u8,
                 link: ?[]const u8,
             };
-            const query = "SELECT title, location, link FROM feed;";
+            const query = "SELECT id, title, location, link FROM feed;";
             var stmt = try self.feed_db.db.sql_db.prepare(query);
             defer stmt.deinit();
             const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
@@ -305,12 +306,21 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  link: {s}
                 \\  location: {s}
                 \\
-                \\
             ;
 
             for (all_items) |item| {
                 const link = item.link orelse "<no-link>";
                 try self.writer.print(print_fmt, .{ item.title, link, item.location });
+
+                const tags = try self.feed_db.db.selectAll(struct { tag: []const u8 }, "select tag from feed_tag where feed_id = ?", .{item.id});
+                if (tags.len > 0) {
+                    try self.writer.print("  tags: ", .{});
+                    try self.writer.print("{s}", .{tags[0].tag});
+                    for (tags[1..]) |tag| {
+                        try self.writer.print(", {s}\n", .{tag.tag});
+                    }
+                }
+                try self.writer.print("\n", .{});
             }
         }
 

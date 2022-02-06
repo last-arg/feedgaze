@@ -74,7 +74,6 @@ pub const Table = struct {
             \\CREATE TABLE IF NOT EXISTS feed_tag (
             \\  feed_id INTEGER NOT NULL,
             \\  tag TEXT NOT NULL,
-            \\  FOREIGN KEY(feed_id) REFERENCES feed(id) ON DELETE CASCADE,
             \\  UNIQUE(feed_id, tag)
             \\);
             \\
