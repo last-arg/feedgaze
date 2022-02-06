@@ -31,11 +31,6 @@ pub fn main() !void {
     const default_flag = newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
     const add_tags_flag = newFlag("tags", "", "Add (comma separated) tags to feed .");
 
-    // TODO: new command 'tag'
-    // --id <feed's id>
-    // --location <feed's location>
-    // current flags: help, db,
-
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     const BaseCmd = FlagSet(&base_flags);
     comptime var remove_flags = base_flags ++ [_]FlagOpt{default_flag};
@@ -44,6 +39,11 @@ pub fn main() !void {
     const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
+    // TODO: --id - remove tags from feed_id
+    // with --id but no pos inputs -> remove all tags?
+    // use --all flag instead of no pos inputs?
+    comptime var remove_tag_flags = [_]FlagOpt{ help_flag, db_flag };
+    const RemoveTagCmd = FlagSet(&remove_tag_flags);
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -54,7 +54,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
-    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items" };
+    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", @"remove-tag" };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -79,6 +79,7 @@ pub fn main() !void {
         clean: BaseCmd = .{ .name = "clean" },
         @"print-feeds": BaseCmd = .{ .name = "print-feeds" },
         @"print-items": BaseCmd = .{ .name = "print-items" },
+        @"remove-tag": RemoveTagCmd = .{ .name = "remove-tag" },
     }{};
 
     var args_rest: [][:0]const u8 = undefined;
@@ -134,7 +135,7 @@ pub fn main() !void {
         return;
     }
 
-    const subcom_input_required = [_]Subcommand{ .add, .remove, .search };
+    const subcom_input_required = [_]Subcommand{ .add, .remove, .search, .@"remove-tag" };
     for (subcom_input_required) |required| {
         if (required == subcmd and args_rest.len == 0) {
             log.err("Subcommand '{s}' requires input(s)", .{subcmd_str});
@@ -164,6 +165,7 @@ pub fn main() !void {
         .clean => try cli.cleanItems(),
         .@"print-feeds" => try cli.printFeeds(),
         .@"print-items" => try cli.printAllItems(),
+        .@"remove-tag" => try cli.removeTags(args_rest),
     }
 }
 

@@ -559,6 +559,13 @@ pub const Storage = struct {
         };
         return results;
     }
+
+    pub fn removeTags(self: *Self, tags: [][]const u8) !void {
+        const query = "DELETE FROM feed_tag WHERE tag = ?;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{tag});
+        }
+    }
 };
 
 fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
@@ -697,6 +704,16 @@ test "Storage local" {
         try expectEqual(@as(usize, 2), tags.len);
         try expectEqualStrings(tags[0].tag, "local");
         try expectEqualStrings(tags[1].tag, "not-net");
+    }
+
+    // Remove one tag
+    {
+        var tag_local = "local";
+        var rm_tags = &[_][]const u8{tag_local};
+        try feed_db.removeTags(rm_tags);
+        const tags = try feed_db.db.selectAll(struct { tag: []const u8 }, "select tag from feed_tag", .{});
+        try expectEqual(@as(usize, 1), tags.len);
+        try expectEqualStrings(tags[0].tag, "not-net");
     }
 
     const LocalUpdateResult = struct { feed_id: u64, update_interval: u32, last_update: i64, last_modified_timestamp: i64 };

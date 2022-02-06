@@ -339,6 +339,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try self.writer.print("{s}\n  id: {}\n  link: {s}\n  feed link: {s}\n", .{ result.title, result.id, result.link, result.location });
             }
         }
+
+        pub fn removeTags(self: *Self, tags: [][]const u8) !void {
+            try self.feed_db.removeTags(tags);
+        }
     };
 }
 
