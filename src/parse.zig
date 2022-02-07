@@ -14,6 +14,9 @@ const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const timezones = @import("datetime").timezones;
 const l = std.log;
+const expectEqualStrings = std.testing.expectEqualStrings;
+
+const max_title_len = 50;
 
 pub const Html = struct {
     pub const Page = struct {
@@ -833,7 +836,7 @@ pub const Rss = struct {
                                 },
                                 .description => {
                                     item_description = xmlCharacterData(&xml_parser, contents, value, "description");
-                                    const len = std.math.min(item_description.?.len, 50);
+                                    const len = std.math.min(item_description.?.len, max_title_len);
                                     item_description = item_description.?[0..len];
                                 },
                                 ._ignore => {},
@@ -1078,6 +1081,109 @@ test "Rss.parseDateToUtc" {
         try expect(0 == date.time.minute);
         try expect(0 == date.time.second);
         try expect(date.zone.offset == 0);
+    }
+}
+
+// Json Feed
+// https://www.jsonfeed.org/version/1.1/
+pub const Json = struct {
+    const json = std.json;
+    const JsonFeed = struct {
+        version: []const u8, // required
+        title: []const u8,
+        home_page_url: ?[]const u8 = null, // optional
+        items: []Item,
+
+        const Item = struct {
+            id: []const u8, // required, can be url
+            // If there is no title slice a title from content_text or content_html.
+            // Item has to have content_text or content_html field
+            title: ?[]const u8 = null, // optional
+            content_text: ?[]const u8 = null, // optional
+            content_html: ?[]const u8 = null, // optional
+            url: ?[]const u8 = null,
+            date_published: ?[]const u8 = null,
+            date_modified: ?[]const u8 = null,
+        };
+    };
+
+    pub fn parse(arena: *std.heap.ArenaAllocator, contents: []const u8) !Feed {
+        const options = .{ .ignore_unknown_fields = true, .allocator = arena.allocator() };
+        var stream = json.TokenStream.init(contents);
+        const json_feed = json.parse(JsonFeed, &stream, options) catch |err| {
+            switch (err) {
+                error.MissingField => l.err("Failed to parse Json. Missing a required field.", .{}),
+                else => l.err("Failed to parse Json.", .{}),
+            }
+            return error.JsonFeedParsingFailed;
+        };
+        errdefer json.parseFree(JsonFeed, json_feed, options);
+        if (!ascii.startsWithIgnoreCase(json_feed.version, "https://jsonfeed.org/version/1")) {
+            l.err("Json contains invalid version field value: '{s}'", .{json_feed.version});
+            return error.JsonFeedInvalidVersion;
+        }
+
+        var new_items = try ArrayList(Feed.Item).initCapacity(arena.allocator(), json_feed.items.len);
+        errdefer new_items.deinit();
+        for (json_feed.items) |item| {
+            const date_str = item.date_published orelse item.date_modified;
+            const date_utc = blk: {
+                if (date_str) |date| {
+                    const date_utc = try parseDateToUtc(date);
+                    break :blk @floatToInt(i64, date_utc.toSeconds());
+                }
+                break :blk null;
+            };
+            const title = item.title orelse blk: {
+                const text = (item.content_text orelse item.content_html).?;
+                const len = std.math.min(text.len, max_title_len);
+                break :blk text[0..len];
+            };
+            const new_item = Feed.Item{
+                .title = title,
+                .id = item.id,
+                .link = item.url,
+                .updated_raw = date_str,
+                .updated_timestamp = date_utc,
+            };
+            new_items.appendAssumeCapacity(new_item);
+        }
+        return Feed{
+            .title = json_feed.title,
+            // There are no top-level date fields in json feed
+            .link = json_feed.home_page_url,
+            .items = new_items.toOwnedSlice(),
+        };
+    }
+
+    pub fn parseDateToUtc(str: []const u8) !Datetime {
+        return try Atom.parseDateToUtc(str);
+    }
+};
+
+test "Json.parse()" {
+    var arena = std.heap.ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const contents = @embedFile("../test/json_feed.json");
+    var feed = try Json.parse(&arena, contents);
+
+    try expectEqualStrings("My Example Feed", feed.title);
+    try expectEqualStrings("https://example.org/", feed.link.?);
+
+    {
+        const item = feed.items[0];
+        try expectEqualStrings("2", item.id.?);
+        try expectEqualStrings("This is a second item.", item.title);
+        try expectEqualStrings("https://example.org/second-item", item.link.?);
+        try std.testing.expect(null == item.updated_raw);
+    }
+
+    {
+        const item = feed.items[1];
+        try expectEqualStrings("1", item.id.?);
+        try expectEqualStrings("<p>Hello, world!</p>", item.title);
+        try expectEqualStrings("https://example.org/initial-post", item.link.?);
+        try std.testing.expect(null == item.updated_raw);
     }
 }
 
