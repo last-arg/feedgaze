@@ -126,11 +126,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 break :blk @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
             };
 
-            // TODO: add savepoint
+            var savepoint = try self.feed_db.db.sql_db.savepoint("addFeedLocal");
+            defer savepoint.rollback();
             const id = try self.feed_db.addFeed(feed, abs_path);
             try self.feed_db.addFeedLocal(id, mtime_sec);
             try self.feed_db.addItems(id, feed.items);
             try self.feed_db.addTags(id, tags);
+            savepoint.commit();
         }
 
         pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: []const u8) !void {
