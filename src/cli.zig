@@ -107,8 +107,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const contents = try shame.getFileContents(arena.allocator(), abs_path);
-            const feed = try parse.parse(&arena, contents);
+            const feed = blk: {
+                const contents = try shame.getFileContents(arena.allocator(), abs_path);
+                const ext = fs.path.extension(abs_path);
+                if (mem.eql(u8, ".xml", ext)) {
+                    break :blk try parse.parse(&arena, contents);
+                } else if (mem.eql(u8, ".json", ext)) {
+                    break :blk try parse.Json.parse(&arena, contents);
+                }
+                log.err("Unhandled file type '{s}'", .{ext});
+                return error.UnhandledFileType;
+            };
 
             const mtime_sec = blk: {
                 const file = try fs.openFileAbsolute(abs_path, .{});
@@ -575,9 +584,9 @@ pub fn parseFeedResponseBody(
         .xml => try parse.parse(arena, body),
         .xml_atom => try parse.Atom.parse(arena, body),
         .xml_rss => try parse.Rss.parse(arena, body),
-        .json => unreachable,
-        .json_feed => @panic("TODO: parse json feed"),
-        .html, .unknown => unreachable, // .html should be parse before calling this function
+        .json => try parse.Json.parse(arena, body),
+        .json_feed => try parse.Json.parse(arena, body),
+        .html, .unknown => unreachable, // html should have been parsed before getting here
     };
 }
 
