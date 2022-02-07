@@ -523,10 +523,12 @@ pub const Storage = struct {
         const query_start = "SELECT location, title, link, id FROM feed WHERE ";
         const like_query = "location LIKE '%{s}%' OR link LIKE '%{s}%' OR title LIKE '%{s}%'";
         const query_or = " OR ";
-        var total_cap = query_start.len;
-        for (terms) |term| {
-            total_cap += like_query.len + query_or.len * 3 + term.len * 3;
-        }
+        var total_cap = blk: {
+            const or_len = (terms.len - 1) * query_or.len;
+            const like_len = terms.len * (like_query.len - 9); // remove placeholders '{s}'
+            break :blk query_start.len + or_len + like_len;
+        };
+        for (terms) |term| total_cap += term.len * 3;
 
         var query_arr = try ArrayList(u8).initCapacity(allocator, total_cap);
         defer query_arr.deinit();
@@ -534,15 +536,24 @@ pub const Storage = struct {
         var buf: [256]u8 = undefined;
         {
             writer.writeAll(query_start) catch unreachable;
+            const term = terms[0];
             // Guard against sql injection
             // 'term' will be cut if longer than 'buf'
-            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%q", terms[0].ptr);
+            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%q", term.ptr);
+            if (mem.len(safe_term) > term.len) {
+                total_cap += mem.len(safe_term) - term.len;
+                try query_arr.ensureTotalCapacity(total_cap);
+            }
             writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }
         for (terms[1..]) |term| {
             // Guard against sql injection
             // 'term' will be cut if longer than 'buf'
             const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%q", term.ptr);
+            if (mem.len(safe_term) > term.len) {
+                total_cap += mem.len(safe_term) - term.len;
+                try query_arr.ensureTotalCapacity(total_cap);
+            }
             writer.writeAll(query_or) catch unreachable;
             writer.print(like_query, .{ safe_term, safe_term, safe_term }) catch unreachable;
         }
