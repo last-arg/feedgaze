@@ -66,6 +66,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
+    // TODO: See if it is possible to create enum from subcmds.cmds in comptime
     const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
@@ -393,7 +394,6 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
     return struct {
         const Self = @This();
         pub var flags = precomputed.flags;
-        name: []const u8 = "",
         args: [][:0]const u8 = &[_][:0]u8{},
 
         pub fn parse(self: *Self, args: [][:0]const u8) !void {
@@ -416,7 +416,6 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
                 }
             }
             var name = str[minuses..];
-            // var name: []const u8 = "url";
             if (name.len == 0 or name[0] == '-' or name[0] == '=') {
                 return error.BadFlagSyntax;
             }
