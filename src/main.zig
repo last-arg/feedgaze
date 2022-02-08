@@ -39,6 +39,8 @@ pub fn main() !void {
     const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
     const UpdateCmd = FlagSet(&update_flags);
+    // TODO?: maybe make add and remove flags into subcommands: tag add, tag remove
+    // Another option would be make separate 'tag' commands: tag-add, tag-remove
     comptime var tag_flags = [_]FlagOpt{
         help_flag,
         db_flag,
@@ -46,20 +48,39 @@ pub fn main() !void {
         newFlag("remove", false, "Remove tag."),
         newFlag("id", @as(u64, 0), "Feed's id."),
         newFlag("location", "", "Feed's location."),
-        newFlag("remove-all", false, "Will remove all tags from feed. Has to have --id or --location flag."),
+        newFlag("remove-all", false, "Will remove all tags from feed. Requires --id or --location flag."),
     };
     const TagCmd = FlagSet(&tag_flags);
+
+    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
+    const cmds = .{
+        .add = AddCmd{ .name = "add" },
+        .update = UpdateCmd{ .name = "update" },
+        .remove = RemoveCmd{ .name = "remove" },
+        .search = BaseCmd{ .name = "search" },
+        .clean = BaseCmd{ .name = "clean" },
+        .@"print-feeds" = BaseCmd{ .name = "print-feeds" },
+        .@"print-items" = BaseCmd{ .name = "print-items" },
+        .tag = TagCmd{ .name = "tag" },
+    };
+
+    const subcoms = comptime .{
+        .{ .cmds = .{"add"}, .ty = AddCmd },
+        .{ .cmds = .{"remove"}, .ty = RemoveCmd },
+        .{ .cmds = .{"update"}, .ty = UpdateCmd },
+        .{ .cmds = .{ "search", "clean", "print-feeds", "print-items" }, .ty = BaseCmd },
+        .{ .cmds = .{"tag"}, .ty = TagCmd },
+    };
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
 
     if (args.len == 1) {
         log.err("No subcommand entered.", .{});
-        try usage();
+        try usage(subcoms);
         return error.MissingSubCommand;
     }
 
-    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -68,24 +89,13 @@ pub fn main() !void {
         try root_cmd.parse(args[1..]);
         if (root_cmd.getFlag("help")) |f| {
             if (try f.getBoolean()) {
-                try usage();
+                try usage(subcoms);
                 return;
             }
         }
         log.err("Unknown subcommand '{s}'.", .{subcmd_str});
         return error.UnknownSubCommand;
     };
-
-    const cmds = struct {
-        add: AddCmd = .{ .name = "add" },
-        update: UpdateCmd = .{ .name = "update" },
-        remove: RemoveCmd = .{ .name = "remove" },
-        search: BaseCmd = .{ .name = "search" },
-        clean: BaseCmd = .{ .name = "clean" },
-        @"print-feeds": BaseCmd = .{ .name = "print-feeds" },
-        @"print-items": BaseCmd = .{ .name = "print-items" },
-        tag: TagCmd = .{ .name = "tag" },
-    }{};
 
     var args_rest: [][:0]const u8 = undefined;
     var db_path: []const u8 = undefined;
@@ -157,7 +167,7 @@ pub fn main() !void {
     }
 
     if (has_help) {
-        try usage();
+        //     try usage(subcoms);
         return;
     }
 
@@ -394,18 +404,13 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
 
     return struct {
         const Self = @This();
-        var flags = precomputed.flags;
-        // flags: @TypeOf(&precomputed.flags) = &precomputed.flags,
+        pub var flags = precomputed.flags;
         name: []const u8 = "",
         args: [][:0]const u8 = &[_][:0]u8{},
 
         pub fn parse(self: *Self, args: [][:0]const u8) !void {
             self.args = args;
             while (try self.parseFlag()) {}
-        }
-
-        pub fn getFlags(_: Self) []Flag {
-            return &flags;
         }
 
         fn parseFlag(self: *Self) !bool {
@@ -442,7 +447,7 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
                 equal_index += 1;
             }
 
-            var flag = getFlagPtr(name) orelse {
+            var flag = self.getFlagPtr(name) orelse {
                 log.err("Unknown flag provided: -{s}", .{name});
                 return error.UnknownFlag;
             };
@@ -464,14 +469,14 @@ fn FlagSet(comptime inputs: []FlagOpt) type {
             return true;
         }
 
-        fn getFlagPtr(name: []const u8) ?*Flag {
+        fn getFlagPtr(_: Self, name: []const u8) ?*Flag {
             for (flags) |*flag| {
                 if (mem.eql(u8, name, flag.name)) return flag;
             }
             return null;
         }
 
-        pub fn getFlag(_: *Self, name: []const u8) ?Flag {
+        pub fn getFlag(_: Self, name: []const u8) ?Flag {
             for (flags) |flag| {
                 if (mem.eql(u8, name, flag.name)) return flag;
             }
@@ -488,8 +493,32 @@ pub fn newFlag(name: []const u8, default_value: anytype, description: []const u8
     };
 }
 
-pub fn usage() !void {
+pub fn usage(comptime cmds: anytype) !void {
     const stderr = std.io.getStdErr();
     const writer = stderr.writer();
-    try writer.writeAll("TODO: print usage\n");
+    try writer.writeAll("Usage: feedgaze <subcommand> [flags] [inputs]\n");
+    inline for (cmds) |sc| {
+        const str_suffix = if (sc.cmds.len > 1) "s" else "";
+        try writer.writeAll("\n");
+        try writer.print("Subcommand{s}: ", .{str_suffix});
+        comptime var index: usize = 0;
+        try writer.print("{s}", .{sc.cmds[index]});
+        index += 1;
+        inline while (index < sc.cmds.len) : (index += 1) {
+            try writer.print(", {s}", .{sc.cmds[index]});
+        }
+        try writer.writeAll("\n");
+        var flag_max_len = sc.ty.flags[0].name.len;
+        for (sc.ty.flags[1..]) |flag| {
+            flag_max_len = std.math.max(flag_max_len, flag.name.len);
+        }
+        for (sc.ty.flags) |flag| {
+            try writer.print("  --{s}", .{flag.name});
+            var nr_of_spaces = flag_max_len - flag.name.len;
+            while (nr_of_spaces > 0) : (nr_of_spaces -= 1) {
+                try writer.writeAll(" ");
+            }
+            try writer.print("  {s}\n", .{flag.description});
+        }
+    }
 }
