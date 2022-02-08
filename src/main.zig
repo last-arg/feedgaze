@@ -32,13 +32,9 @@ pub fn main() !void {
     const add_tags_flag = newFlag("tags", "", "Add (comma separated) tags to feed .");
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
-    const BaseCmd = FlagSet(&base_flags);
     comptime var remove_flags = base_flags ++ [_]FlagOpt{default_flag};
-    const RemoveCmd = FlagSet(&remove_flags);
     comptime var add_flags = remove_flags ++ [_]FlagOpt{add_tags_flag};
-    const AddCmd = FlagSet(&add_flags);
     comptime var update_flags = base_flags ++ [_]FlagOpt{force_flag};
-    const UpdateCmd = FlagSet(&update_flags);
     // TODO?: maybe make add and remove flags into subcommands: tag add, tag remove
     // Another option would be make separate 'tag' commands: tag-add, tag-remove
     comptime var tag_flags = [_]FlagOpt{
@@ -50,37 +46,27 @@ pub fn main() !void {
         newFlag("location", "", "Feed's location."),
         newFlag("remove-all", false, "Will remove all tags from feed. Requires --id or --location flag."),
     };
-    const TagCmd = FlagSet(&tag_flags);
 
-    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
-    const cmds = .{
-        .add = AddCmd{ .name = "add" },
-        .update = UpdateCmd{ .name = "update" },
-        .remove = RemoveCmd{ .name = "remove" },
-        .search = BaseCmd{ .name = "search" },
-        .clean = BaseCmd{ .name = "clean" },
-        .@"print-feeds" = BaseCmd{ .name = "print-feeds" },
-        .@"print-items" = BaseCmd{ .name = "print-items" },
-        .tag = TagCmd{ .name = "tag" },
+    const subcmds = comptime .{
+        // zig fmt: off
+        .{ .cmds = .{"add"},    .Cmd = FlagSet(&add_flags) },
+        .{ .cmds = .{"remove"}, .Cmd = FlagSet(&remove_flags) },
+        .{ .cmds = .{"update"}, .Cmd = FlagSet(&update_flags) },
+        .{ .cmds = .{ "search", "clean", "print-feeds", "print-items" }, .Cmd = FlagSet(&base_flags) },
+        .{ .cmds = .{"tag"},    .Cmd = FlagSet(&tag_flags) },
     };
-
-    const subcoms = comptime .{
-        .{ .cmds = .{"add"}, .ty = AddCmd },
-        .{ .cmds = .{"remove"}, .ty = RemoveCmd },
-        .{ .cmds = .{"update"}, .ty = UpdateCmd },
-        .{ .cmds = .{ "search", "clean", "print-feeds", "print-items" }, .ty = BaseCmd },
-        .{ .cmds = .{"tag"}, .ty = TagCmd },
-    };
+    // zig fmt: on
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
 
     if (args.len == 1) {
         log.err("No subcommand entered.", .{});
-        try usage(subcoms);
+        try usage(subcmds);
         return error.MissingSubCommand;
     }
 
+    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -89,7 +75,7 @@ pub fn main() !void {
         try root_cmd.parse(args[1..]);
         if (root_cmd.getFlag("help")) |f| {
             if (try f.getBoolean()) {
-                try usage(subcoms);
+                try usage(subcmds);
                 return;
             }
         }
@@ -108,66 +94,68 @@ pub fn main() !void {
     var tag_args = command.TagArgs{};
 
     // Parse input args
-    inline for (comptime std.meta.fieldNames(Subcommand)) |name| {
-        if (subcmd == std.meta.stringToEnum(Subcommand, name)) {
-            var cmd = @field(cmds, name);
-            try cmd.parse(args[2..]);
-            args_rest = cmd.args;
-            if (cmd.getFlag("help")) |f| {
-                has_help = try f.getBoolean();
-            }
-            db_path = try cmd.getFlag("db").?.getString();
-            var local = cli_options.local;
-            if (cmd.getFlag("local")) |value| {
-                local = try value.getBoolean();
-            }
-            var url = cli_options.url;
-            if (cmd.getFlag("url")) |value| {
-                url = try value.getBoolean();
-            }
-            cli_options.url = url or !local;
-            cli_options.local = local or !url;
-            if (cmd.getFlag("force")) |force| {
-                cli_options.force = try force.getBoolean();
-            }
+    inline for (subcmds) |sc| {
+        inline for (sc.cmds) |name| {
+            if (subcmd == std.meta.stringToEnum(Subcommand, name)) {
+                var cmd = sc.Cmd{};
+                try cmd.parse(args[2..]);
+                args_rest = cmd.args;
+                if (cmd.getFlag("help")) |f| {
+                    has_help = try f.getBoolean();
+                }
+                db_path = try cmd.getFlag("db").?.getString();
+                var local = cli_options.local;
+                if (cmd.getFlag("local")) |value| {
+                    local = try value.getBoolean();
+                }
+                var url = cli_options.url;
+                if (cmd.getFlag("url")) |value| {
+                    url = try value.getBoolean();
+                }
+                cli_options.url = url or !local;
+                cli_options.local = local or !url;
+                if (cmd.getFlag("force")) |force| {
+                    cli_options.force = try force.getBoolean();
+                }
 
-            if (cmd.getFlag("default")) |value| {
-                cli_options.default = try value.getInt();
-            }
+                if (cmd.getFlag("default")) |value| {
+                    cli_options.default = try value.getInt();
+                }
 
-            if (cmd.getFlag("tags")) |value| {
-                tags = try value.getString();
-            }
+                if (cmd.getFlag("tags")) |value| {
+                    tags = try value.getString();
+                }
 
-            // Tag command flags
-            if (cmd.getFlag("add")) |some| {
-                is_tag_add = try some.getBoolean();
-            }
+                // Tag command flags
+                if (cmd.getFlag("add")) |some| {
+                    is_tag_add = try some.getBoolean();
+                }
 
-            if (cmd.getFlag("remove")) |some| {
-                is_tag_remove = try some.getBoolean();
-            }
+                if (cmd.getFlag("remove")) |some| {
+                    is_tag_remove = try some.getBoolean();
+                }
 
-            if (cmd.getFlag("remove-all")) |some| {
-                is_tag_remove_all = try some.getBoolean();
-            }
+                if (cmd.getFlag("remove-all")) |some| {
+                    is_tag_remove_all = try some.getBoolean();
+                }
 
-            if (cmd.getFlag("location")) |some| {
-                tag_args.location = try some.getString();
-            }
+                if (cmd.getFlag("location")) |some| {
+                    tag_args.location = try some.getString();
+                }
 
-            if (cmd.getFlag("id")) |some| {
-                tag_args.id = @intCast(u64, try some.getInt());
-            }
+                if (cmd.getFlag("id")) |some| {
+                    tag_args.id = @intCast(u64, try some.getInt());
+                }
 
-            // Don't use break, continue, return inside inline loops
-            // https://github.com/ziglang/zig/issues/2727
-            // https://github.com/ziglang/zig/issues/9524
+                // Don't use break, continue, return inside inline loops
+                // https://github.com/ziglang/zig/issues/2727
+                // https://github.com/ziglang/zig/issues/9524
+            }
         }
     }
 
     if (has_help) {
-        //     try usage(subcoms);
+        try usage(subcmds);
         return;
     }
 
@@ -508,11 +496,11 @@ pub fn usage(comptime cmds: anytype) !void {
             try writer.print(", {s}", .{sc.cmds[index]});
         }
         try writer.writeAll("\n");
-        var flag_max_len = sc.ty.flags[0].name.len;
-        for (sc.ty.flags[1..]) |flag| {
+        var flag_max_len = sc.Cmd.flags[0].name.len;
+        for (sc.Cmd.flags[1..]) |flag| {
             flag_max_len = std.math.max(flag_max_len, flag.name.len);
         }
-        for (sc.ty.flags) |flag| {
+        for (sc.Cmd.flags) |flag| {
             try writer.print("  --{s}", .{flag.name});
             var nr_of_spaces = flag_max_len - flag.name.len;
             while (nr_of_spaces > 0) : (nr_of_spaces -= 1) {
