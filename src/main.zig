@@ -16,6 +16,8 @@ pub const known_folders_config = .{
     .xdg_on_mac = true,
 };
 
+// TODO: wait for https://github.com/truemedian/zfetch/issues/10
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const base_allocator = gpa.allocator();
@@ -23,13 +25,13 @@ pub fn main() !void {
     defer arena.deinit();
     const arena_allocator = arena.allocator();
 
-    const help_flag = newFlag("help", false, "Display this help and exit.");
-    const db_flag = newFlag("db", "~/.config/feedgaze/feedgaze.sqlite", "Sqlite database location.");
-    const url_flag = newFlag("url", true, "Apply action only to url feeds.");
-    const local_flag = newFlag("local", true, "Apply action only to local feeds.");
-    const force_flag = newFlag("force", false, "Force update all feeds.");
-    const default_flag = newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
-    const add_tags_flag = newFlag("tags", "", "Add (comma separated) tags to feed .");
+    const help_flag = comptime newFlag("help", false, "Display this help and exit.");
+    const db_flag = comptime newFlag("db", "~/.config/feedgaze/feedgaze.sqlite", "Sqlite database location.");
+    const url_flag = comptime newFlag("url", true, "Apply action only to url feeds.");
+    const local_flag = comptime newFlag("local", true, "Apply action only to local feeds.");
+    const force_flag = comptime newFlag("force", false, "Force update all feeds.");
+    const default_flag = comptime newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
+    const add_tags_flag = comptime newFlag("tags", "", "Add (comma separated) tags to feed .");
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
     comptime var remove_flags = base_flags ++ [_]FlagOpt{default_flag};
@@ -47,15 +49,17 @@ pub fn main() !void {
         newFlag("remove-all", false, "Will remove all tags from feed. Requires --id or --location flag."),
     };
 
-    const subcmds = comptime .{
-        // zig fmt: off
-        .{ .cmds = .{"add"},    .Cmd = FlagSet(&add_flags) },
-        .{ .cmds = .{"remove"}, .Cmd = FlagSet(&remove_flags) },
-        .{ .cmds = .{"update"}, .Cmd = FlagSet(&update_flags) },
-        .{ .cmds = .{ "search", "clean", "print-feeds", "print-items" }, .Cmd = FlagSet(&base_flags) },
-        .{ .cmds = .{"tag"},    .Cmd = FlagSet(&tag_flags) },
+    const BaseCmd = FlagSet(&base_flags);
+    const subcmds = struct {
+        const add = FlagSet(&add_flags);
+        const remove = FlagSet(&remove_flags);
+        const update = FlagSet(&update_flags);
+        const search = BaseCmd;
+        const clean = BaseCmd;
+        const @"print-feeds" = BaseCmd;
+        const @"print-items" = BaseCmd;
+        const tag = FlagSet(&tag_flags);
     };
-    // zig fmt: on
 
     var args = try process.argsAlloc(std.testing.allocator);
     defer process.argsFree(std.testing.allocator, args);
@@ -66,8 +70,7 @@ pub fn main() !void {
         return error.MissingSubCommand;
     }
 
-    // TODO: See if it is possible to create enum from subcmds.cmds in comptime
-    const Subcommand = enum { add, update, remove, search, clean, @"print-feeds", @"print-items", tag };
+    const Subcommand = std.meta.DeclEnum(subcmds);
     const subcmd_str = args[1];
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
         // Check if help flag was entered
@@ -95,63 +98,61 @@ pub fn main() !void {
     var tag_args = command.TagArgs{};
 
     // Parse input args
-    inline for (subcmds) |sc| {
-        inline for (sc.cmds) |name| {
-            if (subcmd == std.meta.stringToEnum(Subcommand, name)) {
-                var cmd = sc.Cmd{};
-                try cmd.parse(args[2..]);
-                args_rest = cmd.args;
-                if (cmd.getFlag("help")) |f| {
-                    has_help = try f.getBoolean();
-                }
-                db_path = try cmd.getFlag("db").?.getString();
-                var local = cli_options.local;
-                if (cmd.getFlag("local")) |value| {
-                    local = try value.getBoolean();
-                }
-                var url = cli_options.url;
-                if (cmd.getFlag("url")) |value| {
-                    url = try value.getBoolean();
-                }
-                cli_options.url = url or !local;
-                cli_options.local = local or !url;
-                if (cmd.getFlag("force")) |force| {
-                    cli_options.force = try force.getBoolean();
-                }
-
-                if (cmd.getFlag("default")) |value| {
-                    cli_options.default = try value.getInt();
-                }
-
-                if (cmd.getFlag("tags")) |value| {
-                    tags = try value.getString();
-                }
-
-                // Tag command flags
-                if (cmd.getFlag("add")) |some| {
-                    is_tag_add = try some.getBoolean();
-                }
-
-                if (cmd.getFlag("remove")) |some| {
-                    is_tag_remove = try some.getBoolean();
-                }
-
-                if (cmd.getFlag("remove-all")) |some| {
-                    is_tag_remove_all = try some.getBoolean();
-                }
-
-                if (cmd.getFlag("location")) |some| {
-                    tag_args.location = try some.getString();
-                }
-
-                if (cmd.getFlag("id")) |some| {
-                    tag_args.id = @intCast(u64, try some.getInt());
-                }
-
-                // Don't use break, continue, return inside inline loops
-                // https://github.com/ziglang/zig/issues/2727
-                // https://github.com/ziglang/zig/issues/9524
+    inline for (comptime std.meta.declarations(subcmds)) |decl| {
+        if (subcmd == std.meta.stringToEnum(Subcommand, decl.name)) {
+            var cmd = @field(subcmds, decl.name){};
+            try cmd.parse(args[2..]);
+            args_rest = cmd.args;
+            if (cmd.getFlag("help")) |f| {
+                has_help = try f.getBoolean();
             }
+            db_path = try cmd.getFlag("db").?.getString();
+            var local = cli_options.local;
+            if (cmd.getFlag("local")) |value| {
+                local = try value.getBoolean();
+            }
+            var url = cli_options.url;
+            if (cmd.getFlag("url")) |value| {
+                url = try value.getBoolean();
+            }
+            cli_options.url = url or !local;
+            cli_options.local = local or !url;
+            if (cmd.getFlag("force")) |force| {
+                cli_options.force = try force.getBoolean();
+            }
+
+            if (cmd.getFlag("default")) |value| {
+                cli_options.default = try value.getInt();
+            }
+
+            if (cmd.getFlag("tags")) |value| {
+                tags = try value.getString();
+            }
+
+            // Tag command flags
+            if (cmd.getFlag("add")) |some| {
+                is_tag_add = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("remove")) |some| {
+                is_tag_remove = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("remove-all")) |some| {
+                is_tag_remove_all = try some.getBoolean();
+            }
+
+            if (cmd.getFlag("location")) |some| {
+                tag_args.location = try some.getString();
+            }
+
+            if (cmd.getFlag("id")) |some| {
+                tag_args.id = @intCast(u64, try some.getInt());
+            }
+
+            // Don't use break, continue, return inside inline loops
+            // https://github.com/ziglang/zig/issues/2727
+            // https://github.com/ziglang/zig/issues/9524
         }
     }
 
@@ -213,20 +214,21 @@ pub fn main() !void {
         var db_location = try getDatabaseLocation(tmp_allocator, db_path);
         break :blk try Storage.init(arena_allocator, db_location);
     };
+    _ = storage;
 
-    var writer = std.io.getStdOut().writer();
-    const reader = std.io.getStdIn().reader();
-    var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
-    switch (subcmd) {
-        .add => try cli.addFeed(args_rest, tags),
-        .update => try cli.updateFeeds(),
-        .remove => try cli.deleteFeed(args_rest),
-        .search => try cli.search(args_rest),
-        .clean => try cli.cleanItems(),
-        .tag => try cli.tagCmd(args_rest, tag_args),
-        .@"print-feeds" => try cli.printFeeds(),
-        .@"print-items" => try cli.printAllItems(),
-    }
+    // var writer = std.io.getStdOut().writer();
+    // const reader = std.io.getStdIn().reader();
+    // var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
+    // switch (subcmd) {
+    //     .add => try cli.addFeed(args_rest, tags),
+    //     .update => try cli.updateFeeds(),
+    //     .remove => try cli.deleteFeed(args_rest),
+    //     .search => try cli.search(args_rest),
+    //     .clean => try cli.cleanItems(),
+    //     .tag => try cli.tagCmd(args_rest, tag_args),
+    //     .@"print-feeds" => try cli.printFeeds(),
+    //     .@"print-items" => try cli.printAllItems(),
+    // }
 }
 
 fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const u8 {
@@ -298,8 +300,55 @@ fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const 
 const FlagOpt = struct {
     name: []const u8,
     description: []const u8,
-    default_value: anytype,
+    ty: type,
+    default_value: ?*const anyopaque,
     input_value: ?[]const u8 = null,
+};
+
+const Flag = struct {
+    const Self = @This();
+    name: []const u8,
+    description: []const u8,
+    default_value: FlagValue,
+    input_value: ?[]const u8 = null,
+
+    fn parseBoolean(value: []const u8) ?bool {
+        const true_values = .{ "1", "t", "T", "true", "TRUE", "True" };
+        const false_values = .{ "0", "f", "F", "false", "FALSE", "False" };
+        inline for (true_values) |t_value| if (mem.eql(u8, value, t_value)) return true;
+        inline for (false_values) |f_value| if (mem.eql(u8, value, f_value)) return false;
+        return null;
+    }
+
+    pub fn getBoolean(self: Self) !bool {
+        if (self.default_value != .boolean) {
+            return error.NotBooleanValueType;
+        }
+        if (self.input_value) |input| {
+            return parseBoolean(input) orelse self.default_value.boolean;
+        }
+        return self.default_value.boolean;
+    }
+
+    pub fn getString(self: Self) ![]const u8 {
+        if (self.default_value != .string) {
+            return error.NotStringValueType;
+        }
+        return self.input_value orelse self.default_value.string;
+    }
+
+    pub fn getInt(self: Self) !i32 {
+        if (self.input_value) |value| {
+            return try std.fmt.parseInt(i32, value, 10);
+        }
+        return self.default_value.int;
+    }
+};
+
+const FlagValue = union(enum) {
+    boolean: bool,
+    string: []const u8,
+    int: i32,
 };
 
 // TODO: for saving different types in same field check https://github.com/ziglang/zig/issues/10705
@@ -318,66 +367,20 @@ const FlagOpt = struct {
 // '--flag-null 2' - 2 will be used
 // <no flag> - default value will be used
 fn FlagSet(comptime inputs: []FlagOpt) type {
-    const FlagValue = union(enum) {
-        boolean: bool,
-        string: []const u8,
-        int: i32,
-    };
-
-    const Flag = struct {
-        const Self = @This();
-        name: []const u8,
-        description: []const u8,
-        default_value: FlagValue,
-        input_value: ?[]const u8 = null,
-
-        fn parseBoolean(value: []const u8) ?bool {
-            const true_values = .{ "1", "t", "T", "true", "TRUE", "True" };
-            const false_values = .{ "0", "f", "F", "false", "FALSE", "False" };
-            inline for (true_values) |t_value| if (mem.eql(u8, value, t_value)) return true;
-            inline for (false_values) |f_value| if (mem.eql(u8, value, f_value)) return false;
-            return null;
-        }
-
-        pub fn getBoolean(self: Self) !bool {
-            if (self.default_value != .boolean) {
-                return error.NotBooleanValueType;
-            }
-            if (self.input_value) |input| {
-                return parseBoolean(input) orelse self.default_value.boolean;
-            }
-            return self.default_value.boolean;
-        }
-
-        pub fn getString(self: Self) ![]const u8 {
-            if (self.default_value != .string) {
-                return error.NotStringValueType;
-            }
-            return self.input_value orelse self.default_value.string;
-        }
-
-        pub fn getInt(self: Self) !i32 {
-            if (self.input_value) |value| {
-                return try std.fmt.parseInt(i32, value, 10);
-            }
-            return self.default_value.int;
-        }
-    };
-
     comptime var precomputed = blk: {
         var flags: [inputs.len]Flag = undefined;
         for (inputs) |flag, i| {
-            const type_info = @typeInfo(@TypeOf(flag.default_value));
+            const type_info = @typeInfo(flag.ty);
             const default_value = switch (type_info) {
-                .Bool => .{ .boolean = flag.default_value },
+                .Bool => .{ .boolean = @ptrCast(*const flag.ty, flag.default_value.?).* },
                 .Pointer => |ptr| blk_ptr: {
                     const child_type = std.meta.Child(ptr.child);
                     if (child_type == u8) {
-                        break :blk_ptr .{ .string = flag.default_value };
+                        break :blk_ptr .{ .string = @ptrCast(*const flag.ty, flag.default_value.?).* };
                     }
                     @compileError("Expecting a u8 slice ([]const u8, []u8), got slice with " ++ @typeName(child_type));
                 },
-                .Int => .{ .int = @intCast(i64, flag.default_value) },
+                .Int => .{ .int = @intCast(i64, @ptrCast(*const flag.ty, flag.default_value.?).*) },
                 else => unreachable,
             };
             flags[i] = Flag{
@@ -476,7 +479,8 @@ pub fn newFlag(name: []const u8, default_value: anytype, description: []const u8
     return .{
         .name = name,
         .description = description,
-        .default_value = default_value,
+        .ty = @TypeOf(default_value),
+        .default_value = @ptrCast(?*const anyopaque, &default_value),
     };
 }
 
@@ -484,24 +488,43 @@ pub fn usage(comptime cmds: anytype) !void {
     const stderr = std.io.getStdErr();
     const writer = stderr.writer();
     try writer.writeAll("Usage: feedgaze <subcommand> [flags] [inputs]\n");
-    inline for (cmds) |sc| {
-        const str_suffix = if (sc.cmds.len > 1) "s" else "";
-        try writer.writeAll("\n");
-        try writer.print("Subcommand{s}: ", .{str_suffix});
-        comptime var index: usize = 0;
-        try writer.print("{s}", .{sc.cmds[index]});
-        index += 1;
-        inline while (index < sc.cmds.len) : (index += 1) {
-            try writer.print(", {s}", .{sc.cmds[index]});
+    const decls = comptime std.meta.declarations(cmds);
+    const NameArr = std.BoundedArray([]const u8, decls.len);
+    const CmdArr = std.BoundedArray(struct { flags: []Flag, names: NameArr }, decls.len);
+    comptime var cmd_arr = try CmdArr.init(0);
+    inline for (decls) |decl| {
+        const cmd = @field(cmds, decl.name);
+        comptime var same_flags = false;
+        inline for (comptime cmd_arr.slice()) |*c| {
+            if (c.flags.ptr == &cmd.flags) {
+                same_flags = true;
+                comptime try c.names.append(decl.name);
+            }
+        }
+
+        if (!same_flags) {
+            comptime var new_flag = try cmd_arr.addOne();
+            new_flag.* = .{ .flags = &cmd.flags, .names = comptime try NameArr.init(0) };
+            comptime try new_flag.names.append(decl.name);
+        }
+    }
+
+    inline for (comptime cmd_arr.slice()) |c| {
+        const names = comptime c.names.constSlice();
+        const suffix = if (names.len == 1) "" else "s";
+        try writer.print("\nSubcommand{s}: {s}", .{ suffix, names[0] });
+        inline for (names[1..]) |name| {
+            try writer.print(", {s}", .{name});
         }
         try writer.writeAll("\n");
-        var flag_max_len = sc.Cmd.flags[0].name.len;
-        for (sc.Cmd.flags[1..]) |flag| {
-            flag_max_len = std.math.max(flag_max_len, flag.name.len);
+        var max_flag_len = @as(usize, 0);
+        for (c.flags) |flag| {
+            max_flag_len = std.math.max(max_flag_len, flag.name.len);
         }
-        for (sc.Cmd.flags) |flag| {
+
+        for (c.flags) |*flag| {
             try writer.print("  --{s}", .{flag.name});
-            var nr_of_spaces = flag_max_len - flag.name.len;
+            var nr_of_spaces = max_flag_len - flag.name.len;
             while (nr_of_spaces > 0) : (nr_of_spaces -= 1) {
                 try writer.writeAll(" ");
             }
