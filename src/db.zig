@@ -83,9 +83,10 @@ pub fn setup(db: *Db) !void {
         _ = try db.sql_db.pragma(usize, .{}, "temp_store", "2");
         _ = try db.sql_db.pragma(usize, .{}, "cache_size", "-32000");
 
-        inline for (@typeInfo(Table).Struct.decls) |decl| {
-            if (@hasDecl(decl.data.Type, "create")) {
-                const sql_create = @field(decl.data.Type, "create");
+        inline for (comptime std.meta.declarations(Table)) |decl| {
+            const table_field = @field(Table, decl.name);
+            if (@hasDecl(table_field, "create")) {
+                const sql_create = @field(table_field, "create");
                 db.sql_db.exec(sql_create, .{}, .{}) catch |err| {
                     log.err("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.sql_db.getDetailedError().message, sql_create });
                     return err;
