@@ -36,6 +36,7 @@ const Server = struct {
 
     // Index displays most recenlty update feeds
     fn indexHandler(req: Request, res: Response) !void {
+        // TODO: try implement compression?
         _ = req;
         // Get most recently update feeds
         var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
@@ -47,10 +48,28 @@ const Server = struct {
             } else {
                 try res.print("{s}", .{feed.title});
             }
-            try res.print(" | id: {d}. ", .{feed.id});
+            try res.print(" | id: {d} ", .{feed.id});
             if (feed.updated_timestamp) |timestamp| {
                 try res.print(" | timestamp: {d}", .{timestamp});
             }
+
+            // Get feed items
+            const items = try g.storage.getItems(feed.id);
+            try res.write("<ul>");
+            for (items) |item| {
+                try res.write("<li>");
+                if (item.link) |link| {
+                    try res.print("<a href=\"{s}\">{s}</a>", .{ link, item.title });
+                } else {
+                    try res.print("{s}", .{feed.title});
+                }
+                if (item.pub_date_utc) |timestamp| {
+                    try res.print(" | timestamp: {d}", .{timestamp});
+                }
+                try res.write("</li>");
+            }
+            try res.write("</ul>");
+
             try res.write("</li>");
         }
         try res.write("</ul>");

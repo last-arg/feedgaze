@@ -641,6 +641,18 @@ pub const Storage = struct {
         ;
         return try self.db.selectAll(RecentFeed, query, .{});
     }
+
+    const Item = struct {
+        title: []const u8,
+        link: ?[]const u8,
+        pub_date_utc: ?i64,
+    };
+    pub fn getItems(self: *Self, id: u64) ![]Item {
+        const query =
+            \\SELECT title, link, pub_date_utc FROM item WHERE feed_id = ?{u64} ORDER BY id DESC;
+        ;
+        return try self.db.selectAll(Item, query, .{id});
+    }
 };
 
 fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
