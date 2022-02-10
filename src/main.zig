@@ -216,19 +216,19 @@ pub fn main() !void {
     };
     _ = storage;
 
-    // var writer = std.io.getStdOut().writer();
-    // const reader = std.io.getStdIn().reader();
-    // var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
-    // switch (subcmd) {
-    //     .add => try cli.addFeed(args_rest, tags),
-    //     .update => try cli.updateFeeds(),
-    //     .remove => try cli.deleteFeed(args_rest),
-    //     .search => try cli.search(args_rest),
-    //     .clean => try cli.cleanItems(),
-    //     .tag => try cli.tagCmd(args_rest, tag_args),
-    //     .@"print-feeds" => try cli.printFeeds(),
-    //     .@"print-items" => try cli.printAllItems(),
-    // }
+    var writer = std.io.getStdOut().writer();
+    const reader = std.io.getStdIn().reader();
+    var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
+    switch (subcmd) {
+        .add => try cli.addFeed(args_rest, tags),
+        .update => try cli.updateFeeds(),
+        .remove => try cli.deleteFeed(args_rest),
+        .search => try cli.search(args_rest),
+        .clean => try cli.cleanItems(),
+        .tag => try cli.tagCmd(args_rest, tag_args),
+        .@"print-feeds" => try cli.printFeeds(),
+        .@"print-items" => try cli.printAllItems(),
+    }
 }
 
 fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const u8 {
