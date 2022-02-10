@@ -2,7 +2,7 @@ const std = @import("std");
 const Builder = @import("std").build.Builder;
 const LibExeObjStep = @import("std").build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
-const pkgs = @import("deps.zig");
+const pkgs = @import("deps.zig").pkgs;
 
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
