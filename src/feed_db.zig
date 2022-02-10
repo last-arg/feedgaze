@@ -613,6 +613,34 @@ pub const Storage = struct {
             try self.db.exec(query, .{tag});
         }
     }
+
+    const TagCount = struct { name: []const u8, count: u32 };
+    pub fn getAllTags(self: *Self) ![]TagCount {
+        const query = "SELECT tag as name, count(tag) FROM feed_tag GROUP BY tag ORDER BY tag ASC;";
+        return try self.db.selectAll(TagCount, query, .{});
+    }
+
+    const RecentFeed = struct {
+        id: u64,
+        updated_timestamp: ?i64,
+        title: []const u8,
+        link: ?[]const u8,
+    };
+    pub fn getRecentlyUpdatedFeeds(self: *Self) ![]RecentFeed {
+        const query =
+            \\SELECT
+            \\  id
+            \\, max(updated_timestamp, item.pub_date_utc) AS updated_timestamp
+            \\, title
+            \\, link
+            \\FROM feed
+            \\LEFT JOIN
+            \\  (SELECT feed_id, max(pub_date_utc) as pub_date_utc FROM item GROUP BY feed_id) item
+            \\ON item.feed_id = feed.id
+            \\ORDER BY updated_timestamp DESC;
+        ;
+        return try self.db.selectAll(RecentFeed, query, .{});
+    }
 };
 
 fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
