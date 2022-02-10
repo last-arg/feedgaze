@@ -112,6 +112,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const ext = fs.path.extension(abs_path);
                 if (mem.eql(u8, ".xml", ext)) {
                     break :blk try parse.parse(&arena, contents);
+                } else if (mem.eql(u8, ".atom", ext)) {
+                    break :blk try parse.Atom.parse(&arena, contents);
                 } else if (mem.eql(u8, ".json", ext)) {
                     break :blk try parse.Json.parse(&arena, contents);
                 }
