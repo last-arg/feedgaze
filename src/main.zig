@@ -12,12 +12,15 @@ const clap = @import("clap");
 const known_folders = @import("known-folders");
 const server = @import("server.zig");
 
+// NOTE: This will return error.CouldNotConnect when adding url
+// pub const io_mode = .evented;
+
+// TODO: wait for https://github.com/truemedian/zfetch/issues/10
+
 pub const log_level = std.log.Level.debug;
 pub const known_folders_config = .{
     .xdg_on_mac = true,
 };
-
-// TODO: wait for https://github.com/truemedian/zfetch/issues/10
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -217,13 +220,12 @@ pub fn main() !void {
         var db_location = try getDatabaseLocation(tmp_allocator, db_path);
         break :blk try Storage.init(arena_allocator, db_location);
     };
-    _ = storage;
 
     var writer = std.io.getStdOut().writer();
     const reader = std.io.getStdIn().reader();
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcmd) {
-        .server => try server.init(),
+        .server => try server.run(&storage),
         .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
         .remove => try cli.deleteFeed(args_rest),
@@ -493,6 +495,8 @@ pub fn usage(comptime cmds: anytype) !void {
     const writer = stderr.writer();
     try writer.writeAll("Usage: feedgaze <subcommand> [flags] [inputs]\n");
     const decls = comptime std.meta.declarations(cmds);
+    // TODO: exmaple how to concat unknown length array at compile time
+    // https://github.com/Vexu/routez/blob/master/src/routez/router.zig#L18
     const NameArr = std.BoundedArray([]const u8, decls.len);
     const CmdArr = std.BoundedArray(struct { flags: []Flag, names: NameArr }, decls.len);
     comptime var cmd_arr = try CmdArr.init(0);
