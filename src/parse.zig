@@ -1005,7 +1005,7 @@ pub const Rss = struct {
 test "Rss.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const contents = @embedFile("../test/sample-rss-2.xml");
+    const contents = @embedFile("../test/rss2.xml");
     var feed = try Rss.parse(&arena, contents);
     try std.testing.expectEqualStrings("Liftoff News", feed.title);
     try std.testing.expectEqualStrings("http://liftoff.msfc.nasa.gov/", feed.link.?);
@@ -1215,6 +1215,6 @@ pub fn isAtom(body: []const u8) bool {
 }
 
 test "isRss(), isAtom()" {
-    try expect(isRss(@embedFile("../test/sample-rss-091.xml")));
+    try expect(isRss(@embedFile("../test/rss2.xml")));
     try expect(isAtom(@embedFile("../test/atom.xml")));
 }
