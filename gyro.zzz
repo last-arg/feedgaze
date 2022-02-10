@@ -24,3 +24,8 @@ deps:
       url: "https://github.com/ziglibs/known-folders.git"
       ref: master
       root: known-folders.zig
+  routez:
+    git:
+      url: "https://github.com/Vexu/routez.git"
+      ref: 679dca1edce5a3498bf5491b0fdcea82322bd8ab
+      root: src/routez.zig
