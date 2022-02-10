@@ -10,6 +10,7 @@ const Storage = @import("feed_db.zig").Storage;
 const Cli = command.Cli;
 const clap = @import("clap");
 const known_folders = @import("known-folders");
+const server = @import("server.zig");
 
 pub const log_level = std.log.Level.debug;
 pub const known_folders_config = .{
@@ -48,6 +49,7 @@ pub fn main() !void {
         newFlag("location", "", "Feed's location."),
         newFlag("remove-all", false, "Will remove all tags from feed. Requires --id or --location flag."),
     };
+    comptime var server_flags = [_]FlagOpt{ help_flag, db_flag };
 
     const BaseCmd = FlagSet(&base_flags);
     const subcmds = struct {
@@ -59,6 +61,7 @@ pub fn main() !void {
         const @"print-feeds" = BaseCmd;
         const @"print-items" = BaseCmd;
         const tag = FlagSet(&tag_flags);
+        const server = FlagSet(&server_flags);
     };
 
     var args = try process.argsAlloc(std.testing.allocator);
@@ -220,6 +223,7 @@ pub fn main() !void {
     const reader = std.io.getStdIn().reader();
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcmd) {
+        .server => try server.init(),
         .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
         .remove => try cli.deleteFeed(args_rest),
