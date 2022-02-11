@@ -41,16 +41,35 @@ const Server = struct {
         _ = req;
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
+        var all_tags = try g.storage.getAllTags();
 
-        var tags = ArrayList([]const u8).init(allocator);
-        defer tags.deinit();
+        var active_tags = ArrayList([]const u8).init(allocator);
+        defer active_tags.deinit();
 
         var it = std.mem.split(u8, args.tags, "+");
-        while (it.next()) |tag| try tags.append(tag);
-        var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(tags.items);
+        while (it.next()) |tag| try active_tags.append(tag);
+
+        var first_done = false;
+        try res.write("<p>Active tags: ");
+        for (active_tags.items) |a_tag| {
+            for (all_tags) |all_tag| {
+                if (std.mem.eql(u8, a_tag, all_tag.name)) {
+                    if (!first_done) {
+                        try res.write(a_tag);
+                        first_done = true;
+                        break;
+                    }
+                    try res.write(",");
+                    try res.write(a_tag);
+                    break;
+                }
+            }
+        }
+        try res.write("</p>");
+
+        var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
         try printFeeds(res, recent_feeds);
 
-        var all_tags = try g.storage.getAllTags();
         try printTags(res, all_tags);
     }
 
@@ -103,6 +122,7 @@ const Server = struct {
         try printTags(res, tags);
     }
 
+    // TODO: which are active tags
     fn printTags(res: Response, tags: []Storage.TagCount) !void {
         try res.write("<ul>");
         for (tags) |tag| {
