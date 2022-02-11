@@ -8,6 +8,7 @@ const print = std.debug.print;
 const allocator = std.heap.page_allocator;
 const Address = std.net.Address;
 const Storage = @import("feed_db.zig").Storage;
+const ArrayList = std.ArrayList;
 
 // pub const io_mode = .evented;
 
@@ -25,6 +26,8 @@ const Server = struct {
             .{},
             .{
                 routez.all("/", indexHandler),
+                // routez.all("/settings", settingsHandler),
+                routez.all("/tag/{tags}", tagHandler),
                 // routez.get("/about", aboutHandler),
             },
         );
@@ -34,12 +37,24 @@ const Server = struct {
         return Server{ .server = server };
     }
 
-    // Index displays most recenlty update feeds
-    fn indexHandler(req: Request, res: Response) !void {
-        // TODO: try implement compression?
+    fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
         _ = req;
-        // Get most recently update feeds
-        var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        var tags = ArrayList([]const u8).init(allocator);
+        defer tags.deinit();
+
+        var it = std.mem.split(u8, args.tags, "+");
+        while (it.next()) |tag| try tags.append(tag);
+        var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(tags.items);
+        try printFeeds(res, recent_feeds);
+
+        var all_tags = try g.storage.getAllTags();
+        try printTags(res, all_tags);
+    }
+
+    fn printFeeds(res: Response, recent_feeds: []Storage.RecentFeed) !void {
         try res.write("<ul>");
         for (recent_feeds) |feed| {
             try res.write("<li>");
@@ -73,9 +88,22 @@ const Server = struct {
             try res.write("</li>");
         }
         try res.write("</ul>");
+    }
+
+    // Index displays most recenlty update feeds
+    fn indexHandler(req: Request, res: Response) !void {
+        // TODO: implement compression?
+        _ = req;
+        // Get most recently update feeds
+        var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
+        try printFeeds(res, recent_feeds);
 
         // Get tags with count
         var tags = try g.storage.getAllTags();
+        try printTags(res, tags);
+    }
+
+    fn printTags(res: Response, tags: []Storage.TagCount) !void {
         try res.write("<ul>");
         for (tags) |tag| {
             try res.print("<li>{s} - {d}</li>", .{ tag.name, tag.count });

@@ -614,13 +614,13 @@ pub const Storage = struct {
         }
     }
 
-    const TagCount = struct { name: []const u8, count: u32 };
+    pub const TagCount = struct { name: []const u8, count: u32 };
     pub fn getAllTags(self: *Self) ![]TagCount {
         const query = "SELECT tag as name, count(tag) FROM feed_tag GROUP BY tag ORDER BY tag ASC;";
         return try self.db.selectAll(TagCount, query, .{});
     }
 
-    const RecentFeed = struct {
+    pub const RecentFeed = struct {
         id: u64,
         updated_timestamp: ?i64,
         title: []const u8,
@@ -640,6 +640,75 @@ pub const Storage = struct {
             \\ORDER BY updated_timestamp DESC;
         ;
         return try self.db.selectAll(RecentFeed, query, .{});
+    }
+
+    pub fn getRecentlyUpdatedFeedsByTags(self: *Self, tags: [][]const u8) ![]RecentFeed {
+        const query_start =
+            \\SELECT
+            \\  id
+            \\, max(updated_timestamp, item.pub_date_utc) AS updated_timestamp
+            \\, title
+            \\, link
+            \\FROM feed
+            \\LEFT JOIN
+            \\  (SELECT feed_id, max(pub_date_utc) as pub_date_utc FROM item GROUP BY feed_id) item
+            \\ON item.feed_id = feed.id
+            \\WHERE item.feed_id in (SELECT DISTINCT feed_id FROM feed_tag WHERE tag IN (
+        ;
+        const query_end =
+            \\))
+            \\ORDER BY updated_timestamp DESC;
+        ;
+        var total_cap = query_start.len + query_end.len + tags[0].len + 2; // 2 - two quotes
+        for (tags[1..]) |tag| total_cap += tag.len + 3; // 3 - two quotes + comma
+        var query_arr = try ArrayList(u8).initCapacity(self.allocator, total_cap);
+        defer query_arr.deinit();
+        const writer = query_arr.writer();
+        writer.writeAll(query_start) catch unreachable;
+        var buf: [256]u8 = undefined;
+        {
+            const tag = tags[0];
+            const tag_cstr = try self.allocator.dupeZ(u8, tag);
+            defer self.allocator.free(tag_cstr);
+            print("{s}", .{tag});
+            // Guard against sql injection
+            // 'tag' will be cut if longer than 'buf'
+            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%Q", tag_cstr.ptr);
+            // total_cap takes into account adding quotes to both ends
+            const tag_len_with_quotes = tag.len + 2;
+            if (mem.len(safe_term) > tag_len_with_quotes) {
+                total_cap += mem.len(safe_term) - tag_len_with_quotes;
+                try query_arr.ensureTotalCapacity(total_cap);
+            }
+            writer.writeAll(mem.span(safe_term)) catch unreachable;
+        }
+        for (tags[1..]) |tag| {
+            // Guard against sql injection
+            // 'tag' will be cut if longer than 'buf'
+            const tag_cstr = try self.allocator.dupeZ(u8, tag);
+            defer self.allocator.free(tag_cstr);
+            const safe_term = sql.c.sqlite3_snprintf(buf.len, &buf, "%Q", tag_cstr.ptr);
+            // total_cap takes into account adding quotes to both ends
+            const tag_len_with_quotes = tag.len + 2;
+            if (mem.len(safe_term) > tag_len_with_quotes) {
+                total_cap += mem.len(safe_term) - tag_len_with_quotes;
+                try query_arr.ensureTotalCapacity(total_cap);
+            }
+            writer.writeAll(",") catch unreachable;
+            writer.writeAll(mem.span(safe_term)) catch unreachable;
+        }
+        writer.writeAll(query_end) catch unreachable;
+        var stmt = self.db.sql_db.prepareDynamic(query_arr.items) catch |err| {
+            log.err("SQL_ERROR: {s}\nFailed query:\n{s}", .{ self.db.sql_db.getDetailedError().message, query_arr.items });
+            return err;
+        };
+        defer stmt.deinit();
+
+        const results = stmt.all(RecentFeed, self.allocator, .{}, .{}) catch |err| {
+            log.err("SQL_ERROR: {s}\n", .{self.db.sql_db.getDetailedError().message});
+            return err;
+        };
+        return results;
     }
 
     const Item = struct {
