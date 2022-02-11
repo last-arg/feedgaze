@@ -9,6 +9,7 @@ const allocator = std.heap.page_allocator;
 const Address = std.net.Address;
 const Storage = @import("feed_db.zig").Storage;
 const ArrayList = std.ArrayList;
+const Datetime = @import("datetime").datetime.Datetime;
 
 // pub const io_mode = .evented;
 
@@ -73,7 +74,38 @@ const Server = struct {
         try printTags(res, all_tags);
     }
 
+    fn printTimestamp(res: Response, dt: Datetime) !void {
+        try res.print("{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC\n", .{
+            dt.date.year, dt.date.month,  dt.date.day,
+            dt.time.hour, dt.time.minute, dt.time.second,
+        });
+    }
+
+    fn printElapsedTime(res: Response, dt: Datetime, now: Datetime) !void {
+        const delta = now.sub(dt);
+        if (delta.days > 0) {
+            const months = @divFloor(delta.days, 30);
+            const years = @divFloor(delta.days, 365);
+            if (years > 0) {
+                try res.print("{d}Y", .{years});
+            } else if (months > 0) {
+                try res.print("{d}M", .{months});
+            } else {
+                try res.print("{d}d", .{delta.days});
+            }
+        } else if (delta.seconds > 0) {
+            const minutes = @divFloor(delta.seconds, 60);
+            const hours = @divFloor(minutes, 60);
+            if (hours > 0) {
+                try res.print("{d}h", .{hours});
+            } else if (delta.days > 0) {
+                try res.print("{d}m", .{minutes});
+            }
+        }
+    }
+
     fn printFeeds(res: Response, recent_feeds: []Storage.RecentFeed) !void {
+        const now = Datetime.now();
         try res.write("<ul>");
         for (recent_feeds) |feed| {
             try res.write("<li>");
@@ -84,7 +116,11 @@ const Server = struct {
             }
             try res.print(" | id: {d} ", .{feed.id});
             if (feed.updated_timestamp) |timestamp| {
-                try res.print(" | timestamp: {d}", .{timestamp});
+                try res.write(" | ");
+                const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
+                try printTimestamp(res, dt);
+                try res.write(" | ");
+                try printElapsedTime(res, dt, now);
             }
 
             // Get feed items
@@ -98,7 +134,11 @@ const Server = struct {
                     try res.print("{s}", .{feed.title});
                 }
                 if (item.pub_date_utc) |timestamp| {
-                    try res.print(" | timestamp: {d}", .{timestamp});
+                    try res.write(" | ");
+                    const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
+                    try printTimestamp(res, dt);
+                    try res.write(" | ");
+                    try printElapsedTime(res, dt, now);
                 }
                 try res.write("</li>");
             }
@@ -111,7 +151,6 @@ const Server = struct {
 
     // Index displays most recenlty update feeds
     fn indexHandler(req: Request, res: Response) !void {
-        // TODO: implement compression?
         _ = req;
         // Get most recently update feeds
         var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
