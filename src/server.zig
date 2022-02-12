@@ -14,6 +14,8 @@ const Datetime = @import("datetime").datetime.Datetime;
 
 // pub const io_mode = .evented;
 
+// TODO: how to handle displaying untagged feeds?
+
 const Server = struct {
     const g = struct {
         var storage: *Storage = undefined;
@@ -30,7 +32,6 @@ const Server = struct {
                 routez.all("/", indexHandler),
                 // routez.all("/settings", settingsHandler),
                 routez.all("/tag/{tags}", tagHandler),
-                // routez.get("/about", aboutHandler),
             },
         );
         // Don't get any address in use error messages
@@ -164,14 +165,24 @@ const Server = struct {
 
         // Get tags with count
         var tags = try g.storage.getAllTags();
-        try printTags(res, tags);
+        try printTags(res, tags, &[_][]const u8{});
     }
 
-    // TODO: which are active tags
-    fn printTags(res: Response, tags: []Storage.TagCount) !void {
+    fn printTags(res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         try res.write("<ul>");
         for (tags) |tag| {
-            try res.print("<li>{s} - {d}</li>", .{ tag.name, tag.count });
+            var is_active = false;
+            for (active_tags) |a_tag| {
+                if (mem.eql(u8, tag.name, a_tag)) {
+                    is_active = true;
+                    break;
+                }
+            }
+            if (!is_active) {
+                try res.print("<li><button>{s} - {d}</button></li>", .{ tag.name, tag.count });
+            } else {
+                try res.print("<li>[active] <button>{s} - {d}</button></li>", .{ tag.name, tag.count });
+            }
         }
         try res.write("</ul>");
     }
