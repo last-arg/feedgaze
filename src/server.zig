@@ -1,4 +1,5 @@
 const std = @import("std");
+const mem = std.mem;
 const builtin = @import("builtin");
 const routez = @import("routez");
 const RoutezServer = routez.Server;
@@ -47,31 +48,36 @@ const Server = struct {
         var active_tags = ArrayList([]const u8).init(allocator);
         defer active_tags.deinit();
 
-        var it = std.mem.split(u8, args.tags, "+");
-        while (it.next()) |tag| try active_tags.append(tag);
-
-        var first_done = false;
-        try res.write("<p>Active tags: ");
-        for (active_tags.items) |a_tag| {
-            for (all_tags) |all_tag| {
-                if (std.mem.eql(u8, a_tag, all_tag.name)) {
-                    if (!first_done) {
-                        try res.write(a_tag);
-                        first_done = true;
-                        break;
-                    }
-                    try res.write(",");
-                    try res.write(a_tag);
-                    break;
-                }
+        var it = mem.split(u8, args.tags, "+");
+        while (it.next()) |tag| {
+            if (hasTag(all_tags, tag)) {
+                try active_tags.append(tag);
+                continue;
             }
+        }
+
+        try res.write("<p>Active tags: ");
+        {
+            const first_tag = active_tags.items[0];
+            try res.write(first_tag);
+        }
+        for (active_tags.items[1..]) |a_tag| {
+            try res.write(",");
+            try res.write(a_tag);
         }
         try res.write("</p>");
 
         var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
         try printFeeds(res, recent_feeds);
 
-        try printTags(res, all_tags);
+        try printTags(res, all_tags, active_tags.items);
+    }
+
+    fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
+        for (all_tags) |all_tag| {
+            if (mem.eql(u8, tag, all_tag.name)) return true;
+        }
+        return false;
     }
 
     fn printTimestamp(res: Response, dt: Datetime) !void {
