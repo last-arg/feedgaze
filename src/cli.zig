@@ -6,6 +6,7 @@ const log = std.log;
 const parse = @import("parse.zig");
 const http = @import("http.zig");
 const Uri = @import("zuri").Uri;
+const url_util = @import("url.zig");
 const time = std.time;
 const fmt = std.fmt;
 const mem = std.mem;
@@ -143,7 +144,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const writer = self.writer;
             const feed_db = self.feed_db;
 
-            const url = try makeValidUrl(arena.allocator(), input_url);
+            const url = try url_util.makeValidUrl(arena.allocator(), input_url);
             try writer.print("Fetching feed {s}\n", .{url});
             const resp = try getFeedHttp(&arena, url, writer, self.reader, self.options.default);
             switch (resp) {
@@ -454,43 +455,6 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-fn makeValidUrl(allocator: Allocator, url: []const u8) ![]const u8 {
-    const no_http = !std.ascii.startsWithIgnoreCase(url, "http");
-    const substr = "://";
-    const start = if (std.ascii.indexOfIgnoreCase(url, substr)) |idx| idx + substr.len else 0;
-    const no_slash = std.mem.indexOfScalar(u8, url[start..], '/') == null;
-    if (no_http and no_slash) {
-        return try fmt.allocPrint(allocator, "http://{s}/", .{url});
-    } else if (no_http) {
-        return try fmt.allocPrint(allocator, "http://{s}", .{url});
-    } else if (no_slash) {
-        return try fmt.allocPrint(allocator, "{s}/", .{url});
-    }
-    return try fmt.allocPrint(allocator, "{s}", .{url});
-}
-
-test "makeValidUrl()" {
-    const allocator = std.testing.allocator;
-    const urls = .{ "google.com", "google.com/", "http://google.com", "http://google.com/" };
-    inline for (urls) |url| {
-        const new_url = try makeValidUrl(allocator, url);
-        defer if (!std.mem.eql(u8, url, new_url)) allocator.free(new_url);
-        try std.testing.expectEqualStrings("http://google.com/", new_url);
-    }
-}
-
-fn makeWholeUrl(allocator: Allocator, uri: Uri, link: []const u8) ![]const u8 {
-    if (link[0] == '/') {
-        if (uri.port) |port| {
-            if (port != 443 and port != 80) {
-                return try fmt.allocPrint(allocator, "{s}://{s}:{d}{s}", .{ uri.scheme, uri.host.name, uri.port, link });
-            }
-        }
-        return try fmt.allocPrint(allocator, "{s}://{s}{s}", .{ uri.scheme, uri.host.name, link });
-    }
-    return try fmt.allocPrint(allocator, "{s}", .{link});
-}
-
 fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     try writer.print("{s}://{s}", .{ uri.scheme, uri.host.name });
     if (uri.port) |port| {
@@ -569,7 +533,7 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
             const uri = try Uri.parse(resp.ok.location, true);
             // user input
             const index = try pickFeedLink(data, uri, writer, reader, default_pick);
-            const new_url = try makeWholeUrl(arena.allocator(), uri, data.links[index].href);
+            const new_url = try url_util.makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
         } else {
             try writer.print("Found no feed links in html\n", .{});
