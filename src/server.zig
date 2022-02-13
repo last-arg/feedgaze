@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const fmt = std.fmt;
 const builtin = @import("builtin");
 const routez = @import("routez");
 const RoutezServer = routez.Server;
@@ -11,6 +12,11 @@ const Address = std.net.Address;
 const Storage = @import("feed_db.zig").Storage;
 const ArrayList = std.ArrayList;
 const Datetime = @import("datetime").datetime.Datetime;
+const url_util = @import("url.zig");
+const http = @import("http.zig");
+const parse = @import("parse.zig");
+const zuri = @import("zuri");
+const log = std.log;
 
 // pub const io_mode = .evented;
 
@@ -30,14 +36,162 @@ const Server = struct {
             .{},
             .{
                 routez.all("/", indexHandler),
-                // routez.all("/settings", settingsHandler),
                 routez.all("/tag/{tags}", tagHandler),
+                routez.all("/feed/add", feedAddHandler),
             },
         );
-        // Don't get any address in use error messages
+        // Don't get errors about address in use
         if (builtin.mode == .Debug) server.server.reuse_address = true;
 
         return Server{ .server = server };
+    }
+
+    fn feedAddHandler(req: Request, res: Response) !void {
+        print("{}\n", .{req});
+        print("{}\n", .{res});
+        if (mem.eql(u8, req.method, "POST")) {
+            try feedAddPost(req, res);
+        } else if (mem.eql(u8, req.method, "GET")) {
+            try feedAddGet(req, res);
+        } else {
+            // TODO: response https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/405
+        }
+    }
+
+    fn feedAddGet(req: Request, res: Response) !void {
+        _ = req;
+        try res.write(
+            \\<form action="/feed/add" method="POST">
+            \\<div>
+            \\<label for="feed_url">Feed/Site url</label>
+            \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="localhost:8080/many-links.html">
+            \\</div>
+            \\<div>
+            \\<label for="tags">Tags</label>
+            \\<input type="text" id="tags" name="tags" value="tag1, tag2, tag3">
+            \\</div>
+            \\<button type="submit">Add feed</button>
+            \\</form>
+        );
+    }
+
+    fn feedAddPost(req: Request, res: Response) !void {
+        print("{s}\n", .{req.path});
+        print("{s}\n", .{req.query});
+        for (req.headers.list.items) |h| {
+            print("{s}: {s}\n", .{ h.name, h.value });
+        }
+        print("{s}\n", .{req.body});
+        _ = res;
+
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+        try res.write("<p>Add feed</p>");
+        if (try req.headers.get(arena.allocator(), "referer")) |headers| {
+            print("Headers (referer): {s}\n", .{headers});
+            const referer = headers[0];
+            try res.print("Referer: {s}\n", .{referer.value});
+        }
+
+        // Get submitted form values
+        var tags_input: []const u8 = "";
+        var add_urls = try ArrayList([]const u8).initCapacity(arena.allocator(), 2);
+        const body_decoded = (try zuri.Uri.decode(arena.allocator(), req.body)) orelse req.body;
+        var iter = mem.split(u8, body_decoded, "&");
+        while (iter.next()) |key_value| {
+            var iter_key_value = mem.split(u8, key_value, "=");
+            const key = iter_key_value.next() orelse continue;
+            const value = iter_key_value.next() orelse continue;
+            if (mem.eql(u8, "feed_url", key) or mem.eql(u8, "feed_pick", key)) {
+                try add_urls.append(mem.trim(u8, value, "+"));
+            } else if (mem.eql(u8, "tags", key)) {
+                tags_input = value;
+            }
+        }
+        if (add_urls.items.len == 0) {
+            try res.write("No urls found\n");
+            // TODO: no urls to add
+            // redirect to /feed/add (GET)
+            return;
+        }
+
+        for (add_urls.items) |input_url| {
+            const url = try url_util.makeValidUrl(arena.allocator(), input_url);
+            print("url: {s}\n", .{url});
+            var resp = try http.resolveRequest(&arena, url, null, null);
+
+            const resp_ok = switch (resp) {
+                .ok => |ok| ok,
+                .not_modified => {
+                    log.err("resolveRequest() fn returned .not_modified union value. This should not happen when adding new feed. Input url: {s}", .{url});
+                    // TODO: send somekind or http error
+                    continue;
+                },
+                .fail => |msg| {
+                    try res.print("Failed to resolve url {s}. Returned error message: {s}", .{ url, msg });
+                    continue;
+                },
+            };
+
+            switch (resp_ok.content_type) {
+                .html => {
+                    const html_data = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
+                    if (html_data.links.len > 0) {
+                        const tags = "TODO";
+                        try res.write("<form action='/feed/add' method='POST'>");
+                        { // form
+                            try res.print("<p>Url: {s}</p>", .{url});
+                            try res.print(
+                                \\<label for="tags">Tags</label>
+                                \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
+                            , .{tags});
+                            try res.write("<fieldset><ul>");
+                            { // fieldset
+                                try res.write("<legend>Pick feed(s) to add</legend>");
+                                for (html_data.links) |link| {
+                                    const page_uri = try zuri.Uri.parse(url, true);
+                                    const link_url = try url_util.makeWholeUrl(arena.allocator(), page_uri, link.href);
+                                    const link_title = link.title orelse html_data.title;
+                                    try res.write("<li><label>");
+                                    try res.print("<input type='checkbox' name='feed_pick' value='{s}'>", .{link_url});
+                                    if (link_title) |title| {
+                                        try res.print("[{s}] {s} {s}", .{ link.media_type.toString(), title, link_url });
+                                    } else {
+                                        try res.print("[{s}] {s}", .{ link.media_type.toString(), link_url });
+                                    }
+                                    try res.write("</label></li>");
+                                }
+                            }
+                            try res.write(
+                                \\</ul></fieldset>
+                                \\<button type="submit">Add feed(s)</button>
+                            );
+                        }
+                        try res.write("</form>");
+                    } else {
+                        try res.print("<p>No feed links found in {s}", .{url});
+                    }
+                },
+                .xml => {
+                    try res.write("TODO: xml");
+                },
+                .xml_atom => {
+                    try res.write("TODO: atom");
+                },
+                .xml_rss => {
+                    try res.write("TODO: rss");
+                },
+                .json => {
+                    try res.write("TODO: json");
+                },
+                .json_feed => {
+                    try res.write("TODO: json_feed");
+                },
+                .unknown => {
+                    try res.write("TODO: unknown");
+                },
+            }
+        }
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
