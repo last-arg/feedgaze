@@ -22,6 +22,7 @@ const log = std.log;
 
 // TODO: how to handle displaying untagged feeds?
 
+const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 const Server = struct {
     const g = struct {
         var storage: *Storage = undefined;
@@ -259,13 +260,6 @@ const Server = struct {
         return false;
     }
 
-    fn printTimestamp(res: Response, dt: Datetime) !void {
-        try res.print("{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC\n", .{
-            dt.date.year, dt.date.month,  dt.date.day,
-            dt.time.hour, dt.time.minute, dt.time.second,
-        });
-    }
-
     fn printElapsedTime(res: Response, dt: Datetime, now: Datetime) !void {
         const delta = now.sub(dt);
         if (delta.days > 0) {
@@ -299,13 +293,17 @@ const Server = struct {
             } else {
                 try res.print("{s}", .{feed.title});
             }
-            try res.print(" | id: {d} ", .{feed.id});
             if (feed.updated_timestamp) |timestamp| {
                 try res.write(" | ");
                 const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
-                try printTimestamp(res, dt);
-                try res.write(" | ");
+                var buf: [32]u8 = undefined;
+                const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
+                    dt.date.year, dt.date.month,  dt.date.day,
+                    dt.time.hour, dt.time.minute, dt.time.second,
+                });
+                try res.print("<span title='{s}'>", .{timestamp_str});
                 try printElapsedTime(res, dt, now);
+                try res.write("</span>");
             }
 
             // Get feed items
@@ -321,9 +319,14 @@ const Server = struct {
                 if (item.pub_date_utc) |timestamp| {
                     try res.write(" | ");
                     const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
-                    try printTimestamp(res, dt);
-                    try res.write(" | ");
+                    var buf: [32]u8 = undefined;
+                    const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
+                        dt.date.year, dt.date.month,  dt.date.day,
+                        dt.time.hour, dt.time.minute, dt.time.second,
+                    });
+                    try res.print("<span title='{s}'>", .{timestamp_str});
                     try printElapsedTime(res, dt, now);
+                    try res.write("</span>");
                 }
                 try res.write("</li>");
             }
