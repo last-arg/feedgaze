@@ -192,7 +192,7 @@ pub const Storage = struct {
         ;
         var iter = mem.split(u8, tags, ",");
         while (iter.next()) |tag| {
-            try self.db.exec(query, .{ id, tag });
+            try self.db.exec(query, .{ id, mem.trim(u8, tag, " +") });
         }
     }
 
