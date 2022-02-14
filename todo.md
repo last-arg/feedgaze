@@ -5,7 +5,6 @@
       - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
   [ ] Reddit
       - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
-  [ ] [Json feed](https://www.jsonfeed.org/)
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
 [ ] UI
   [ ] CLI - initial
