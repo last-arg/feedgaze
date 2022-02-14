@@ -614,7 +614,7 @@ pub const Storage = struct {
         }
     }
 
-    pub const TagCount = struct { name: []const u8, count: u32 };
+    pub const TagCount = struct { name: []u8, count: u32 };
     pub fn getAllTags(self: *Self) ![]TagCount {
         const query = "SELECT tag as name, count(tag) FROM feed_tag GROUP BY tag ORDER BY tag ASC;";
         return try self.db.selectAll(TagCount, query, .{});

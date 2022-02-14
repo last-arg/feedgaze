@@ -249,7 +249,7 @@ const Server = struct {
         var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
         try printFeeds(res, recent_feeds);
 
-        try printTags(res, all_tags, active_tags.items);
+        try printTags(req, res, all_tags, active_tags.items);
     }
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
@@ -343,10 +343,14 @@ const Server = struct {
 
         // Get tags with count
         var tags = try g.storage.getAllTags();
-        try printTags(res, tags, &[_][]const u8{});
+        try printTags(req, res, tags, &[_][]const u8{});
     }
 
-    fn printTags(res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
+    fn printTags(req: Request, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
+        const has_tag_path = std.ascii.startsWithIgnoreCase(req.path, "/tag/");
+        const base_path = if (has_tag_path) req.path else "/tag/";
+        const add_path = if (has_tag_path) "+" else "";
+
         try res.write("<ul>");
         for (tags) |tag| {
             var is_active = false;
@@ -357,18 +361,44 @@ const Server = struct {
                 }
             }
             if (!is_active) {
-                try res.print("<li><button>{s} - {d}</button></li>", .{ tag.name, tag.count });
+                try res.print(
+                    \\<li>
+                    \\<a href='{s}{s}'>{s} - {d}</a>
+                    \\<a href='{s}{s}{s}'>Add</a>
+                    \\</li>
+                , .{ base_path, tag.name, tag.name, tag.count, base_path, add_path, tag.name });
             } else {
-                try res.print("<li>[active] <button>{s} - {d}</button></li>", .{ tag.name, tag.count });
+                var buf: [1024]u8 = undefined;
+                var buf_needle: [128]u8 = undefined;
+                // Needle might have '+' at the end or start
+                // First check for needle '<tag>+' then '+<tag>'
+                var needle = try fmt.bufPrint(&buf_needle, "{s}{s}", .{ tag.name, add_path });
+                if (mem.replace(u8, base_path, needle, "", &buf) == 0) {
+                    needle = try fmt.bufPrint(&buf_needle, "{s}{s}", .{ add_path, tag.name });
+                    _ = mem.replace(u8, base_path, tag.name, "", &buf);
+                }
+                const len = mem.replacementSize(u8, base_path, needle, "");
+
+                try res.print(
+                    \\<li>
+                    \\<a href='{s}{s}'>{s} - {d} [active]</a>
+                    \\<a href='{s}'>Remove</a>
+                    \\</li>
+                , .{ base_path, tag.name, tag.name, tag.count, buf[0..len] });
             }
         }
         try res.write("</ul>");
     }
 };
 
+const global = struct {
+    const ip = "127.0.0.1";
+    const port = 8282;
+};
+
 pub fn run(storage: *Storage) !void {
     print("run server\n", .{});
     var server = Server.init(storage);
-    var addr = try Address.parseIp("127.0.0.1", 8282);
+    var addr = try Address.parseIp(global.ip, global.port);
     try server.server.listen(addr);
 }
