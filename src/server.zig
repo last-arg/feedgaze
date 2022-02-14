@@ -363,10 +363,10 @@ const Server = struct {
             if (!is_active) {
                 try res.print(
                     \\<li>
-                    \\<a href='{s}{s}'>{s} - {d}</a>
+                    \\<a href='/tag/{s}'>{s} - {d}</a>
                     \\<a href='{s}{s}{s}'>Add</a>
                     \\</li>
-                , .{ base_path, tag.name, tag.name, tag.count, base_path, add_path, tag.name });
+                , .{ tag.name, tag.name, tag.count, base_path, add_path, tag.name });
             } else {
                 var buf: [1024]u8 = undefined;
                 var buf_needle: [128]u8 = undefined;
@@ -381,10 +381,10 @@ const Server = struct {
 
                 try res.print(
                     \\<li>
-                    \\<a href='{s}{s}'>{s} - {d} [active]</a>
+                    \\<a href='/tag/{s}'>{s} - {d} [active]</a>
                     \\<a href='{s}'>Remove</a>
                     \\</li>
-                , .{ base_path, tag.name, tag.name, tag.count, buf[0..len] });
+                , .{ tag.name, tag.name, tag.count, buf[0..len] });
             }
         }
         try res.write("</ul>");
