@@ -614,7 +614,7 @@ pub const Storage = struct {
         }
     }
 
-    pub const TagCount = struct { name: []u8, count: u32 };
+    pub const TagCount = struct { name: []const u8, count: u32 };
     pub fn getAllTags(self: *Self) ![]TagCount {
         const query = "SELECT tag as name, count(tag) FROM feed_tag GROUP BY tag ORDER BY tag ASC;";
         return try self.db.selectAll(TagCount, query, .{});
@@ -721,6 +721,13 @@ pub const Storage = struct {
             \\SELECT title, link, pub_date_utc FROM item WHERE feed_id = ?{u64} ORDER BY id DESC;
         ;
         return try self.db.selectAll(Item, query, .{id});
+    }
+
+    pub fn untaggedFeedsCount(self: *Self) !u32 {
+        const query =
+            \\SELECT count(id) from feed where id not in (SELECT DISTINCT feed_id FROM feed_tag);
+        ;
+        return (try self.db.one(u32, query, .{})).?;
     }
 };
 

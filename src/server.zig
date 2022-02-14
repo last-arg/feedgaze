@@ -23,6 +23,7 @@ const log = std.log;
 
 // TODO: how to handle displaying untagged feeds?
 
+const tag_untagged = "untagged";
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 const Server = struct {
     const g = struct {
@@ -266,7 +267,7 @@ const Server = struct {
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
         for (all_tags) |all_tag| {
-            if (mem.eql(u8, tag, all_tag.name)) return true;
+            if (mem.eql(u8, tag, all_tag.name) or mem.eql(u8, tag, tag_untagged)) return true;
         }
         return false;
     }
@@ -364,48 +365,52 @@ const Server = struct {
 
     fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         var fb_alloc = std.heap.stackFallback(1024, allocator);
+        const untagged_count = try g.storage.untaggedFeedsCount();
         try res.write("<ul>");
+        try printTag(fb_alloc.get(), res, .{ .name = tag_untagged, .count = untagged_count }, active_tags);
         for (tags) |tag| {
-            var is_active = false;
-            for (active_tags) |a_tag| {
-                if (mem.eql(u8, tag.name, a_tag)) {
-                    is_active = true;
-                    break;
-                }
-            }
-            if (!is_active) {
-                var alloc = fb_alloc.get();
-                // active_tags.len adds all the pluses (+)
-                var total = active_tags.len + tag.name.len;
-                for (active_tags) |t| total += t.len;
-                var arr_slug = try ArrayList(u8).initCapacity(alloc, total);
-                defer arr_slug.deinit();
-                for (active_tags) |a_tag| {
-                    arr_slug.appendSliceAssumeCapacity(a_tag);
-                    arr_slug.appendAssumeCapacity('+');
-                }
-                arr_slug.appendSliceAssumeCapacity(tag.name);
-
-                try res.print(
-                    \\<li>
-                    \\<a href='/tag/{s}'>{s} - {d}</a>
-                    \\<a href='/tag/{s}'>Add</a>
-                    \\</li>
-                , .{ tag.name, tag.name, tag.count, arr_slug.items });
-            } else {
-                var alloc = fb_alloc.get();
-                const tags_slug = try tagsSlugRemove(alloc, tag.name, active_tags);
-                defer alloc.free(tags_slug);
-
-                try res.print(
-                    \\<li>
-                    \\<a href='/tag/{s}'>{s} - {d} [active]</a>
-                    \\<a href='{s}'>Remove</a>
-                    \\</li>
-                , .{ tag.name, tag.name, tag.count, tags_slug });
-            }
+            try printTag(fb_alloc.get(), res, tag, active_tags);
         }
         try res.write("</ul>");
+    }
+
+    fn printTag(allocator: Allocator, res: Response, tag: Storage.TagCount, active_tags: [][]const u8) !void {
+        var is_active = false;
+        for (active_tags) |a_tag| {
+            if (mem.eql(u8, tag.name, a_tag)) {
+                is_active = true;
+                break;
+            }
+        }
+        if (!is_active) {
+            // active_tags.len adds all the pluses (+)
+            var total = active_tags.len + tag.name.len;
+            for (active_tags) |t| total += t.len;
+            var arr_slug = try ArrayList(u8).initCapacity(allocator, total);
+            defer arr_slug.deinit();
+            for (active_tags) |a_tag| {
+                arr_slug.appendSliceAssumeCapacity(a_tag);
+                arr_slug.appendAssumeCapacity('+');
+            }
+            arr_slug.appendSliceAssumeCapacity(tag.name);
+
+            try res.print(
+                \\<li>
+                \\<a href='/tag/{s}'>{s} - {d}</a>
+                \\<a href='/tag/{s}'>Add</a>
+                \\</li>
+            , .{ tag.name, tag.name, tag.count, arr_slug.items });
+        } else {
+            const tags_slug = try tagsSlugRemove(allocator, tag.name, active_tags);
+            defer allocator.free(tags_slug);
+
+            try res.print(
+                \\<li>
+                \\<a href='/tag/{s}'>{s} - {d} [active]</a>
+                \\<a href='{s}'>Remove</a>
+                \\</li>
+            , .{ tag.name, tag.name, tag.count, tags_slug });
+        }
     }
 
     // caller owns the memory
