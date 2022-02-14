@@ -220,14 +220,14 @@ const Server = struct {
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
-        _ = req;
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
         var all_tags = try g.storage.getAllTags();
 
-        var active_tags = ArrayList([]const u8).init(allocator);
+        var active_tags = try ArrayList([]const u8).initCapacity(allocator, 3);
         defer active_tags.deinit();
 
+        // application/x-www-form-urlencoded encodes spaces as pluses (+)
         var it = mem.split(u8, args.tags, "+");
         while (it.next()) |tag| {
             if (hasTag(all_tags, tag)) {
@@ -236,16 +236,32 @@ const Server = struct {
             }
         }
 
-        try res.write("<p>Active tags: ");
-        {
-            const first_tag = active_tags.items[0];
-            try res.write(first_tag);
+        try res.write("<a href='/'>Home</a>");
+
+        try res.write("<p>Active tags:</p> ");
+
+        try res.write("<ul>");
+        if (active_tags.items.len == 1) {
+            try res.print("<li><a href='/'>{s}</a></li>", .{active_tags.items[0]});
+        } else {
+            var fb_alloc = std.heap.stackFallback(1024, arena.allocator());
+            for (active_tags.items) |a_tag| {
+                var arr_tags = try ArrayList(u8).initCapacity(fb_alloc.get(), req.path.len);
+                defer arr_tags.deinit();
+                var has_first = false;
+                for (active_tags.items) |path_tag| {
+                    if (mem.eql(u8, a_tag, path_tag)) continue;
+                    if (has_first) {
+                        arr_tags.appendAssumeCapacity('+');
+                    }
+                    has_first = true;
+                    arr_tags.appendSliceAssumeCapacity(path_tag);
+                }
+
+                try res.print("<li><a href='/tag/{s}'>{s}</a></li>", .{ arr_tags.items, a_tag });
+            }
         }
-        for (active_tags.items[1..]) |a_tag| {
-            try res.write(",");
-            try res.write(a_tag);
-        }
-        try res.write("</p>");
+        try res.write("</ul>");
 
         var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
         try printFeeds(res, recent_feeds);
