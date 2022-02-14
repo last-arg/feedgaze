@@ -221,6 +221,7 @@ const Server = struct {
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
+        _ = req;
         var arena = std.heap.ArenaAllocator.init(global_allocator);
         defer arena.deinit();
         var all_tags = try g.storage.getAllTags();
@@ -260,7 +261,7 @@ const Server = struct {
         try printFeeds(res, recent_feeds);
 
         try res.write("<p>All Tags</p>");
-        try printTags(arena.allocator(), req, res, all_tags, active_tags.items);
+        try printTags(arena.allocator(), res, all_tags, active_tags.items);
     }
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
@@ -358,13 +359,10 @@ const Server = struct {
         // Get tags with count
         var tags = try g.storage.getAllTags();
         try res.write("<p>All Tags</p>");
-        try printTags(global_allocator, req, res, tags, &[_][]const u8{});
+        try printTags(global_allocator, res, tags, &[_][]const u8{});
     }
 
-    fn printTags(allocator: Allocator, req: Request, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
-        const has_tag_path = std.ascii.startsWithIgnoreCase(req.path, "/tag/");
-        const add_path = if (has_tag_path) "+" else "";
-
+    fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         var fb_alloc = std.heap.stackFallback(1024, allocator);
         try res.write("<ul>");
         for (tags) |tag| {
@@ -376,12 +374,24 @@ const Server = struct {
                 }
             }
             if (!is_active) {
+                var alloc = fb_alloc.get();
+                // active_tags.len adds all the pluses (+)
+                var total = active_tags.len + tag.name.len;
+                for (active_tags) |t| total += t.len;
+                var arr_slug = try ArrayList(u8).initCapacity(alloc, total);
+                defer arr_slug.deinit();
+                for (active_tags) |a_tag| {
+                    arr_slug.appendSliceAssumeCapacity(a_tag);
+                    arr_slug.appendAssumeCapacity('+');
+                }
+                arr_slug.appendSliceAssumeCapacity(tag.name);
+
                 try res.print(
                     \\<li>
                     \\<a href='/tag/{s}'>{s} - {d}</a>
-                    \\<a href='/tag/{s}{s}'>Add</a>
+                    \\<a href='/tag/{s}'>Add</a>
                     \\</li>
-                , .{ tag.name, tag.name, tag.count, add_path, tag.name });
+                , .{ tag.name, tag.name, tag.count, arr_slug.items });
             } else {
                 var alloc = fb_alloc.get();
                 const tags_slug = try tagsSlugRemove(alloc, tag.name, active_tags);
