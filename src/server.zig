@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
 const builtin = @import("builtin");
 const routez = @import("routez");
@@ -7,7 +8,7 @@ const RoutezServer = routez.Server;
 const Request = routez.Request;
 const Response = routez.Response;
 const print = std.debug.print;
-const allocator = std.heap.page_allocator;
+const global_allocator = std.heap.page_allocator;
 const Address = std.net.Address;
 const Storage = @import("feed_db.zig").Storage;
 const ArrayList = std.ArrayList;
@@ -33,7 +34,7 @@ const Server = struct {
     pub fn init(storage: *Storage) Self {
         g.storage = storage;
         var server = RoutezServer.init(
-            allocator,
+            global_allocator,
             .{},
             .{
                 routez.all("/", indexHandler),
@@ -85,7 +86,7 @@ const Server = struct {
         print("{s}\n", .{req.body});
         _ = res;
 
-        var arena = std.heap.ArenaAllocator.init(allocator);
+        var arena = std.heap.ArenaAllocator.init(global_allocator);
         defer arena.deinit();
         try res.write("<p>Add feed</p>");
         if (try req.headers.get(arena.allocator(), "referer")) |headers| {
@@ -220,11 +221,11 @@ const Server = struct {
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
-        var arena = std.heap.ArenaAllocator.init(allocator);
+        var arena = std.heap.ArenaAllocator.init(global_allocator);
         defer arena.deinit();
         var all_tags = try g.storage.getAllTags();
 
-        var active_tags = try ArrayList([]const u8).initCapacity(allocator, 3);
+        var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
 
         // application/x-www-form-urlencoded encodes spaces as pluses (+)
@@ -246,27 +247,18 @@ const Server = struct {
         } else {
             var fb_alloc = std.heap.stackFallback(1024, arena.allocator());
             for (active_tags.items) |a_tag| {
-                var arr_tags = try ArrayList(u8).initCapacity(fb_alloc.get(), req.path.len);
-                defer arr_tags.deinit();
-                var has_first = false;
-                for (active_tags.items) |path_tag| {
-                    if (mem.eql(u8, a_tag, path_tag)) continue;
-                    if (has_first) {
-                        arr_tags.appendAssumeCapacity('+');
-                    }
-                    has_first = true;
-                    arr_tags.appendSliceAssumeCapacity(path_tag);
-                }
-
-                try res.print("<li><a href='/tag/{s}'>{s}</a></li>", .{ arr_tags.items, a_tag });
+                const tags_slug = try tagsSlugRemove(fb_alloc.get(), a_tag, active_tags.items);
+                try res.print("<li><a href='/tag/{s}'>{s}</a></li>", .{ tags_slug, a_tag });
             }
         }
         try res.write("</ul>");
 
         var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
+        try res.write("<p>Feeds</p>");
         try printFeeds(res, recent_feeds);
 
-        try printTags(req, res, all_tags, active_tags.items);
+        try res.write("<p>All Tags</p>");
+        try printTags(arena.allocator(), req, res, all_tags, active_tags.items);
     }
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
@@ -358,18 +350,21 @@ const Server = struct {
         _ = req;
         // Get most recently update feeds
         var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
+        try res.write("<p>Feeds</p>");
         try printFeeds(res, recent_feeds);
 
         // Get tags with count
         var tags = try g.storage.getAllTags();
-        try printTags(req, res, tags, &[_][]const u8{});
+        try res.write("<p>All Tags</p>");
+        try printTags(global_allocator, req, res, tags, &[_][]const u8{});
     }
 
-    fn printTags(req: Request, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
+    fn printTags(allocator: Allocator, req: Request, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         const has_tag_path = std.ascii.startsWithIgnoreCase(req.path, "/tag/");
         const base_path = if (has_tag_path) req.path else "/tag/";
         const add_path = if (has_tag_path) "+" else "";
 
+        var fb_alloc = std.heap.stackFallback(1024, allocator);
         try res.write("<ul>");
         for (tags) |tag| {
             var is_active = false;
@@ -387,26 +382,32 @@ const Server = struct {
                     \\</li>
                 , .{ tag.name, tag.name, tag.count, base_path, add_path, tag.name });
             } else {
-                var buf: [1024]u8 = undefined;
-                var buf_needle: [128]u8 = undefined;
-                // Needle might have '+' at the end or start
-                // First check for needle '<tag>+' then '+<tag>'
-                var needle = try fmt.bufPrint(&buf_needle, "{s}{s}", .{ tag.name, add_path });
-                if (mem.replace(u8, base_path, needle, "", &buf) == 0) {
-                    needle = try fmt.bufPrint(&buf_needle, "{s}{s}", .{ add_path, tag.name });
-                    _ = mem.replace(u8, base_path, tag.name, "", &buf);
-                }
-                const len = mem.replacementSize(u8, base_path, needle, "");
-
+                const tags_slug = try tagsSlugRemove(fb_alloc.get(), tag.name, active_tags);
                 try res.print(
                     \\<li>
                     \\<a href='/tag/{s}'>{s} - {d} [active]</a>
                     \\<a href='{s}'>Remove</a>
                     \\</li>
-                , .{ tag.name, tag.name, tag.count, buf[0..len] });
+                , .{ tag.name, tag.name, tag.count, tags_slug });
             }
         }
         try res.write("</ul>");
+    }
+
+    // caller owns the memory
+    fn tagsSlugRemove(allocator: Allocator, cmp_tag: []const u8, active_tags: [][]const u8) ![]const u8 {
+        var arr_tags = try ArrayList(u8).initCapacity(allocator, 2);
+        defer arr_tags.deinit();
+        var has_first = false;
+        for (active_tags) |path_tag| {
+            if (mem.eql(u8, cmp_tag, path_tag)) continue;
+            if (has_first) {
+                try arr_tags.append('+');
+            }
+            has_first = true;
+            try arr_tags.appendSlice(path_tag);
+        }
+        return arr_tags.toOwnedSlice();
     }
 };
 
