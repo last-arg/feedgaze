@@ -247,7 +247,9 @@ const Server = struct {
         } else {
             var fb_alloc = std.heap.stackFallback(1024, arena.allocator());
             for (active_tags.items) |a_tag| {
+                var alloc = fb_alloc.get();
                 const tags_slug = try tagsSlugRemove(fb_alloc.get(), a_tag, active_tags.items);
+                defer alloc.free(tags_slug);
                 try res.print("<li><a href='/tag/{s}'>{s}</a></li>", .{ tags_slug, a_tag });
             }
         }
@@ -361,7 +363,6 @@ const Server = struct {
 
     fn printTags(allocator: Allocator, req: Request, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         const has_tag_path = std.ascii.startsWithIgnoreCase(req.path, "/tag/");
-        const base_path = if (has_tag_path) req.path else "/tag/";
         const add_path = if (has_tag_path) "+" else "";
 
         var fb_alloc = std.heap.stackFallback(1024, allocator);
@@ -378,11 +379,14 @@ const Server = struct {
                 try res.print(
                     \\<li>
                     \\<a href='/tag/{s}'>{s} - {d}</a>
-                    \\<a href='{s}{s}{s}'>Add</a>
+                    \\<a href='/tag/{s}{s}'>Add</a>
                     \\</li>
-                , .{ tag.name, tag.name, tag.count, base_path, add_path, tag.name });
+                , .{ tag.name, tag.name, tag.count, add_path, tag.name });
             } else {
-                const tags_slug = try tagsSlugRemove(fb_alloc.get(), tag.name, active_tags);
+                var alloc = fb_alloc.get();
+                const tags_slug = try tagsSlugRemove(alloc, tag.name, active_tags);
+                defer alloc.free(tags_slug);
+
                 try res.print(
                     \\<li>
                     \\<a href='/tag/{s}'>{s} - {d} [active]</a>
