@@ -174,44 +174,48 @@ const Server = struct {
                 },
                 .xml => {
                     const feed = try parse.parse(&arena, resp_ok.body);
-
-                    var savepoint = try g.storage.db.sql_db.savepoint("addFeedUrl");
-                    defer savepoint.rollback();
-                    const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
-                    if (try g.storage.db.one(Storage.CurrentData, query, .{url})) |row| {
-                        try g.storage.updateUrlFeed(.{
-                            .current = row,
-                            .headers = resp.ok.headers,
-                            .feed = feed,
-                        }, .{ .force = true });
-                        try g.storage.addTags(row.feed_id, tags_input);
-                        try res.print("Feed {s} already exists. Feed updated instead.\n", .{url});
-                    } else {
-                        const feed_id = try g.storage.addFeed(feed, url);
-                        try g.storage.addFeedUrl(feed_id, resp.ok.headers);
-                        try g.storage.addItems(feed_id, feed.items);
-                        try g.storage.addTags(feed_id, tags_input);
-                        try res.print("Added feed {s}\n", .{url});
-                    }
-                    savepoint.commit();
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .xml_atom => {
-                    try res.write("TODO: atom");
+                    const feed = try parse.Atom.parse(&arena, resp_ok.body);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .xml_rss => {
-                    try res.write("TODO: rss");
+                    const feed = try parse.Rss.parse(&arena, resp_ok.body);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
-                .json => {
-                    try res.write("TODO: json");
-                },
-                .json_feed => {
-                    try res.write("TODO: json_feed");
+                .json, .json_feed => {
+                    const feed = try parse.Json.parse(&arena, resp_ok.body);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .unknown => {
-                    try res.write("TODO: unknown");
+                    const feed = parse.parse(&arena, resp_ok.body) catch try parse.Json.parse(&arena, resp_ok.body);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
             }
         }
+    }
+
+    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !void {
+        var savepoint = try g.storage.db.sql_db.savepoint("server add feed");
+        defer savepoint.rollback();
+        const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
+        if (try g.storage.db.one(Storage.CurrentData, query, .{url})) |row| {
+            try g.storage.updateUrlFeed(.{
+                .current = row,
+                .headers = headers,
+                .feed = feed,
+            }, .{ .force = true });
+            try g.storage.addTags(row.feed_id, tags);
+            try res.print("Feed {s} already exists. Feed updated instead.\n", .{url});
+        } else {
+            const feed_id = try g.storage.addFeed(feed, url);
+            try g.storage.addFeedUrl(feed_id, headers);
+            try g.storage.addItems(feed_id, feed.items);
+            try g.storage.addTags(feed_id, tags);
+            try res.print("Added feed {s}\n", .{url});
+        }
+        savepoint.commit();
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
