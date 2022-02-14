@@ -90,7 +90,7 @@ const Server = struct {
         if (try req.headers.get(arena.allocator(), "referer")) |headers| {
             print("Headers (referer): {s}\n", .{headers});
             const referer = headers[0];
-            try res.print("Referer: {s}\n", .{referer.value});
+            try res.print("<p>Referer: {s}</p>", .{referer.value});
         }
 
         // Get submitted form values
@@ -109,7 +109,7 @@ const Server = struct {
             }
         }
         if (add_urls.items.len == 0) {
-            try res.write("No urls found\n");
+            try res.write("<p>No url entered</p>");
             // TODO: no urls to add
             // redirect to /feed/add (GET)
             return;
@@ -173,7 +173,27 @@ const Server = struct {
                     }
                 },
                 .xml => {
-                    try res.write("TODO: xml");
+                    const feed = try parse.parse(&arena, resp_ok.body);
+
+                    var savepoint = try g.storage.db.sql_db.savepoint("addFeedUrl");
+                    defer savepoint.rollback();
+                    const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
+                    if (try g.storage.db.one(Storage.CurrentData, query, .{url})) |row| {
+                        try g.storage.updateUrlFeed(.{
+                            .current = row,
+                            .headers = resp.ok.headers,
+                            .feed = feed,
+                        }, .{ .force = true });
+                        try g.storage.addTags(row.feed_id, tags_input);
+                        try res.print("Feed {s} already exists. Feed updated instead.\n", .{url});
+                    } else {
+                        const feed_id = try g.storage.addFeed(feed, url);
+                        try g.storage.addFeedUrl(feed_id, resp.ok.headers);
+                        try g.storage.addItems(feed_id, feed.items);
+                        try g.storage.addTags(feed_id, tags_input);
+                        try res.print("Added feed {s}\n", .{url});
+                    }
+                    savepoint.commit();
                 },
                 .xml_atom => {
                     try res.write("TODO: atom");
