@@ -197,7 +197,7 @@ pub const Storage = struct {
         }
         // Make sure there is no 'untagged' tag
         const del_query = comptime fmt.comptimePrint(
-            "delete from feed_tag where feed_id = ? and tag = {s};",
+            "delete from feed_tag where feed_id = ? and tag = '{s}';",
             .{g.tag_untagged},
         );
         try self.db.exec(del_query, .{id});
@@ -615,7 +615,7 @@ pub const Storage = struct {
             (try self.db.one(void, "SELECT 1 FROM feed_tag WHERE id = ? LIMIT 1", .{feed_id})) != null;
 
         if (!has_tags) {
-            const insert_query = comptime fmt.comptimePrint("insert into feed_tag (feed_id, tag) values (?, {s})", .{g.tag_untagged});
+            const insert_query = comptime fmt.comptimePrint("insert into feed_tag (feed_id, tag) values (?, '{s}')", .{g.tag_untagged});
             try self.db.exec(insert_query, .{feed_id});
         }
     }
