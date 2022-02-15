@@ -1,7 +1,6 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const ArrayList = std.ArrayList;
 const fs = std.fs;
 const log = std.log;
 const parse = @import("parse.zig");
@@ -79,16 +78,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn addFeed(
             self: *Self,
             locations: []const []const u8,
-            tags_input: []const u8, // comma separated
+            tags: []const u8, // comma separated
         ) !void {
-            var arr_tags = ArrayList([]const u8).init(self.allocator);
-            defer arr_tags.deinit();
-            var tag_iter = mem.tokenize(u8, tags_input, " ,");
-            while (tag_iter.next()) |tag| {
-                try arr_tags.append(tag);
-            }
-            const tags = arr_tags.items;
-
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
             for (locations) |location| {
                 if (self.options.local) {
@@ -114,7 +105,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: [][]const u8) !void {
+        pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const feed = blk: {
@@ -147,7 +138,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             savepoint.commit();
         }
 
-        pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: [][]const u8) !void {
+        pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const writer = self.writer;

@@ -10,8 +10,7 @@ const Response = routez.Response;
 const print = std.debug.print;
 const global_allocator = std.heap.page_allocator;
 const Address = std.net.Address;
-const s = @import("feed_db.zig");
-const Storage = s.Storage;
+const Storage = @import("feed_db.zig").Storage;
 const ArrayList = std.ArrayList;
 const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
@@ -21,8 +20,10 @@ const zuri = @import("zuri");
 const log = std.log;
 
 // pub const io_mode = .evented;
+
 // TODO: how to handle displaying untagged feeds?
 
+const tag_untagged = "untagged";
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 const Server = struct {
     const g = struct {
@@ -117,14 +118,6 @@ const Server = struct {
             return;
         }
 
-        var arr_tags = ArrayList([]const u8).init(arena.allocator());
-        defer arr_tags.deinit();
-        var tag_iter = mem.tokenize(u8, tags_input, " ,");
-        while (tag_iter.next()) |tag| {
-            try arr_tags.append(tag);
-        }
-        const tags = arr_tags.items;
-
         for (add_urls.items) |input_url| {
             const url = try url_util.makeValidUrl(arena.allocator(), input_url);
             print("url: {s}\n", .{url});
@@ -147,14 +140,14 @@ const Server = struct {
                 .html => {
                     const html_data = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
                     if (html_data.links.len > 0) {
-                        const form_tags = "TODO";
+                        const tags = "TODO";
                         try res.write("<form action='/feed/add' method='POST'>");
                         { // form
                             try res.print("<p>Url: {s}</p>", .{url});
                             try res.print(
                                 \\<label for="tags">Tags</label>
                                 \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
-                            , .{form_tags});
+                            , .{tags});
                             try res.write("<fieldset><ul>");
                             { // fieldset
                                 try res.write("<legend>Pick feed(s) to add</legend>");
@@ -184,29 +177,29 @@ const Server = struct {
                 },
                 .xml => {
                     const feed = try parse.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .xml_atom => {
                     const feed = try parse.Atom.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .xml_rss => {
                     const feed = try parse.Rss.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .json, .json_feed => {
                     const feed = try parse.Json.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
                 .unknown => {
                     const feed = parse.parse(&arena, resp_ok.body) catch try parse.Json.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags);
+                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
                 },
             }
         }
     }
 
-    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: [][]const u8) !void {
+    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !void {
         var savepoint = try g.storage.db.sql_db.savepoint("server add feed");
         defer savepoint.rollback();
         const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
@@ -274,7 +267,7 @@ const Server = struct {
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
         for (all_tags) |all_tag| {
-            if (mem.eql(u8, tag, all_tag.name)) return true;
+            if (mem.eql(u8, tag, all_tag.name) or mem.eql(u8, tag, tag_untagged)) return true;
         }
         return false;
     }
@@ -372,6 +365,9 @@ const Server = struct {
 
     fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         var fb_alloc = std.heap.stackFallback(1024, allocator);
+        const untagged_count = try g.storage.untaggedFeedsCount();
+        try res.write("<ul>");
+        try printTag(fb_alloc.get(), res, .{ .name = tag_untagged, .count = untagged_count }, active_tags);
         for (tags) |tag| {
             try printTag(fb_alloc.get(), res, tag, active_tags);
         }

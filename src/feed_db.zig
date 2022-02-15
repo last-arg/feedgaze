@@ -22,7 +22,6 @@ const Table = @import("queries.zig").Table;
 
 pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
-    pub const tag_untagged = "untagged";
 };
 
 pub const Storage = struct {
@@ -185,13 +184,14 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addTags(self: *Self, id: u64, tags: [][]const u8) !void {
+    pub fn addTags(self: *Self, id: u64, tags: []const u8) !void {
         if (tags.len == 0) return;
         const query =
             \\INSERT INTO feed_tag VALUES (?, ?)
             \\ON CONFLICT(feed_id, tag) DO NOTHING;
         ;
-        for (tags) |tag| {
+        var iter = mem.split(u8, tags, ",");
+        while (iter.next()) |tag| {
             try self.db.exec(query, .{ id, mem.trim(u8, tag, " +") });
         }
     }
@@ -576,7 +576,10 @@ pub const Storage = struct {
             log.err("Failed to find feed with location '{s}'", .{location});
             return;
         };
-        try self.addTags(feed_id, tags);
+        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ feed_id, tag });
+        }
     }
 
     pub fn addTagsById(self: *Self, tags: [][]const u8, feed_id: u64) !void {
@@ -584,7 +587,10 @@ pub const Storage = struct {
             log.err("Failed to find feed with id '{d}'", .{feed_id});
             return;
         };
-        try self.addTags(feed_id, tags);
+        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
+        for (tags) |tag| {
+            try self.db.exec(query, .{ feed_id, tag });
+        }
     }
 
     pub fn removeTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
