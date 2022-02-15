@@ -49,9 +49,6 @@ const Server = struct {
     }
 
     fn feedAddHandler(req: Request, res: Response) !void {
-        print("{}\n", .{req});
-        print("{}\n", .{res});
-
         if (mem.eql(u8, req.method, "POST")) {
             try feedAddPost(req, res);
         } else if (mem.eql(u8, req.method, "GET")) {
@@ -108,7 +105,6 @@ const Server = struct {
         defer arena.deinit();
         try res.write("<p>Add feed</p>");
         if (try req.headers.get(arena.allocator(), "referer")) |headers| {
-            print("Headers (referer): {s}\n", .{headers});
             const referer = headers[0];
             try res.print("<p>Referer: {s}</p>", .{referer.value});
         }
@@ -121,10 +117,11 @@ const Server = struct {
         while (iter.next()) |key_value| {
             var iter_key_value = mem.split(u8, key_value, "=");
             const key = iter_key_value.next() orelse continue;
-            const value = iter_key_value.next() orelse continue;
+            var value = iter_key_value.next() orelse continue;
             if (mem.eql(u8, "feed_url", key) or mem.eql(u8, "feed_pick", key)) {
                 try add_urls.append(mem.trim(u8, value, "+"));
             } else if (mem.eql(u8, "tags", key)) {
+                mem.replaceScalar(u8, @ptrCast(*[]u8, &value).*, '+', ' ');
                 tags_input = value;
             }
         }
@@ -135,10 +132,11 @@ const Server = struct {
             return;
         }
 
+        // TODO: Handle forms for adding link and adding links (html links) differently?
+
         var added_ids = ArrayList(u8).init(arena.allocator());
         for (add_urls.items) |input_url| {
             const url = try url_util.makeValidUrl(arena.allocator(), input_url);
-            print("url: {s}\n", .{url});
             var resp = try http.resolveRequest(&arena, url, null, null);
 
             const resp_ok = switch (resp) {
@@ -158,14 +156,16 @@ const Server = struct {
                 .html => {
                     const html_data = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
                     if (html_data.links.len > 0) {
-                        const tags = "TODO";
                         try res.write("<form action='/feed/add' method='POST'>");
                         { // form
                             try res.print("<p>Url: {s}</p>", .{url});
+                            // TODO: add hidden input for url
+                            // Needed if no feed urls were picked
+                            try res.print("<input type='hidden' name='feed_url' value='{s}'>", .{url});
                             try res.print(
                                 \\<label for="tags">Tags</label>
                                 \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
-                            , .{tags});
+                            , .{tags_input});
                             try res.write("<fieldset><ul>");
                             { // fieldset
                                 try res.write("<legend>Pick feed(s) to add</legend>");
