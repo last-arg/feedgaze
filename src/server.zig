@@ -51,6 +51,7 @@ const Server = struct {
     fn feedAddHandler(req: Request, res: Response) !void {
         print("{}\n", .{req});
         print("{}\n", .{res});
+
         if (mem.eql(u8, req.method, "POST")) {
             try feedAddPost(req, res);
         } else if (mem.eql(u8, req.method, "GET")) {
@@ -61,7 +62,32 @@ const Server = struct {
     }
 
     fn feedAddGet(req: Request, res: Response) !void {
-        _ = req;
+        var arena = std.heap.ArenaAllocator.init(global_allocator);
+        defer arena.deinit();
+
+        if (try req.headers.get(arena.allocator(), "cookie")) |headers| {
+            try res.write("<p>Added feed(s)</p>");
+            try res.write("<ul>");
+            for (headers) |header| {
+                var iter = mem.split(u8, header.value, "=");
+                if (iter.next()) |key| {
+                    if (!mem.eql(u8, "feed_id", key)) continue;
+                }
+                if (iter.next()) |ids| {
+                    var ids_iter = mem.split(u8, ids, ",");
+                    while (ids_iter.next()) |nr| {
+                        const feed_id = try fmt.parseUnsigned(u64, nr, 10);
+                        if (try g.storage.getFeedById(feed_id)) |feed| {
+                            const link = feed.link orelse "<no-link>";
+                            try res.print("<li>{s} - {s}</li>", .{ feed.title, link });
+                        }
+                    }
+                }
+            }
+            try res.write("</ul>");
+            try res.headers.put("Set-Cookie", "feed_id=; path=/feed/add; Max-Age=0");
+        }
+
         try res.write(
             \\<form action="/feed/add" method="POST">
             \\<div>
@@ -78,14 +104,6 @@ const Server = struct {
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
-        print("{s}\n", .{req.path});
-        print("{s}\n", .{req.query});
-        for (req.headers.list.items) |h| {
-            print("{s}: {s}\n", .{ h.name, h.value });
-        }
-        print("{s}\n", .{req.body});
-        _ = res;
-
         var arena = std.heap.ArenaAllocator.init(global_allocator);
         defer arena.deinit();
         try res.write("<p>Add feed</p>");
@@ -112,11 +130,12 @@ const Server = struct {
         }
         if (add_urls.items.len == 0) {
             try res.write("<p>No url entered</p>");
-            // TODO: no urls to add
-            // redirect to /feed/add (GET)
+            // TODO: print form with message "No url entered"
+            // redirect to back to GET /feed/add ?
             return;
         }
 
+        var added_ids = ArrayList(u8).init(arena.allocator());
         for (add_urls.items) |input_url| {
             const url = try url_util.makeValidUrl(arena.allocator(), input_url);
             print("url: {s}\n", .{url});
@@ -135,7 +154,7 @@ const Server = struct {
                 },
             };
 
-            switch (resp_ok.content_type) {
+            const feed = switch (resp_ok.content_type) {
                 .html => {
                     const html_data = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
                     if (html_data.links.len > 0) {
@@ -173,35 +192,32 @@ const Server = struct {
                     } else {
                         try res.print("<p>No feed links found in {s}", .{url});
                     }
+                    // continue;
+                    return;
                 },
-                .xml => {
-                    const feed = try parse.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
-                },
-                .xml_atom => {
-                    const feed = try parse.Atom.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
-                },
-                .xml_rss => {
-                    const feed = try parse.Rss.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
-                },
-                .json, .json_feed => {
-                    const feed = try parse.Json.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
-                },
-                .unknown => {
-                    const feed = parse.parse(&arena, resp_ok.body) catch try parse.Json.parse(&arena, resp_ok.body);
-                    try addFeed(res, feed, resp_ok.headers, url, tags_input);
-                },
+                .xml => try parse.parse(&arena, resp_ok.body),
+                .xml_atom => try parse.Atom.parse(&arena, resp_ok.body),
+                .xml_rss => try parse.Rss.parse(&arena, resp_ok.body),
+                .json, .json_feed => try parse.Json.parse(&arena, resp_ok.body),
+                .unknown => parse.parse(&arena, resp_ok.body) catch try parse.Json.parse(&arena, resp_ok.body),
+            };
+            const feed_id = try addFeed(res, feed, resp_ok.headers, url, tags_input);
+            if (added_ids.items.len > 0) {
+                try added_ids.append(',');
             }
+            var buf: [20]u8 = undefined;
+            try added_ids.appendSlice(try fmt.bufPrint(&buf, "{d}", .{feed_id}));
         }
+        try res.headers.put("Set-Cookie", try fmt.allocPrint(arena.allocator(), "feed_id={s}; path=/feed/add", .{added_ids.items}));
+        res.status_code = .Found;
+        try res.headers.put("Location", "/feed/add");
     }
 
-    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !void {
-        var savepoint = try g.storage.db.sql_db.savepoint("server add feed");
+    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
+        var savepoint = try g.storage.db.sql_db.savepoint("server_addFeed");
         defer savepoint.rollback();
         const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
+        var feed_id: u64 = 0;
         if (try g.storage.db.one(Storage.CurrentData, query, .{url})) |row| {
             try g.storage.updateUrlFeed(.{
                 .current = row,
@@ -210,14 +226,16 @@ const Server = struct {
             }, .{ .force = true });
             try g.storage.addTags(row.feed_id, tags);
             try res.print("Feed {s} already exists. Feed updated instead.\n", .{url});
+            feed_id = row.feed_id;
         } else {
-            const feed_id = try g.storage.addFeed(feed, url);
+            feed_id = try g.storage.addFeed(feed, url);
             try g.storage.addFeedUrl(feed_id, headers);
             try g.storage.addItems(feed_id, feed.items);
             try g.storage.addTags(feed_id, tags);
             try res.print("Added feed {s}\n", .{url});
         }
         savepoint.commit();
+        return feed_id;
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
