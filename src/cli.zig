@@ -1,6 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
+const ArrayList = std.ArrayList;
 const fs = std.fs;
 const log = std.log;
 const parse = @import("parse.zig");
@@ -363,12 +364,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn tagCmd(self: *Self, tags: [][]const u8, args: TagArgs) !void {
             assert(args.id != 0 or args.location.len != 0);
             assert(args.action != .none);
+
             switch (args.action) {
                 .add => {
+                    var cap = tags.len - 1; // commas
+                    for (tags) |tag| cap += tag.len;
+                    var arr_tags = try ArrayList(u8).initCapacity(self.allocator, cap);
+                    if (tags.len > 0) {
+                        arr_tags.appendSliceAssumeCapacity(tags[0]);
+                        for (tags[1..]) |tag| {
+                            arr_tags.appendAssumeCapacity(',');
+                            arr_tags.appendSliceAssumeCapacity(tag);
+                        }
+                    }
                     if (args.id != 0) {
-                        try self.feed_db.addTagsById(tags, args.id);
+                        try self.feed_db.addTagsById(arr_tags.items, args.id);
                     } else if (args.location.len != 0) {
-                        try self.feed_db.addTagsByLocation(tags, args.location);
+                        try self.feed_db.addTagsByLocation(arr_tags.items, args.location);
                     }
                 },
                 .remove => {

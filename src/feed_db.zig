@@ -571,26 +571,20 @@ pub const Storage = struct {
         return results;
     }
 
-    pub fn addTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
+    pub fn addTagsByLocation(self: *Self, tags: []const u8, location: []const u8) !void {
         const feed_id = (try self.db.one(u64, "select id from feed where location = ?;", .{location})) orelse {
             log.err("Failed to find feed with location '{s}'", .{location});
             return;
         };
-        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
-        for (tags) |tag| {
-            try self.db.exec(query, .{ feed_id, tag });
-        }
+        try self.addTags(feed_id, tags);
     }
 
-    pub fn addTagsById(self: *Self, tags: [][]const u8, feed_id: u64) !void {
+    pub fn addTagsById(self: *Self, tags: []const u8, feed_id: u64) !void {
         _ = (try self.db.one(void, "select id from feed where id = ?;", .{feed_id})) orelse {
             log.err("Failed to find feed with id '{d}'", .{feed_id});
             return;
         };
-        const query = "INSERT INTO feed_tag (feed_id, tag) VALUES (?, ?) ON CONFLICT(feed_id, tag) DO NOTHING;";
-        for (tags) |tag| {
-            try self.db.exec(query, .{ feed_id, tag });
-        }
+        try self.addTags(feed_id, tags);
     }
 
     pub fn removeTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
