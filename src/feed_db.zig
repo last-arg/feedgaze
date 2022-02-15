@@ -595,10 +595,11 @@ pub const Storage = struct {
     }
 
     pub fn removeTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
-        const query = "DELETE FROM feed_tag WHERE tag = ? AND location = (SELECT id FROM feed WHERE location = ?);";
-        for (tags) |tag| {
-            try self.db.exec(query, .{ tag, location });
-        }
+        const feed_id = (try self.db.one(u64, "SELECT id FROM feed WHERE location = ?;", .{location})) orelse {
+            log.warn("Couldn't find location '{s}'", .{location});
+            return;
+        };
+        try self.removeTagsById(tags, feed_id);
     }
 
     pub fn removeTagsById(self: *Self, tags: [][]const u8, id: u64) !void {
@@ -606,12 +607,26 @@ pub const Storage = struct {
         for (tags) |tag| {
             try self.db.exec(query, .{ tag, id });
         }
+        try self.untaggedCheck(id);
+    }
+
+    pub fn untaggedCheck(self: *Self, feed_id: u64) !void {
+        const has_tags =
+            (try self.db.one(void, "SELECT 1 FROM feed_tag WHERE id = ? LIMIT 1", .{feed_id})) != null;
+
+        if (!has_tags) {
+            const insert_query = comptime fmt.comptimePrint("insert into feed_tag (feed_id, tag) values (?, {s})", .{g.tag_untagged});
+            try self.db.exec(insert_query, .{feed_id});
+        }
     }
 
     pub fn removeTags(self: *Self, tags: [][]const u8) !void {
-        const query = "DELETE FROM feed_tag WHERE tag = ?;";
+        const query = "DELETE FROM feed_tag WHERE tag = ? RETURNING feed_id;";
         for (tags) |tag| {
-            try self.db.exec(query, .{tag});
+            const feed_ids = try self.db.selectAll(u64, query, .{tag});
+            for (feed_ids) |feed_id| {
+                try self.untaggedCheck(feed_id);
+            }
         }
     }
 
