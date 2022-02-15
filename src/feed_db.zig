@@ -636,6 +636,14 @@ pub const Storage = struct {
         return try self.db.selectAll(TagCount, query, .{});
     }
 
+    pub const Feed = struct {
+        title: []const u8,
+        link: ?[]const u8,
+    };
+    pub fn getFeedById(self: *Self, id: u64) !?Feed {
+        return try self.db.oneAlloc(Feed, "select title, link from feed where id = ? limit 1;", .{id});
+    }
+
     pub const RecentFeed = struct {
         id: u64,
         updated_timestamp: ?i64,
