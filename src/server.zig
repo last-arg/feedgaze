@@ -23,7 +23,6 @@ const log = std.log;
 
 // TODO: how to handle displaying untagged feeds?
 
-const tag_untagged = "untagged";
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 const Server = struct {
     const g = struct {
@@ -267,7 +266,7 @@ const Server = struct {
 
     fn hasTag(all_tags: []Storage.TagCount, tag: []const u8) bool {
         for (all_tags) |all_tag| {
-            if (mem.eql(u8, tag, all_tag.name) or mem.eql(u8, tag, tag_untagged)) return true;
+            if (mem.eql(u8, tag, all_tag.name)) return true;
         }
         return false;
     }
@@ -365,9 +364,7 @@ const Server = struct {
 
     fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
         var fb_alloc = std.heap.stackFallback(1024, allocator);
-        const untagged_count = try g.storage.untaggedFeedsCount();
         try res.write("<ul>");
-        try printTag(fb_alloc.get(), res, .{ .name = tag_untagged, .count = untagged_count }, active_tags);
         for (tags) |tag| {
             try printTag(fb_alloc.get(), res, tag, active_tags);
         }

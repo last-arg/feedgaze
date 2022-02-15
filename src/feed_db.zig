@@ -22,6 +22,7 @@ const Table = @import("queries.zig").Table;
 
 pub const g = struct {
     pub var max_items_per_feed: u16 = 10;
+    pub const tag_untagged = "untagged";
 };
 
 pub const Storage = struct {
@@ -194,6 +195,12 @@ pub const Storage = struct {
         while (iter.next()) |tag| {
             try self.db.exec(query, .{ id, mem.trim(u8, tag, " +") });
         }
+        // Make sure there is no 'untagged' tag
+        const del_query = comptime fmt.comptimePrint(
+            "delete from feed_tag where feed_id = ? and tag = {s};",
+            .{g.tag_untagged},
+        );
+        try self.db.exec(del_query, .{id});
     }
 
     pub const UpdateOptions = struct {
