@@ -47,9 +47,9 @@ pub const Db = struct {
         };
     }
 
-    pub fn oneAlloc(comptime T: type, allocator: Allocator, db: *sql.Db, comptime query: []const u8, opts: anytype) !?T {
-        return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
-            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+    pub fn oneAlloc(self: *Self, comptime T: type, comptime query: []const u8, opts: anytype) !?T {
+        return self.sql_db.oneAlloc(T, self.allocator, query, .{}, opts) catch |err| {
+            log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ self.sql_db.getDetailedError().message, query });
             return err;
         };
     }
