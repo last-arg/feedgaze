@@ -1,6 +1,9 @@
 const std = @import("std");
 const mem = std.mem;
+const assert = std.debug.assert;
+const ArenaAllocator = std.heap.ArenaAllocator;
 const Allocator = std.mem.Allocator;
+const StringHashMap = std.hash_map.StringHashMap;
 const fmt = std.fmt;
 const builtin = @import("builtin");
 const routez = @import("routez");
@@ -19,20 +22,73 @@ const parse = @import("parse.zig");
 const zuri = @import("zuri");
 const log = std.log;
 
+// Resources
+// POST-REDIRECT-GET | https://andrewlock.net/post-redirect-get-using-tempdata-in-asp-net-core/
+
 // pub const io_mode = .evented;
 
 // TODO: how to handle displaying untagged feeds?
 
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
+
+const Session = struct {
+    id: u64, // TODO: change to more secure
+    // TODO: use union instead?
+    data: StringHashMap([]const u8),
+    html_page: ?parse.Html.Page = null,
+    added_ids: []u64 = &[_]u64{},
+    arena: std.heap.ArenaAllocator,
+
+    pub fn deinit(self: *@This()) void {
+        self.data.deinit();
+        self.arena.deinit();
+    }
+};
+
+const Sessions = struct {
+    const Self = @This();
+    allocator: Allocator,
+    list: ArrayList(Session),
+
+    pub fn init(allocator: Allocator) Self {
+        return .{
+            .list = ArrayList(Session).init(allocator),
+            .allocator = allocator,
+        };
+    }
+
+    pub fn new(self: *Self) !*Session {
+        var result = try self.list.addOne();
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        result.* = Session{
+            // TODO: generate token
+            .id = self.list.items.len,
+            // TODO: for some reason using arena.allocator() gives segmentation fault
+            .data = StringHashMap([]const u8).init(self.allocator),
+            .arena = arena,
+        };
+        return result;
+    }
+
+    pub fn deinit(self: *Self) void {
+        for (self.list.items) |*session| {
+            session.deinit();
+        }
+        self.list.deinit();
+    }
+};
+
 const Server = struct {
     const g = struct {
         var storage: *Storage = undefined;
+        var sessions: *Sessions = undefined;
     };
     const Self = @This();
     server: RoutezServer,
 
-    pub fn init(storage: *Storage) Self {
+    pub fn init(storage: *Storage, sessions: *Sessions) Self {
         g.storage = storage;
+        g.sessions = sessions;
         var server = RoutezServer.init(
             global_allocator,
             .{},
@@ -45,7 +101,9 @@ const Server = struct {
         // Don't get errors about address in use
         if (builtin.mode == .Debug) server.server.reuse_address = true;
 
-        return Server{ .server = server };
+        return Server{
+            .server = server,
+        };
     }
 
     fn feedAddHandler(req: Request, res: Response) !void {
@@ -62,82 +120,240 @@ const Server = struct {
         var arena = std.heap.ArenaAllocator.init(global_allocator);
         defer arena.deinit();
 
+        for (req.headers.list.items) |h| {
+            print("{s}: {s}\n", .{ h.name, h.value });
+        }
+
+        var token: ?u64 = null;
         if (try req.headers.get(arena.allocator(), "cookie")) |headers| {
-            try res.write("<p>Added feed(s)</p>");
-            try res.write("<ul>");
             for (headers) |header| {
                 var iter = mem.split(u8, header.value, "=");
                 if (iter.next()) |key| {
-                    if (!mem.eql(u8, "feed_id", key)) continue;
-                }
-                if (iter.next()) |ids| {
-                    var ids_iter = mem.split(u8, ids, ",");
-                    while (ids_iter.next()) |nr| {
-                        const feed_id = try fmt.parseUnsigned(u64, nr, 10);
-                        if (try g.storage.getFeedById(feed_id)) |feed| {
-                            const link = feed.link orelse "<no-link>";
-                            try res.print("<li>{s} - {s}</li>", .{ feed.title, link });
-                        }
+                    if (mem.eql(u8, "token", key)) {
+                        const value = iter.next() orelse continue;
+                        token = try fmt.parseUnsigned(u64, value, 10);
+                        try res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0");
                     }
                 }
             }
-            try res.write("</ul>");
-            try res.headers.put("Set-Cookie", "feed_id=; path=/feed/add; Max-Age=0");
         }
 
-        try res.write(
+        try res.print("token: {}<br>", .{token});
+        var session_index: ?usize = null;
+        if (token) |t| {
+            for (g.sessions.list.items) |s, i| {
+                if (s.id == t) {
+                    session_index = i;
+                    break;
+                }
+            }
+        }
+
+        const form_html =
             \\<form action="/feed/add" method="POST">
             \\<div>
             \\<label for="feed_url">Feed/Site url</label>
-            \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="localhost:8080/many-links.html">
+            \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
             \\</div>
             \\<div>
             \\<label for="tags">Tags</label>
-            \\<input type="text" id="tags" name="tags" value="tag1, tag2, tag3">
+            \\<input type="text" id="tags" name="tags" value="{s}">
             \\</div>
-            \\<button type="submit">Add feed</button>
+            \\<button type="submit" name="submit_feed">Add feed</button>
             \\</form>
-        );
+        ;
+
+        if (session_index == null) {
+            // TODO: empty string args when not debugging
+            try res.print(form_html, .{ "localhost:8080/atom.atom", "tag1, tag2, tag3" });
+            return;
+        }
+
+        var session = g.sessions.list.swapRemove(session_index.?);
+        defer {
+            session.deinit();
+        }
+
+        print("session ({d}): {}\n", .{ session.data.count(), session });
+
+        if (session.added_ids.len > 0) {
+            for (session.added_ids) |id| {
+                try res.print("Added id {d}", .{id});
+            }
+            // TODO: print added links
+            try res.print(form_html, .{ "", "" });
+        } else if (session.data.get("list_url")) |url| {
+            _ = url;
+            const html_page = session.html_page.?;
+            if (html_page.links.len == 0) {
+                try res.write("<p>Found no feed links from provided url</p>");
+            }
+            // TODO: form (url, tags) + link list
+        } else if (session.data.get("invalid_url")) |url| {
+            try res.write("<p>Invalid url</p>");
+            const tags = session.data.get("tags") orelse "";
+            try res.print(form_html, .{ url, tags });
+        } else if (false) {
+            // TODO: no links from chosen from html_page
+            try res.write("<p>No link chosen from link list. Choose one or more links</p>");
+        }
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
-        var arena = std.heap.ArenaAllocator.init(global_allocator);
-        defer arena.deinit();
-        try res.write("<p>Add feed</p>");
-        if (try req.headers.get(arena.allocator(), "referer")) |headers| {
-            const referer = headers[0];
-            try res.print("<p>Referer: {s}</p>", .{referer.value});
+        var session = try g.sessions.new();
+        errdefer {
+            session.deinit();
+            _ = g.sessions.list.pop();
         }
+        var session_arena = session.arena;
 
         // Get submitted form values
+        var is_submit_feed = false;
+        var is_submit_feed_links = false;
         var tags_input: []const u8 = "";
-        var add_urls = try ArrayList([]const u8).initCapacity(arena.allocator(), 2);
-        const body_decoded = (try zuri.Uri.decode(arena.allocator(), req.body)) orelse req.body;
+        var initial_url: ?[]const u8 = null;
+        var urls_list = try ArrayList([]const u8).initCapacity(session_arena.allocator(), 2);
+        const body_decoded = (try zuri.Uri.decode(session_arena.allocator(), req.body)) orelse req.body;
         var iter = mem.split(u8, body_decoded, "&");
         while (iter.next()) |key_value| {
             var iter_key_value = mem.split(u8, key_value, "=");
             const key = iter_key_value.next() orelse continue;
             var value = iter_key_value.next() orelse continue;
             if (mem.eql(u8, "feed_url", key) or mem.eql(u8, "feed_pick", key)) {
-                try add_urls.append(mem.trim(u8, value, "+"));
+                try urls_list.append(mem.trim(u8, value, "+"));
             } else if (mem.eql(u8, "tags", key)) {
                 mem.replaceScalar(u8, @ptrCast(*[]u8, &value).*, '+', ' ');
                 tags_input = value;
+            } else if (mem.eql(u8, "submit_feed", key)) {
+                is_submit_feed = true;
+            } else if (mem.eql(u8, "submit_feed_links", key)) {
+                is_submit_feed_links = true;
+            } else if (mem.eql(u8, "initial_url", key)) {
+                initial_url = value;
             }
         }
-        if (add_urls.items.len == 0) {
-            try res.write("<p>No url entered</p>");
-            // TODO: print form with message "No url entered"
-            // redirect to back to GET /feed/add ?
+
+        if (is_submit_feed) {
+            try submitFeed(&session_arena, session, urls_list.items, tags_input);
+        } else if (is_submit_feed_links) {
+            try res.write("<p>submit_feed_links</p>");
+            // try submitFeedLinks(&session_arena, res, urls_list.items, initial_url, tags_input);
+        } else {
+            try session.data.put("invalid_form", "");
+        }
+
+        try session.data.put("tags", tags_input);
+
+        try res.headers.put("Set-Cookie", try fmt.allocPrint(session_arena.allocator(), "token={d}; path=/feed/add", .{session.id}));
+        res.status_code = .Found;
+        try res.headers.put("Location", "/feed/add");
+    }
+
+    // fn formFeedLinks() void {
+    //     try res.write("<form action='/feed/add' method='POST'>");
+    //     { // form
+    //         try res.print("<p>Url: {s}</p>", .{url});
+    //         try res.print("<input type='hidden' name='initial_url' value='{s}'>", .{url});
+    //         try res.print(
+    //             \\<label for="tags">Tags</label>
+    //             \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
+    //         , .{tags_input});
+    //         try res.write("<fieldset><ul>");
+    //         { // fieldset
+    //             try res.write("<legend>Pick feed(s) to add</legend>");
+    //             for (html_data.links) |link| {
+    //                 const page_uri = try zuri.Uri.parse(url, true);
+    //                 const link_url = try url_util.makeWholeUrl(arena.allocator(), page_uri, link.href);
+    //                 const link_title = link.title orelse html_data.title;
+    //                 try res.write("<li><label>");
+    //                 try res.print("<input type='checkbox' name='feed_pick' value='{s}'>", .{link_url});
+    //                 if (link_title) |title| {
+    //                     try res.print("[{s}] {s} {s}", .{ link.media_type.toString(), title, link_url });
+    //                 } else {
+    //                     try res.print("[{s}] {s}", .{ link.media_type.toString(), link_url });
+    //                 }
+    //                 try res.write("</label></li>");
+    //             }
+    //         }
+    //         try res.write(
+    //             \\</ul></fieldset>
+    //             \\<button type="submit" name="submit_feed_links">Add feed(s)</button>
+    //         );
+    //     }
+    //     try res.write("</form>");
+    // }
+
+    pub fn submitFeed(arena: *ArenaAllocator, session: *Session, try_urls: [][]const u8, tags_input: []const u8) !void {
+        if (try_urls.len == 0) {
+            try session.data.put("missing_url", "");
             return;
         }
 
-        // TODO: Handle forms for adding link and adding links (html links) differently?
+        const url = url_util.makeValidUrl(arena.allocator(), try_urls[0]) catch {
+            try session.data.put("invalid_url", try_urls[0]);
+            return;
+        };
+        // TODO: session doesn't need this allocation
+        var resp = try http.resolveRequest(arena, url, null, null);
+
+        const resp_ok = switch (resp) {
+            .ok => |ok| ok,
+            .not_modified => {
+                log.err("resolveRequest() fn returned .not_modified union value. This should not happen when adding new feed. Input url: {s}", .{url});
+                // TODO: hook up on GET page
+                // message: 'Failed to retrieve feed from <url>'
+                try session.data.put("failed_url", url);
+                return;
+            },
+            .fail => |msg| {
+                // TODO: hook up on GET page
+                // message: 'Failed to retrieve feed from <url>'
+                try session.data.put("failed_url", url);
+                try session.data.put("failed_msg", msg);
+                return;
+            },
+        };
+
+        const feed = switch (resp_ok.content_type) {
+            .html => {
+                try session.data.put("list_url", url);
+                session.html_page = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
+                return;
+            },
+            .xml => try parse.parse(arena, resp_ok.body),
+            .xml_atom => try parse.Atom.parse(arena, resp_ok.body),
+            .xml_rss => try parse.Rss.parse(arena, resp_ok.body),
+            .json, .json_feed => try parse.Json.parse(arena, resp_ok.body),
+            .unknown => parse.parse(arena, resp_ok.body) catch try parse.Json.parse(arena, resp_ok.body),
+        };
+        var ids = try ArrayList(u64).initCapacity(arena.allocator(), 1);
+        defer ids.deinit();
+        ids.appendAssumeCapacity(try addFeed(feed, resp_ok.headers, url, tags_input));
+        session.added_ids = ids.toOwnedSlice();
+    }
+
+    pub fn submitFeedLinks(arena: *ArenaAllocator, res: Response, try_urls: [][]const u8, initial_url: ?[]const u8, tags_input: []const u8) !void {
+        _ = res;
+        _ = arena;
+        if (try_urls.len == 0) {
+            if (initial_url) |url| {
+                _ = url;
+                // TODO: make request again
+                // TODO: reprint form
+                // TODO: Add message to pick a feed link
+            } else {
+                // TODO: No links found
+                // print form
+                // message: 'Entered link isn't a feed link'
+                // message: 'Could not find any feed links in link content'
+            }
+            return;
+        }
 
         var added_ids = ArrayList(u8).init(arena.allocator());
-        for (add_urls.items) |input_url| {
-            const url = try url_util.makeValidUrl(arena.allocator(), input_url);
-            var resp = try http.resolveRequest(&arena, url, null, null);
+        for (try_urls) |try_url| {
+            const url = try url_util.makeValidUrl(arena.allocator(), try_url);
+            var resp = try http.resolveRequest(arena, url, null, null);
 
             const resp_ok = switch (resp) {
                 .ok => |ok| ok,
@@ -151,55 +367,13 @@ const Server = struct {
                     continue;
                 },
             };
-
             const feed = switch (resp_ok.content_type) {
-                .html => {
-                    const html_data = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
-                    if (html_data.links.len > 0) {
-                        try res.write("<form action='/feed/add' method='POST'>");
-                        { // form
-                            try res.print("<p>Url: {s}</p>", .{url});
-                            // TODO: add hidden input for url
-                            // Needed if no feed urls were picked
-                            try res.print("<input type='hidden' name='feed_url' value='{s}'>", .{url});
-                            try res.print(
-                                \\<label for="tags">Tags</label>
-                                \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
-                            , .{tags_input});
-                            try res.write("<fieldset><ul>");
-                            { // fieldset
-                                try res.write("<legend>Pick feed(s) to add</legend>");
-                                for (html_data.links) |link| {
-                                    const page_uri = try zuri.Uri.parse(url, true);
-                                    const link_url = try url_util.makeWholeUrl(arena.allocator(), page_uri, link.href);
-                                    const link_title = link.title orelse html_data.title;
-                                    try res.write("<li><label>");
-                                    try res.print("<input type='checkbox' name='feed_pick' value='{s}'>", .{link_url});
-                                    if (link_title) |title| {
-                                        try res.print("[{s}] {s} {s}", .{ link.media_type.toString(), title, link_url });
-                                    } else {
-                                        try res.print("[{s}] {s}", .{ link.media_type.toString(), link_url });
-                                    }
-                                    try res.write("</label></li>");
-                                }
-                            }
-                            try res.write(
-                                \\</ul></fieldset>
-                                \\<button type="submit">Add feed(s)</button>
-                            );
-                        }
-                        try res.write("</form>");
-                    } else {
-                        try res.print("<p>No feed links found in {s}", .{url});
-                    }
-                    // continue;
-                    return;
-                },
-                .xml => try parse.parse(&arena, resp_ok.body),
-                .xml_atom => try parse.Atom.parse(&arena, resp_ok.body),
-                .xml_rss => try parse.Rss.parse(&arena, resp_ok.body),
-                .json, .json_feed => try parse.Json.parse(&arena, resp_ok.body),
-                .unknown => parse.parse(&arena, resp_ok.body) catch try parse.Json.parse(&arena, resp_ok.body),
+                .xml => try parse.parse(arena, resp_ok.body),
+                .xml_atom => try parse.Atom.parse(arena, resp_ok.body),
+                .xml_rss => try parse.Rss.parse(arena, resp_ok.body),
+                .json, .json_feed => try parse.Json.parse(arena, resp_ok.body),
+                .unknown => parse.parse(arena, resp_ok.body) catch try parse.Json.parse(arena, resp_ok.body),
+                .html => continue,
             };
             const feed_id = try addFeed(res, feed, resp_ok.headers, url, tags_input);
             if (added_ids.items.len > 0) {
@@ -208,12 +382,13 @@ const Server = struct {
             var buf: [20]u8 = undefined;
             try added_ids.appendSlice(try fmt.bufPrint(&buf, "{d}", .{feed_id}));
         }
+
         try res.headers.put("Set-Cookie", try fmt.allocPrint(arena.allocator(), "feed_id={s}; path=/feed/add", .{added_ids.items}));
         res.status_code = .Found;
         try res.headers.put("Location", "/feed/add");
     }
 
-    fn addFeed(res: Response, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
+    fn addFeed(feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
         var savepoint = try g.storage.db.sql_db.savepoint("server_addFeed");
         defer savepoint.rollback();
         const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
@@ -225,14 +400,12 @@ const Server = struct {
                 .feed = feed,
             }, .{ .force = true });
             try g.storage.addTags(row.feed_id, tags);
-            try res.print("Feed {s} already exists. Feed updated instead.\n", .{url});
             feed_id = row.feed_id;
         } else {
             feed_id = try g.storage.addFeed(feed, url);
             try g.storage.addFeedUrl(feed_id, headers);
             try g.storage.addItems(feed_id, feed.items);
             try g.storage.addTags(feed_id, tags);
-            try res.print("Added feed {s}\n", .{url});
         }
         savepoint.commit();
         return feed_id;
@@ -452,7 +625,10 @@ const global = struct {
 
 pub fn run(storage: *Storage) !void {
     print("run server\n", .{});
-    var server = Server.init(storage);
+    var gen_alloc = std.heap.GeneralPurposeAllocator(.{}){};
+    var sessions = Sessions.init(gen_alloc.allocator());
+    defer sessions.deinit();
+    var server = Server.init(storage, &sessions);
     var addr = try Address.parseIp(global.ip, global.port);
     try server.server.listen(addr);
 }
