@@ -46,7 +46,7 @@ const FormData = union(enum) {
     fail: struct {
         url: []const u8 = "",
         // tags?
-        ty: enum { invalid_url, unknown } = .unknown,
+        ty: enum { empty_url, invalid_url, invalid_form, unknown } = .unknown,
         msg: []const u8 = "Unknown problem occured. Try again.",
     },
 };
@@ -173,6 +173,7 @@ const Server = struct {
 
         const form_start = "<form action='/feed/add' method='POST'>";
         const form_end = "</form>";
+        const input_url_hidden = "<input type='hidden' name='feed_url' id='feed_url' value='{s}'>";
         const input_url =
             \\<div>
             \\<label for="feed_url">Feed/Site url</label>
@@ -214,21 +215,21 @@ const Server = struct {
             .html => |data| {
                 if (data.page.links.len > 0) {
                     try res.print("<p>{s} has several feeds</p>", .{data.url});
-                    try res.print(form_start ++ input_tags, .{data.tags});
+                    try res.print(form_start ++ input_url_hidden ++ input_tags, .{ data.url, data.tags });
                     const base_uri = try zuri.Uri.parse(data.url, true);
                     try res.write("<ul>");
-                    for (data.page.links) |link, i| {
+                    for (data.page.links) |link| {
                         const title = link.title orelse "";
                         const url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
                         try res.print(
                             \\<li>
                             \\  <label>
-                            \\    <input type='checkbox' name='picked_id' value='{d}'>
+                            \\    <input type='checkbox' name='picked_feed' value='{s}'>
                             \\    [{s}] {s}
                             \\  </label>
                             \\  <div>{s}</div>
                             \\</li>
-                        , .{ i, link.media_type.toString(), title, url });
+                        , .{ url, link.media_type.toString(), title, url });
                     }
                     try res.write("</ul>");
                     // TODO: button
@@ -271,7 +272,7 @@ const Server = struct {
         var is_submit_feed = false;
         var is_submit_feed_links = false;
         var tags_input: []const u8 = "";
-        var initial_url: ?[]const u8 = null;
+        var feed_url: []const u8 = "";
         var urls_list = try ArrayList([]const u8).initCapacity(session_arena.allocator(), 2);
         const body_decoded = (try zuri.Uri.decode(session_arena.allocator(), req.body)) orelse req.body;
         var iter = mem.split(u8, body_decoded, "&");
@@ -279,7 +280,9 @@ const Server = struct {
             var iter_key_value = mem.split(u8, key_value, "=");
             const key = iter_key_value.next() orelse continue;
             var value = iter_key_value.next() orelse continue;
-            if (mem.eql(u8, "feed_url", key) or mem.eql(u8, "feed_pick", key)) {
+            if (mem.eql(u8, "feed_url", key)) {
+                feed_url = mem.trim(u8, value, "+");
+            } else if (mem.eql(u8, "picked_feed", key)) {
                 try urls_list.append(mem.trim(u8, value, "+"));
             } else if (mem.eql(u8, "tags", key)) {
                 mem.replaceScalar(u8, @ptrCast(*[]u8, &value).*, '+', ' ');
@@ -288,16 +291,13 @@ const Server = struct {
                 is_submit_feed = true;
             } else if (mem.eql(u8, "submit_feed_links", key)) {
                 is_submit_feed_links = true;
-            } else if (mem.eql(u8, "initial_url", key)) {
-                initial_url = value;
             }
         }
 
         if (is_submit_feed) {
-            try submitFeed(&session_arena, session, urls_list.items, tags_input);
+            try submitFeed(&session_arena, session, feed_url, tags_input);
         } else if (is_submit_feed_links) {
-            try res.write("<p>submit_feed_links</p>");
-            // try submitFeedLinks(&session_arena, res, urls_list.items, initial_url, tags_input);
+            try submitFeedLinks(&session_arena, session, urls_list.items, feed_url, tags_input);
         } else {
             try session.data.put("invalid_form", "");
         }
@@ -309,47 +309,12 @@ const Server = struct {
         try res.headers.put("Location", "/feed/add");
     }
 
-    // fn formFeedLinks() void {
-    //     try res.write("<form action='/feed/add' method='POST'>");
-    //     { // form
-    //         try res.print("<p>Url: {s}</p>", .{url});
-    //         try res.print("<input type='hidden' name='initial_url' value='{s}'>", .{url});
-    //         try res.print(
-    //             \\<label for="tags">Tags</label>
-    //             \\<input type="text" name="tags" id="tags" placeholder="Enter feed tags" value="{s}">
-    //         , .{tags_input});
-    //         try res.write("<fieldset><ul>");
-    //         { // fieldset
-    //             try res.write("<legend>Pick feed(s) to add</legend>");
-    //             for (html_data.links) |link| {
-    //                 const page_uri = try zuri.Uri.parse(url, true);
-    //                 const link_url = try url_util.makeWholeUrl(arena.allocator(), page_uri, link.href);
-    //                 const link_title = link.title orelse html_data.title;
-    //                 try res.write("<li><label>");
-    //                 try res.print("<input type='checkbox' name='feed_pick' value='{s}'>", .{link_url});
-    //                 if (link_title) |title| {
-    //                     try res.print("[{s}] {s} {s}", .{ link.media_type.toString(), title, link_url });
-    //                 } else {
-    //                     try res.print("[{s}] {s}", .{ link.media_type.toString(), link_url });
-    //                 }
-    //                 try res.write("</label></li>");
-    //             }
-    //         }
-    //         try res.write(
-    //             \\</ul></fieldset>
-    //             \\<button type="submit" name="submit_feed_links">Add feed(s)</button>
-    //         );
-    //     }
-    //     try res.write("</form>");
-    // }
-
-    pub fn submitFeed(arena: *ArenaAllocator, session: *Session, try_urls: [][]const u8, tags_input: []const u8) !void {
-        if (try_urls.len == 0) {
+    pub fn submitFeed(arena: *ArenaAllocator, session: *Session, first_url: []const u8, tags_input: []const u8) !void {
+        if (first_url.len == 0) {
             try session.data.put("missing_url", "");
             return;
         }
 
-        const first_url = try_urls[0];
         const url = url_util.makeValidUrl(arena.allocator(), first_url) catch {
             try session.data.put("invalid_url", first_url);
             return;
@@ -394,9 +359,13 @@ const Server = struct {
         session.form_data = .{ .success = ids.toOwnedSlice() };
     }
 
-    pub fn submitFeedLinks(arena: *ArenaAllocator, res: Response, try_urls: [][]const u8, initial_url: ?[]const u8, tags_input: []const u8) !void {
-        _ = res;
-        _ = arena;
+    pub fn submitFeedLinks(
+        arena: *ArenaAllocator,
+        session: *Session,
+        try_urls: [][]const u8,
+        initial_url: ?[]const u8,
+        tags_input: []const u8,
+    ) !void {
         if (try_urls.len == 0) {
             if (initial_url) |url| {
                 _ = url;
@@ -412,7 +381,8 @@ const Server = struct {
             return;
         }
 
-        var added_ids = ArrayList(u8).init(arena.allocator());
+        var added_ids = try ArrayList(u64).initCapacity(arena.allocator(), try_urls.len);
+        defer added_ids.deinit();
         for (try_urls) |try_url| {
             const url = try url_util.makeValidUrl(arena.allocator(), try_url);
             var resp = try http.resolveRequest(arena, url, null, null);
@@ -425,7 +395,7 @@ const Server = struct {
                     continue;
                 },
                 .fail => |msg| {
-                    try res.print("Failed to resolve url {s}. Returned error message: {s}", .{ url, msg });
+                    log.err("Failed to resolve url {s}. Returned error message: {s}", .{ url, msg });
                     continue;
                 },
             };
@@ -435,19 +405,15 @@ const Server = struct {
                 .xml_rss => try parse.Rss.parse(arena, resp_ok.body),
                 .json, .json_feed => try parse.Json.parse(arena, resp_ok.body),
                 .unknown => parse.parse(arena, resp_ok.body) catch try parse.Json.parse(arena, resp_ok.body),
-                .html => continue,
+                .html => {
+                    log.warn("Skipping adding {s} because it returned html content", .{try_url});
+                    continue;
+                },
             };
-            const feed_id = try addFeed(res, feed, resp_ok.headers, url, tags_input);
-            if (added_ids.items.len > 0) {
-                try added_ids.append(',');
-            }
-            var buf: [20]u8 = undefined;
-            try added_ids.appendSlice(try fmt.bufPrint(&buf, "{d}", .{feed_id}));
+            const feed_id = try addFeed(feed, resp_ok.headers, url, tags_input);
+            added_ids.appendAssumeCapacity(feed_id);
         }
-
-        try res.headers.put("Set-Cookie", try fmt.allocPrint(arena.allocator(), "feed_id={s}; path=/feed/add", .{added_ids.items}));
-        res.status_code = .Found;
-        try res.headers.put("Location", "/feed/add");
+        session.form_data = .{ .success = added_ids.toOwnedSlice() };
     }
 
     fn addFeed(feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
