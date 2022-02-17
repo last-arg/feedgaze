@@ -31,6 +31,26 @@ const log = std.log;
 
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 
+const FormData = union(enum) {
+    success: []u64, // ids
+    html: struct {
+        url: []const u8,
+        tags: []const u8,
+        page: parse.Html.Page,
+    },
+    no_picks: struct {
+        url: []const u8,
+        tags: []const u8,
+        page: parse.Html.Page,
+    },
+    fail: struct {
+        url: []const u8 = "",
+        // tags?
+        ty: enum { invalid_url, unknown } = .unknown,
+        msg: []const u8 = "Unknown problem occured. Try again.",
+    },
+};
+
 const Session = struct {
     id: u64, // TODO: change to more secure
     // TODO: use union instead?
@@ -38,6 +58,7 @@ const Session = struct {
     html_page: ?parse.Html.Page = null,
     added_ids: []u64 = &[_]u64{},
     arena: std.heap.ArenaAllocator,
+    form_data: FormData,
 
     pub fn deinit(self: *@This()) void {
         self.data.deinit();
@@ -66,6 +87,7 @@ const Sessions = struct {
             // TODO: for some reason using arena.allocator() gives segmentation fault
             .data = StringHashMap([]const u8).init(self.allocator),
             .arena = arena,
+            .form_data = .{ .fail = .{} },
         };
         return result;
     }
@@ -149,40 +171,78 @@ const Server = struct {
             }
         }
 
-        const form_html =
-            \\<form action="/feed/add" method="POST">
+        const form_start = "<form action='/feed/add' method='POST'>";
+        const form_end = "</form>";
+        const input_url =
             \\<div>
             \\<label for="feed_url">Feed/Site url</label>
             \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
             \\</div>
+        ;
+        const input_tags =
             \\<div>
             \\<label for="tags">Tags</label>
             \\<input type="text" id="tags" name="tags" value="{s}">
             \\</div>
-            \\<button type="submit" name="submit_feed">Add feed</button>
-            \\</form>
         ;
+
+        const button_submit = "<button type='submit' name='{s}'>Add feed{s}</button>";
+        const form_start_same = form_start ++ input_url ++ input_tags;
+        const form_base = form_start_same ++ fmt.comptimePrint(button_submit, .{ "submit_feed", "" }) ++ form_end;
 
         if (session_index == null) {
             // TODO: empty string args when not debugging
-            try res.print(form_html, .{ "localhost:8080/atom.atom", "tag1, tag2, tag3" });
+            try res.print(form_base, .{ "localhost:8080/many-links.html", "tag1, tag2, tag3" });
             return;
         }
 
         var session = g.sessions.list.swapRemove(session_index.?);
-        defer {
-            session.deinit();
-        }
+        defer session.deinit();
 
         print("session ({d}): {}\n", .{ session.data.count(), session });
 
-        if (session.added_ids.len > 0) {
-            for (session.added_ids) |id| {
-                try res.print("Added id {d}", .{id});
-            }
-            // TODO: print added links
-            try res.print(form_html, .{ "", "" });
-        } else if (session.data.get("list_url")) |url| {
+        switch (session.form_data) {
+            .success => |ids| {
+                if (ids.len > 0) {
+                    for (ids) |id| {
+                        try res.print("Added id {d}", .{id});
+                    }
+                    // TODO: print added links
+                    try res.print(form_base, .{ "", "" });
+                }
+            },
+            .html => |data| {
+                if (data.page.links.len > 0) {
+                    try res.print("<p>{s} has several feeds</p>", .{data.url});
+                    try res.print(form_start ++ input_tags, .{data.tags});
+                    const base_uri = try zuri.Uri.parse(data.url, true);
+                    try res.write("<ul>");
+                    for (data.page.links) |link, i| {
+                        const title = link.title orelse "";
+                        const url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
+                        try res.print(
+                            \\<li>
+                            \\  <label>
+                            \\    <input type='checkbox' name='picked_id' value='{d}'>
+                            \\    [{s}] {s}
+                            \\  </label>
+                            \\  <div>{s}</div>
+                            \\</li>
+                        , .{ i, link.media_type.toString(), title, url });
+                    }
+                    try res.write("</ul>");
+                    // TODO: button
+                    try res.write(fmt.comptimePrint(button_submit, .{ "submit_feed_links", "(s)" }) ++ form_end);
+                    try res.write(form_end);
+                } else {
+                    try res.print("<p>Found on feeds on {s}</p>", .{data.url});
+                    try res.print(form_base, .{ data.url, data.tags });
+                }
+            },
+            else => @panic("TODO"),
+        }
+
+        if (session.data.get("list_url")) |url| {
             _ = url;
             const html_page = session.html_page.?;
             if (html_page.links.len == 0) {
@@ -192,7 +252,7 @@ const Server = struct {
         } else if (session.data.get("invalid_url")) |url| {
             try res.write("<p>Invalid url</p>");
             const tags = session.data.get("tags") orelse "";
-            try res.print(form_html, .{ url, tags });
+            try res.print(form_base, .{ url, tags });
         } else if (false) {
             // TODO: no links from chosen from html_page
             try res.write("<p>No link chosen from link list. Choose one or more links</p>");
@@ -289,11 +349,12 @@ const Server = struct {
             return;
         }
 
-        const url = url_util.makeValidUrl(arena.allocator(), try_urls[0]) catch {
-            try session.data.put("invalid_url", try_urls[0]);
+        const first_url = try_urls[0];
+        const url = url_util.makeValidUrl(arena.allocator(), first_url) catch {
+            try session.data.put("invalid_url", first_url);
             return;
         };
-        // TODO: session doesn't need this allocation
+
         var resp = try http.resolveRequest(arena, url, null, null);
 
         const resp_ok = switch (resp) {
@@ -316,8 +377,9 @@ const Server = struct {
 
         const feed = switch (resp_ok.content_type) {
             .html => {
-                try session.data.put("list_url", url);
-                session.html_page = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
+                const html_page = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
+                // TODO: if (html_page.links.len == 1) make request to add feed
+                session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
                 return;
             },
             .xml => try parse.parse(arena, resp_ok.body),
@@ -329,7 +391,7 @@ const Server = struct {
         var ids = try ArrayList(u64).initCapacity(arena.allocator(), 1);
         defer ids.deinit();
         ids.appendAssumeCapacity(try addFeed(feed, resp_ok.headers, url, tags_input));
-        session.added_ids = ids.toOwnedSlice();
+        session.form_data = .{ .success = ids.toOwnedSlice() };
     }
 
     pub fn submitFeedLinks(arena: *ArenaAllocator, res: Response, try_urls: [][]const u8, initial_url: ?[]const u8, tags_input: []const u8) !void {
