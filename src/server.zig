@@ -34,11 +34,7 @@ const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 const FormData = union(enum) {
     success: []u64, // ids
     html: struct {
-        url: []const u8,
-        tags: []const u8,
-        page: parse.Html.Page,
-    },
-    no_picks: struct {
+        ty: enum { view, no_pick } = .view,
         url: []const u8,
         tags: []const u8,
         page: parse.Html.Page,
@@ -73,14 +69,14 @@ const Sessions = struct {
 
     pub fn init(allocator: Allocator) Self {
         return .{
-            .list = ArrayList(Session).init(allocator),
             .allocator = allocator,
+            .list = ArrayList(Session).init(allocator),
         };
     }
 
-    pub fn new(self: *Self) !*Session {
+    pub fn new(self: *Self, arena: ArenaAllocator) !*Session {
         var result = try self.list.addOne();
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        // var arena = std.heap.ArenaAllocator.init(self.allocator);
         result.* = Session{
             // TODO: generate token
             .id = self.list.items.len,
@@ -90,6 +86,13 @@ const Sessions = struct {
             .form_data = .{ .fail = .{} },
         };
         return result;
+    }
+
+    pub fn getIndex(self: *Self, token: u64) ?u64 {
+        for (self.list.items) |s, i| {
+            if (s.id == token) return i;
+        }
+        return null;
     }
 
     pub fn deinit(self: *Self) void {
@@ -138,58 +141,50 @@ const Server = struct {
         }
     }
 
-    fn feedAddGet(req: Request, res: Response) !void {
-        var arena = std.heap.ArenaAllocator.init(global_allocator);
-        defer arena.deinit();
-
-        for (req.headers.list.items) |h| {
-            print("{s}: {s}\n", .{ h.name, h.value });
-        }
-
-        var token: ?u64 = null;
-        if (try req.headers.get(arena.allocator(), "cookie")) |headers| {
+    fn getCookieToken(req: Request, allocator: Allocator) !?u64 {
+        const headers_opt = try req.headers.get(allocator, "cookie");
+        defer if (headers_opt) |headers| allocator.free(headers);
+        if (headers_opt) |headers| {
             for (headers) |header| {
                 var iter = mem.split(u8, header.value, "=");
                 if (iter.next()) |key| {
                     if (mem.eql(u8, "token", key)) {
                         const value = iter.next() orelse continue;
-                        token = try fmt.parseUnsigned(u64, value, 10);
-                        try res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0");
+                        return try fmt.parseUnsigned(u64, value, 10);
                     }
                 }
             }
         }
+        return null;
+    }
 
-        try res.print("token: {}<br>", .{token});
-        var session_index: ?usize = null;
-        if (token) |t| {
-            for (g.sessions.list.items) |s, i| {
-                if (s.id == t) {
-                    session_index = i;
-                    break;
-                }
-            }
-        }
+    const form_start = "<form action='/feed/add' method='POST'>";
+    const form_end = "</form>";
+    const input_url_hidden = "<input type='hidden' name='feed_url' id='feed_url' value='{s}'>";
+    const input_url =
+        \\<div>
+        \\<label for="feed_url">Feed/Site url</label>
+        \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
+        \\</div>
+    ;
+    const input_tags =
+        \\<div>
+        \\<label for="tags">Tags</label>
+        \\<input type="text" id="tags" name="tags" value="{s}">
+        \\</div>
+    ;
 
-        const form_start = "<form action='/feed/add' method='POST'>";
-        const form_end = "</form>";
-        const input_url_hidden = "<input type='hidden' name='feed_url' id='feed_url' value='{s}'>";
-        const input_url =
-            \\<div>
-            \\<label for="feed_url">Feed/Site url</label>
-            \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
-            \\</div>
-        ;
-        const input_tags =
-            \\<div>
-            \\<label for="tags">Tags</label>
-            \\<input type="text" id="tags" name="tags" value="{s}">
-            \\</div>
-        ;
+    const button_submit = "<button type='submit' name='{s}'>Add feed{s}</button>";
+    const form_start_same = form_start ++ input_url ++ input_tags;
+    const form_base = form_start_same ++ fmt.comptimePrint(button_submit, .{ "submit_feed", "" }) ++ form_end;
 
-        const button_submit = "<button type='submit' name='{s}'>Add feed{s}</button>";
-        const form_start_same = form_start ++ input_url ++ input_tags;
-        const form_base = form_start_same ++ fmt.comptimePrint(button_submit, .{ "submit_feed", "" }) ++ form_end;
+    fn feedAddGet(req: Request, res: Response) !void {
+        var arena = std.heap.ArenaAllocator.init(global_allocator);
+        defer arena.deinit();
+
+        const token: ?u64 = try getCookieToken(req, global_allocator);
+        const session_index: ?usize = if (token) |t| g.sessions.getIndex(t) else null;
+        print("COOKIE TOKEN: {}\n", .{token});
 
         if (session_index == null) {
             // TODO: empty string args when not debugging
@@ -197,11 +192,7 @@ const Server = struct {
             return;
         }
 
-        var session = g.sessions.list.swapRemove(session_index.?);
-        defer session.deinit();
-
-        print("session ({d}): {}\n", .{ session.data.count(), session });
-
+        var session = g.sessions.list.items[session_index.?];
         switch (session.form_data) {
             .success => |ids| {
                 if (ids.len > 0) {
@@ -211,57 +202,75 @@ const Server = struct {
                     // TODO: print added links
                     try res.print(form_base, .{ "", "" });
                 }
+
+                session.deinit();
+                _ = g.sessions.list.swapRemove(session_index.?);
+                if (token) |_| res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0") catch {};
             },
             .html => |data| {
-                if (data.page.links.len > 0) {
-                    try res.print("<p>{s} has several feeds</p>", .{data.url});
-                    try res.print(form_start ++ input_url_hidden ++ input_tags, .{ data.url, data.tags });
-                    const base_uri = try zuri.Uri.parse(data.url, true);
-                    try res.write("<ul>");
-                    for (data.page.links) |link| {
-                        const title = link.title orelse "";
-                        const url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
-                        try res.print(
-                            \\<li>
-                            \\  <label>
-                            \\    <input type='checkbox' name='picked_feed' value='{s}'>
-                            \\    [{s}] {s}
-                            \\  </label>
-                            \\  <div>{s}</div>
-                            \\</li>
-                        , .{ url, link.media_type.toString(), title, url });
-                    }
-                    try res.write("</ul>");
-                    // TODO: button
-                    try res.write(fmt.comptimePrint(button_submit, .{ "submit_feed_links", "(s)" }) ++ form_end);
-                    try res.write(form_end);
-                } else {
-                    try res.print("<p>Found on feeds on {s}</p>", .{data.url});
-                    try res.print(form_base, .{ data.url, data.tags });
+                switch (data.ty) {
+                    .view => {
+                        if (data.page.links.len > 0) {
+                            try res.print("<p>{s} has several feeds</p>", .{data.url});
+                            try printFormLinks(&arena, res, data.page.links, data.url, data.tags);
+                        } else {
+                            try res.print("<p>Found on feeds on {s}</p>", .{data.url});
+                            try res.print(form_base, .{ data.url, data.tags });
+                        }
+                    },
+                    .no_pick => {
+                        try res.print("<p>{s} has several feeds</p>", .{data.url});
+                        try res.write("<p>No feed(s) chosen. Please choose atleast one feed</p>");
+                        try printFormLinks(&arena, res, data.page.links, data.url, data.tags);
+                    },
                 }
             },
-            else => @panic("TODO"),
-        }
+            .fail => |data| {
+                _ = data;
+                try res.print("<p>Failed to add {s}</p>", .{data.url});
+                try res.print("<p>{s}</p>", .{data.msg});
 
-        if (session.data.get("list_url")) |url| {
-            _ = url;
-            const html_page = session.html_page.?;
-            if (html_page.links.len == 0) {
-                try res.write("<p>Found no feed links from provided url</p>");
-            }
-            // TODO: form (url, tags) + link list
-        } else if (session.data.get("invalid_url")) |url| {
-            try res.write("<p>Invalid url</p>");
-            const tags = session.data.get("tags") orelse "";
-            try res.print(form_base, .{ url, tags });
-        } else if (false) {
-            // TODO: no links from chosen from html_page
-            try res.write("<p>No link chosen from link list. Choose one or more links</p>");
+                session.deinit();
+                _ = g.sessions.list.swapRemove(session_index.?);
+                if (token) |_| res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0") catch {};
+            },
         }
     }
 
+    fn printFormLinks(arena: *ArenaAllocator, res: Response, links: []parse.Html.Link, initial_url: []const u8, tags: []const u8) !void {
+        try res.print(form_start ++ input_url_hidden ++ input_tags, .{ initial_url, tags });
+        const base_uri = try zuri.Uri.parse(initial_url, true);
+        try res.write("<ul>");
+        for (links) |link| {
+            const title = link.title orelse "";
+            const url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
+            try res.print(
+                \\<li>
+                \\  <label>
+                \\    <input type='checkbox' name='picked_feed' value='{s}'>
+                \\    [{s}] {s}
+                \\  </label>
+                \\  <div>{s}</div>
+                \\</li>
+            , .{ url, link.media_type.toString(), title, url });
+        }
+        try res.write("</ul>");
+        // TODO: button
+        try res.write(fmt.comptimePrint(button_submit, .{ "submit_feed_links", "(s)" }) ++ form_end);
+        try res.write(form_end);
+    }
+
     fn feedAddPost(req: Request, res: Response) !void {
-        var session = try g.sessions.new();
+        var session = blk: {
+            const token = try getCookieToken(req, global_allocator);
+            const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
+            if (index_opt) |index| {
+                break :blk &g.sessions.list.items[index];
+            }
+            var arena = std.heap.ArenaAllocator.init(global_allocator);
+            break :blk try g.sessions.new(arena);
+        };
+
         errdefer {
             session.deinit();
             _ = g.sessions.list.pop();
@@ -273,6 +282,7 @@ const Server = struct {
         var is_submit_feed_links = false;
         var tags_input: []const u8 = "";
         var feed_url: []const u8 = "";
+        var page_index: ?usize = null;
         var urls_list = try ArrayList([]const u8).initCapacity(session_arena.allocator(), 2);
         const body_decoded = (try zuri.Uri.decode(session_arena.allocator(), req.body)) orelse req.body;
         var iter = mem.split(u8, body_decoded, "&");
@@ -291,6 +301,8 @@ const Server = struct {
                 is_submit_feed = true;
             } else if (mem.eql(u8, "submit_feed_links", key)) {
                 is_submit_feed_links = true;
+            } else if (mem.eql(u8, "page_index", key)) {
+                page_index = try fmt.parseUnsigned(usize, value, 10);
             }
         }
 
@@ -342,7 +354,7 @@ const Server = struct {
 
         const feed = switch (resp_ok.content_type) {
             .html => {
-                const html_page = try parse.Html.parseLinks(arena.allocator(), resp_ok.body);
+                const html_page = try parse.Html.parseLinks(global_allocator, resp_ok.body);
                 // TODO: if (html_page.links.len == 1) make request to add feed
                 session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
                 return;
@@ -366,17 +378,14 @@ const Server = struct {
         initial_url: ?[]const u8,
         tags_input: []const u8,
     ) !void {
-        if (try_urls.len == 0) {
-            if (initial_url) |url| {
-                _ = url;
-                // TODO: make request again
-                // TODO: reprint form
-                // TODO: Add message to pick a feed link
+        if (initial_url == null) {
+            session.form_data = .{ .fail = .{ .ty = .empty_url, .msg = "Can't do anything with no url" } };
+            return;
+        } else if (try_urls.len == 0) {
+            if (session.form_data == .html) {
+                session.form_data.html.ty = .no_pick;
             } else {
-                // TODO: No links found
-                // print form
-                // message: 'Entered link isn't a feed link'
-                // message: 'Could not find any feed links in link content'
+                session.form_data = .{ .fail = .{ .url = initial_url.?, .msg = "Invalid session" } };
             }
             return;
         }
