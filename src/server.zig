@@ -29,8 +29,6 @@ const log = std.log;
 
 // pub const io_mode = .evented;
 
-// TODO: how to handle displaying untagged feeds?
-
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 
 const FormData = union(enum) {
@@ -184,6 +182,8 @@ const Server = struct {
         const token: ?u64 = try getCookieToken(req, global_allocator);
         const session_index: ?usize = if (token) |t| g.sessions.getIndex(t) else null;
 
+        try res.write("<a href='/'>Home</a>");
+
         if (session_index == null) {
             // TODO: empty string args when not debugging
             try res.print(form_base, .{ "localhost:8080/many-links.html", "tag1, tag2, tag3" });
@@ -256,7 +256,6 @@ const Server = struct {
             , .{ url, link.media_type.toString(), title, url });
         }
         try res.write("</ul>");
-        // TODO: button
         try res.write(fmt.comptimePrint(button_submit, .{ "submit_feed_links", "(s)" }) ++ form_end);
         try res.write(form_end);
     }
@@ -579,6 +578,7 @@ const Server = struct {
     // Index displays most recenlty update feeds
     fn indexHandler(req: Request, res: Response) !void {
         _ = req;
+        try res.write("<a href='/feed/add'>Add new feed</a>");
         // Get most recently update feeds
         var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
         try res.write("<p>Feeds</p>");
