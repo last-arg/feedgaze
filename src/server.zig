@@ -134,15 +134,17 @@ const Server = struct {
     const g = struct {
         var storage: *Storage = undefined;
         var sessions: *Sessions = undefined;
+        var allocator: Allocator = undefined;
     };
     const Self = @This();
     server: RoutezServer,
 
-    pub fn init(storage: *Storage, sessions: *Sessions) Self {
+    pub fn init(allocator: Allocator, storage: *Storage, sessions: *Sessions) Self {
         g.storage = storage;
         g.sessions = sessions;
+        g.allocator = allocator;
         var server = RoutezServer.init(
-            global_allocator,
+            allocator,
             .{},
             .{
                 routez.all("/", indexHandler),
@@ -206,10 +208,10 @@ const Server = struct {
     const form_base = form_start_same ++ fmt.comptimePrint(button_submit, .{ "submit_feed", "" }) ++ form_end;
 
     fn feedAddGet(req: Request, res: Response) !void {
-        var arena = std.heap.ArenaAllocator.init(global_allocator);
+        var arena = std.heap.ArenaAllocator.init(g.allocator);
         defer arena.deinit();
 
-        const token: ?u64 = try getCookieToken(req, global_allocator);
+        const token: ?u64 = try getCookieToken(req, g.allocator);
         const session_index: ?usize = if (token) |t| g.sessions.getIndex(t) else null;
 
         try res.write("<a href='/'>Home</a>");
@@ -293,12 +295,12 @@ const Server = struct {
     fn feedAddPost(req: Request, res: Response) !void {
         g.sessions.cleanOld();
         var session = blk: {
-            const token = try getCookieToken(req, global_allocator);
+            const token = try getCookieToken(req, g.allocator);
             const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
             if (index_opt) |index| {
                 break :blk &g.sessions.list.items[index];
             }
-            var arena = std.heap.ArenaAllocator.init(global_allocator);
+            var arena = std.heap.ArenaAllocator.init(g.allocator);
             break :blk try g.sessions.new(arena);
         };
 
@@ -306,6 +308,10 @@ const Server = struct {
             session.deinit();
             _ = g.sessions.list.pop();
         }
+        // TODO: maybe also have tmp_arena that deinit() when function ends
+        // Would use this tmp_arena for allocations that are not needed for session
+        // var tmp_arena = ArenaAllocator.init(g.allocator);
+        // defer tmp_arena.deinit();
         var session_arena = session.arena;
 
         // Get submitted form values
@@ -378,7 +384,7 @@ const Server = struct {
 
         const feed = switch (resp_ok.content_type) {
             .html => {
-                const html_page = try parse.Html.parseLinks(global_allocator, resp_ok.body);
+                const html_page = try parse.Html.parseLinks(g.allocator, resp_ok.body);
                 session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
 
                 if (html_page.links.len == 1) {
@@ -480,7 +486,7 @@ const Server = struct {
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
         _ = req;
-        var arena = std.heap.ArenaAllocator.init(global_allocator);
+        var arena = std.heap.ArenaAllocator.init(g.allocator);
         defer arena.deinit();
         var all_tags = try g.storage.getAllTags();
 
@@ -618,7 +624,7 @@ const Server = struct {
         // Get tags with count
         var tags = try g.storage.getAllTags();
         try res.write("<p>All Tags</p>");
-        try printTags(global_allocator, res, tags, &[_][]const u8{});
+        try printTags(g.allocator, res, tags, &[_][]const u8{});
     }
 
     fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
@@ -696,7 +702,7 @@ pub fn run(storage: *Storage) !void {
     var gen_alloc = std.heap.GeneralPurposeAllocator(.{}){};
     var sessions = Sessions.init(gen_alloc.allocator());
     defer sessions.deinit();
-    var server = Server.init(storage, &sessions);
+    var server = Server.init(gen_alloc.allocator(), storage, &sessions);
     var addr = try Address.parseIp(global.ip, global.port);
     try server.server.listen(addr);
 }
