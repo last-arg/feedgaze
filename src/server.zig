@@ -317,7 +317,7 @@ const Server = struct {
         try res.headers.put("Location", "/feed/add");
     }
 
-    pub fn submitFeed(arena: *ArenaAllocator, session: *Session, first_url: []const u8, tags_input: []const u8) !void {
+    pub fn submitFeed(arena: *ArenaAllocator, session: *Session, first_url: []const u8, tags_input: []const u8) anyerror!void {
         if (first_url.len == 0) {
             session.form_data = .{ .fail = .{ .url = first_url, .ty = .empty_url } };
             return;
@@ -346,7 +346,12 @@ const Server = struct {
         const feed = switch (resp_ok.content_type) {
             .html => {
                 const html_page = try parse.Html.parseLinks(global_allocator, resp_ok.body);
-                // TODO: if (html_page.links.len == 1) make request to add feed
+                if (html_page.links.len == 1) {
+                    const current_uri = try zuri.Uri.parse(url, true);
+                    const whole_url = try url_util.makeWholeUrl(session.arena.allocator(), current_uri, html_page.links[0].href);
+                    return try submitFeed(arena, session, whole_url, tags_input);
+                }
+
                 session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
                 return;
             },
