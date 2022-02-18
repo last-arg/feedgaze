@@ -194,10 +194,13 @@ const Server = struct {
         switch (session.form_data) {
             .success => |ids| {
                 if (ids.len > 0) {
+                    try res.write("<p>Added feed(s):</p>");
+                    try res.write("<ul>");
                     for (ids) |id| {
-                        try res.print("Added id {d}", .{id});
+                        const f = (try g.storage.getFeedById(id)) orelse continue;
+                        try res.print("<li>{s} {s}</li>", .{ f.title, f.location });
                     }
-                    // TODO: print added links
+                    try res.write("</ul>");
                     try res.print(form_base, .{ "", "" });
                 }
 
