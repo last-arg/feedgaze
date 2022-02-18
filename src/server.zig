@@ -44,22 +44,17 @@ const FormData = union(enum) {
     fail: struct {
         url: []const u8 = "",
         // tags?
-        ty: enum { empty_url, invalid_url, invalid_form, unknown } = .unknown,
+        ty: enum { empty_url, invalid_url, invalid_form, http_not_modified, http_fail, unknown } = .unknown,
         msg: []const u8 = "Unknown problem occured. Try again.",
     },
 };
 
 const Session = struct {
     id: u64,
-    // TODO: use union instead?
-    data: StringHashMap([]const u8),
-    html_page: ?parse.Html.Page = null,
-    added_ids: []u64 = &[_]u64{},
     arena: std.heap.ArenaAllocator,
     form_data: FormData,
 
     pub fn deinit(self: *@This()) void {
-        self.data.deinit();
         self.arena.deinit();
     }
 };
@@ -86,8 +81,6 @@ const Sessions = struct {
         var result = try self.list.addOne();
         result.* = Session{
             .id = self.random.int(u64),
-            // TODO: for some reason using arena.allocator() gives segmentation fault
-            .data = StringHashMap([]const u8).init(self.allocator),
             .arena = arena,
             .form_data = .{ .fail = .{} },
         };
@@ -316,10 +309,8 @@ const Server = struct {
         } else if (is_submit_feed_links) {
             try submitFeedLinks(&session_arena, session, urls_list.items, feed_url, tags_input);
         } else {
-            try session.data.put("invalid_form", "");
+            session.form_data = .{ .fail = .{ .url = feed_url, .ty = .invalid_form } };
         }
-
-        try session.data.put("tags", tags_input);
 
         try res.headers.put("Set-Cookie", try fmt.allocPrint(session_arena.allocator(), "token={d}; path=/feed/add", .{session.id}));
         res.status_code = .Found;
@@ -328,12 +319,12 @@ const Server = struct {
 
     pub fn submitFeed(arena: *ArenaAllocator, session: *Session, first_url: []const u8, tags_input: []const u8) !void {
         if (first_url.len == 0) {
-            try session.data.put("missing_url", "");
+            session.form_data = .{ .fail = .{ .url = first_url, .ty = .empty_url } };
             return;
         }
 
         const url = url_util.makeValidUrl(arena.allocator(), first_url) catch {
-            try session.data.put("invalid_url", first_url);
+            session.form_data = .{ .fail = .{ .url = first_url, .ty = .invalid_url } };
             return;
         };
 
@@ -343,16 +334,11 @@ const Server = struct {
             .ok => |ok| ok,
             .not_modified => {
                 log.err("resolveRequest() fn returned .not_modified union value. This should not happen when adding new feed. Input url: {s}", .{url});
-                // TODO: hook up on GET page
-                // message: 'Failed to retrieve feed from <url>'
-                try session.data.put("failed_url", url);
+                session.form_data = .{ .fail = .{ .url = url, .ty = .http_not_modified } };
                 return;
             },
             .fail => |msg| {
-                // TODO: hook up on GET page
-                // message: 'Failed to retrieve feed from <url>'
-                try session.data.put("failed_url", url);
-                try session.data.put("failed_msg", msg);
+                session.form_data = .{ .fail = .{ .url = url, .ty = .http_fail, .msg = msg } };
                 return;
             },
         };
