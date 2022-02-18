@@ -346,13 +346,14 @@ const Server = struct {
         const feed = switch (resp_ok.content_type) {
             .html => {
                 const html_page = try parse.Html.parseLinks(global_allocator, resp_ok.body);
+                session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
+
                 if (html_page.links.len == 1) {
                     const current_uri = try zuri.Uri.parse(url, true);
                     const whole_url = try url_util.makeWholeUrl(session.arena.allocator(), current_uri, html_page.links[0].href);
-                    return try submitFeed(arena, session, whole_url, tags_input);
+                    try submitFeedLinks(arena, session, &[_][]const u8{whole_url}, url, tags_input);
                 }
 
-                session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
                 return;
             },
             .xml => try parse.parse(arena, resp_ok.body),
