@@ -63,6 +63,7 @@ pub const Html = struct {
         return name;
     }
 
+    // TODO: this also parse commented html
     pub fn parseLinks(allocator: Allocator, contents_const: []const u8) !Page {
         var contents = contents_const;
         var links = ArrayList(Link).init(allocator);

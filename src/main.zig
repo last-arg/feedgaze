@@ -495,7 +495,7 @@ pub fn usage(comptime cmds: anytype) !void {
     const writer = stderr.writer();
     try writer.writeAll("Usage: feedgaze <subcommand> [flags] [inputs]\n");
     const decls = comptime std.meta.declarations(cmds);
-    // TODO: exmaple how to concat unknown length array at compile time
+    // TODO: example how to concat unknown length array at compile time
     // https://github.com/Vexu/routez/blob/master/src/routez/router.zig#L18
     const NameArr = std.BoundedArray([]const u8, decls.len);
     const CmdArr = std.BoundedArray(struct { flags: []Flag, names: NameArr }, decls.len);
