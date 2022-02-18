@@ -43,7 +43,7 @@ const FormData = union(enum) {
         url: []const u8 = "",
         // tags?
         ty: enum { empty_url, invalid_url, invalid_form, http_not_modified, http_fail, unknown } = .unknown,
-        msg: []const u8 = "Unknown problem occured. Try again.",
+        msg: []const u8 = "",
     },
 };
 
@@ -60,8 +60,11 @@ const Session = struct {
 const Sessions = struct {
     const Self = @This();
     allocator: Allocator,
-    list: ArrayList(Session),
     random: std.rand.Random,
+    // TODO: On some cases session might not get removed. Need to clean up sessions that don't get remove.
+    // Probably time based. On every new request check
+    list: ArrayList(Session),
+    timestamps: ArrayList(i64),
 
     pub fn init(allocator: Allocator) Self {
         var secret_seed: [std.rand.DefaultCsprng.secret_seed_length]u8 = undefined;
@@ -70,19 +73,46 @@ const Sessions = struct {
         const random = csprng.random();
         return .{
             .allocator = allocator,
-            .list = ArrayList(Session).init(allocator),
             .random = random,
+            .list = ArrayList(Session).init(allocator),
+            .timestamps = ArrayList(i64).init(allocator),
         };
     }
 
     pub fn new(self: *Self, arena: ArenaAllocator) !*Session {
         var result = try self.list.addOne();
+        try self.timestamps.append(std.time.timestamp());
         result.* = Session{
             .id = self.random.int(u64),
             .arena = arena,
             .form_data = .{ .fail = .{} },
         };
         return result;
+    }
+
+    pub fn remove(self: *Self, index: usize) void {
+        _ = self.list.swapRemove(index);
+        _ = self.timestamps.swapRemove(index);
+    }
+
+    const max_age_seconds = std.time.s_per_min * 5;
+    // TODO: Better to check it on every interval.
+    // At the moment event is checked every time a POST request to /feed/add is made
+    pub fn cleanOld(self: *Self) void {
+        if (self.timestamps.items.len == 0) return;
+        const current = std.time.timestamp();
+        const first = self.timestamps.items[0];
+        const first_passed = current - first;
+        if (first_passed > max_age_seconds) {
+            var index = self.timestamps.items.len - 1;
+            while (index >= 0) : (index -= 1) {
+                const passed = current - self.timestamps.items[index];
+                if (passed > max_age_seconds) {
+                    _ = self.timestamps.swapRemove(index);
+                    _ = self.list.swapRemove(index);
+                }
+            }
+        }
     }
 
     pub fn getIndex(self: *Self, token: u64) ?u64 {
@@ -205,7 +235,7 @@ const Server = struct {
                 }
 
                 session.deinit();
-                _ = g.sessions.list.swapRemove(session_index.?);
+                _ = g.sessions.remove(session_index.?);
                 if (token) |_| res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0") catch {};
             },
             .html => |data| {
@@ -232,7 +262,7 @@ const Server = struct {
                 try res.print("<p>{s}</p>", .{data.msg});
 
                 session.deinit();
-                _ = g.sessions.list.swapRemove(session_index.?);
+                _ = g.sessions.remove(session_index.?);
                 if (token) |_| res.headers.put("Set-Cookie", "token=; path=/feed/add; Max-Age=0") catch {};
             },
         }
@@ -261,6 +291,7 @@ const Server = struct {
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
+        g.sessions.cleanOld();
         var session = blk: {
             const token = try getCookieToken(req, global_allocator);
             const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
