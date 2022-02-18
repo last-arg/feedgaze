@@ -351,7 +351,10 @@ const Server = struct {
             session.form_data = .{ .fail = .{ .url = feed_url, .ty = .invalid_form } };
         }
 
-        try res.headers.put("Set-Cookie", try fmt.allocPrint(session_arena.allocator(), "token={d}; path=/feed/add", .{session.id}));
+        const token_fmt = "token={d}; path=/feed/add";
+        const u64_max_char = 20;
+        var buf: [token_fmt.len + u64_max_char]u8 = undefined;
+        try res.headers.put("Set-Cookie", try fmt.bufPrint(&buf, token_fmt, .{session.id}));
         res.status_code = .Found;
         try res.headers.put("Location", "/feed/add");
     }
