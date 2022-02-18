@@ -24,6 +24,8 @@ const log = std.log;
 
 // Resources
 // POST-REDIRECT-GET | https://andrewlock.net/post-redirect-get-using-tempdata-in-asp-net-core/
+// Generating session ids | https://codeahoy.com/2016/04/13/generating-session-ids/
+// https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#references
 
 // pub const io_mode = .evented;
 
@@ -48,7 +50,7 @@ const FormData = union(enum) {
 };
 
 const Session = struct {
-    id: u64, // TODO: change to more secure
+    id: u64,
     // TODO: use union instead?
     data: StringHashMap([]const u8),
     html_page: ?parse.Html.Page = null,
@@ -66,20 +68,24 @@ const Sessions = struct {
     const Self = @This();
     allocator: Allocator,
     list: ArrayList(Session),
+    random: std.rand.Random,
 
     pub fn init(allocator: Allocator) Self {
+        var secret_seed: [std.rand.DefaultCsprng.secret_seed_length]u8 = undefined;
+        std.crypto.random.bytes(&secret_seed);
+        var csprng = std.rand.DefaultCsprng.init(secret_seed);
+        const random = csprng.random();
         return .{
             .allocator = allocator,
             .list = ArrayList(Session).init(allocator),
+            .random = random,
         };
     }
 
     pub fn new(self: *Self, arena: ArenaAllocator) !*Session {
         var result = try self.list.addOne();
-        // var arena = std.heap.ArenaAllocator.init(self.allocator);
         result.* = Session{
-            // TODO: generate token
-            .id = self.list.items.len,
+            .id = self.random.int(u64),
             // TODO: for some reason using arena.allocator() gives segmentation fault
             .data = StringHashMap([]const u8).init(self.allocator),
             .arena = arena,
@@ -184,7 +190,6 @@ const Server = struct {
 
         const token: ?u64 = try getCookieToken(req, global_allocator);
         const session_index: ?usize = if (token) |t| g.sessions.getIndex(t) else null;
-        print("COOKIE TOKEN: {}\n", .{token});
 
         if (session_index == null) {
             // TODO: empty string args when not debugging
