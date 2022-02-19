@@ -73,11 +73,23 @@ pub const Html = struct {
         var page_title: ?[]const u8 = null;
 
         const title_elem = "<title>";
-        if (ascii.indexOfIgnoreCase(contents, title_elem)) |index| {
-            const start = index + title_elem.len;
-            if (ascii.indexOfIgnoreCase(contents[start..], "</title>")) |end| {
-                page_title = contents[start .. start + end];
+        while (ascii.indexOfIgnoreCase(contents, "<")) |start_index| {
+            contents = contents[start_index..];
+            if (ascii.startsWithIgnoreCase(contents, title_elem)) {
+                contents = contents[title_elem.len..];
+                const title_end_index = ascii.indexOfIgnoreCase(contents, "</title>") orelse break;
+                page_title = contents[0..title_end_index];
+                break;
+            } else if (ascii.startsWithIgnoreCase(contents, "<!--")) {
+                if (ascii.indexOfIgnoreCase(contents, "-->")) |comment_end_index| {
+                    // skip comments
+                    contents = contents[comment_end_index + 3 ..];
+                } else {
+                    break;
+                }
             }
+            const end_index = ascii.indexOfIgnoreCase(contents, ">") orelse break;
+            contents = contents[end_index..];
         }
 
         var link_rel: ?[]const u8 = null;
@@ -88,6 +100,7 @@ pub const Html = struct {
         const link_elem = "<link ";
         const a_elem = "<a ";
 
+        contents = contents_const;
         while (contents.len >= 0) {
             const link_index = ascii.indexOfIgnoreCase(contents, link_elem);
             const a_index = ascii.indexOfIgnoreCase(contents, a_elem);
@@ -245,9 +258,10 @@ test "@active Html.parse" {
         // Test duplicate link
         const html = @embedFile("../test/many-links.html");
         const page = try Html.parseLinks(allocator, html);
-        for (page.links) |link| {
-            print("{s}\n", .{link.href});
-        }
+        // for (page.links) |link| {
+        //     print("{s}\n", .{link.href});
+        // }
+        try expectEqualStrings(page.title.?, "Parse Feed Links");
         try expectEqual(@as(usize, 5), page.links.len);
         try expectEqual(Html.MediaType.rss, page.links[0].media_type);
         try expectEqual(Html.MediaType.unknown, page.links[1].media_type);
