@@ -63,8 +63,6 @@ pub const Html = struct {
         return name;
     }
 
-    // TODO: Oops. This also parses commented html
-    // Add commented link to test/many-links.html
     pub fn parseLinks(allocator: Allocator, contents_const: []const u8) !Page {
         var contents = contents_const;
         var links = ArrayList(Link).init(allocator);
@@ -73,6 +71,7 @@ pub const Html = struct {
         var page_title: ?[]const u8 = null;
 
         const title_elem = "<title>";
+        // Seach for 'title' element
         while (ascii.indexOfIgnoreCase(contents, "<")) |start_index| {
             contents = contents[start_index..];
             if (ascii.startsWithIgnoreCase(contents, title_elem)) {
@@ -84,9 +83,8 @@ pub const Html = struct {
                 if (ascii.indexOfIgnoreCase(contents, "-->")) |comment_end_index| {
                     // skip comments
                     contents = contents[comment_end_index + 3 ..];
-                } else {
-                    break;
-                }
+                    continue;
+                } else break;
             }
             const end_index = ascii.indexOfIgnoreCase(contents, ">") orelse break;
             contents = contents[end_index..];
@@ -101,7 +99,18 @@ pub const Html = struct {
         const a_elem = "<a ";
 
         contents = contents_const;
-        while (contents.len >= 0) {
+        // Seach for 'a' or 'link' html elements
+        while (ascii.indexOfIgnoreCase(contents, "<")) |start_index| {
+            contents = contents[start_index..];
+            if (ascii.startsWithIgnoreCase(contents, "<!--")) {
+                if (ascii.indexOfIgnoreCase(contents, "-->")) |comment_end_index| {
+                    // skip comments
+                    contents = contents[comment_end_index + 3 ..];
+                    continue;
+                } else break;
+            }
+
+            // Check anymore links exist
             const link_index = ascii.indexOfIgnoreCase(contents, link_elem);
             const a_index = ascii.indexOfIgnoreCase(contents, a_elem);
             const index = blk: {
@@ -110,68 +119,32 @@ pub const Html = struct {
                 }
                 break :blk link_index orelse a_index orelse break;
             };
+            const start = if (link_index == index) link_elem.len else a_elem.len;
+
             var key: []const u8 = "";
             var value: []const u8 = "";
-            contents = contents[index..];
-            const start = blk: {
-                if (ascii.startsWithIgnoreCase(contents, a_elem)) {
-                    break :blk a_elem.len;
-                }
-                break :blk link_elem.len;
-            };
-            contents = contents[start..];
-            while (true) {
-                // skip whitespace
-                contents = mem.trimLeft(u8, contents, &ascii.spaces);
-                if (contents[0] == '>') {
-                    contents = contents[1..];
-                    break;
-                } else if (contents[0] == '/') {
-                    contents = mem.trimLeft(u8, contents[1..], &ascii.spaces);
-                    if (contents[0] == '>') {
-                        contents = contents[1..];
-                        break;
-                    }
-                } else if (contents.len == 0) {
-                    break;
-                }
+            contents = mem.trimLeft(u8, contents[start..], &ascii.spaces);
+            const end_index = ascii.indexOfIgnoreCase(contents, ">") orelse break;
+            if (end_index == 0) continue;
 
-                const next_eql = mem.indexOfScalar(u8, contents, '=') orelse contents.len;
-                const next_space = mem.indexOfAny(u8, contents, &ascii.spaces) orelse contents.len;
-                const next_slash = mem.indexOfScalar(u8, contents, '/') orelse contents.len;
-                const next_gt = mem.indexOfScalar(u8, contents, '>') orelse contents.len;
-
-                const end = blk: {
-                    var smallest = next_space;
-                    if (next_slash < smallest) {
-                        smallest = next_slash;
+            var elem_attrs = contents[0..end_index];
+            while (elem_attrs.len > 0) {
+                const eql_index = mem.indexOf(u8, elem_attrs, "=") orelse break;
+                key = mem.trimLeft(u8, elem_attrs[0..eql_index], &ascii.spaces);
+                elem_attrs = elem_attrs[eql_index + 1 ..];
+                const end_char = blk: {
+                    const next_char = elem_attrs[0];
+                    if (next_char == '\'' or next_char == '"') {
+                        break :blk next_char;
                     }
-                    if (next_gt < smallest) {
-                        smallest = next_gt;
-                    }
-                    break :blk smallest;
+                    break :blk ' ';
                 };
-
-                if (next_eql < end) {
-                    key = contents[0..next_eql];
-                    contents = contents[next_eql + 1 ..];
-                    switch (contents[0]) {
-                        '"', '\'' => |char| {
-                            contents = contents[1..];
-                            const value_end = mem.indexOfScalar(u8, contents, char) orelse break;
-
-                            value = contents[0..value_end];
-                            contents = contents[value_end + 1 ..];
-                        },
-                        else => {
-                            value = contents[0..end];
-                            contents = contents[end + 1 ..];
-                        },
-                    }
-                } else {
-                    contents = contents[end + 1 ..];
-                    continue;
+                if (end_char != ' ') {
+                    elem_attrs = elem_attrs[1..];
                 }
+                const elem_end_index = mem.indexOf(u8, elem_attrs, &[_]u8{end_char}) orelse elem_attrs.len;
+                value = mem.trim(u8, elem_attrs[0..elem_end_index], &[_]u8{end_char});
+                elem_attrs = elem_attrs[elem_end_index + 1 ..];
 
                 if (mem.eql(u8, "rel", key)) {
                     link_rel = value;
@@ -184,7 +157,6 @@ pub const Html = struct {
                 }
             }
 
-            // Check for duplicate links
             const has_link = blk: {
                 if (link_href) |href| {
                     for (links.items) |link| {
@@ -210,6 +182,8 @@ pub const Html = struct {
             link_type = null;
             link_title = null;
             link_href = null;
+
+            contents = contents[end_index..];
         }
 
         return Page{

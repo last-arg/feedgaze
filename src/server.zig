@@ -306,10 +306,7 @@ const Server = struct {
             session.deinit();
             _ = g.sessions.list.pop();
         }
-        // TODO: maybe also have tmp_arena that deinit() when function ends
-        // Would use this tmp_arena for allocations that are not needed for session
-        // var tmp_arena = ArenaAllocator.init(g.allocator);
-        // defer tmp_arena.deinit();
+
         var session_arena = session.arena;
 
         // Get submitted form values
