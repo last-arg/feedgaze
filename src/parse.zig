@@ -88,9 +88,15 @@ pub const Html = struct {
         const link_elem = "<link ";
         const a_elem = "<a ";
 
-        while (ascii.indexOfIgnoreCase(contents, link_elem) orelse
-            ascii.indexOfIgnoreCase(contents, a_elem)) |index|
-        {
+        while (contents.len >= 0) {
+            const link_index = ascii.indexOfIgnoreCase(contents, link_elem);
+            const a_index = ascii.indexOfIgnoreCase(contents, a_elem);
+            const index = blk: {
+                if (link_index != null and a_index != null) {
+                    break :blk std.math.min(link_index.?, a_index.?);
+                }
+                break :blk link_index orelse a_index orelse break;
+            };
             var key: []const u8 = "";
             var value: []const u8 = "";
             contents = contents[index..];
@@ -230,7 +236,7 @@ pub const Html = struct {
     }
 };
 
-test "Html.parse" {
+test "@active Html.parse" {
     const expectEqual = std.testing.expectEqual;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
@@ -239,6 +245,9 @@ test "Html.parse" {
         // Test duplicate link
         const html = @embedFile("../test/many-links.html");
         const page = try Html.parseLinks(allocator, html);
+        for (page.links) |link| {
+            print("{s}\n", .{link.href});
+        }
         try expectEqual(@as(usize, 5), page.links.len);
         try expectEqual(Html.MediaType.rss, page.links[0].media_type);
         try expectEqual(Html.MediaType.unknown, page.links[1].media_type);
