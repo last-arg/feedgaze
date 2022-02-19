@@ -61,8 +61,6 @@ const Sessions = struct {
     const Self = @This();
     allocator: Allocator,
     random: std.rand.Random,
-    // TODO: On some cases session might not get removed. Need to clean up sessions that don't get remove.
-    // Probably time based. On every new request check
     list: ArrayList(Session),
     timestamps: ArrayList(i64),
 
