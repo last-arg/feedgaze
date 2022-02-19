@@ -434,11 +434,12 @@ const Server = struct {
                 .ok => |ok| ok,
                 .not_modified => {
                     log.err("resolveRequest() fn returned .not_modified union value. This should not happen when adding new feed. Input url: {s}", .{url});
-                    // TODO: send somekind or http error
+                    session.form_data = .{ .fail = .{ .url = url, .ty = .http_not_modified } };
                     continue;
                 },
                 .fail => |msg| {
                     log.err("Failed to resolve url {s}. Returned error message: {s}", .{ url, msg });
+                    session.form_data = .{ .fail = .{ .url = url, .ty = .http_fail, .msg = msg } };
                     continue;
                 },
             };
