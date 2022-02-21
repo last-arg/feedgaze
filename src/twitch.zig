@@ -1,6 +1,9 @@
 const std = @import("std");
 const http = @import("http.zig");
+const parse = @import("parse.zig");
+const Feed = parse.Feed;
 const zuri = @import("zuri");
+const ArrayList = std.ArrayList;
 const zfetch = @import("zfetch");
 const mem = std.mem;
 const json = std.json;
@@ -50,12 +53,42 @@ const User = struct {
     display_name: []const u8, // Will be feed title
 };
 
-const Video = struct {
-    title: []const u8,
-    url: []const u8,
-};
+pub fn getFeed(allocator: Allocator, url: []const u8) !Feed {
+    const login_name = (try urlToLoginName(url)) orelse return error.NoUserNameInPath;
 
-pub fn fetchArchiveVideos(allocator: Allocator, headers: zfetch.Headers, user: User) ![]Video {
+    try zfetch.init();
+    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
+
+    var headers = zfetch.Headers.init(allocator);
+    try headers.appendValue("Client-Id", client_id);
+    try headers.appendValue("Authorization", access_token);
+
+    const user = (try fetchUserByLogin(allocator, headers, login_name)) orelse return error.NoTwitchUser;
+    const videos = try fetchFeedItems(allocator, headers, user);
+
+    const feed = Feed{
+        .title = user.display_name,
+        .link = try fmt.allocPrint(allocator, "https://twitch.tv/{s}/videos", .{login_name}),
+        .items = videos,
+    };
+
+    return feed;
+}
+
+test "getFeed()" {
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    const login_name = "skateboarddrake390";
+    // There are no videos with type archive in twitch-cli mock database
+    const videos = try getFeed(allocator, "twitch.tv/" ++ login_name);
+    _ = videos;
+}
+
+// Fetches archived user videos
+pub fn fetchFeedItems(allocator: Allocator, headers: zfetch.Headers, user: User) ![]Feed.Item {
     const url = try fmt.allocPrint(allocator, "{s}/videos?type=archive&user_id={s}", .{ base_url, user.id });
     var req = try zfetch.Request.init(allocator, url, null);
     // Closing file socket + freeing allocations
@@ -76,18 +109,35 @@ pub fn fetchArchiveVideos(allocator: Allocator, headers: zfetch.Headers, user: U
 
         const req_reader = req.reader();
         const body = try req_reader.readAllAlloc(allocator, std.math.maxInt(usize));
-        const Internal = struct { data: []Video };
-        var stream = std.json.TokenStream.init(body);
-        const videos = try std.json.parse(Internal, &stream, .{ .allocator = allocator, .ignore_unknown_fields = true });
-        return videos.data;
+
+        var p = json.Parser.init(allocator, false);
+        defer p.deinit();
+        var tree = try p.parse(body);
+        defer tree.deinit();
+
+        var data = tree.root.Object.get("data").?;
+        var items = try ArrayList(Feed.Item).initCapacity(allocator, data.Array.items.len);
+        defer items.deinit();
+
+        for (data.Array.items) |video| {
+            const updated_raw = video.Object.get("created_at").?.String;
+            const timestamp = try parse.Atom.parseDateToUtc(updated_raw);
+            items.appendAssumeCapacity(.{
+                .title = video.Object.get("title").?.String,
+                .id = video.Object.get("id").?.String,
+                .link = video.Object.get("url").?.String,
+                .updated_raw = updated_raw,
+                .updated_timestamp = @floatToInt(i64, timestamp.toSeconds()),
+            });
+        }
     } else {
         log.err("Twitch request to get {s} archive videos failed. Error: {d} {s}", .{ user.display_name, req.status.code, req.status.reason });
         return error.FetchingVideosFailed;
     }
-    return &[_]Video{};
+    return &[_]Feed.Item{};
 }
 
-test "@active fetchArchiveVideos()" {
+test "@active fetchFeedItems()" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -103,8 +153,8 @@ test "@active fetchArchiveVideos()" {
     const login_name = "skateboarddrake390";
     const user = try fetchUserByLogin(allocator, headers, login_name);
     std.debug.assert(user != null);
-    // There are no videos with type archive in twitch-cli mock data
-    _ = try fetchArchiveVideos(allocator, headers, user.?);
+    // There are no videos with type archive in twitch-cli mock database
+    _ = try fetchFeedItems(allocator, headers, user.?);
 }
 
 pub fn fetchUserByLogin(allocator: Allocator, headers: zfetch.Headers, login_name: []const u8) !?User {
