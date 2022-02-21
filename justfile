@@ -27,3 +27,6 @@ test-db:
   zig build
   ./zig-out/bin/feedgaze add --db tmp/test.db --tags a1,a2 http://localhost:8080/atom.atom
   ./zig-out/bin/feedgaze add --db tmp/test.db --tags r1,r2 test/rss2.xml
+
+test-server-twitch:
+  twitch mock-api start -p 8181
