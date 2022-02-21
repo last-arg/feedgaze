@@ -261,7 +261,7 @@ pub const Feed = struct {
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
-    // location: []const u8,
+    location: []const u8 = "",
     items: []Item = &[_]Item{},
     headers: Update = .{},
 

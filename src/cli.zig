@@ -172,12 +172,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             log.info("Parsing feed", .{});
             var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
             feed.headers = resp.ok.headers;
+            feed.location = resp.ok.location;
             log.info("Feed parsed", .{});
 
             if (feed.link == null) feed.link = url;
             // @continue
             // TODO: move resp.ok.headers into Feed
-            _ = try feed_db.addNewFeed(feed, location, tags);
+            _ = try feed_db.addNewFeed(feed, tags);
         }
 
         pub fn deleteFeed(self: *Self, search_inputs: [][]const u8) !void {

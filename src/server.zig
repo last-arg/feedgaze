@@ -400,9 +400,10 @@ const Server = struct {
             .unknown => parse.parse(arena, resp_ok.body) catch try parse.Json.parse(arena, resp_ok.body),
         };
         feed.headers = resp_ok.headers;
+        feed.location = resp_ok.location;
         var ids = try ArrayList(u64).initCapacity(arena.allocator(), 1);
         defer ids.deinit();
-        ids.appendAssumeCapacity(try addFeed(feed, url, tags_input));
+        ids.appendAssumeCapacity(try addFeed(feed, tags_input));
         session.form_data = .{ .success = ids.toOwnedSlice() };
     }
 
@@ -456,14 +457,15 @@ const Server = struct {
                 },
             };
             feed.headers = resp_ok.headers;
-            const feed_id = try addFeed(feed, url, tags_input);
+            feed.location = resp_ok.location;
+            const feed_id = try addFeed(feed, tags_input);
             added_ids.appendAssumeCapacity(feed_id);
         }
         session.form_data = .{ .success = added_ids.toOwnedSlice() };
     }
 
-    fn addFeed(feed: parse.Feed, url: []const u8, tags: []const u8) !u64 {
-        return try g.storage.addNewFeed(feed, url, tags);
+    fn addFeed(feed: parse.Feed, tags: []const u8) !u64 {
+        return try g.storage.addNewFeed(feed, tags);
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
