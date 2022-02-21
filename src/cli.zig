@@ -132,7 +132,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             var savepoint = try self.feed_db.db.sql_db.savepoint("addFeedLocal");
             defer savepoint.rollback();
-            const id = try self.feed_db.addFeed(feed, abs_path);
+            const id = try self.feed_db.insertFeed(feed, abs_path);
             try self.feed_db.addFeedLocal(id, mtime_sec);
             try self.feed_db.addItems(id, feed.items);
             try self.feed_db.addTags(id, tags);
@@ -184,7 +184,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try writer.print("Feed updated {s}\n", .{location});
             } else {
                 log.info("Saving feed", .{});
-                const feed_id = try feed_db.addFeed(feed, location);
+                const feed_id = try feed_db.insertFeed(feed, location);
                 try feed_db.addFeedUrl(feed_id, resp.ok.headers);
                 try feed_db.addItems(feed_id, feed.items);
                 try self.feed_db.addTags(feed_id, tags);

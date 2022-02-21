@@ -474,7 +474,7 @@ const Server = struct {
             try g.storage.addTags(row.feed_id, tags);
             feed_id = row.feed_id;
         } else {
-            feed_id = try g.storage.addFeed(feed, url);
+            feed_id = try g.storage.insertFeed(feed, url);
             try g.storage.addFeedUrl(feed_id, headers);
             try g.storage.addItems(feed_id, feed.items);
             try g.storage.addTags(feed_id, tags);

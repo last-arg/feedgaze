@@ -34,7 +34,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addFeed(self: *Self, feed: parse.Feed, location: []const u8) !u64 {
+    pub fn insertFeed(self: *Self, feed: parse.Feed, location: []const u8) !u64 {
         const query =
             \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
             \\VALUES (
@@ -799,7 +799,7 @@ test "Storage fake net" {
 
     var savepoint = try feed_db.db.sql_db.savepoint("test_net");
     defer savepoint.rollback();
-    const id = try feed_db.addFeed(feed, test_data.location);
+    const id = try feed_db.insertFeed(feed, test_data.location);
     try feed_db.addFeedUrl(id, test_data.headers);
 
     const ItemsResult = struct { title: []const u8 };
@@ -869,7 +869,7 @@ test "Storage local" {
 
     var savepoint = try feed_db.db.sql_db.savepoint("test_local");
     defer savepoint.rollback();
-    const id = try feed_db.addFeed(feed, abs_path);
+    const id = try feed_db.insertFeed(feed, abs_path);
     try feed_db.addFeedLocal(id, mtime_sec);
     const last_items = feed.items[3..];
     var tmp_items = try allocator.alloc(parse.Feed.Item, last_items.len);
@@ -970,12 +970,12 @@ test "different urls, same feed items" {
     const parsed_feed = parse.Feed{
         .title = "Same stuff",
     };
-    const id1 = try storage.addFeed(parsed_feed, location1);
+    const id1 = try storage.insertFeed(parsed_feed, location1);
     var items: [items_base.len]parse.Feed.Item = undefined;
     mem.copy(parse.Feed.Item, &items, &items_base);
     try storage.addItems(id1, &items);
     const location2 = "location2";
-    const id2 = try storage.addFeed(parsed_feed, location2);
+    const id2 = try storage.insertFeed(parsed_feed, location2);
     try storage.addItems(id2, &items);
 
     const feed_count_query = "select count(id) from feed";
@@ -999,7 +999,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     {
         const location1 = "location1";
         const parsed_feed = parse.Feed{ .title = "Title: location 1" };
-        const id1 = try storage.addFeed(parsed_feed, location1);
+        const id1 = try storage.insertFeed(parsed_feed, location1);
         const ok1 = http.Ok{
             .location = "feed_location1",
             .body = "",
@@ -1010,7 +1010,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     {
         const location1 = "location2";
         const parsed_feed = parse.Feed{ .title = "Title: location 2" };
-        const id1 = try storage.addFeed(parsed_feed, location1);
+        const id1 = try storage.insertFeed(parsed_feed, location1);
         const ok1 = http.Ok{
             .location = "feed_location2",
             .body = "",
@@ -1025,7 +1025,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     {
         const location1 = "location3";
         const parsed_feed = parse.Feed{ .title = "Title: location 3" };
-        const id1 = try storage.addFeed(parsed_feed, location1);
+        const id1 = try storage.insertFeed(parsed_feed, location1);
         const ok1 = http.Ok{
             .location = "feed_location3",
             .body = "",
