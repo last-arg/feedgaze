@@ -34,7 +34,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addNewFeed(self: *Self, feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
+    pub fn addNewFeed(self: *Self, feed: parse.Feed, url: []const u8, tags: []const u8) !u64 {
         var savepoint = try self.db.sql_db.savepoint("addNewFeed");
         defer savepoint.rollback();
         const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
@@ -42,14 +42,14 @@ pub const Storage = struct {
         if (try self.db.one(Storage.CurrentData, query, .{url})) |row| {
             try self.updateUrlFeed(.{
                 .current = row,
-                .headers = headers,
+                .headers = feed.headers,
                 .feed = feed,
             }, .{ .force = true });
             try self.addTags(row.feed_id, tags);
             feed_id = row.feed_id;
         } else {
             feed_id = try self.insertFeed(feed, url);
-            try self.addFeedUrl(feed_id, headers);
+            try self.addFeedUrl(feed_id, feed.headers);
             try self.addItems(feed_id, feed.items);
             try self.addTags(feed_id, tags);
         }

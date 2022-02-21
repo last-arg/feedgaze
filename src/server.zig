@@ -380,7 +380,7 @@ const Server = struct {
             },
         };
 
-        const feed = switch (resp_ok.content_type) {
+        var feed = switch (resp_ok.content_type) {
             .html => {
                 const html_page = try parse.Html.parseLinks(g.allocator, resp_ok.body);
                 session.form_data = .{ .html = .{ .url = url, .tags = tags_input, .page = html_page } };
@@ -399,9 +399,10 @@ const Server = struct {
             .json, .json_feed => try parse.Json.parse(arena, resp_ok.body),
             .unknown => parse.parse(arena, resp_ok.body) catch try parse.Json.parse(arena, resp_ok.body),
         };
+        feed.headers = resp_ok.headers;
         var ids = try ArrayList(u64).initCapacity(arena.allocator(), 1);
         defer ids.deinit();
-        ids.appendAssumeCapacity(try addFeed(feed, resp_ok.headers, url, tags_input));
+        ids.appendAssumeCapacity(try addFeed(feed, url, tags_input));
         session.form_data = .{ .success = ids.toOwnedSlice() };
     }
 
@@ -443,7 +444,7 @@ const Server = struct {
                     continue;
                 },
             };
-            const feed = switch (resp_ok.content_type) {
+            var feed = switch (resp_ok.content_type) {
                 .xml => try parse.parse(arena, resp_ok.body),
                 .xml_atom => try parse.Atom.parse(arena, resp_ok.body),
                 .xml_rss => try parse.Rss.parse(arena, resp_ok.body),
@@ -454,14 +455,15 @@ const Server = struct {
                     continue;
                 },
             };
-            const feed_id = try addFeed(feed, resp_ok.headers, url, tags_input);
+            feed.headers = resp_ok.headers;
+            const feed_id = try addFeed(feed, url, tags_input);
             added_ids.appendAssumeCapacity(feed_id);
         }
         session.form_data = .{ .success = added_ids.toOwnedSlice() };
     }
 
-    fn addFeed(feed: parse.Feed, headers: http.RespHeaders, url: []const u8, tags: []const u8) !u64 {
-        return try g.storage.addNewFeed(feed, headers, url, tags);
+    fn addFeed(feed: parse.Feed, url: []const u8, tags: []const u8) !u64 {
+        return try g.storage.addNewFeed(feed, url, tags);
     }
 
     fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {

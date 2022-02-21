@@ -10,6 +10,7 @@ const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const xml = @import("xml");
+const http = @import("http.zig");
 const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const timezones = @import("datetime").timezones;
@@ -144,7 +145,7 @@ pub const Html = struct {
                 }
                 const elem_end_index = mem.indexOf(u8, elem_attrs, &[_]u8{end_char}) orelse elem_attrs.len;
                 value = mem.trim(u8, elem_attrs[0..elem_end_index], &[_]u8{end_char});
-                elem_attrs = elem_attrs[elem_end_index + 1 ..];
+                elem_attrs = elem_attrs[elem_end_index..];
 
                 if (mem.eql(u8, "rel", key)) {
                     link_rel = value;
@@ -260,7 +261,12 @@ pub const Feed = struct {
     // Atom: optional
     // Rss: required
     link: ?[]const u8 = null,
+    // location: []const u8,
     items: []Item = &[_]Item{},
+    headers: Update = .{},
+
+    // TODO?: combine with http.RespHeaders?
+    pub const Update = http.RespHeaders;
 
     pub const Item = struct {
         // Atom: title (required)
@@ -279,34 +285,6 @@ pub const Feed = struct {
         updated_raw: ?[]const u8 = null,
         updated_timestamp: ?i64 = null,
     };
-
-    pub fn sortItemsByDate(items: []Item) void {
-        std.sort.insertionSort(Item, items, {}, compareItemDate);
-    }
-
-    const cmp = std.sort.asc(i64);
-    fn compareItemDate(context: void, a: Item, b: Item) bool {
-        const a_timestamp = a.updated_timestamp orelse return true;
-        const b_timestamp = b.updated_timestamp orelse return false;
-        return cmp(context, a_timestamp, b_timestamp);
-    }
-
-    pub fn getItemsWithNullDates(feed: *Self) []Item {
-        for (feed.items) |it, i| {
-            if (it.updated_timestamp != null) return feed.items[0..i];
-        }
-        return feed.items;
-    }
-
-    pub fn getItemsWithDates(feed: *Self, latest_date: i64) []Item {
-        const start = feed.getItemsWithNullDates().len;
-        const items = feed.items[start..];
-        assert(items[0].updated_timestamp != null);
-        for (items) |it, i| {
-            if (it.updated_timestamp.? > latest_date) return items[i..];
-        }
-        return items[items.len..];
-    }
 };
 
 pub fn printFeedItems(items: []Feed.Item) void {
