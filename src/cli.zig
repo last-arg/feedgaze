@@ -169,28 +169,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             log.info("Feed parsed", .{});
 
             if (feed.link == null) feed.link = url;
-
-            var savepoint = try feed_db.db.sql_db.savepoint("addFeedUrl");
-            defer savepoint.rollback();
-            const query = "select id as feed_id, updated_timestamp from feed where location = ? limit 1;";
-            if (try feed_db.db.one(Storage.CurrentData, query, .{location})) |row| {
-                try writer.print("Feed already exists. Updating feed {s}\n", .{location});
-                try feed_db.updateUrlFeed(.{
-                    .current = row,
-                    .headers = resp.ok.headers,
-                    .feed = feed,
-                }, .{ .force = true });
-                try self.feed_db.addTags(row.feed_id, tags);
-                try writer.print("Feed updated {s}\n", .{location});
-            } else {
-                log.info("Saving feed", .{});
-                const feed_id = try feed_db.insertFeed(feed, location);
-                try feed_db.addFeedUrl(feed_id, resp.ok.headers);
-                try feed_db.addItems(feed_id, feed.items);
-                try self.feed_db.addTags(feed_id, tags);
-                try writer.print("Feed added {s}\n", .{location});
-            }
-            savepoint.commit();
+            _ = try feed_db.addNewFeed(feed, resp.ok.headers, location, tags);
         }
 
         pub fn deleteFeed(self: *Self, search_inputs: [][]const u8) !void {
