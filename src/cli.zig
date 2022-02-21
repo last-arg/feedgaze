@@ -158,7 +158,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     log.err("Request returned not modified which should not be happening when adding new feed", .{});
                     return;
                 },
-                .ok => {},
+                .ok => |ok| {
+                    if (ok.content_type == .html) {
+                        log.err("Found no feed links in html", .{});
+                        return;
+                    }
+                },
             }
             const location = resp.ok.location;
             log.info("Feed fetched", .{});
@@ -526,8 +531,6 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
             const index = try pickFeedLink(data, uri, writer, reader, default_pick);
             const new_url = try url_util.makeWholeUrl(arena.allocator(), uri, data.links[index].href);
             resp = try http.resolveRequest(arena, new_url, null, null);
-        } else {
-            try writer.print("Found no feed links in html\n", .{});
         }
     }
 
