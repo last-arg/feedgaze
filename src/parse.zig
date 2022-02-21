@@ -543,14 +543,9 @@ pub const Atom = struct {
 
     // Atom updated_timestamp: http://www.faqs.org/rfcs/rfc3339.html
     pub fn parseDateToUtc(raw: []const u8) !Datetime {
-        const date_raw = "2003-12-13T18:30:02Z";
-
         const year = try fmt.parseUnsigned(u32, raw[0..4], 10);
         const month = try fmt.parseUnsigned(u32, raw[5..7], 10);
         const day = try fmt.parseUnsigned(u32, raw[8..10], 10);
-
-        assert(date_raw[10] == 'T');
-
         const hour = try fmt.parseUnsigned(u32, raw[11..13], 10);
         const minute = try fmt.parseUnsigned(u32, raw[14..16], 10);
         const second = try fmt.parseUnsigned(u32, raw[17..19], 10);
