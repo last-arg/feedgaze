@@ -146,6 +146,9 @@ pub const Html = struct {
                 const elem_end_index = mem.indexOf(u8, elem_attrs, &[_]u8{end_char}) orelse elem_attrs.len;
                 value = mem.trim(u8, elem_attrs[0..elem_end_index], &[_]u8{end_char});
                 elem_attrs = elem_attrs[elem_end_index..];
+                if (end_char != ' ') {
+                    elem_attrs = elem_attrs[1..];
+                }
 
                 if (mem.eql(u8, "rel", key)) {
                     link_rel = value;
@@ -233,9 +236,6 @@ test "@active Html.parse" {
         // Test duplicate link
         const html = @embedFile("../test/many-links.html");
         const page = try Html.parseLinks(allocator, html);
-        // for (page.links) |link| {
-        //     print("{s}\n", .{link.href});
-        // }
         try expectEqualStrings(page.title.?, "Parse Feed Links");
         try expectEqual(@as(usize, 5), page.links.len);
         try expectEqual(Html.MediaType.rss, page.links[0].media_type);
