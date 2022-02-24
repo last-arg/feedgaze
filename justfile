@@ -17,7 +17,7 @@ watch-build:
 # Start a test server in background
 pid_path := "tmp/redbean.pid"
 test-server:
-  ./test-server/redbean.com -d -D ./test/ -L tmp/redbean.log -P {{pid_path}}
+  ./test-server/redbean.com -d -D ./test/ -L tmp/redbean.log -P {{pid_path}} -r /rss2=/rss2.rss
 
 test-server-shutdown:
   kill -TERM $(cat {{pid_path}})
