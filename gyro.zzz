@@ -17,7 +17,7 @@ deps:
   zfetch:
     git:
       url: "https://github.com/truemedian/zfetch.git"
-      ref: master
+      ref: 271cab5da4d12c8f08e67aa0cd5268da100e52f1
       root: src/main.zig
   known-folders:
     git:
