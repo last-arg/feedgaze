@@ -16,6 +16,7 @@ const Datetime = datetime.Datetime;
 const timezones = @import("datetime").timezones;
 const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
+pub const Feed = @import("feed.zig").Feed;
 
 const max_title_len = 50;
 
@@ -243,45 +244,6 @@ test "@active Html.parse" {
         try expectEqual(Html.MediaType.atom, page.links[2].media_type);
     }
 }
-
-// TODO?: add field interval (ttl/)
-// <sy:updatePeriod>hourly</sy:updatePeriod>
-// <sy:updateFrequency>1</sy:updateFrequency>
-// has something to do with attributes in xml element
-// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
-pub const Feed = struct {
-    const Self = @This();
-    // Atom: title (required)
-    // Rss: title (required)
-    title: []const u8,
-    // Atom: updated (required)
-    // Rss: pubDate (optional)
-    updated_raw: ?[]const u8 = null,
-    updated_timestamp: ?i64 = null,
-    // Atom: optional
-    // Rss: required
-    link: ?[]const u8 = null,
-    location: []const u8 = "",
-    items: []Item = &[_]Item{},
-
-    pub const Item = struct {
-        // Atom: title (required)
-        // Rss: title or description (requires one of these)
-        title: []const u8,
-        // Atom: id (required). Has to be URI.
-        // Rss: guid (optional) or link (optional)
-        id: ?[]const u8 = null,
-        // In atom id (required) can also be link.
-        // Check if id is link before outputing some data
-        // Atom: link (optional),
-        // Rss: link (optional)
-        link: ?[]const u8 = null,
-        // Atom: updated (required) or published (optional)
-        // Rss: pubDate (optional)
-        updated_raw: ?[]const u8 = null,
-        updated_timestamp: ?i64 = null,
-    };
-};
 
 pub fn printFeedItems(items: []Feed.Item) void {
     for (items) |item| {
