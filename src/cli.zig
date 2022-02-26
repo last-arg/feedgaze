@@ -220,22 +220,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             // TODO?: make this into feed.zig (Feed) fn?
-            var feed = switch (content_type) {
-                .xml => try parse.parse(&arena, body),
-                .xml_atom => try parse.Atom.parse(&arena, body),
-                .xml_rss => try parse.Rss.parse(&arena, body),
-                .json => try parse.Json.parse(&arena, body),
-                .json_feed => try parse.Json.parse(&arena, body),
-                .html => {
-                    log.warn("Failed to resolve {s}. Html content type was returned more than 3 times in a row", .{url});
-                    return;
-                },
-                .unknown => {
-                    log.warn("Can't handle mimetype {s}", .{content_type_value});
-                    return;
-                },
+            const feed = f.Feed.init(&arena, url, body, content_type) catch {
+                log.warn("Can't parse mimetype {s}. From url {s}", .{ content_type_value, url });
+                return;
             };
-            feed.location = url;
 
             var feed_update = try f.FeedUpdate.fromHeaders(req.headers.list.items);
             _ = try self.feed_db.addNewFeed(feed, feed_update, tags);
