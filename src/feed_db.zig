@@ -16,6 +16,7 @@ const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
 const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
+const f = @import("feed.zig");
 
 // TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
 // Storage would be specific functions. Db would be utility/helper/wrapper functions
@@ -34,7 +35,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addNewFeed(self: *Self, feed: parse.Feed, tags: []const u8) !u64 {
+    pub fn addNewFeed(self: *Self, feed: parse.Feed, feed_update: f.FeedUpdate, tags: []const u8) !u64 {
         std.debug.assert(feed.location.len != 0);
         var savepoint = try self.db.sql_db.savepoint("addNewFeed");
         defer savepoint.rollback();
@@ -43,14 +44,14 @@ pub const Storage = struct {
         if (try self.db.one(Storage.CurrentData, query, .{feed.location})) |row| {
             try self.updateUrlFeed(.{
                 .current = row,
-                .headers = feed.headers,
+                .headers = feed_update,
                 .feed = feed,
             }, .{ .force = true });
             try self.addTags(row.feed_id, tags);
             feed_id = row.feed_id;
         } else {
             feed_id = try self.insertFeed(feed, feed.location);
-            try self.addFeedUrl(feed_id, feed.headers);
+            try self.addFeedUrl(feed_id, feed_update);
             try self.addItems(feed_id, feed.items);
             try self.addTags(feed_id, tags);
         }
@@ -88,7 +89,7 @@ pub const Storage = struct {
         try self.db.exec("DELETE FROM feed WHERE id = ?", .{id});
     }
 
-    pub fn addFeedUrl(self: *Self, feed_id: u64, headers: http.RespHeaders) !void {
+    pub fn addFeedUrl(self: *Self, feed_id: u64, headers: f.FeedUpdate) !void {
         const query =
             \\INSERT INTO feed_update_http
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
@@ -383,7 +384,7 @@ pub const Storage = struct {
     const UpdateData = struct {
         current: CurrentData,
         feed: parse.Feed,
-        headers: http.RespHeaders,
+        headers: f.FeedUpdate,
     };
     pub fn updateUrlFeed(self: *Self, data: UpdateData, opts: UpdateOptions) !void {
         const query_http_update =

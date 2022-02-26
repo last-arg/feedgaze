@@ -263,10 +263,6 @@ pub const Feed = struct {
     link: ?[]const u8 = null,
     location: []const u8 = "",
     items: []Item = &[_]Item{},
-    headers: Update = .{},
-
-    // TODO?: combine with http.RespHeaders?
-    pub const Update = http.RespHeaders;
 
     pub const Item = struct {
         // Atom: title (required)

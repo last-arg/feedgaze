@@ -3,12 +3,14 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const ArrayList = std.ArrayList;
 const fs = std.fs;
+const ascii = std.ascii;
 const log = std.log;
 const parse = @import("parse.zig");
 const http = @import("http.zig");
 const zfetch = @import("zfetch");
 const Uri = @import("zuri").Uri;
 const url_util = @import("url.zig");
+const f = @import("feed.zig");
 const time = std.time;
 const fmt = std.fmt;
 const mem = std.mem;
@@ -152,39 +154,91 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const writer = self.writer;
 
             const url = try url_util.makeValidUrl(arena.allocator(), input_url);
-            try writer.print("Fetching feed {s}\n", .{url});
-            const req = try http.resolveRequest2(&arena, url, &general_request_headers);
-            // _ = resp2;
-            const resp = try getFeedHttp(&arena, url, writer, self.reader, self.options.default);
-            switch (resp) {
-                .fail => |msg| {
-                    log.err("Failed to resolve url {s}", .{url});
-                    log.err("Failed message: {s}", .{msg});
+            var req: *zfetch.Request = undefined;
+            var content_type_value: []const u8 = "";
+            var content_type: http.ContentType = .unknown;
+            const max_tries = 3;
+            var urls_tried_count: usize = 1;
+            while (urls_tried_count <= max_tries) : (urls_tried_count += 1) {
+                try writer.print("Fetching feed {s}\n", .{url});
+                // clean previous request if there is one
+                if (urls_tried_count > 1) req.deinit();
+                req = try http.resolveRequest2(&arena, url, &general_request_headers);
+                if (req.status.code != 200) {
+                    switch (req.status.code) {
+                        301, 307, 308 => log.warn("Failed request. Too many redirects. Final request location {s}", .{req.url}),
+                        else => log.warn("Failed to resolve HTTP request: {d} {s}", .{ req.status.code, req.status.reason }),
+                    }
                     return;
-                },
-                .not_modified => {
-                    log.err("Request returned not modified which should not be happening when adding new feed", .{});
+                }
+
+                content_type_value = blk: {
+                    var value_opt: ?[]const u8 = null;
+                    for (req.headers.list.items) |h| {
+                        if (ascii.eqlIgnoreCase(h.name, "content-type")) {
+                            value_opt = h.value;
+                        }
+                    }
+
+                    const value = value_opt orelse {
+                        log.warn("There is no Content-Type header key. From url {s}", .{req.url});
+                        return;
+                    };
+
+                    const end = mem.indexOf(u8, value, ";") orelse value.len;
+                    break :blk value[0..end];
+                };
+
+                content_type = http.ContentType.fromString(content_type_value);
+                if (content_type == .unknown) {
+                    log.warn("Unhandle Content-Type {s}. From url {s}", .{ content_type_value, req.url });
                     return;
-                },
-                .ok => |ok| {
-                    if (ok.content_type == .html) {
-                        log.err("Found no feed links in html", .{});
+                }
+
+                if (content_type == .html) {
+                    const body = try http.getRequestBody(&arena, req);
+                    const page = try parse.Html.parseLinks(arena.allocator(), body);
+                    if (page.links.len == 0) {
+                        log.warn("Found no feed links from returned html page. From url {s}", .{req.url});
                         return;
                     }
-                },
+                    // TODO: display feed options
+                    // TODO: choose feed link
+                    // TODO: resolve chosen link
+
+                    // Put url request making into a loop until one of the valid content types is found or
+                    // request fails
+                    continue;
+                }
+                break;
             }
-            const location = resp.ok.location;
-            log.info("Feed fetched", .{});
-            log.info("Feed location '{s}'", .{location});
 
-            log.info("Parsing feed", .{});
-            var feed = try parseFeedResponseBody(&arena, resp.ok.body, resp.ok.content_type);
-            feed.headers = resp.ok.headers;
-            feed.location = resp.ok.location;
-            log.info("Feed parsed", .{});
+            const body = try http.getRequestBody(&arena, req);
+            if (body.len == 0) {
+                log.warn("No body to parse for feed", .{});
+                return;
+            }
 
-            if (feed.link == null) feed.link = url;
-            _ = try self.feed_db.addNewFeed(feed, tags);
+            // TODO?: make this into feed.zig (Feed) fn?
+            var feed = switch (content_type) {
+                .xml => try parse.parse(&arena, body),
+                .xml_atom => try parse.Atom.parse(&arena, body),
+                .xml_rss => try parse.Rss.parse(&arena, body),
+                .json => try parse.Json.parse(&arena, body),
+                .json_feed => try parse.Json.parse(&arena, body),
+                .html => {
+                    log.warn("Failed to resolve {s}. Html content type was returned more than 3 times in a row", .{url});
+                    return;
+                },
+                .unknown => {
+                    log.warn("Can't handle mimetype {s}", .{content_type_value});
+                    return;
+                },
+            };
+            feed.location = url;
+
+            var feed_update = try f.FeedUpdate.fromHeaders(req.headers.list.items);
+            _ = try self.feed_db.addNewFeed(feed, feed_update, tags);
             try writer.print("Feed added {s}\n", .{req.url});
         }
 
@@ -548,23 +602,42 @@ fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader:
     return resp;
 }
 
-pub fn parseFeedResponseBody(
-    arena: *ArenaAllocator,
-    body: []const u8,
-    content_type: http.ContentType,
-) !parse.Feed {
-    return switch (content_type) {
-        .xml => try parse.parse(arena, body),
-        .xml_atom => try parse.Atom.parse(arena, body),
-        .xml_rss => try parse.Rss.parse(arena, body),
-        .json => try parse.Json.parse(arena, body),
-        .json_feed => try parse.Json.parse(arena, body),
-        .html, .unknown => unreachable, // html should have been parsed before getting here
+test "@active url: add" {
+    const g = @import("feed_db.zig").g;
+    std.testing.log_level = .debug;
+    const base_allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+
+    var buf: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+
+    var storage = try Storage.init(allocator, null);
+    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
+        .allocator = allocator,
+        .feed_db = &storage,
+        .writer = fbs.writer(),
+        .reader = fbs.reader(),
     };
+
+    // url redirects
+    const url = "http://localhost:8080/rss2.rss";
+    {
+        g.max_items_per_feed = 2;
+        const expected = fmt.comptimePrint(
+            \\Fetching feed {s}
+            \\Feed added {s}
+            \\
+        , .{ url, url });
+        fbs.reset();
+        try cli.addFeed(&.{url}, "");
+        try expectEqualStrings(expected, fbs.getWritten());
+    }
 }
 
-// TODO: should probably do more self containing tests
-test "@active local and url: add, update, delete, html links, add into update" {
+// TODO: make tests more self containing
+test "local and url: add, update, delete, html links, add into update" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
