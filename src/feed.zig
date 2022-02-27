@@ -52,7 +52,7 @@ pub const Feed = struct {
         updated_timestamp: ?i64 = null,
     };
 
-    pub fn init(arena: *ArenaAllocator, location: []const u8, body: []const u8, content_type: http.ContentType) !@This() {
+    pub fn initParse(arena: *ArenaAllocator, location: []const u8, body: []const u8, content_type: http.ContentType) !@This() {
         var feed = switch (content_type) {
             .xml => try parse.parse(arena, body),
             .xml_atom => try parse.Atom.parse(arena, body),

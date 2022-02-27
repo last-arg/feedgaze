@@ -219,9 +219,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 return;
             }
 
-            // TODO?: make this into feed.zig (Feed) fn?
-            const feed = f.Feed.init(&arena, url, body, content_type) catch {
-                log.warn("Can't parse mimetype {s}. From url {s}", .{ content_type_value, url });
+            const feed = f.Feed.initParse(&arena, url, body, content_type) catch {
+                log.warn("Can't parse mimetype {s}'s body. From url {s}", .{ content_type_value, url });
                 return;
             };
 
