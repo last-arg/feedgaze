@@ -153,7 +153,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer arena.deinit();
             const writer = self.writer;
 
-            const url = try url_util.makeValidUrl(arena.allocator(), input_url);
+            var url = try url_util.makeValidUrl(arena.allocator(), input_url);
             var req: *zfetch.Request = undefined;
             var content_type_value: []const u8 = "";
             var content_type: http.ContentType = .unknown;
@@ -195,7 +195,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 }
 
-                print("loop {}\n", .{content_type});
                 if (content_type == .html) {
                     const body = try http.getRequestBody(&arena, req);
                     const page = try parse.Html.parseLinks(arena.allocator(), body);
@@ -206,14 +205,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     const uri = try Uri.parse(req.url, true);
                     try printPageLinks(self.writer, page, uri);
-                    // TODO: choose feed link
-                    // var buf: [64]u8 = undefined;
-                    // var index = try pickNumber(&buf, page.links.len, default_pick, writer, reader);
-                    // while (index == null) {
-                    //     index = try pickNumber(&buf, page.links.len, null, writer, reader);
-                    // }
-                    // return index.?;
-
+                    const link_index = try getPageLinkIndex(self.reader, self.writer, page.links.len, self.options.default);
+                    url = try url_util.makeWholeUrl(arena.allocator(), uri, page.links[link_index].href);
                     continue;
                 }
                 break;
@@ -512,27 +505,6 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-fn pickNumber(buf: []u8, page_links_len: usize, default_pick: ?i32, writer: anytype, reader: anytype) !?u32 {
-    var nr: u32 = 0;
-    try writer.print("Enter link number: ", .{});
-    if (default_pick) |value| {
-        nr = @intCast(u32, value);
-        try writer.print("{d}\n", .{value});
-    } else {
-        const input = try reader.readUntilDelimiter(buf, '\n');
-        const value = std.mem.trim(u8, input, &std.ascii.spaces);
-        nr = fmt.parseUnsigned(u32, value, 10) catch {
-            try writer.print("Invalid number: '{s}'. Try again.\n", .{input});
-            return null;
-        };
-    }
-    if (nr < 1 or nr > page_links_len) {
-        try writer.print("Number out of range: '{d}'. Try again.\n", .{nr});
-        return null;
-    }
-    return nr - 1;
-}
-
 test "@active url: add" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
@@ -552,21 +524,43 @@ test "@active url: add" {
         .reader = fbs.reader(),
     };
 
-    // url redirects
-    // const url = "http://localhost:8080/rss2.rss";
-    const url = "http://localhost:8080/many-links.html";
     {
+        const url = "http://localhost:8080/rss2.rss";
         g.max_items_per_feed = 2;
+        fbs.reset();
+        try cli.addFeed(&.{url}, "");
         const expected = fmt.comptimePrint(
             \\Fetching feed {s}
             \\Feed added {s}
             \\
         , .{ url, url });
+        try expectEqualStrings(expected, fbs.getWritten());
+    }
+
+    {
+        const url = "http://localhost:8080/many-links.html";
+        g.max_items_per_feed = 2;
         fbs.reset();
+        const expected = fmt.comptimePrint(
+            \\Fetching feed {s}
+            \\Parse Feed Links | http://localhost:8080/many-links.html
+            \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
+            \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
+            \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
+            \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
+            \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
+            \\Enter link number: <no-number>
+            \\Invalid number: '<no-number>'. Try again.
+            \\Enter link number: 111
+            \\Number out of range: '111'. Try again.
+            \\Enter link number: 2
+            \\Fetching feed http://localhost:8080/rss2.xml
+            \\Feed added http://localhost:8080/rss2.xml
+            \\
+        , .{url});
+        mem.copy(u8, fbs.buffer, expected);
         try cli.addFeed(&.{url}, "");
-        print("\n===========\n{s}\n===========\n", .{fbs.getWritten()});
-        _ = expected;
-        // try expectEqualStrings(expected, fbs.getWritten());
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 }
 
@@ -839,4 +833,34 @@ fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     }
     const out_path = if (path) |p| p else uri.path;
     try writer.print("{s}", .{out_path});
+}
+
+fn getPageLinkIndex(reader: anytype, writer: anytype, max_len: usize, default_index: ?i32) !u32 {
+    var index = try pickNumber(writer, reader, max_len, default_index);
+    while (index == null) {
+        index = try pickNumber(writer, reader, max_len, null);
+    }
+    return index.?;
+}
+
+fn pickNumber(writer: anytype, reader: anytype, page_links_len: usize, default_pick: ?i32) !?u32 {
+    var buf: [64]u8 = undefined;
+    var nr: u32 = 0;
+    try writer.print("Enter link number: ", .{});
+    if (default_pick) |value| {
+        nr = @intCast(u32, value);
+        try writer.print("{d}\n", .{value});
+    } else {
+        const input = try reader.readUntilDelimiter(&buf, '\n');
+        const value = std.mem.trim(u8, input, &std.ascii.spaces);
+        nr = fmt.parseUnsigned(u32, value, 10) catch {
+            try writer.print("Invalid number: '{s}'. Try again.\n", .{input});
+            return null;
+        };
+    }
+    if (nr < 1 or nr > page_links_len) {
+        try writer.print("Number out of range: '{d}'. Try again.\n", .{nr});
+        return null;
+    }
+    return nr - 1;
 }
