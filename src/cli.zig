@@ -161,7 +161,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var urls_tried_count: usize = 1;
             while (urls_tried_count <= max_tries) : (urls_tried_count += 1) {
                 try writer.print("Fetching feed {s}\n", .{url});
-                // clean previous request if there is one
+                // clean previous request
                 if (urls_tried_count > 1) req.deinit();
                 req = try http.resolveRequest2(&arena, url, &general_request_headers);
                 if (req.status.code != 200) {

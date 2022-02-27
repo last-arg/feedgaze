@@ -91,7 +91,6 @@ pub const ContentType = enum {
         return .unknown;
     }
 };
-// zig fmt: on
 
 const max_redirects = 3;
 
