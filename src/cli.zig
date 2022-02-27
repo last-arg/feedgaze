@@ -155,6 +155,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             var url = try url_util.makeValidUrl(arena.allocator(), input_url);
             var req: *zfetch.Request = undefined;
+            defer req.deinit();
             var content_type_value: []const u8 = "";
             var content_type: http.ContentType = .unknown;
             const max_tries = 3;
