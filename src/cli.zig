@@ -195,6 +195,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 }
 
+                print("loop {}\n", .{content_type});
                 if (content_type == .html) {
                     const body = try http.getRequestBody(&arena, req);
                     const page = try parse.Html.parseLinks(arena.allocator(), body);
@@ -202,15 +203,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         log.warn("Found no feed links from returned html page. From url {s}", .{req.url});
                         return;
                     }
-                    // TODO: display feed options
-                    // TODO: choose feed link
-                    // TODO: resolve chosen link
 
-                    // Put url request making into a loop until one of the valid content types is found or
-                    // request fails
+                    const uri = try Uri.parse(req.url, true);
+                    try printPageLinks(self.writer, page, uri);
+                    // TODO: choose feed link
+                    // var buf: [64]u8 = undefined;
+                    // var index = try pickNumber(&buf, page.links.len, default_pick, writer, reader);
+                    // while (index == null) {
+                    //     index = try pickNumber(&buf, page.links.len, null, writer, reader);
+                    // }
+                    // return index.?;
+
                     continue;
                 }
                 break;
+            } else {
+                log.warn("Failed to find feed link(s) from url {s}", .{req.url});
+                return;
             }
 
             const body = try http.getRequestBody(&arena, req);
@@ -503,50 +512,6 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
-    try writer.print("{s}://{s}", .{ uri.scheme, uri.host.name });
-    if (uri.port) |port| {
-        if (port != 443 and port != 80) {
-            try writer.print(":{d}", .{port});
-        }
-    }
-    const out_path = if (path) |p| p else uri.path;
-    try writer.print("{s}", .{out_path});
-}
-
-fn pickFeedLink(
-    page: parse.Html.Page,
-    uri: Uri,
-    writer: anytype,
-    reader: anytype,
-    default_pick: ?i32,
-) !u32 {
-    const no_title = "<no-title>";
-    const page_title = page.title orelse no_title;
-    try writer.print("{s} | ", .{page_title});
-    try printUrl(writer, uri, null);
-    try writer.print("\n", .{});
-
-    for (page.links) |link, i| {
-        const link_title = link.title orelse no_title;
-        try writer.print("  {d}. [{s}] ", .{ i + 1, parse.Html.MediaType.toString(link.media_type) });
-        if (link.href[0] == '/') {
-            try printUrl(writer, uri, link.href);
-        } else {
-            try writer.print("{s}", .{link.href});
-        }
-        try writer.print(" | {s}\n", .{link_title});
-    }
-
-    // TODO?: can input several numbers. Space separated, or both?
-    var buf: [64]u8 = undefined;
-    var index = try pickNumber(&buf, page.links.len, default_pick, writer, reader);
-    while (index == null) {
-        index = try pickNumber(&buf, page.links.len, null, writer, reader);
-    }
-    return index.?;
-}
-
 fn pickNumber(buf: []u8, page_links_len: usize, default_pick: ?i32, writer: anytype, reader: anytype) !?u32 {
     var nr: u32 = 0;
     try writer.print("Enter link number: ", .{});
@@ -566,27 +531,6 @@ fn pickNumber(buf: []u8, page_links_len: usize, default_pick: ?i32, writer: anyt
         return null;
     }
     return nr - 1;
-}
-
-fn getFeedHttp(arena: *ArenaAllocator, url: []const u8, writer: anytype, reader: anytype, default_pick: ?i32) !http.FeedResponse {
-    // make http request
-    var resp = try http.resolveRequest(arena, url, null, null);
-    const html_data = if (resp == .ok and resp.ok.content_type == .html)
-        try parse.Html.parseLinks(arena.allocator(), resp.ok.body)
-    else
-        null;
-
-    if (html_data) |data| {
-        if (data.links.len > 0) {
-            const uri = try Uri.parse(resp.ok.location, true);
-            // user input
-            const index = try pickFeedLink(data, uri, writer, reader, default_pick);
-            const new_url = try url_util.makeWholeUrl(arena.allocator(), uri, data.links[index].href);
-            resp = try http.resolveRequest(arena, new_url, null, null);
-        }
-    }
-
-    return resp;
 }
 
 test "@active url: add" {
@@ -609,7 +553,8 @@ test "@active url: add" {
     };
 
     // url redirects
-    const url = "http://localhost:8080/rss2.rss";
+    // const url = "http://localhost:8080/rss2.rss";
+    const url = "http://localhost:8080/many-links.html";
     {
         g.max_items_per_feed = 2;
         const expected = fmt.comptimePrint(
@@ -619,7 +564,9 @@ test "@active url: add" {
         , .{ url, url });
         fbs.reset();
         try cli.addFeed(&.{url}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
+        print("\n===========\n{s}\n===========\n", .{fbs.getWritten()});
+        _ = expected;
+        // try expectEqualStrings(expected, fbs.getWritten());
     }
 }
 
@@ -862,4 +809,34 @@ test "local and url: add, update, delete, html links, add into update" {
     //     const all_counts = try storage.db.one(AllCounts, all_counts_query, .{});
     //     try expectEqual(AllCounts{ .feed = 0, .item = 0, .update_http = 0, .update_local = 0 }, all_counts.?);
     // }
+}
+
+fn printPageLinks(writer: anytype, page: parse.Html.Page, uri: Uri) !void {
+    const no_title = "<no-title>";
+    const page_title = page.title orelse no_title;
+    try writer.print("{s} | ", .{page_title});
+    try printUrl(writer, uri, null);
+    try writer.print("\n", .{});
+
+    for (page.links) |link, i| {
+        const link_title = link.title orelse no_title;
+        try writer.print("  {d}. [{s}] {s} ", .{ i + 1, parse.Html.MediaType.toString(link.media_type), link_title });
+        if (link.href[0] == '/') {
+            try printUrl(writer, uri, link.href);
+        } else {
+            try writer.print("{s}", .{link.href});
+        }
+        try writer.print("\n", .{});
+    }
+}
+
+fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
+    try writer.print("{s}://{s}", .{ uri.scheme, uri.host.name });
+    if (uri.port) |port| {
+        if (port != 443 and port != 80) {
+            try writer.print(":{d}", .{port});
+        }
+    }
+    const out_path = if (path) |p| p else uri.path;
+    try writer.print("{s}", .{out_path});
 }
