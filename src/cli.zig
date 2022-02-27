@@ -205,7 +205,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     const uri = try Uri.parse(req.url, true);
                     try printPageLinks(self.writer, page, uri);
-                    const link_index = try getPageLinkIndex(self.reader, self.writer, page.links.len, self.options.default);
+                    const link_index = try getChosenIndex(self.reader, self.writer, page.links.len, self.options.default);
                     url = try url_util.makeWholeUrl(arena.allocator(), uri, page.links[link_index].href);
                     continue;
                 }
@@ -248,13 +248,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     result.location,
                 });
             }
-            var buf: [32]u8 = undefined;
-            var index = try pickNumber(&buf, results.len, self.options.default, self.writer, self.reader);
-            while (index == null) {
-                index = try pickNumber(&buf, results.len, null, self.writer, self.reader);
-            }
-
-            const result = results[index.?];
+            const index = try getChosenIndex(self.reader, self.writer, results.len, self.options.default);
+            const result = results[index];
             try self.feed_db.deleteFeed(result.id);
             try self.writer.print("Deleted feed '{s}'\n", .{result.location});
         }
@@ -505,7 +500,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "@active url: add" {
+test "url: add" {
     const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
@@ -835,7 +830,8 @@ fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     try writer.print("{s}", .{out_path});
 }
 
-fn getPageLinkIndex(reader: anytype, writer: anytype, max_len: usize, default_index: ?i32) !u32 {
+// TODO: rename
+fn getChosenIndex(reader: anytype, writer: anytype, max_len: usize, default_index: ?i32) !u32 {
     var index = try pickNumber(writer, reader, max_len, default_index);
     while (index == null) {
         index = try pickNumber(writer, reader, max_len, null);
