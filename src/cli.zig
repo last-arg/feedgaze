@@ -39,12 +39,6 @@ pub fn makeCli(
     };
 }
 
-var general_request_headers = [_]zfetch.Header{
-    .{ .name = "Connection", .value = "close" },
-    .{ .name = "Accept-Encoding", .value = "gzip" },
-    .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
-};
-
 pub const CliOptions = struct {
     url: bool = true,
     local: bool = true,
@@ -164,7 +158,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try writer.print("Fetching feed {s}\n", .{url});
                 // clean previous request
                 if (urls_tried_count > 1) req.deinit();
-                req = try http.resolveRequest2(&arena, url, &general_request_headers);
+                req = try http.resolveRequest2(&arena, url, &http.general_request_headers);
                 if (req.status.code != 200) {
                     switch (req.status.code) {
                         301, 307, 308 => log.warn("Failed request. Too many redirects. Final request location {s}", .{req.url}),
@@ -173,23 +167,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 }
 
-                content_type_value = blk: {
-                    var value_opt: ?[]const u8 = null;
-                    for (req.headers.list.items) |h| {
-                        if (ascii.eqlIgnoreCase(h.name, "content-type")) {
-                            value_opt = h.value;
-                        }
-                    }
-
-                    const value = value_opt orelse {
-                        log.warn("There is no Content-Type header key. From url {s}", .{req.url});
-                        return;
-                    };
-
-                    const end = mem.indexOf(u8, value, ";") orelse value.len;
-                    break :blk value[0..end];
+                content_type_value = http.getContentType(req.headers.list.items) catch {
+                    log.warn("Failed to get Content-Type header. From url {s}", .{req.url});
+                    return;
                 };
-
                 content_type = http.ContentType.fromString(content_type_value);
                 if (content_type == .unknown) {
                     log.warn("Unhandle Content-Type {s}. From url {s}", .{ content_type_value, req.url });

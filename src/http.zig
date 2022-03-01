@@ -14,6 +14,12 @@ const print = std.debug.print;
 const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
 
+pub var general_request_headers = [_]zfetch.Header{
+    .{ .name = "Connection", .value = "close" },
+    .{ .name = "Accept-Encoding", .value = "gzip" },
+    .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
+};
+
 pub const FeedResponse = union(enum) {
     ok: Ok,
     not_modified: void,
@@ -375,4 +381,17 @@ pub fn getRequestBody(arena: *ArenaAllocator, req: *zfetch.Request) ![]const u8 
     }
 
     return try req_reader.readAllAlloc(arena.allocator(), std.math.maxInt(usize));
+}
+
+pub fn getContentType(headers: []zfetch.Header) ![]const u8 {
+    var value_opt: ?[]const u8 = null;
+    for (headers) |h| {
+        if (ascii.eqlIgnoreCase(h.name, "content-type")) {
+            value_opt = h.value;
+        }
+    }
+
+    const value = value_opt orelse return error.NoHeaderContentType;
+    const end = mem.indexOf(u8, value, ";") orelse value.len;
+    return value[0..end];
 }
