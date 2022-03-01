@@ -170,10 +170,12 @@ const Server = struct {
 
     fn getCookieToken(req: Request, allocator: Allocator) !?u64 {
         const headers_opt = try req.headers.get(allocator, "cookie");
+        print("get cookie\n", .{});
         defer if (headers_opt) |headers| allocator.free(headers);
         if (headers_opt) |headers| {
             for (headers) |header| {
-                var iter = mem.split(u8, header.value, "=");
+                const end = mem.indexOfScalar(u8, header.value, ';') orelse header.value.len;
+                var iter = mem.split(u8, header.value[0..end], "=");
                 if (iter.next()) |key| {
                     if (mem.eql(u8, "token", key)) {
                         const value = iter.next() orelse continue;
