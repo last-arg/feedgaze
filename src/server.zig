@@ -197,8 +197,7 @@ const Server = struct {
     ;
 
     const button_fmt = "<button type='submit' name='{s}'>Add feed{s}</button>";
-    const form_start_same = form_start ++ input_url ++ input_tags;
-    const form_fmt = form_start_same ++ fmt.comptimePrint(button_fmt, .{ "submit_feed", "" }) ++ form_end;
+    const form_fmt = form_start ++ input_url ++ input_tags ++ fmt.comptimePrint(button_fmt, .{ "submit_feed", "" }) ++ form_end;
 
     fn feedAddGet(req: Request, res: Response) !void {
         print("add GET\n", .{});
@@ -273,7 +272,11 @@ const Server = struct {
             const content_type = http.ContentType.fromString(content_type_value);
             switch (content_type) {
                 .html => {
-                    @panic("TODO: parse html, print form with links");
+                    // TODO: save to session? If submitting fails
+                    const body = try http.getRequestBody(&arena, url_req);
+                    const html_links = try parse.Html.parseLinks(arena.allocator(), body);
+                    try printFormLinks(&arena, res, html_links, valid_url, tags);
+                    return;
                 },
                 .unknown => {
                     try res.print("<p>Failed to parse content. Don't handle mimetype {s}</p>", .{content_type_value});
@@ -303,6 +306,7 @@ const Server = struct {
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
+        g.sessions.cleanOld();
         var session = blk: {
             const token = try getCookieToken(req, g.allocator);
             const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
@@ -331,25 +335,28 @@ const Server = struct {
         try res.headers.put("Location", "/feed/add");
     }
 
-    fn printFormLinks(arena: *ArenaAllocator, res: Response, links: []parse.Html.Link, initial_url: []const u8, tags: []const u8) !void {
-        try res.print(form_start ++ input_url_hidden ++ input_tags, .{ initial_url, tags });
-        const base_uri = try zuri.Uri.parse(initial_url, true);
+    fn printFormLinks(arena: *ArenaAllocator, res: Response, html_page: parse.Html.Page, valid_url: []const u8, tags: []const u8) !void {
+        try res.write(form_start);
+        try res.print(input_tags, .{tags});
+        const base_uri = try zuri.Uri.parse(valid_url, true);
+        const fallback_title = html_page.title orelse "<no-title>";
+        try res.write("<p>Pick a feed link(s) to add</p>");
         try res.write("<ul>");
-        for (links) |link| {
-            const title = link.title orelse "";
-            const url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
-            try res.print(
-                \\<li>
-                \\  <label>
-                \\    <input type='checkbox' name='picked_feed' value='{s}'>
-                \\    [{s}] {s}
-                \\  </label>
-                \\  <div>{s}</div>
-                \\</li>
-            , .{ url, link.media_type.toString(), title, url });
+        for (html_page.links) |link| {
+            const fmt_link =
+                \\<li><label>
+                \\ <input type="checkbox" name="feed_link_checkbox" value="{s}">
+                \\ <span>[{s}] {s} | {s}</span>
+                \\</label></li>
+            ;
+            const title = link.title orelse fallback_title;
+            const media_type = parse.Html.MediaType.toString(link.media_type);
+            const link_url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
+            defer arena.allocator().free(link_url);
+            try res.print(fmt_link, .{ link_url, media_type, title, link_url });
         }
         try res.write("</ul>");
-        try res.write(fmt.comptimePrint(button_fmt, .{ "submit_feed_links", "(s)" }) ++ form_end);
+        try res.print(button_fmt, .{ "submit_feed_links", "(s)" });
         try res.write(form_end);
     }
 
@@ -626,16 +633,13 @@ test "@active" {
     const url = "http://localhost:8282/feed/add";
     var headers = zfetch.Headers.init(arena.allocator());
     defer headers.deinit();
-    // const body = "feed_url=localhost%3A8080%2Fmany-links.html&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
-    const body = "feed_url=localhost%3A8080%2Frss2.rss&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
+    const body = "feed_url=localhost%3A8080%2Fmany-links.html&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
     const req = try zfetch.Request.init(arena.allocator(), url, null);
     try req.do(.POST, headers, body);
-    print("First request made\n", .{});
     try expectEqual(@as(u16, 302), req.status.code);
     var cookie_value: []const u8 = "";
     for (req.headers.list.items) |h| {
         if (mem.eql(u8, "set-cookie", h.name)) cookie_value = h.value;
-        // print("{s}: {s}\n", .{ h.name, h.value });
     }
     try expect(cookie_value.len > 0);
     req.socket.close();
@@ -644,9 +648,10 @@ test "@active" {
     defer req1.deinit();
     try headers.appendValue("Cookie", cookie_value);
     try req1.do(.GET, headers, null);
-    print("Second request made\n", .{});
     try expectEqual(@as(u16, 200), req1.status.code);
     const resp_body = try http.getRequestBody(&arena, req1);
-    try expect(mem.indexOf(u8, resp_body, "submit_feed") != null);
+    try expect(mem.indexOf(u8, resp_body, "submit_feed_links") != null);
     print("{s}\n", .{resp_body});
+
+    // const body_links = tags=tag1%2C+tag2%2C+tag3&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Fatom.atom&submit_feed_links=
 }
