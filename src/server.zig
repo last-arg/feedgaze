@@ -81,8 +81,9 @@ const Sessions = struct {
     }
 
     pub fn remove(self: *Self, index: usize) void {
-        _ = self.list.swapRemove(index);
+        var s = self.list.swapRemove(index);
         _ = self.timestamps.swapRemove(index);
+        s.deinit();
     }
 
     const max_age_seconds = std.time.s_per_min * 5;
@@ -200,8 +201,6 @@ const Server = struct {
     const form_fmt = form_start_same ++ fmt.comptimePrint(button_fmt, .{ "submit_feed", "" }) ++ form_end;
 
     fn feedAddGet(req: Request, res: Response) !void {
-        _ = req;
-        _ = res;
         print("add GET\n", .{});
         var arena = std.heap.ArenaAllocator.init(g.allocator);
         defer arena.deinit();
@@ -218,11 +217,12 @@ const Server = struct {
         if (session.data.form_body.len == 0) {
             try res.write("<p>There is no form data to handle</p>");
             try res.print(form_fmt, .{ "", "" });
-            // TODO: delete session or its data
+            g.sessions.remove(session_index.?);
             return;
         }
         var is_submit_feed = false;
         var is_submit_feed_links = false;
+        // TODO: input sanitization
         var tags: []const u8 = "";
         var url: []const u8 = "";
         var iter = mem.split(u8, session.data.form_body, "&");
@@ -244,7 +244,7 @@ const Server = struct {
         if (!is_submit_feed and !is_submit_feed_links) {
             try res.write("<p>Submitted form data is invalid. Can't determine what type of form was submitted.</p>");
             try res.print(form_fmt, .{ url, tags });
-            // TODO: delete session or its data
+            g.sessions.remove(session_index.?);
             return;
         }
 
@@ -253,13 +253,13 @@ const Server = struct {
             if (url.len == 0) {
                 try res.write("<p>No url entered</p>");
                 try res.print(form_fmt, .{ "", tags });
-                // TODO: delete session or its data
+                g.sessions.remove(session_index.?);
                 return;
             }
             const valid_url = url_util.makeValidUrl(arena.allocator(), url) catch {
                 try res.write("<p>Invalid url entered</p>");
                 try res.print(form_fmt, .{ url, tags });
-                // TODO: delete session or its data
+                g.sessions.remove(session_index.?);
                 return;
             };
 
@@ -267,7 +267,7 @@ const Server = struct {
             const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
                 try res.write("<p>Failed to find Content-Type</p>");
                 try res.print(form_fmt, .{ url, tags });
-                // TODO: delete session or its data
+                g.sessions.remove(session_index.?);
                 return;
             };
             const content_type = http.ContentType.fromString(content_type_value);
@@ -278,7 +278,7 @@ const Server = struct {
                 .unknown => {
                     try res.print("<p>Failed to parse content. Don't handle mimetype {s}</p>", .{content_type_value});
                     try res.print(form_fmt, .{ url, tags });
-                    // TODO: delete session or its data
+                    g.sessions.remove(session_index.?);
                     return;
                 },
                 else => {},
@@ -292,7 +292,7 @@ const Server = struct {
             try res.print("<p>Added new feed {s}</p>", .{valid_url});
             try res.print(form_fmt, .{ "", "" });
 
-            // TODO: delete session and its data
+            g.sessions.remove(session_index.?);
 
             return;
         }
@@ -300,9 +300,6 @@ const Server = struct {
         if (is_submit_feed_links) {
             @panic("TODO: submit links");
         }
-
-        // TODO: input sanitization
-
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
