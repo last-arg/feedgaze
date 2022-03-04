@@ -383,7 +383,7 @@ pub fn getRequestBody(arena: *ArenaAllocator, req: *zfetch.Request) ![]const u8 
     return try req_reader.readAllAlloc(arena.allocator(), std.math.maxInt(usize));
 }
 
-pub fn getContentType(headers: []zfetch.Header) ![]const u8 {
+pub fn getContentType(headers: []zfetch.Header) ?[]const u8 {
     var value_opt: ?[]const u8 = null;
     for (headers) |h| {
         if (ascii.eqlIgnoreCase(h.name, "content-type")) {
@@ -391,7 +391,7 @@ pub fn getContentType(headers: []zfetch.Header) ![]const u8 {
         }
     }
 
-    const value = value_opt orelse return error.NoHeaderContentType;
+    const value = value_opt orelse return null;
     const end = mem.indexOf(u8, value, ";") orelse value.len;
     return value[0..end];
 }

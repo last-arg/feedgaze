@@ -337,6 +337,7 @@ pub const Storage = struct {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             // TODO: pull out resolveUrl and parsing into separate function?
+            // TODO: replace resolveUrl or its input with new resolveRequest fn
             const resp_union = try opts.resolveUrl(&arena, row.location, row.last_modified_utc, row.etag);
 
             switch (resp_union) {
@@ -371,7 +372,8 @@ pub const Storage = struct {
             defer savepoint.rollback();
             const update_data = UpdateData{
                 .current = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp },
-                .headers = resp.headers,
+                // TODO: re-add feed update times
+                .headers = .{},
                 .feed = rss_feed,
             };
             try self.updateUrlFeed(update_data, opts);
