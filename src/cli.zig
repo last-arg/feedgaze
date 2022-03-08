@@ -167,7 +167,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 }
 
-                content_type_value = http.getContentType(req.headers.list.items) catch {
+                content_type_value = http.getContentType(req.headers.list.items) orelse {
                     log.warn("Failed to get Content-Type header. From url {s}", .{req.url});
                     return;
                 };
