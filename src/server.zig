@@ -37,6 +37,7 @@ const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 
 const SessionData = struct {
     form_body: []const u8 = "",
+    links_body: []const u8 = "",
 };
 
 const Session = struct {
@@ -211,7 +212,7 @@ const Server = struct {
             try res.print(form_fmt, .{ "localhost:8080/many-links.html", "tag1, tag2, tag3" });
             return;
         }
-        var session = g.sessions.list.items[session_index.?];
+        var session = &g.sessions.list.items[session_index.?];
         if (session.data.form_body.len == 0) {
             try res.write("<p>There is no form data to handle</p>");
             try res.print(form_fmt, .{ "", "" });
@@ -275,8 +276,29 @@ const Server = struct {
                     // TODO: save to session? If submitting fails
                     // TODO: save generated form (only feed links) as session data
                     const body = try http.getRequestBody(&arena, url_req);
-                    const html_links = try parse.Html.parseLinks(arena.allocator(), body);
-                    try printFormWithLinks(&arena, res, html_links, valid_url, tags);
+                    const html_page = try parse.Html.parseLinks(arena.allocator(), body);
+                    const base_uri = try zuri.Uri.parse(valid_url, true);
+                    const fallback_title = html_page.title orelse "<no-title>";
+                    var links_html = ArrayList(u8).init(session.arena.allocator());
+                    // defer links_html.deinit();
+                    try links_html.writer().print("<input type='hidden' name='feed_url' value='{s}'>", .{valid_url});
+                    try links_html.appendSlice("<p>Pick a feed link(s) to add</p><ul>");
+                    for (html_page.links) |link| {
+                        const fmt_link =
+                            \\<li><label>
+                            \\ <input type="checkbox" name="feed_link_checkbox" value="{s}">
+                            \\ <span>[{s}] {s} | {s}</span>
+                            \\</label></li>
+                        ;
+                        const title = link.title orelse fallback_title;
+                        const media_type = parse.Html.MediaType.toString(link.media_type);
+                        const link_url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
+                        defer arena.allocator().free(link_url);
+                        try links_html.writer().print(fmt_link, .{ link_url, media_type, title, link_url });
+                    }
+                    try links_html.appendSlice("</ul>");
+                    session.data.links_body = links_html.toOwnedSlice();
+                    try printFormWithLinks(res, session.data.links_body, tags);
                     return;
                 },
                 .unknown => {
@@ -317,11 +339,7 @@ const Server = struct {
 
             if (links.items.len == 0) {
                 try res.write("<p>No feed links checked. Please check atleast one feed link</p>");
-                const body = session.data.form_body;
-                const html_links = try parse.Html.parseLinks(arena.allocator(), body);
-                print("HTML: {s}\n", .{html_links});
-                // TODO: no links is printed
-                try printFormWithLinks(&arena, res, html_links, url, tags);
+                try printFormWithLinks(res, session.data.links_body, tags);
                 return;
             }
 
@@ -378,7 +396,7 @@ const Server = struct {
         // Also decoded body might contain extra '&'.
         // Just allocate encoded body and decode only when needed?
         mem.replaceScalar(u8, @ptrCast(*[]u8, &body_decoded).*, '+', ' ');
-        session.data = .{ .form_body = body_decoded };
+        session.data.form_body = body_decoded;
 
         const token_fmt = "token={d}; path=/feed/add";
         const u64_max_char = 20;
@@ -388,28 +406,10 @@ const Server = struct {
         try res.headers.put("Location", "/feed/add");
     }
 
-    fn printFormWithLinks(arena: *ArenaAllocator, res: Response, html_page: parse.Html.Page, valid_url: []const u8, tags: []const u8) !void {
+    fn printFormWithLinks(res: Response, links_body: []const u8, tags: []const u8) !void {
         try res.write(form_start);
         try res.print(input_tags, .{tags});
-        try res.print("<input type='hidden' name='feed_url' value='{s}'>", .{valid_url});
-        const base_uri = try zuri.Uri.parse(valid_url, true);
-        const fallback_title = html_page.title orelse "<no-title>";
-        try res.write("<p>Pick a feed link(s) to add</p>");
-        try res.write("<ul>");
-        for (html_page.links) |link| {
-            const fmt_link =
-                \\<li><label>
-                \\ <input type="checkbox" name="feed_link_checkbox" value="{s}">
-                \\ <span>[{s}] {s} | {s}</span>
-                \\</label></li>
-            ;
-            const title = link.title orelse fallback_title;
-            const media_type = parse.Html.MediaType.toString(link.media_type);
-            const link_url = try url_util.makeWholeUrl(arena.allocator(), base_uri, link.href);
-            defer arena.allocator().free(link_url);
-            try res.print(fmt_link, .{ link_url, media_type, title, link_url });
-        }
-        try res.write("</ul>");
+        try res.write(links_body);
         try res.print(button_fmt, .{ "submit_feed_links", "(s)" });
         try res.write(form_end);
     }
