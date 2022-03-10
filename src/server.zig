@@ -158,7 +158,7 @@ const Server = struct {
         } else if (mem.eql(u8, req.method, "GET")) {
             try feedAddGet(req, res);
         } else {
-            // TODO: response https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/405
+            res.status_code = .MethodNotAllowed;
         }
     }
 
