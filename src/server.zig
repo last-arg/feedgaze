@@ -375,15 +375,14 @@ const Server = struct {
     }
 
     fn feedAddPost(req: Request, res: Response) !void {
-        print("add POST\n", .{});
         g.sessions.cleanOld();
         var session = blk: {
             const token = try getCookieToken(req, g.allocator);
             const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
             if (index_opt) |index| {
-                // TODO: clean/deinit current session data?
-                // There should not be any sessions for POST url?
-                break :blk &g.sessions.list.items[index];
+                const session = &g.sessions.list.items[index];
+                session.arena.allocator().free(session.data.form_body);
+                break :blk session;
             }
             var arena = std.heap.ArenaAllocator.init(g.allocator);
             break :blk try g.sessions.new(arena);
