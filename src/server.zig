@@ -332,7 +332,7 @@ const Server = struct {
             }
 
             if (links.items.len == 0) {
-                try res.write("<p>No feed links checked. Please check atleast one feed link</p>");
+                try res.write("<p>Please choose atleast one link</p>");
                 try printFormWithLinks(res, session.data.links_body, tags);
                 return;
             }
@@ -417,20 +417,6 @@ const Server = struct {
 
         var req = try http.resolveRequest2(arena, url, &http.general_request_headers);
         return SessionData{ .ty = .resolve, .req = req };
-    }
-
-    pub fn submitFeedLinks(
-        arena: *ArenaAllocator,
-        session: *Session,
-        try_urls: [][]const u8,
-        initial_url: ?[]const u8,
-        tags_input: []const u8,
-    ) !void {
-        _ = arena;
-        _ = try_urls;
-        _ = session;
-        _ = initial_url;
-        _ = tags_input;
     }
 
     fn addFeed(feed: parse.Feed, tags: []const u8) !u64 {
@@ -672,8 +658,8 @@ test "@active" {
 
     const thread = try std.Thread.spawn(.{}, testServer, .{arena.allocator()});
     defer thread.join();
-    // Hack to make sure server is up before making request
     // TODO?: check for server address?
+    // Hack to make sure server is up before making request
     std.time.sleep(1 * std.time.ns_per_ms);
     print("Server running\n", .{});
 
