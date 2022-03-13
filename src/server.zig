@@ -262,7 +262,7 @@ const Server = struct {
                 return;
             };
 
-            const url_req = try http.resolveRequest2(&arena, valid_url, &http.general_request_headers);
+            const url_req = try http.resolveRequest(&arena, valid_url, &http.general_request_headers);
             const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
                 try res.write("<p>Failed to find Content-Type</p>");
                 try res.print(form_fmt, .{ url, tags });
@@ -342,7 +342,7 @@ const Server = struct {
             defer g.sessions.remove(session_index.?);
 
             for (links.items) |link| {
-                const url_req = try http.resolveRequest2(&arena, link, &http.general_request_headers);
+                const url_req = try http.resolveRequest(&arena, link, &http.general_request_headers);
                 const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
                     try res.write("<p>Failed to find Content-Type</p>");
                     try res.print(form_fmt, .{ url, tags });
@@ -413,7 +413,7 @@ const Server = struct {
             return SessionData{ .ty = .fail_invalid_url };
         };
 
-        var req = try http.resolveRequest2(arena, url, &http.general_request_headers);
+        var req = try http.resolveRequest(arena, url, &http.general_request_headers);
         return SessionData{ .ty = .resolve, .req = req };
     }
 
