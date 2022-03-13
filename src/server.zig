@@ -231,7 +231,9 @@ const Server = struct {
             if (mem.eql(u8, "feed_url", key)) {
                 url = value;
             } else if (mem.eql(u8, "tags", key)) {
-                tags = value;
+                var tmp_tags = value;
+                mem.replaceScalar(u8, @ptrCast(*[]u8, &tmp_tags).*, '+', ' ');
+                tags = tmp_tags;
             } else if (mem.eql(u8, "submit_feed_links", key)) {
                 is_submit_feed_links = true;
             } else if (mem.eql(u8, "submit_feed", key)) {
@@ -370,10 +372,12 @@ const Server = struct {
 
     fn feedAddPost(req: Request, res: Response) !void {
         g.sessions.cleanOld();
+        var session_index: usize = 0;
         var session = blk: {
             const token = try getCookieToken(req, g.allocator);
             const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
             if (index_opt) |index| {
+                session_index = index;
                 const session = &g.sessions.list.items[index];
                 session.arena.allocator().free(session.data.form_body);
                 break :blk session;
@@ -381,15 +385,9 @@ const Server = struct {
             var arena = std.heap.ArenaAllocator.init(g.allocator);
             break :blk try g.sessions.new(arena);
         };
-        errdefer g.sessions.remove(session.id);
+        errdefer g.sessions.remove(session_index);
         var arena = session.arena;
-        var body_decoded = (try zuri.Uri.decode(arena.allocator(), req.body)) orelse req.body;
-        // TODO: move decoding when, where data is needed?
-        // NOTE: might replace pluses ('+') that are not spaces
-        // Also decoded body might contain extra '&'.
-        // Just allocate encoded body and decode only when needed?
-        mem.replaceScalar(u8, @ptrCast(*[]u8, &body_decoded).*, '+', ' ');
-        session.data.form_body = body_decoded;
+        session.data.form_body = (try zuri.Uri.decode(arena.allocator(), req.body)) orelse (try Allocator.dupe(arena.allocator(), u8, req.body));
 
         const token_fmt = "token={d}; path=/feed/add";
         const u64_max_char = 20;
