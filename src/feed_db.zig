@@ -621,7 +621,7 @@ pub const Storage = struct {
 
     pub fn untaggedCheck(self: *Self, feed_id: u64) !void {
         const has_tags =
-            (try self.db.one(void, "SELECT 1 FROM feed_tag WHERE id = ? LIMIT 1", .{feed_id})) != null;
+            (try self.db.one(void, "SELECT 1 FROM feed_tag WHERE feed_id = ? LIMIT 1", .{feed_id})) != null;
 
         if (!has_tags) {
             const insert_query = comptime fmt.comptimePrint("insert into feed_tag (feed_id, tag) values (?, '{s}')", .{g.tag_untagged});
