@@ -344,7 +344,7 @@ const Server = struct {
             for (links.items) |link| {
                 const url_req = try http.resolveRequest(&arena, link, &http.general_request_headers);
                 const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
-                    try res.write("<p>Failed to find Content-Type</p>");
+                    try res.write("<p>No Content-Type HTTP header</p>");
                     try res.print(form_fmt, .{ url, tags });
                     return;
                 };
@@ -649,7 +649,7 @@ fn testServer(allocator: Allocator) !void {
     try run(&storage);
 }
 
-test "@active" {
+test "post, get" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();

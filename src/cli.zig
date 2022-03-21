@@ -158,7 +158,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try writer.print("Fetching feed {s}\n", .{url});
                 // clean previous request
                 if (urls_tried_count > 1) req.deinit();
-                req = try http.resolveRequest2(&arena, url, &http.general_request_headers);
+                req = try http.resolveRequest(&arena, url, &http.general_request_headers);
                 if (req.status.code != 200) {
                     switch (req.status.code) {
                         301, 307, 308 => log.warn("Failed request. Too many redirects. Final request location {s}", .{req.url}),

@@ -20,47 +20,6 @@ pub var general_request_headers = [_]zfetch.Header{
     .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
 };
 
-pub const FeedResponse = union(enum) {
-    ok: Ok,
-    not_modified: void,
-    fail: []const u8,
-};
-
-const InternalResponse = union(enum) {
-    ok: Ok,
-    not_modified: void,
-    permanent_redirect: PermanentRedirect,
-    temporary_redirect: TemporaryRedirect,
-    fail: []const u8,
-};
-
-const PermanentRedirect = struct {
-    location: []const u8,
-    msg: []const u8,
-};
-
-const TemporaryRedirect = struct {
-    location: []const u8,
-    msg: []const u8,
-    // Need to pass cache related fields to next request
-    last_modified: ?[]const u8 = null, // Doesn't own memory
-    etag: ?[]const u8 = null, // Doesn't own memory
-};
-
-pub const RespHeaders = struct {
-    cache_control_max_age: ?u32 = null,
-    expires_utc: ?i64 = null,
-    etag: ?[]const u8 = null,
-    last_modified_utc: ?i64 = null,
-};
-
-pub const Ok = struct {
-    location: []const u8,
-    body: []const u8,
-    content_type: ContentType = .unknown,
-    headers: RespHeaders = .{},
-};
-
 pub const ContentEncoding = enum {
     none,
     gzip,
@@ -99,13 +58,6 @@ pub const ContentType = enum {
 };
 
 const max_redirects = 3;
-
-fn isPermanentRedirect(code: u16) bool {
-    for ([_]u16{ 301, 307, 308 }) |value| {
-        if (code == value) return true;
-    }
-    return false;
-}
 
 pub fn makeRequest(arena: *ArenaAllocator, url: []const u8, headers: zfetch.Headers) !*zfetch.Request {
     var req = try zfetch.Request.init(arena.allocator(), url, null);
