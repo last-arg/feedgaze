@@ -17,6 +17,7 @@ const expectEqualStrings = std.testing.expectEqualStrings;
 const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 const f = @import("feed.zig");
+const zfetch = @import("zfetch");
 
 // TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
 // Storage would be specific functions. Db would be utility/helper/wrapper functions
@@ -231,7 +232,7 @@ pub const Storage = struct {
     pub const UpdateOptions = struct {
         force: bool = false,
         // For testing purposes
-        resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
+        // resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
     };
 
     pub fn updateAllFeeds(self: *Self, opts: UpdateOptions) !void {
@@ -291,32 +292,17 @@ pub const Storage = struct {
         }
         const UrlFeed = struct {
             location: []const u8,
-            etag: ?[]const u8,
             feed_id: u64,
-            updated_timestamp: ?i64,
-            last_modified_utc: ?i64,
-
-            pub fn deinit(row: @This(), allocator: Allocator) void {
-                // Fetches allocated fields in reverse order
-                const dealloc_fields = comptime deallocFields(@This());
-                // IMPORTANT: Have to free memory in reverse, important when using FixedBufferAllocator.
-                // FixedBufferAllocator stack part uses end_index to keep track of available memory
-                inline for (dealloc_fields) |field| {
-                    const val = @field(row, field.name);
-                    if (field.is_optional) {
-                        if (val) |v| allocator.free(v);
-                    } else {
-                        allocator.free(val);
-                    }
-                }
-            }
+            etag: ?[]const u8 = null,
+            updated_timestamp: ?i64 = null,
+            last_modified_utc: ?i64 = null,
         };
 
         const base_query =
             \\SELECT
             \\  feed.location as location,
-            \\  etag,
             \\  feed_id,
+            \\  etag,
             \\  feed.updated_timestamp as updated_timestamp,
             \\  last_modified_utc
             \\FROM feed_update_http
@@ -326,54 +312,51 @@ pub const Storage = struct {
         const query = if (opts.force) base_query else base_query ++ "\nWHERE update_countdown < 0;";
         var stmt = try self.db.sql_db.prepareDynamic(query);
         defer stmt.deinit();
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
 
-        var stack_fallback = std.heap.stackFallback(256, self.allocator);
-        const stack_allocator = stack_fallback.get();
-        var iter = try stmt.iterator(UrlFeed, .{});
-
-        while (try iter.nextAlloc(stack_allocator, .{})) |row| {
-            defer row.deinit(stack_allocator);
+        var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
+        print("len: {d}\n", .{rows.len});
+        for (rows) |row| {
             log.info("Updating: '{s}'", .{row.location});
-            var arena = std.heap.ArenaAllocator.init(self.allocator);
-            defer arena.deinit();
-            // TODO: pull out resolveUrl and parsing into separate function?
-            const resp_union = try opts.resolveUrl(&arena, row.location, row.last_modified_utc, row.etag);
+            const req = try http.resolveRequest(&arena, row.location, &http.general_request_headers);
 
-            switch (resp_union) {
-                .not_modified => {
-                    log.info("Skipping update. Feed hasn't been modified.", .{});
+            switch (req.status.code) {
+                200 => {},
+                304 => {
+                    log.info("Skip updating feed {s}. Feed hasn't been modified/changed", .{row.location});
                     continue;
                 },
-                .fail => |msg| {
-                    log.info("Skipping update. Failed http request: {s}.", .{msg});
+                else => {
+                    log.info("Skip updating feed {s}. Something went wrong with HTTP request: {d} {s}", .{ row.location, req.status.code, req.status.reason });
                     continue;
                 },
-                .ok => {},
             }
 
-            const resp = resp_union.ok;
-            const rss_feed = switch (resp.content_type) {
-                .xml_atom => parse.Atom.parse(&arena, resp.body) catch {
-                    log.warn("Skipping update. Failed to parse Atom feed.", .{});
-                    continue;
-                },
-                .xml_rss => parse.Rss.parse(&arena, resp.body) catch {
-                    log.warn("Skipping update. Failed to parse RSS feed.", .{});
-                    continue;
-                },
-                else => parse.parse(&arena, resp.body) catch {
-                    log.warn("Skipping update. Failed to parse XML file.", .{});
-                    continue;
-                },
+            const content_type_value = http.getContentType(req.headers.list.items) orelse {
+                log.info("Skip updating feed {s}. Found no Content-Type HTTP header", .{row.location});
+                continue;
             };
+            const content_type = http.ContentType.fromString(content_type_value);
+            switch (content_type) {
+                .html, .unknown => {
+                    print(
+                        "Failed to add url {s}. Don't handle mimetype {s}",
+                        .{ row.location, content_type_value },
+                    );
+                },
+                else => {},
+            }
 
+            const body = try http.getRequestBody(&arena, req);
+            const feed = try f.Feed.initParse(&arena, row.location, body, content_type);
+            const feed_update = try f.FeedUpdate.fromHeaders(req.headers.list.items);
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
             defer savepoint.rollback();
             const update_data = UpdateData{
                 .current = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp },
-                // TODO: re-add feed update times
-                .headers = .{},
-                .feed = rss_feed,
+                .headers = feed_update,
+                .feed = feed,
             };
             try self.updateUrlFeed(update_data, opts);
             savepoint.commit();
@@ -799,14 +782,12 @@ fn testDataRespOk() http.Ok {
     };
 }
 
-pub fn testResolveRequest(
-    _: *std.heap.ArenaAllocator,
-    _: []const u8, // url
-    _: ?i64, // last_modified
-    _: ?[]const u8, // etag
-) !http.FeedResponse {
-    const ok = testDataRespOk();
-    return http.FeedResponse{ .ok = ok };
+pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, headers_slice: []zfetch.Header) !*zfetch.Request {
+    _ = arena;
+    _ = url;
+    _ = headers_slice;
+    var req = try zfetch.Request.init(arena.allocator(), url, null);
+    return req;
 }
 
 // Can't run this test with cli.zig addFeedHttp tests
@@ -1014,6 +995,7 @@ test "different urls, same feed items" {
     try expectEqual(items.len * 2, item_count.?);
 }
 
+// Requires running test server - cmd: just test-server
 test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
@@ -1023,46 +1005,40 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     var storage = try Storage.init(allocator, null);
 
     {
-        const location1 = "location1";
+        const location1 = "http://localhost:8080/atom.atom";
         const parsed_feed = parse.Feed{ .title = "Title: location 1" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
-        const ok1 = http.Ok{
-            .location = "feed_location1",
-            .body = "",
+        const feed_update = f.FeedUpdate{
             .expires_utc = std.math.maxInt(i64), // no update
         };
-        try storage.addFeedUrl(id1, ok1);
+        try storage.addFeedUrl(id1, feed_update);
     }
+
     {
-        const location1 = "location2";
+        const location1 = "http://localhost:8080/atom.xml";
         const parsed_feed = parse.Feed{ .title = "Title: location 2" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
-        const ok1 = http.Ok{
-            .location = "feed_location2",
-            .body = "",
+        const feed_update = f.FeedUpdate{
             .cache_control_max_age = 300,
         };
-        try storage.addFeedUrl(id1, ok1);
+        try storage.addFeedUrl(id1, feed_update);
         // will update feed
         const query = "update feed_update_http set last_update = ? where feed_id = ?;";
         try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
     }
 
     {
-        const location1 = "location3";
+        const location1 = "http://localhost:8080/rss2.rss";
         const parsed_feed = parse.Feed{ .title = "Title: location 3" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
-        const ok1 = http.Ok{
-            .location = "feed_location3",
-            .body = "",
-        };
-        try storage.addFeedUrl(id1, ok1);
+        const feed_update = f.FeedUpdate{};
+        try storage.addFeedUrl(id1, feed_update);
         // will update feed
         const query = "update feed_update_http set last_update = ? where feed_id = ?;";
         try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
     }
 
-    try storage.updateUrlFeeds(Storage.UpdateOptions{ .resolveUrl = testResolveRequest });
+    try storage.updateUrlFeeds(Storage.UpdateOptions{});
     const query_last_update = "select last_update from feed_update_http";
     {
         const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
@@ -1070,7 +1046,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     }
 
     try storage.db.exec("update feed_update_http set last_update = 0;", .{});
-    try storage.updateUrlFeeds(Storage.UpdateOptions{ .resolveUrl = testResolveRequest, .force = true });
+    try storage.updateUrlFeeds(Storage.UpdateOptions{ .force = true });
 
     {
         const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
