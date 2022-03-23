@@ -231,8 +231,6 @@ pub const Storage = struct {
 
     pub const UpdateOptions = struct {
         force: bool = false,
-        // For testing purposes
-        // resolveUrl: @TypeOf(http.resolveRequest) = http.resolveRequest,
     };
 
     pub fn updateAllFeeds(self: *Self, opts: UpdateOptions) !void {
@@ -771,17 +769,6 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     return mem.eql(u8, a.?, b.?);
 }
 
-fn testDataRespOk() http.Ok {
-    const contents = @embedFile("../test/sample-rss-2.xml");
-    const location = "https://lobste.rs/";
-    return http.Ok{
-        .location = location,
-        .body = contents,
-        .content_type = http.ContentType.xml_rss,
-        .headers = .{ .etag = "etag_value" },
-    };
-}
-
 pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, headers_slice: []zfetch.Header) !*zfetch.Request {
     _ = arena;
     _ = url;
@@ -793,21 +780,22 @@ pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, head
 // Can't run this test with cli.zig addFeedHttp tests
 // Will throw a type signature error pertaining to UpdateOptions.resolveUrl function
 // Don't run feed_db.zig and cli.zig tests that touch UpdateOptions together
-test "Storage fake net" {
+test "add, delete feed" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
 
-    const test_data = testDataRespOk();
+    const location = "https://lobste.rs/";
+    const contents = @embedFile("../test/rss2.xml");
     var feed_db = try Storage.init(allocator, null);
-    var feed = try parse.parse(&arena, test_data.body);
+    var feed = try parse.parse(&arena, contents);
 
     var savepoint = try feed_db.db.sql_db.savepoint("test_net");
     defer savepoint.rollback();
-    const id = try feed_db.insertFeed(feed, test_data.location);
-    try feed_db.addFeedUrl(id, test_data.headers);
+    const id = try feed_db.insertFeed(feed, location);
+    try feed_db.addFeedUrl(id, .{});
 
     const ItemsResult = struct { title: []const u8 };
     const all_items_query = "select title from item order by id DESC";
@@ -828,16 +816,6 @@ test "Storage fake net" {
         try expect(items.len == items_src.len);
         for (items) |item, i| {
             try std.testing.expectEqualStrings(items_src[i].title, item.title);
-        }
-    }
-
-    // update feed
-    try feed_db.updateUrlFeeds(.{ .force = true, .resolveUrl = testResolveRequest });
-    {
-        const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
-        try expect(items.len == feed.items.len);
-        for (items) |item, i| {
-            try std.testing.expectEqualStrings(feed.items[i].title, item.title);
         }
     }
 
