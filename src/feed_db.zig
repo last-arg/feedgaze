@@ -777,10 +777,7 @@ pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, head
     return req;
 }
 
-// Can't run this test with cli.zig addFeedHttp tests
-// Will throw a type signature error pertaining to UpdateOptions.resolveUrl function
-// Don't run feed_db.zig and cli.zig tests that touch UpdateOptions together
-test "add, delete feed" {
+test "@active add, delete feed" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -813,7 +810,7 @@ test "add, delete feed" {
     try feed_db.addItems(id, tmp_items);
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
-        try expect(items.len == items_src.len);
+        try expectEqual(items.len, items_src.len);
         for (items) |item, i| {
             try std.testing.expectEqualStrings(items_src[i].title, item.title);
         }
@@ -868,7 +865,7 @@ test "Storage local" {
     // Feed local
     {
         const items = try feed_db.db.selectAll(LocalItem, all_items_query, .{});
-        try expect(items.len == last_items.len);
+        try expectEqual(items.len, last_items.len);
         for (items) |item, i| {
             try expectEqualStrings(item.title, last_items[i].title);
         }

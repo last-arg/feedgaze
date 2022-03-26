@@ -435,7 +435,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     {
         const expected = fmt.comptimePrint("Added local feed: {s}\n", .{rss_url});
         fbs.reset();
-        try cli.addFeed(&.{location});
+        try cli.addFeed(&.{location}, "");
         try expectEqualStrings(expected, fbs.getWritten());
     }
 

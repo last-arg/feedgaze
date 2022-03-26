@@ -33,11 +33,11 @@ test "getFileContents(): relative and absolute path" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = &arena.allocator;
+    const allocator = arena.allocator();
 
-    const abs_path = "/media/hdd/code/feedgaze/test/sample-rss-2.xml";
+    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
     const abs_content = try getFileContents(allocator, abs_path);
-    const rel_path = "test/sample-rss-2.xml";
+    const rel_path = "test/rss2.xml";
     const rel_content = try getFileContents(allocator, rel_path);
 
     try expect(abs_content.len == rel_content.len);

@@ -946,32 +946,6 @@ test "Rss.parse" {
     // Description is used as title
     try expect(null != feed.items[0].updated_raw);
     try std.testing.expectEqualStrings("Sky watchers in Europe, Asia, and parts of Alaska ", feed.items[1].title);
-
-    Feed.sortItemsByDate(feed.items);
-    const items_with_null_dates = feed.getItemsWithNullDates();
-    // const start = feed.getNonNullFeedItemStart();
-    try expect(items_with_null_dates.len == 2);
-
-    const items_with_dates = feed.items[items_with_null_dates.len..];
-    try expect(items_with_dates.len == 4);
-
-    {
-        const latest_timestamp = items_with_dates[0].updated_timestamp.? - 1;
-        const items_new = feed.getItemsWithDates(latest_timestamp);
-        try expect(items_new.len == 4);
-    }
-
-    {
-        const latest_timestamp = items_with_dates[2].updated_timestamp.?;
-        const items_new = feed.getItemsWithDates(latest_timestamp);
-        try expect(items_new.len == 1);
-    }
-
-    {
-        const latest_timestamp = items_with_dates[3].updated_timestamp.? + 1;
-        const items_new = feed.getItemsWithDates(latest_timestamp);
-        try expect(items_new.len == 0);
-    }
 }
 
 test "Rss.parseDateToUtc" {

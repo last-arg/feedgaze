@@ -23,7 +23,7 @@ test "makeValidUrl()" {
     const urls = .{ "google.com", "google.com/", "http://google.com", "http://google.com/" };
     inline for (urls) |url| {
         const new_url = try makeValidUrl(allocator, url);
-        defer if (!std.mem.eql(u8, url, new_url)) allocator.free(new_url);
+        defer allocator.free(new_url);
         try std.testing.expectEqualStrings("http://google.com/", new_url);
     }
 }

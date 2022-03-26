@@ -15,8 +15,6 @@ const server = @import("server.zig");
 // NOTE: This will return error.CouldNotConnect when adding url
 // pub const io_mode = .evented;
 
-// TODO: wait for https://github.com/truemedian/zfetch/issues/10
-
 pub const log_level = std.log.Level.debug;
 pub const known_folders_config = .{
     .xdg_on_mac = true,
