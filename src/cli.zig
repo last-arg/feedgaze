@@ -483,7 +483,6 @@ test "Cli.printAllItems, Cli.printFeeds" {
 }
 
 test "url: add" {
-    const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -503,7 +502,6 @@ test "url: add" {
 
     {
         const url = "http://localhost:8080/rss2.rss";
-        g.max_items_per_feed = 2;
         fbs.reset();
         try cli.addFeed(&.{url}, "");
         const expected = fmt.comptimePrint(
@@ -516,7 +514,6 @@ test "url: add" {
 
     {
         const url = "http://localhost:8080/many-links.html";
-        g.max_items_per_feed = 2;
         fbs.reset();
         const expected = fmt.comptimePrint(
             \\Fetching feed {s}
@@ -543,7 +540,6 @@ test "url: add" {
 
 // TODO: make tests more self containing
 test "local and url: add, update, delete, html links, add into update" {
-    const g = @import("feed_db.zig").g;
     std.testing.log_level = .debug;
 
     const base_allocator = std.testing.allocator;
@@ -569,7 +565,6 @@ test "local and url: add, update, delete, html links, add into update" {
     const rel_path = "test/rss2.xml";
     const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
     {
-        g.max_items_per_feed = 1;
         const expected = "Added local feed: " ++ abs_path ++ "\n";
         // Copying is required when reading from stdout
         mem.copy(u8, fbs.buffer, expected);
@@ -581,7 +576,6 @@ test "local and url: add, update, delete, html links, add into update" {
     // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
-        g.max_items_per_feed = 2;
         const expected = fmt.comptimePrint(
             \\Fetching feed {s}
             \\Feed added {s}
@@ -639,8 +633,8 @@ test "local and url: add, update, delete, html links, add into update" {
     {
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
         const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, 1), local_items.len);
-        try expectEqual(@as(usize, 2), url_items.len);
+        try expectEqual(@as(usize, 6), local_items.len);
+        try expectEqual(@as(usize, 6), url_items.len);
         const l_item = local_items[0];
         const u_item = url_items[0];
         try std.testing.expectEqualStrings(l_item.title, u_item.title);
@@ -650,7 +644,6 @@ test "local and url: add, update, delete, html links, add into update" {
         if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
     }
 
-    g.max_items_per_feed = 10;
     // Test parsing links from html
     // Test feed already existing
     // ./feedgaze add http://localhost:8080/many-links.html
@@ -710,12 +703,11 @@ test "local and url: add, update, delete, html links, add into update" {
     // Test clean items
     // ./feedgaze clean
     {
-        g.max_items_per_feed = 2;
         try storage.cleanItems();
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
         const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, g.max_items_per_feed), local_items.len);
-        try expectEqual(@as(usize, g.max_items_per_feed), url_items.len);
+        try expectEqual(@as(usize, 6), local_items.len);
+        try expectEqual(@as(usize, 6), url_items.len);
     }
 
     // Test delete local feed

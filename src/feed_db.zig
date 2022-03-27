@@ -314,7 +314,6 @@ pub const Storage = struct {
         defer arena.deinit();
 
         var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
-        print("len: {d}\n", .{rows.len});
         for (rows) |row| {
             log.info("Updating: '{s}'", .{row.location});
             const req = try http.resolveRequest(&arena, row.location, &http.general_request_headers);
@@ -778,7 +777,7 @@ pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, head
 }
 
 test "@active add, delete feed" {
-    std.testing.log_level = .debug;
+    // std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
