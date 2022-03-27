@@ -647,30 +647,30 @@ test "local and url: add, update, delete, html links, add into update" {
     // Test parsing links from html
     // Test feed already existing
     // ./feedgaze add http://localhost:8080/many-links.html
-    // TODO: reenable test
-    // {
-    //     const html_url = "http://localhost:8080/many-links.html";
-    //     const expected =
-    //         \\Fetching feed http://localhost:8080/many-links.html
-    //         \\Parse Feed Links | http://localhost:8080/many-links.html
-    //         \\  1. [RSS] http://localhost:8080/rss2.rss | Rss 2
-    //         \\  2. [Unknown] http://localhost:8080/rss2.xml | Rss 2
-    //         \\  3. [Atom] http://localhost:8080/atom.atom | Atom feed
-    //         \\  4. [Atom] http://localhost:8080/rss2.rss | Not Duplicate
-    //         \\  5. [Unknown] http://localhost:8080/atom.xml | Atom feed
-    //         \\Enter link number: 1
-    //         \\Feed added http://localhost:8080/rss2.rss
-    //         \\
-    //     ;
+    {
+        const html_url = "http://localhost:8080/many-links.html";
+        const expected =
+            \\Fetching feed http://localhost:8080/many-links.html
+            \\Parse Feed Links | http://localhost:8080/many-links.html
+            \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
+            \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
+            \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
+            \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
+            \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
+            \\Enter link number: 1
+            \\Fetching feed http://localhost:8080/rss2.rss
+            \\Feed added http://localhost:8080/rss2.rss
+            \\
+        ;
 
-    //     fbs.reset();
-    //     // Copying is required when reading from stdout
-    //     mem.copy(u8, fbs.buffer, expected);
-    //     try cli.addFeed(&.{html_url}, "");
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-    //     try expectEqual(@as(usize, 6), url_items.len);
-    // }
+        fbs.reset();
+        // Copying is required when reading from stdout
+        mem.copy(u8, fbs.buffer, expected);
+        try cli.addFeed(&.{html_url}, "");
+        try expectEqualStrings(expected, fbs.getWritten());
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 6), url_items.len);
+    }
 
     // Test update feeds
     // ./feedgaze update
@@ -712,27 +712,27 @@ test "local and url: add, update, delete, html links, add into update" {
 
     // Test delete local feed
     // ./feedgaze delete rss2
-    // const enter_nr = "Enter feed number to delete?";
-    // {
-    //     const expected = fmt.comptimePrint(
-    //         \\Found 2 result(s):
-    //         \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-    //         \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-    //         \\{s} 1a
-    //         \\Invalid number entered: '1a'. Try again.
-    //         \\{s} 14
-    //         \\Entered number out of range. Try again.
-    //         \\{s} 1
-    //         \\Deleted feed '{s}'
-    //         \\
-    //     , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
-    //     fbs.reset();
-    //     mem.copy(u8, fbs.buffer, expected);
-    //     var value: []const u8 = "rss2";
-    //     var values: [][]const u8 = &[_][]const u8{value};
-    //     cli.deleteFeed(values) catch print("|{s}|\n", .{fbs.getWritten()});
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    // }
+    const enter_nr = "Enter link number:";
+    {
+        const expected = fmt.comptimePrint(
+            \\Found 2 result(s):
+            \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\{s} 1a
+            \\Invalid number: '1a'. Try again.
+            \\{s} 14
+            \\Number out of range: '14'. Try again.
+            \\{s} 1
+            \\Deleted feed '{s}'
+            \\
+        , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
+        fbs.reset();
+        mem.copy(u8, fbs.buffer, expected);
+        var value: []const u8 = "rss2";
+        var values: [][]const u8 = &[_][]const u8{value};
+        cli.deleteFeed(values) catch print("|{s}|\n", .{fbs.getWritten()});
+        try expectEqualStrings(expected, fbs.getWritten());
+    }
 
     // Test delete url feed
     // ./feedgaze delete rss2
