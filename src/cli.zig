@@ -482,39 +482,39 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-test "url: add" {
-    std.testing.log_level = .debug;
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
+fn testAddFeed(storage: *Storage, url: []const u8, expected: ?[]const u8) !void {
     var buf: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
-
-    var storage = try Storage.init(allocator, null);
     var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
-        .allocator = allocator,
-        .feed_db = &storage,
+        .allocator = std.testing.allocator,
+        .feed_db = storage,
         .writer = fbs.writer(),
         .reader = fbs.reader(),
     };
+    if (expected) |e| mem.copy(u8, fbs.buffer, e);
+    try cli.addFeed(&.{url}, "");
+    if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
+}
+
+test "url: add" {
+    std.testing.log_level = .debug;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var storage = try Storage.init(allocator, null);
 
     {
         const url = "http://localhost:8080/rss2.rss";
-        fbs.reset();
-        try cli.addFeed(&.{url}, "");
         const expected = fmt.comptimePrint(
             \\Fetching feed {s}
             \\Feed added {s}
             \\
         , .{ url, url });
-        try expectEqualStrings(expected, fbs.getWritten());
+        try testAddFeed(&storage, url, expected);
     }
 
     {
         const url = "http://localhost:8080/many-links.html";
-        fbs.reset();
         const expected = fmt.comptimePrint(
             \\Fetching feed {s}
             \\Parse Feed Links | http://localhost:8080/many-links.html
@@ -532,9 +532,7 @@ test "url: add" {
             \\Feed added http://localhost:8080/rss2.xml
             \\
         , .{url});
-        mem.copy(u8, fbs.buffer, expected);
-        try cli.addFeed(&.{url}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
+        try testAddFeed(&storage, url, expected);
     }
 }
 
