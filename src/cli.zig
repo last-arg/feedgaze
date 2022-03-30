@@ -121,6 +121,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     break :blk try parse.Atom.parse(&arena, contents);
                 } else if (mem.eql(u8, ".json", ext)) {
                     break :blk try parse.Json.parse(&arena, contents);
+                } else if (mem.eql(u8, ".rss", ext)) {
+                    break :blk try parse.Json.parse(&arena, contents);
                 }
                 log.err("Unhandled file type '{s}'", .{ext});
                 return error.UnhandledFileType;
