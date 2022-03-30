@@ -482,7 +482,7 @@ test "Cli.printAllItems, Cli.printFeeds" {
     }
 }
 
-fn testAddFeed(storage: *Storage, url: []const u8, expected: ?[]const u8) !void {
+fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8) !void {
     var buf: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
     var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
@@ -492,7 +492,7 @@ fn testAddFeed(storage: *Storage, url: []const u8, expected: ?[]const u8) !void 
         .reader = fbs.reader(),
     };
     if (expected) |e| mem.copy(u8, fbs.buffer, e);
-    try cli.addFeed(&.{url}, "");
+    try cli.addFeed(locations, "");
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
@@ -510,7 +510,7 @@ test "url: add" {
             \\Feed added {s}
             \\
         , .{ url, url });
-        try testAddFeed(&storage, url, expected);
+        try testAddFeed(&storage, &.{url}, expected);
     }
 
     {
@@ -532,205 +532,190 @@ test "url: add" {
             \\Feed added http://localhost:8080/rss2.xml
             \\
         , .{url});
-        try testAddFeed(&storage, url, expected);
+        try testAddFeed(&storage, &.{url}, expected);
     }
 }
 
 // TODO: make tests more self containing
-test "local and url: add, update, delete, html links, add into update" {
+test "@active local and url: add, update, delete, html links, add into update" {
     std.testing.log_level = .debug;
 
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
-
-    var buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-
     var storage = try Storage.init(allocator, null);
-    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
-        .allocator = allocator,
-        .feed_db = &storage,
-        .writer = fbs.writer(),
-        .reader = fbs.reader(),
-    };
 
-    // local 'test/rss2.xml' and url 'http://localhost:8080/rss2.rss' have same content
-
-    // Test add local feed
     // ./feedgaze add test/rss2.xml
-    const rel_path = "test/rss2.xml";
-    const abs_path = "/media/hdd/code/feedgaze/" ++ rel_path;
-    {
-        const expected = "Added local feed: " ++ abs_path ++ "\n";
-        // Copying is required when reading from stdout
-        mem.copy(u8, fbs.buffer, expected);
-        try cli.addFeed(&.{rel_path}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
-    }
-
-    // Test add url feed
+    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
     // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
-        const expected = fmt.comptimePrint(
+        var location = abs_path;
+        var locations = &.{ location, url };
+        const expected_local = "Added local feed: " ++ abs_path ++ "\n";
+        const expected_url = comptime fmt.comptimePrint(
             \\Fetching feed {s}
             \\Feed added {s}
             \\
         , .{url} ** 2);
-        fbs.reset();
-        try cli.addFeed(&.{url}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
+        const expected = expected_local ++ expected_url;
+        try testAddFeed(&storage, locations, expected);
     }
 
-    const FeedResult = struct {
-        id: u64,
-        title: []const u8,
-        link: ?[]const u8,
-        updated_raw: ?[]const u8,
-        updated_timestamp: ?i64,
-    };
-
-    const ItemResult = struct {
-        title: []const u8,
-        link: ?[]const u8,
-        guid: ?[]const u8,
-        pub_date: ?[]const u8,
-        pub_date_utc: ?i64,
-    };
-
-    var local_id: u64 = undefined;
-    var url_id: u64 = undefined;
-
-    // Test if local and url feeds' table fields have same values
+    // Test row count in feed, feed_update_local and feed_update_http tables
     {
-        const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
-        const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
-        try expectEqual(@as(usize, 2), feeds.len);
-        const local_result = feeds[0];
-        const url_result = feeds[1];
-        local_id = local_result.id;
-        url_id = url_result.id;
-        try std.testing.expectEqualStrings(local_result.title, url_result.title);
-        if (local_result.link) |link| try std.testing.expectEqualStrings(link, url_result.link.?);
-        if (local_result.updated_raw) |updated_raw| try std.testing.expectEqualStrings(updated_raw, url_result.updated_raw.?);
-        if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
-    }
-
-    // Test row count in feed_update_local and feed_update_http tables
-    {
-        const feed_url_local_counts_query = "select count(feed_update_local.feed_id) as local_count, count(feed_update_http.feed_id) as url_count from feed_update_local, feed_update_http";
-        const counts = try storage.db.one(struct { local_count: u32, url_count: u32 }, feed_url_local_counts_query, .{});
+        const feed_url_local_counts_query =
+            \\select
+            \\  (select count(id) from feed) as feed_count,
+            \\  (select count(feed_id) from feed_update_local) as local_count,
+            \\  (select count(feed_id) from feed_update_http) as url_count
+            \\;
+        ;
+        const counts = try storage.db.one(struct { feed_count: u32, local_count: u32, url_count: u32 }, feed_url_local_counts_query, .{});
+        try expectEqual(@as(usize, 2), counts.?.feed_count);
         try expectEqual(@as(usize, 1), counts.?.local_count);
         try expectEqual(@as(usize, 1), counts.?.url_count);
     }
 
+    // const FeedResult = struct {
+    //     id: u64,
+    //     title: []const u8,
+    //     link: ?[]const u8,
+    //     updated_raw: ?[]const u8,
+    //     updated_timestamp: ?i64,
+    // };
+
+    // const ItemResult = struct {
+    //     title: []const u8,
+    //     link: ?[]const u8,
+    //     guid: ?[]const u8,
+    //     pub_date: ?[]const u8,
+    //     pub_date_utc: ?i64,
+    // };
+
+    // var local_id: u64 = undefined;
+    // var url_id: u64 = undefined;
+
+    // Test if local and url feeds' table fields have same values
+    // {
+    //     const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
+    //     const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
+    //     try expectEqual(@as(usize, 2), feeds.len);
+    //     const local_result = feeds[0];
+    //     const url_result = feeds[1];
+    //     local_id = local_result.id;
+    //     url_id = url_result.id;
+    //     try std.testing.expectEqualStrings(local_result.title, url_result.title);
+    //     if (local_result.link) |link| try std.testing.expectEqualStrings(link, url_result.link.?);
+    //     if (local_result.updated_raw) |updated_raw| try std.testing.expectEqualStrings(updated_raw, url_result.updated_raw.?);
+    //     if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
+    // }
+
     // Test if two (local and url) feeds' first(newest) items are same
-    const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
-    {
-        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, 6), local_items.len);
-        try expectEqual(@as(usize, 6), url_items.len);
-        const l_item = local_items[0];
-        const u_item = url_items[0];
-        try std.testing.expectEqualStrings(l_item.title, u_item.title);
-        if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
-        if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
-        if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
-        if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
-    }
+    // const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
+    // {
+    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+    //     try expectEqual(@as(usize, 6), local_items.len);
+    //     try expectEqual(@as(usize, 6), url_items.len);
+    //     const l_item = local_items[0];
+    //     const u_item = url_items[0];
+    //     try std.testing.expectEqualStrings(l_item.title, u_item.title);
+    //     if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+    //     if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+    //     if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+    //     if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+    // }
 
     // Test parsing links from html
     // Test feed already existing
     // ./feedgaze add http://localhost:8080/many-links.html
-    {
-        const html_url = "http://localhost:8080/many-links.html";
-        const expected =
-            \\Fetching feed http://localhost:8080/many-links.html
-            \\Parse Feed Links | http://localhost:8080/many-links.html
-            \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
-            \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
-            \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
-            \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
-            \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
-            \\Enter link number: 1
-            \\Fetching feed http://localhost:8080/rss2.rss
-            \\Feed added http://localhost:8080/rss2.rss
-            \\
-        ;
+    // {
+    //     const html_url = "http://localhost:8080/many-links.html";
+    //     const expected =
+    //         \\Fetching feed http://localhost:8080/many-links.html
+    //         \\Parse Feed Links | http://localhost:8080/many-links.html
+    //         \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
+    //         \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
+    //         \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
+    //         \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
+    //         \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
+    //         \\Enter link number: 1
+    //         \\Fetching feed http://localhost:8080/rss2.rss
+    //         \\Feed added http://localhost:8080/rss2.rss
+    //         \\
+    //     ;
 
-        fbs.reset();
-        // Copying is required when reading from stdout
-        mem.copy(u8, fbs.buffer, expected);
-        try cli.addFeed(&.{html_url}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
-        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, 6), url_items.len);
-    }
+    //     fbs.reset();
+    //     // Copying is required when reading from stdout
+    //     mem.copy(u8, fbs.buffer, expected);
+    //     try cli.addFeed(&.{html_url}, "");
+    //     try expectEqualStrings(expected, fbs.getWritten());
+    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+    //     try expectEqual(@as(usize, 6), url_items.len);
+    // }
 
     // Test update feeds
     // ./feedgaze update
-    {
-        const expected =
-            \\Updated url feeds
-            \\Updated local feeds
-            \\
-        ;
-        fbs.reset();
-        cli.options.force = true;
-        try cli.updateFeeds();
-        cli.options.force = false;
+    // {
+    //     const expected =
+    //         \\Updated url feeds
+    //         \\Updated local feeds
+    //         \\
+    //     ;
+    //     fbs.reset();
+    //     cli.options.force = true;
+    //     try cli.updateFeeds();
+    //     cli.options.force = false;
 
-        try expectEqualStrings(expected, fbs.getWritten());
-        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, 6), local_items.len);
-        try expectEqual(local_items.len, url_items.len);
-        for (local_items) |l_item, i| {
-            const u_item = url_items[i];
-            try std.testing.expectEqualStrings(l_item.title, u_item.title);
-            if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
-            if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
-            if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
-            if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
-        }
-    }
+    //     try expectEqualStrings(expected, fbs.getWritten());
+    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+    //     try expectEqual(@as(usize, 6), local_items.len);
+    //     try expectEqual(local_items.len, url_items.len);
+    //     for (local_items) |l_item, i| {
+    //         const u_item = url_items[i];
+    //         try std.testing.expectEqualStrings(l_item.title, u_item.title);
+    //         if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+    //         if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+    //         if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+    //         if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+    //     }
+    // }
 
     // Test clean items
     // ./feedgaze clean
-    {
-        try storage.cleanItems();
-        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-        try expectEqual(@as(usize, 6), local_items.len);
-        try expectEqual(@as(usize, 6), url_items.len);
-    }
+    // {
+    //     try storage.cleanItems();
+    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+    //     try expectEqual(@as(usize, 6), local_items.len);
+    //     try expectEqual(@as(usize, 6), url_items.len);
+    // }
 
     // Test delete local feed
     // ./feedgaze delete rss2
-    const enter_nr = "Enter link number:";
-    {
-        const expected = fmt.comptimePrint(
-            \\Found 2 result(s):
-            \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-            \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-            \\{s} 1a
-            \\Invalid number: '1a'. Try again.
-            \\{s} 14
-            \\Number out of range: '14'. Try again.
-            \\{s} 1
-            \\Deleted feed '{s}'
-            \\
-        , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
-        fbs.reset();
-        mem.copy(u8, fbs.buffer, expected);
-        var value: []const u8 = "rss2";
-        var values: [][]const u8 = &[_][]const u8{value};
-        cli.deleteFeed(values) catch print("|{s}|\n", .{fbs.getWritten()});
-        try expectEqualStrings(expected, fbs.getWritten());
-    }
+    // const enter_nr = "Enter link number:";
+    // {
+    //     const expected = fmt.comptimePrint(
+    //         \\Found 2 result(s):
+    //         \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+    //         \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+    //         \\{s} 1a
+    //         \\Invalid number: '1a'. Try again.
+    //         \\{s} 14
+    //         \\Number out of range: '14'. Try again.
+    //         \\{s} 1
+    //         \\Deleted feed '{s}'
+    //         \\
+    //     , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
+    //     fbs.reset();
+    //     mem.copy(u8, fbs.buffer, expected);
+    //     var value: []const u8 = "rss2";
+    //     var values: [][]const u8 = &[_][]const u8{value};
+    //     cli.deleteFeed(values) catch print("|{s}|\n", .{fbs.getWritten()});
+    //     try expectEqualStrings(expected, fbs.getWritten());
+    // }
 
     // Test delete url feed
     // ./feedgaze delete rss2
