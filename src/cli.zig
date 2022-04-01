@@ -541,8 +541,8 @@ test "@active local and url: add, update, delete, html links, add into update" {
     const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
     const url = "http://localhost:8080/rss2.rss";
     {
-        var location = abs_path;
-        var locations = &.{ location, url };
+        var local = abs_path;
+        var locations = &.{ local, url };
         const expected_local = "Added local feed: " ++ abs_path ++ "\n";
         const expected_url = comptime fmt.comptimePrint(
             \\Fetching feed {s}
@@ -568,13 +568,31 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try expectEqual(@as(usize, 1), counts.?.url_count);
     }
 
-    // const FeedResult = struct {
-    //     id: u64,
-    //     title: []const u8,
-    //     link: ?[]const u8,
-    //     updated_raw: ?[]const u8,
-    //     updated_timestamp: ?i64,
-    // };
+    const FeedResult = struct {
+        id: u64,
+        title: []const u8,
+        link: ?[]const u8,
+        updated_raw: ?[]const u8,
+        updated_timestamp: ?i64,
+    };
+
+    var local_id: u64 = undefined;
+    var url_id: u64 = undefined;
+
+    // Test if local and url feeds' table fields have same values
+    {
+        const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
+        const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
+        try expectEqual(@as(usize, 2), feeds.len);
+        const local_result = feeds[0];
+        const url_result = feeds[1];
+        local_id = local_result.id;
+        url_id = url_result.id;
+        try std.testing.expectEqualStrings(local_result.title, url_result.title);
+        if (local_result.link) |link| try std.testing.expectEqualStrings(link, url_result.link.?);
+        if (local_result.updated_raw) |updated_raw| try std.testing.expectEqualStrings(updated_raw, url_result.updated_raw.?);
+        if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
+    }
 
     // const ItemResult = struct {
     //     title: []const u8,
@@ -583,24 +601,6 @@ test "@active local and url: add, update, delete, html links, add into update" {
     //     pub_date: ?[]const u8,
     //     pub_date_utc: ?i64,
     // };
-
-    // var local_id: u64 = undefined;
-    // var url_id: u64 = undefined;
-
-    // Test if local and url feeds' table fields have same values
-    // {
-    //     const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
-    //     const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
-    //     try expectEqual(@as(usize, 2), feeds.len);
-    //     const local_result = feeds[0];
-    //     const url_result = feeds[1];
-    //     local_id = local_result.id;
-    //     url_id = url_result.id;
-    //     try std.testing.expectEqualStrings(local_result.title, url_result.title);
-    //     if (local_result.link) |link| try std.testing.expectEqualStrings(link, url_result.link.?);
-    //     if (local_result.updated_raw) |updated_raw| try std.testing.expectEqualStrings(updated_raw, url_result.updated_raw.?);
-    //     if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
-    // }
 
     // Test if two (local and url) feeds' first(newest) items are same
     // const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
