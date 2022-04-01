@@ -498,22 +498,12 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
-test "url: add" {
+test "url: add html" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
     var storage = try Storage.init(allocator, null);
-
-    {
-        const url = "http://localhost:8080/rss2.rss";
-        const expected = fmt.comptimePrint(
-            \\Fetching feed {s}
-            \\Feed added {s}
-            \\
-        , .{ url, url });
-        try testAddFeed(&storage, &.{url}, expected);
-    }
 
     {
         const url = "http://localhost:8080/many-links.html";
@@ -547,9 +537,8 @@ test "@active local and url: add, update, delete, html links, add into update" {
     const allocator = arena.allocator();
     var storage = try Storage.init(allocator, null);
 
-    // ./feedgaze add test/rss2.xml
+    // ./feedgaze add test/rss2.xml http://localhost:8080/rss2.rss
     const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
-    // ./feedgaze add http://localhost:8080/rss2.rss
     const url = "http://localhost:8080/rss2.rss";
     {
         var location = abs_path;
