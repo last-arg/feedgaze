@@ -498,16 +498,23 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
-test "url: add html" {
+// TODO: make tests more self containing
+test "@active local and url: add, update, delete, html links, add into update" {
     std.testing.log_level = .debug;
+
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
     var storage = try Storage.init(allocator, null);
 
+    // ./feedgaze add test/rss2.xml http://localhost:8080/many-links.html
+    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
+    const url = "http://localhost:8080/many-links.html";
     {
-        const url = "http://localhost:8080/many-links.html";
-        const expected = fmt.comptimePrint(
+        var local = abs_path;
+        var locations = &.{ local, url };
+        const expected_local = "Added local feed: " ++ abs_path ++ "\n";
+        const expected_url = comptime fmt.comptimePrint(
             \\Fetching feed {s}
             \\Parse Feed Links | http://localhost:8080/many-links.html
             \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
@@ -524,31 +531,6 @@ test "url: add html" {
             \\Feed added http://localhost:8080/rss2.xml
             \\
         , .{url});
-        try testAddFeed(&storage, &.{url}, expected);
-    }
-}
-
-// TODO: make tests more self containing
-test "@active local and url: add, update, delete, html links, add into update" {
-    std.testing.log_level = .debug;
-
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    var storage = try Storage.init(allocator, null);
-
-    // ./feedgaze add test/rss2.xml http://localhost:8080/rss2.rss
-    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
-    const url = "http://localhost:8080/rss2.rss";
-    {
-        var local = abs_path;
-        var locations = &.{ local, url };
-        const expected_local = "Added local feed: " ++ abs_path ++ "\n";
-        const expected_url = comptime fmt.comptimePrint(
-            \\Fetching feed {s}
-            \\Feed added {s}
-            \\
-        , .{url} ** 2);
         const expected = expected_local ++ expected_url;
         try testAddFeed(&storage, locations, expected);
     }
@@ -579,7 +561,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
     var local_id: u64 = undefined;
     var url_id: u64 = undefined;
 
-    // Test if local and url feeds' table fields have same values
+    // Added local and url feed are the same
     {
         const feed_query = "select id,title,link,updated_raw,updated_timestamp from feed";
         const feeds = try storage.db.selectAll(FeedResult, feed_query, .{});
@@ -594,57 +576,29 @@ test "@active local and url: add, update, delete, html links, add into update" {
         if (local_result.updated_timestamp) |updated_timestamp| try std.testing.expectEqual(updated_timestamp, url_result.updated_timestamp.?);
     }
 
-    // const ItemResult = struct {
-    //     title: []const u8,
-    //     link: ?[]const u8,
-    //     guid: ?[]const u8,
-    //     pub_date: ?[]const u8,
-    //     pub_date_utc: ?i64,
-    // };
+    const ItemResult = struct {
+        title: []const u8,
+        link: ?[]const u8,
+        guid: ?[]const u8,
+        pub_date: ?[]const u8,
+        pub_date_utc: ?i64,
+    };
 
-    // Test if two (local and url) feeds' first(newest) items are same
-    // const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
-    // {
-    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-    //     try expectEqual(@as(usize, 6), local_items.len);
-    //     try expectEqual(@as(usize, 6), url_items.len);
-    //     const l_item = local_items[0];
-    //     const u_item = url_items[0];
-    //     try std.testing.expectEqualStrings(l_item.title, u_item.title);
-    //     if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
-    //     if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
-    //     if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
-    //     if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
-    // }
-
-    // Test parsing links from html
-    // Test feed already existing
-    // ./feedgaze add http://localhost:8080/many-links.html
-    // {
-    //     const html_url = "http://localhost:8080/many-links.html";
-    //     const expected =
-    //         \\Fetching feed http://localhost:8080/many-links.html
-    //         \\Parse Feed Links | http://localhost:8080/many-links.html
-    //         \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
-    //         \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
-    //         \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
-    //         \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
-    //         \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
-    //         \\Enter link number: 1
-    //         \\Fetching feed http://localhost:8080/rss2.rss
-    //         \\Feed added http://localhost:8080/rss2.rss
-    //         \\
-    //     ;
-
-    //     fbs.reset();
-    //     // Copying is required when reading from stdout
-    //     mem.copy(u8, fbs.buffer, expected);
-    //     try cli.addFeed(&.{html_url}, "");
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-    //     try expectEqual(@as(usize, 6), url_items.len);
-    // }
+    // Added local and url feed first items are same
+    const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
+    {
+        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 6), local_items.len);
+        try expectEqual(@as(usize, 6), url_items.len);
+        const l_item = local_items[0];
+        const u_item = url_items[0];
+        try std.testing.expectEqualStrings(l_item.title, u_item.title);
+        if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+        if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+        if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+        if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+    }
 
     // Test update feeds
     // ./feedgaze update
