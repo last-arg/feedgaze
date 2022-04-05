@@ -584,49 +584,23 @@ test "@active local and url: add, update, delete, html links, add into update" {
         pub_date_utc: ?i64,
     };
 
-    // Added local and url feed first items are same
+    // Added local and url feed items are same
     const item_query = "select title,link,guid,pub_date,pub_date_utc from item where feed_id = ? order by id DESC";
     {
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
         const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
         try expectEqual(@as(usize, 6), local_items.len);
         try expectEqual(@as(usize, 6), url_items.len);
-        const l_item = local_items[0];
-        const u_item = url_items[0];
-        try std.testing.expectEqualStrings(l_item.title, u_item.title);
-        if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
-        if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
-        if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
-        if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+        for (local_items) |l_item, i| {
+            // const l_item = local_items[0];
+            const u_item = url_items[i];
+            try std.testing.expectEqualStrings(l_item.title, u_item.title);
+            if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
+            if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
+            if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
+            if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
+        }
     }
-
-    // Test update feeds
-    // ./feedgaze update
-    // {
-    //     const expected =
-    //         \\Updated url feeds
-    //         \\Updated local feeds
-    //         \\
-    //     ;
-    //     fbs.reset();
-    //     cli.options.force = true;
-    //     try cli.updateFeeds();
-    //     cli.options.force = false;
-
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-    //     try expectEqual(@as(usize, 6), local_items.len);
-    //     try expectEqual(local_items.len, url_items.len);
-    //     for (local_items) |l_item, i| {
-    //         const u_item = url_items[i];
-    //         try std.testing.expectEqualStrings(l_item.title, u_item.title);
-    //         if (l_item.link) |link| try std.testing.expectEqualStrings(link, u_item.link.?);
-    //         if (l_item.guid) |guid| try std.testing.expectEqualStrings(guid, u_item.guid.?);
-    //         if (l_item.pub_date) |pub_date| try std.testing.expectEqualStrings(pub_date, u_item.pub_date.?);
-    //         if (l_item.pub_date_utc) |pub_date_utc| try std.testing.expectEqual(pub_date_utc, u_item.pub_date_utc.?);
-    //     }
-    // }
 
     // Test clean items
     // ./feedgaze clean
