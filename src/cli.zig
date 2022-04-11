@@ -216,7 +216,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn deleteFeed(self: *Self, search_inputs: [][]const u8) !void {
-            const results = try self.feed_db.search(self.allocator, search_inputs);
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            const results = try self.feed_db.search(arena.allocator(), search_inputs);
 
             if (results.len == 0) {
                 try self.writer.print("Found no matches for '{s}' to delete.\n", .{search_inputs});
