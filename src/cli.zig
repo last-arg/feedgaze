@@ -535,16 +535,19 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try testAddFeed(&storage, locations, expected);
     }
 
+    const Counts = struct { feed_count: u32, local_count: u32, url_count: u32, item_count: u32 };
+    const count_query =
+        \\select
+        \\  (select count(id) from feed) as feed_count,
+        \\  (select count(feed_id) from feed_update_local) as local_count,
+        \\  (select count(feed_id) from feed_update_http) as url_count,
+        \\  (select count(feed_id) from item) as item_coutn
+        \\;
+    ;
+
     // Test row count in feed, feed_update_local and feed_update_http tables
     {
-        const feed_url_local_counts_query =
-            \\select
-            \\  (select count(id) from feed) as feed_count,
-            \\  (select count(feed_id) from feed_update_local) as local_count,
-            \\  (select count(feed_id) from feed_update_http) as url_count
-            \\;
-        ;
-        const counts = try storage.db.one(struct { feed_count: u32, local_count: u32, url_count: u32 }, feed_url_local_counts_query, .{});
+        const counts = try storage.db.one(Counts, count_query, .{});
         try expectEqual(@as(usize, 2), counts.?.feed_count);
         try expectEqual(@as(usize, 1), counts.?.local_count);
         try expectEqual(@as(usize, 1), counts.?.url_count);
@@ -604,76 +607,49 @@ test "@active local and url: add, update, delete, html links, add into update" {
 
     // Test clean items
     // ./feedgaze clean
-    // {
-    //     try storage.cleanItems();
-    //     const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
-    //     const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
-    //     try expectEqual(@as(usize, 6), local_items.len);
-    //     try expectEqual(@as(usize, 6), url_items.len);
-    // }
+    {
+        try storage.cleanItems();
+        const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
+        const url_items = try storage.db.selectAll(ItemResult, item_query, .{url_id});
+        try expectEqual(@as(usize, 6), local_items.len);
+        try expectEqual(@as(usize, 6), url_items.len);
+    }
 
     // Test delete local feed
     // ./feedgaze delete rss2
-    // const enter_nr = "Enter link number:";
-    // {
-    //     const expected = fmt.comptimePrint(
-    //         \\Found 2 result(s):
-    //         \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-    //         \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-    //         \\{s} 1a
-    //         \\Invalid number: '1a'. Try again.
-    //         \\{s} 14
-    //         \\Number out of range: '14'. Try again.
-    //         \\{s} 1
-    //         \\Deleted feed '{s}'
-    //         \\
-    //     , .{ abs_path, url, enter_nr, enter_nr, enter_nr, abs_path });
-    //     fbs.reset();
-    //     mem.copy(u8, fbs.buffer, expected);
-    //     var value: []const u8 = "rss2";
-    //     var values: [][]const u8 = &[_][]const u8{value};
-    //     cli.deleteFeed(values) catch print("|{s}|\n", .{fbs.getWritten()});
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    // }
-
-    // Test delete url feed
-    // ./feedgaze delete rss2
-    // {
-    //     const expected = fmt.comptimePrint(
-    //         \\Found 1 result(s):
-    //         \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
-    //         \\{s} 1
-    //         \\Deleted feed '{s}'
-    //         \\
-    //     , .{ url, enter_nr, url });
-    //     fbs.reset();
-    //     mem.copy(u8, fbs.buffer, expected);
-    //     var value: []const u8 = "rss2";
-    //     var values: [][]const u8 = &[_][]const u8{value};
-    //     try cli.deleteFeed(values);
-    //     try expectEqualStrings(expected, fbs.getWritten());
-    // }
-
-    // const AllCounts = struct {
-    //     feed: u32,
-    //     item: u32,
-    //     update_http: u32,
-    //     update_local: u32,
-    // };
-
-    // Test that local and url feeds were deleted
-    // {
-    //     const all_counts_query =
-    //         \\ select
-    //         \\ count(feed.id) as feed,
-    //         \\ count(item.feed_id) as item,
-    //         \\ count(feed_update_local.feed_id) as update_http,
-    //         \\ count(feed_update_http.feed_id) as update_local
-    //         \\ from feed, item, feed_update_local, feed_update_http;
-    //     ;
-    //     const all_counts = try storage.db.one(AllCounts, all_counts_query, .{});
-    //     try expectEqual(AllCounts{ .feed = 0, .item = 0, .update_http = 0, .update_local = 0 }, all_counts.?);
-    // }
+    const enter_nr = "Enter link number:";
+    const feed_url = "http://localhost:8080/rss2.xml";
+    {
+        const expected = fmt.comptimePrint(
+            \\Found 2 result(s):
+            \\  1. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\  2. Liftoff News | http://liftoff.msfc.nasa.gov/ | {s}
+            \\{s} 1a
+            \\Invalid number: '1a'. Try again.
+            \\{s} 14
+            \\Number out of range: '14'. Try again.
+            \\{s} 1
+            \\Deleted feed '{s}'
+            \\
+        , .{ abs_path, feed_url, enter_nr, enter_nr, enter_nr, abs_path });
+        var buf: [4096]u8 = undefined;
+        var fbs = std.io.fixedBufferStream(&buf);
+        var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
+            .allocator = std.testing.allocator,
+            .feed_db = &storage,
+            .writer = fbs.writer(),
+            .reader = fbs.reader(),
+        };
+        fbs.reset();
+        mem.copy(u8, fbs.buffer, expected);
+        var value: []const u8 = "rss2";
+        var values: [][]const u8 = &[_][]const u8{value};
+        try cli.deleteFeed(values);
+        try expectEqualStrings(expected, fbs.getWritten());
+        const all_counts = try storage.db.one(Counts, count_query, .{});
+        const expected_counts = Counts{ .feed_count = 1, .item_count = 6, .url_count = 1, .local_count = 0 };
+        try expectEqual(expected_counts, all_counts.?);
+    }
 }
 
 fn printPageLinks(writer: anytype, page: parse.Html.Page, uri: Uri) !void {
