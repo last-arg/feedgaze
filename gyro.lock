@@ -1,10 +1,10 @@
-pkg astrolabe.pm truemedian hzzp 0.1.8
 pkg astrolabe.pm mattnite uri 0.0.1
-git https://github.com/vrischmann/zig-sqlite.git master sqlite.zig 9a22661f70e839c528d931c677667088b35277dc
+pkg astrolabe.pm truemedian hzzp 0.1.8
+git https://github.com/vrischmann/zig-sqlite.git master sqlite.zig fb306fd4acd46ec50eb2516fae4de5ec96db4487
 git https://github.com/frmdstryr/zig-datetime.git master src/main.zig 9a49593d971cc2204741592e579a6d403e06d468
 git https://github.com/Vexu/zuri.git master src/zuri.zig d5cce7e58c07506d620cec31e5e43c81ae31f21b
+git https://github.com/truemedian/zfetch.git 271cab5da4d12c8f08e67aa0cd5268da100e52f1 src/main.zig 271cab5da4d12c8f08e67aa0cd5268da100e52f1
 git https://github.com/ziglibs/known-folders.git master known-folders.zig 9db1b99219c767d5e24994b1525273fe4031e464
 git https://github.com/Vexu/routez.git 679dca1edce5a3498bf5491b0fdcea82322bd8ab src/routez.zig 679dca1edce5a3498bf5491b0fdcea82322bd8ab
-git https://github.com/truemedian/zfetch.git 271cab5da4d12c8f08e67aa0cd5268da100e52f1 src/main.zig 271cab5da4d12c8f08e67aa0cd5268da100e52f1
 git https://github.com/MasterQ32/zig-network.git master network.zig 6f1563af0a6d30e26597133ebc03f162723ea329
 git https://github.com/marler8997/iguanaTLS.git master src/main.zig 47169e207864e0cfbace3c92a31a0cf8d938d1b2
