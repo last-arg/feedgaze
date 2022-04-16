@@ -327,7 +327,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const query = "SELECT id, title, location, link FROM feed;";
             var stmt = try self.feed_db.db.sql_db.prepare(query);
             defer stmt.deinit();
-            const all_items = stmt.all(Result, self.allocator, .{}, .{}) catch |err| {
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+            const all_items = stmt.all(Result, arena.allocator(), .{}, .{}) catch |err| {
                 log.warn("{s}\nFailed query:\n{s}", .{ self.feed_db.db.sql_db.getDetailedError().message, query });
                 return err;
             };
@@ -416,76 +418,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     };
 }
 
-test "Cli.printAllItems, Cli.printFeeds" {
-    std.testing.log_level = .debug;
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-
-    var buf: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buf);
-
-    var feed_db = try Storage.init(allocator, null);
-    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
-        .allocator = allocator,
-        .feed_db = &feed_db,
-        .writer = fbs.writer(),
-        .reader = fbs.reader(),
-    };
-
-    const location = "test/rss2.xml";
-    const rss_url = "/media/hdd/code/feedgaze/test/rss2.xml";
-    {
-        const expected = fmt.comptimePrint("Added local feed: {s}\n", .{rss_url});
-        fbs.reset();
-        try cli.addFeed(&.{location}, "");
-        try expectEqualStrings(expected, fbs.getWritten());
-    }
-
-    {
-        const expected = fmt.comptimePrint(
-            \\Liftoff News - http://liftoff.msfc.nasa.gov/
-            \\  Star City&#39;s Test
-            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
-            \\
-            \\  Sky watchers in Europe, Asia, and parts of Alaska{s}
-            \\  <no-link>
-            \\
-            \\  TEST THIS
-            \\  <no-link>
-            \\
-            \\  Astronauts' Dirty Laundry
-            \\  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp
-            \\
-            \\  The Engine That Does More
-            \\  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp
-            \\
-            \\  TEST THIS1
-            \\  <no-link>
-            \\
-            \\
-        , .{" "}); // Because kakoune remove spaces from end of line
-        fbs.reset();
-        try cli.printAllItems();
-        try expectEqualStrings(expected, fbs.getWritten());
-    }
-
-    {
-        const expected = fmt.comptimePrint(
-            \\There is 1 feed
-            \\Liftoff News
-            \\  link: http://liftoff.msfc.nasa.gov/
-            \\  location: {s}
-            \\
-            \\
-        , .{rss_url});
-        fbs.reset();
-        try cli.printFeeds();
-        try expectEqualStrings(expected, fbs.getWritten());
-    }
-}
-
 fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8) !void {
     var buf: [4096]u8 = undefined;
     var fbs = std.io.fixedBufferStream(&buf);
@@ -500,8 +432,7 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
-// TODO: make tests more self containing
-test "@active local and url: add, update, delete, html links, add into update" {
+test "local and url: add, update, delete, html links, print" {
     std.testing.log_level = .debug;
 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -617,6 +548,15 @@ test "@active local and url: add, update, delete, html links, add into update" {
         try expectEqual(@as(usize, 6), url_items.len);
     }
 
+    var buf: [4096]u8 = undefined;
+    var fbs = std.io.fixedBufferStream(&buf);
+    var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
+        .allocator = std.testing.allocator,
+        .feed_db = &storage,
+        .writer = fbs.writer(),
+        .reader = fbs.reader(),
+    };
+
     // Test delete local feed
     // ./feedgaze delete rss2
     const enter_nr = "Enter link number:";
@@ -634,14 +574,7 @@ test "@active local and url: add, update, delete, html links, add into update" {
             \\Deleted feed '{s}'
             \\
         , .{ abs_path, feed_url, enter_nr, enter_nr, enter_nr, abs_path });
-        var buf: [4096]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&buf);
-        var cli = Cli(@TypeOf(fbs).Writer, @TypeOf(fbs).Reader){
-            .allocator = std.testing.allocator,
-            .feed_db = &storage,
-            .writer = fbs.writer(),
-            .reader = fbs.reader(),
-        };
+
         fbs.reset();
         mem.copy(u8, fbs.buffer, expected);
         var value: []const u8 = "rss2";
@@ -651,6 +584,48 @@ test "@active local and url: add, update, delete, html links, add into update" {
         const all_counts = try storage.db.one(Counts, count_query, .{});
         const expected_counts = Counts{ .feed_count = 1, .item_count = 6, .url_count = 1, .local_count = 0 };
         try expectEqual(expected_counts, all_counts.?);
+    }
+
+    {
+        const expected = fmt.comptimePrint(
+            \\Liftoff News - http://liftoff.msfc.nasa.gov/
+            \\  Star City&#39;s Test
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
+            \\
+            \\  Sky watchers in Europe, Asia, and parts of Alaska{s}
+            \\  <no-link>
+            \\
+            \\  TEST THIS
+            \\  <no-link>
+            \\
+            \\  Astronauts' Dirty Laundry
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-laundry.asp
+            \\
+            \\  The Engine That Does More
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-VASIMR.asp
+            \\
+            \\  TEST THIS1
+            \\  <no-link>
+            \\
+            \\
+        , .{" "}); // Because kakoune remove spaces from end of line
+        fbs.reset();
+        try cli.printAllItems();
+        try expectEqualStrings(expected, fbs.getWritten());
+    }
+
+    {
+        const expected = fmt.comptimePrint(
+            \\There is 1 feed
+            \\Liftoff News
+            \\  link: http://liftoff.msfc.nasa.gov/
+            \\  location: {s}
+            \\
+            \\
+        , .{feed_url});
+        fbs.reset();
+        try cli.printFeeds();
+        try expectEqualStrings(expected, fbs.getWritten());
     }
 }
 
