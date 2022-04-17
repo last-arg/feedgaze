@@ -189,7 +189,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     const uri = try Uri.parse(req.url, true);
                     try printPageLinks(self.writer, page, uri);
-                    const link_index = try getChosenIndex(self.reader, self.writer, page.links.len, self.options.default);
+                    const link_index = try getValidInputNumber(self.reader, self.writer, page.links.len, self.options.default);
                     url = try url_util.makeWholeUrl(arena.allocator(), uri, page.links[link_index].href);
                     continue;
                 }
@@ -234,7 +234,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     result.location,
                 });
             }
-            const index = try getChosenIndex(self.reader, self.writer, results.len, self.options.default);
+            const index = try getValidInputNumber(self.reader, self.writer, results.len, self.options.default);
             const result = results[index];
             try self.feed_db.deleteFeed(result.id);
             try self.writer.print("Deleted feed '{s}'\n", .{result.location});
@@ -660,8 +660,7 @@ fn printUrl(writer: anytype, uri: Uri, path: ?[]const u8) !void {
     try writer.print("{s}", .{out_path});
 }
 
-// TODO: rename
-fn getChosenIndex(reader: anytype, writer: anytype, max_len: usize, default_index: ?i32) !u32 {
+fn getValidInputNumber(reader: anytype, writer: anytype, max_len: usize, default_index: ?i32) !u32 {
     var index = try pickNumber(writer, reader, max_len, default_index);
     while (index == null) {
         index = try pickNumber(writer, reader, max_len, null);
