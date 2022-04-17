@@ -440,7 +440,8 @@ test "local and url: add, update, delete, html links, print" {
     const allocator = arena.allocator();
     var storage = try Storage.init(allocator, null);
 
-    // ./feedgaze add test/rss2.xml http://localhost:8080/many-links.html
+    // Test adding file and link (html)
+    // Command: feedgaze add test/rss2.xml http://localhost:8080/many-links.html
     const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
     const url = "http://localhost:8080/many-links.html";
     {
@@ -538,8 +539,7 @@ test "local and url: add, update, delete, html links, print" {
         }
     }
 
-    // Test clean items
-    // ./feedgaze clean
+    // Test: feedgaze clean
     {
         try storage.cleanItems();
         const local_items = try storage.db.selectAll(ItemResult, item_query, .{local_id});
@@ -557,8 +557,7 @@ test "local and url: add, update, delete, html links, print" {
         .reader = fbs.reader(),
     };
 
-    // Test delete local feed
-    // ./feedgaze delete rss2
+    // Test: feedgaze delete rss2
     const enter_nr = "Enter link number:";
     const feed_url = "http://localhost:8080/rss2.xml";
     {
@@ -586,6 +585,7 @@ test "local and url: add, update, delete, html links, print" {
         try expectEqual(expected_counts, all_counts.?);
     }
 
+    // Test: feedgaze print-items
     {
         const expected = fmt.comptimePrint(
             \\Liftoff News - http://liftoff.msfc.nasa.gov/
@@ -614,6 +614,7 @@ test "local and url: add, update, delete, html links, print" {
         try expectEqualStrings(expected, fbs.getWritten());
     }
 
+    // Test: feedgaze print-feeds
     {
         const expected = fmt.comptimePrint(
             \\There is 1 feed
