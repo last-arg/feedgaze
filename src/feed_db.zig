@@ -17,6 +17,7 @@ const expectEqualStrings = std.testing.expectEqualStrings;
 const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 const f = @import("feed.zig");
+const Feed = f.Feed;
 const zfetch = @import("zfetch");
 
 // TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
@@ -36,7 +37,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addNewFeed(self: *Self, feed: parse.Feed, feed_update: f.FeedUpdate, tags: []const u8) !u64 {
+    pub fn addNewFeed(self: *Self, feed: Feed, feed_update: f.FeedUpdate, tags: []const u8) !u64 {
         std.debug.assert(feed.location.len != 0);
         var savepoint = try self.db.sql_db.savepoint("addNewFeed");
         defer savepoint.rollback();
@@ -60,7 +61,7 @@ pub const Storage = struct {
         return feed_id;
     }
 
-    pub fn insertFeed(self: *Self, feed: parse.Feed, location: []const u8) !u64 {
+    pub fn insertFeed(self: *Self, feed: Feed, location: []const u8) !u64 {
         const query =
             \\INSERT INTO feed (title, location, link, updated_raw, updated_timestamp)
             \\VALUES (
@@ -132,10 +133,10 @@ pub const Storage = struct {
         try self.db.exec(query, .{ feed_id, last_modified });
     }
 
-    pub fn addItems(self: *Self, feed_id: u64, feed_items: []parse.Feed.Item) !void {
+    pub fn addItems(self: *Self, feed_id: u64, feed_items: []Feed.Item) !void {
         const items = feed_items[0..std.math.min(feed_items.len, g.max_items_per_feed)];
         // Modifies item order in memory. Don't use after this if order is important.
-        std.mem.reverse(parse.Feed.Item, items);
+        std.mem.reverse(Feed.Item, items);
         const hasGuidOrLink = blk: {
             const hasGuid = blk_guid: {
                 for (items) |item| {
@@ -364,7 +365,7 @@ pub const Storage = struct {
     pub const CurrentData = struct { feed_id: u64, updated_timestamp: ?i64 };
     const UpdateData = struct {
         current: CurrentData,
-        feed: parse.Feed,
+        feed: Feed,
         headers: f.FeedUpdate,
     };
     pub fn updateUrlFeed(self: *Self, data: UpdateData, opts: UpdateOptions) !void {
@@ -642,12 +643,12 @@ pub const Storage = struct {
         return try self.db.selectAll(TagCount, query, .{});
     }
 
-    pub const Feed = struct {
+    pub const FeedData = struct {
         title: []const u8,
         location: []const u8,
         link: ?[]const u8,
     };
-    pub fn getFeedById(self: *Self, id: u64) !?Feed {
+    pub fn getFeedById(self: *Self, id: u64) !?FeedData {
         return try self.db.oneAlloc(Feed, "select title, location, link from feed where id = ? limit 1;", .{id});
     }
 
@@ -804,8 +805,8 @@ test "@active add, delete feed" {
     const start_index = 3;
     try expect(start_index < feed.items.len);
     const items_src = feed.items[3..];
-    var tmp_items = try allocator.alloc(parse.Feed.Item, items_src.len);
-    std.mem.copy(parse.Feed.Item, tmp_items, items_src);
+    var tmp_items = try allocator.alloc(Feed.Item, items_src.len);
+    std.mem.copy(Feed.Item, tmp_items, items_src);
     try feed_db.addItems(id, tmp_items);
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
@@ -853,8 +854,8 @@ test "Storage local" {
     const id = try feed_db.insertFeed(feed, abs_path);
     try feed_db.addFeedLocal(id, mtime_sec);
     const last_items = feed.items[3..];
-    var tmp_items = try allocator.alloc(parse.Feed.Item, last_items.len);
-    std.mem.copy(parse.Feed.Item, tmp_items, last_items);
+    var tmp_items = try allocator.alloc(Feed.Item, last_items.len);
+    std.mem.copy(Feed.Item, tmp_items, last_items);
     try feed_db.addItems(id, tmp_items);
     try feed_db.addTags(id, "local,local,not-net");
 
@@ -944,16 +945,16 @@ test "different urls, same feed items" {
     var storage = try Storage.init(allocator, null);
 
     const location1 = "location1";
-    const items_base = [_]parse.Feed.Item{
+    const items_base = [_]Feed.Item{
         .{ .title = "title1", .id = "same_id1" },
         .{ .title = "title2", .id = "same_id2" },
     };
-    const parsed_feed = parse.Feed{
+    const parsed_feed = Feed{
         .title = "Same stuff",
     };
     const id1 = try storage.insertFeed(parsed_feed, location1);
-    var items: [items_base.len]parse.Feed.Item = undefined;
-    mem.copy(parse.Feed.Item, &items, &items_base);
+    var items: [items_base.len]Feed.Item = undefined;
+    mem.copy(Feed.Item, &items, &items_base);
     try storage.addItems(id1, &items);
     const location2 = "location2";
     const id2 = try storage.insertFeed(parsed_feed, location2);
@@ -980,7 +981,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
 
     {
         const location1 = "http://localhost:8080/atom.atom";
-        const parsed_feed = parse.Feed{ .title = "Title: location 1" };
+        const parsed_feed = Feed{ .title = "Title: location 1" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
         const feed_update = f.FeedUpdate{
             .expires_utc = std.math.maxInt(i64), // no update
@@ -990,7 +991,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
 
     {
         const location1 = "http://localhost:8080/atom.xml";
-        const parsed_feed = parse.Feed{ .title = "Title: location 2" };
+        const parsed_feed = Feed{ .title = "Title: location 2" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
         const feed_update = f.FeedUpdate{
             .cache_control_max_age = 300,
@@ -1003,7 +1004,7 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
 
     {
         const location1 = "http://localhost:8080/rss2.rss";
-        const parsed_feed = parse.Feed{ .title = "Title: location 3" };
+        const parsed_feed = Feed{ .title = "Title: location 3" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
         const feed_update = f.FeedUpdate{};
         try storage.addFeedUrl(id1, feed_update);

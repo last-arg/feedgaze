@@ -18,7 +18,6 @@ const dateStrToTimeStamp = parse.Rss.pubDateToTimestamp;
 // has something to do with attributes in xml element
 // xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
 
-// TODO?: move parse.Feed here
 pub const Feed = struct {
     const Self = @This();
     // Atom: title (required)

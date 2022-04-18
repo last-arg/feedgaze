@@ -16,7 +16,7 @@ const Datetime = datetime.Datetime;
 const timezones = @import("datetime").timezones;
 const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
-pub const Feed = @import("feed.zig").Feed;
+const Feed = @import("feed.zig").Feed;
 
 const max_title_len = 50;
 
