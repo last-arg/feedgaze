@@ -17,7 +17,7 @@ deps:
   zfetch:
     git:
       url: "https://github.com/truemedian/zfetch.git"
-      ref: 271cab5da4d12c8f08e67aa0cd5268da100e52f1
+      ref: master
       root: src/main.zig
   known-folders:
     git:
@@ -29,3 +29,8 @@ deps:
       url: "https://github.com/Vexu/routez.git"
       ref: 679dca1edce5a3498bf5491b0fdcea82322bd8ab
       root: src/routez.zig
+  zhp:
+    git:
+      url: "https://github.com/frmdstryr/zhp.git"
+      ref: cee6604f28c09278fd6a1a2e4cb3d59172609235
+      root: src/zhp.zig

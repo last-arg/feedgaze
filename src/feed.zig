@@ -57,8 +57,6 @@ pub const Feed = struct {
             .xml_atom => try parse.Atom.parse(arena, body),
             .xml_rss => try parse.Rss.parse(arena, body),
             .json, .json_feed => try parse.Json.parse(arena, body),
-            // TODO: return null instead?
-            // Split up .html and .unknown?
             .html, .unknown => return error.CantParse,
         };
         feed.location = location;
