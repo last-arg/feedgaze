@@ -1,8 +1,8 @@
 default:
 	echo 'Hello, world!'
 
-test file="" filter="":
-  zig build test -- {{file}} {{filter}}
+test *args="":
+  zig build test -- {{args}}
 
 watch-test file="" filter="":
   watchexec -c -r -w src/ -e zig just test {{file}} {{filter}}
