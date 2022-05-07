@@ -12,7 +12,9 @@
       (system:
         let
           # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master."2022-01-24"; };
-          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master."latest"; };
+          # Because std.math.round fn doesn't exist anymore (zig-dateformat package)
+          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master."2022-04-15"; };
+          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master."latest"; };
         in
         {
           devShell = import ./shell.nix { inherit pkgs; };
