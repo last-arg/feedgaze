@@ -96,13 +96,13 @@ pub fn setup(db: *Db) !void {
     }
 }
 
-pub fn verifyTables(db: *sql.Db) bool {
+pub fn verifyTables(db: *Db) !bool {
     const select_table = "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?;";
-    inline for (@typeInfo(Table).Struct.decls) |decl| {
-        if (@hasField(decl.data.Type, "create")) {
-            const row = db.one(usize, db, select_table, .{decl.name});
+    inline for (comptime std.meta.declarations(Table)) |decl| {
+        const table = @field(Table, decl.name);
+        if (@hasDecl(table, "create")) {
+            const row = try db.one(usize, select_table, .{decl.name});
             if (row == null) return false;
-            break;
         }
     }
     return true;
@@ -114,5 +114,5 @@ test "create and veriftyTables" {
     defer arena.deinit();
     const allocator = arena.allocator();
     var db = try Db.init(allocator, null);
-    try expect(verifyTables(&db.sql_db));
+    try expect(try verifyTables(&db));
 }
