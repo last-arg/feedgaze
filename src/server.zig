@@ -6,10 +6,6 @@ const Allocator = std.mem.Allocator;
 const StringHashMap = std.hash_map.StringHashMap;
 const fmt = std.fmt;
 const builtin = @import("builtin");
-const routez = @import("routez");
-const RoutezServer = routez.Server;
-const Request = routez.Request;
-const Response = routez.Response;
 const print = std.debug.print;
 const global_allocator = std.heap.page_allocator;
 const Address = std.net.Address;
@@ -25,13 +21,13 @@ const zfetch = @import("zfetch");
 const log = std.log;
 const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
+const web = @import("apple_pie");
+const router = web.router;
 
 // Resources
 // POST-REDIRECT-GET | https://andrewlock.net/post-redirect-get-using-tempdata-in-asp-net-core/
 // Generating session ids | https://codeahoy.com/2016/04/13/generating-session-ids/
 // https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html#references
-
-// pub const io_mode = .evented;
 
 const timestamp_fmt = "{d}.{d:0>2}.{d:0>2} {d:0>2}:{d:0>2}:{d:0>2} UTC";
 
@@ -123,99 +119,68 @@ const Sessions = struct {
 };
 
 const Server = struct {
+    // TODO: make into struct fields in Context?
     const g = struct {
         var storage: *Storage = undefined;
-        var sessions: *Sessions = undefined;
         var allocator: Allocator = undefined;
     };
     const Self = @This();
-    server: RoutezServer,
+    context: Context,
 
-    pub fn init(allocator: Allocator, storage: *Storage, sessions: *Sessions) Self {
+    const Context = struct {
+        storage: *Storage,
+        allocator: Allocator,
+        sessions: *Sessions,
+    };
+
+    pub fn init(allocator: Allocator, storage: *Storage) !Self {
         g.storage = storage;
-        g.sessions = sessions;
         g.allocator = allocator;
-        var server = RoutezServer.init(
-            allocator,
-            .{},
-            .{
-                routez.all("/", indexHandler),
-                routez.all("/tag/{tags}", tagHandler),
-                routez.all("/feed/add", feedAddHandler),
-            },
-        );
-        // Don't get errors about address in use
-        if (builtin.mode == .Debug) server.server.reuse_address = true;
-
-        return Server{
-            .server = server,
+        var context: Context = .{
+            .sessions = &Sessions.init(allocator),
+            .storage = storage,
+            .allocator = allocator,
         };
+        const builder = router.Builder(*Context);
+        try web.listenAndServe(
+            allocator,
+            try std.net.Address.parseIp(global.ip, global.port),
+            &context,
+            comptime router.Router(*Context, &.{
+                builder.get("/", null, indexGet),
+                builder.get("/feed/add", null, feedAddGet),
+                builder.post("/feed/add", null, feedAddPost),
+                builder.get("/tag/:tags", []const u8, tagGet),
+            }),
+        );
+
+        return Server{ .context = context };
     }
 
-    fn feedAddHandler(req: Request, res: Response) !void {
-        if (mem.eql(u8, req.method, "POST")) {
-            try feedAddPost(req, res);
-        } else if (mem.eql(u8, req.method, "GET")) {
-            try feedAddGet(req, res);
-        } else {
-            res.status_code = .MethodNotAllowed;
-        }
+    pub fn deinit(self: Self) void {
+        self.context.sessions.deinit();
     }
 
-    fn getCookieToken(req: Request, allocator: Allocator) !?u64 {
-        const headers_opt = try req.headers.get(allocator, "cookie");
-        defer if (headers_opt) |headers| allocator.free(headers);
-        if (headers_opt) |headers| {
-            for (headers) |header| {
-                const end = mem.indexOfScalar(u8, header.value, ';') orelse header.value.len;
-                var iter = mem.split(u8, header.value[0..end], "=");
-                if (iter.next()) |key| {
-                    if (mem.eql(u8, "token", mem.trim(u8, key, " "))) {
-                        const value = iter.next() orelse continue;
-                        return try fmt.parseUnsigned(u64, value, 10);
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
-    const form_start = "<form action='/feed/add' method='POST'>";
-    const form_end = "</form>";
-    const input_url_hidden = "<input type='hidden' name='feed_url' id='feed_url' value='{s}'>";
-    const input_url =
-        \\<div>
-        \\<label for="feed_url">Feed/Site url</label>
-        \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
-        \\</div>
-    ;
-    const input_tags =
-        \\<div>
-        \\<label for="tags">Tags</label>
-        \\<input type="text" id="tags" name="tags" value="{s}">
-        \\</div>
-    ;
-
-    const button_fmt = "<button type='submit' name='{s}'>Add feed{s}</button>";
-    const form_fmt = form_start ++ input_url ++ input_tags ++ fmt.comptimePrint(button_fmt, .{ "submit_feed", "" }) ++ form_end;
-
-    fn feedAddGet(req: Request, res: Response) !void {
+    fn feedAddGet(ctx: *Context, res: *web.Response, req: web.Request, _: ?*const anyopaque) !void {
+        try res.headers.put("Content-Type", "text/html");
         var arena = std.heap.ArenaAllocator.init(g.allocator);
         defer arena.deinit();
+        const w = res.writer();
 
-        const token: ?u64 = try getCookieToken(req, g.allocator);
-        const session_index: ?usize = if (token) |t| g.sessions.getIndex(t) else null;
+        const token: ?u64 = try getCookieToken(req);
+        const session_index: ?usize = if (token) |t| ctx.sessions.getIndex(t) else null;
 
-        try res.write("<p>Home</p>");
+        try w.writeAll("<p>Home</p>");
         if (session_index == null) {
-            try res.print(form_fmt, .{ "localhost:8080/many-links.html", "tag1, tag2, tag3" });
+            // try w.print(form_fmt, .{ "localhost:8080/many-links.html", "tag1, tag2, tag3" });
+            try w.print(form_fmt, .{ "", "" });
             return;
         }
-        var session = &g.sessions.list.items[session_index.?];
+        var session = &ctx.sessions.list.items[session_index.?];
         if (session.data.form_body.len == 0) {
-            try res.write("<p>There is no form data to handle</p>");
-            try res.print(form_fmt, .{ "", "" });
-            g.sessions.remove(session_index.?);
+            try w.writeAll("<p>There is no form data to handle</p>");
+            try w.print(form_fmt, .{ "", "" });
+            ctx.sessions.remove(session_index.?);
             return;
         }
         var is_submit_feed = false;
@@ -242,31 +207,31 @@ const Server = struct {
         }
 
         if (!is_submit_feed and !is_submit_feed_links) {
-            try res.write("<p>Submitted form data is invalid. Can't determine what type of form was submitted.</p>");
-            try res.print(form_fmt, .{ url, tags });
-            g.sessions.remove(session_index.?);
+            try w.writeAll("<p>Submitted form data is invalid. Can't determine what type of form was submitted.</p>");
+            try w.print(form_fmt, .{ url, tags });
+            ctx.sessions.remove(session_index.?);
             return;
         }
 
         if (is_submit_feed) {
             if (url.len == 0) {
-                try res.write("<p>No url entered</p>");
-                try res.print(form_fmt, .{ "", tags });
-                g.sessions.remove(session_index.?);
+                try w.writeAll("<p>No url entered</p>");
+                try w.print(form_fmt, .{ "", tags });
+                ctx.sessions.remove(session_index.?);
                 return;
             }
             const valid_url = url_util.makeValidUrl(arena.allocator(), url) catch {
-                try res.write("<p>Invalid url entered</p>");
-                try res.print(form_fmt, .{ url, tags });
-                g.sessions.remove(session_index.?);
+                try w.writeAll("<p>Invalid url entered</p>");
+                try w.print(form_fmt, .{ url, tags });
+                ctx.sessions.remove(session_index.?);
                 return;
             };
 
             const url_req = try http.resolveRequest(&arena, valid_url, &http.general_request_headers);
             const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
-                try res.write("<p>Failed to find Content-Type</p>");
-                try res.print(form_fmt, .{ url, tags });
-                g.sessions.remove(session_index.?);
+                try w.writeAll("<p>Failed to find Content-Type</p>");
+                try w.print(form_fmt, .{ url, tags });
+                ctx.sessions.remove(session_index.?);
                 return;
             };
             const content_type = http.ContentType.fromString(content_type_value);
@@ -278,7 +243,7 @@ const Server = struct {
                     const fallback_title = html_page.title orelse "<no-title>";
                     var links_html = ArrayList(u8).init(session.arena.allocator());
                     defer links_html.deinit();
-                    try links_html.writer().print("<input type='hidden' name='feed_url' value='{s}'>", .{valid_url});
+                    try links_html.writer().print("<input type=\"hidden\" name=\"feed_url\" value=\"{s}\">", .{valid_url});
                     try links_html.appendSlice("<p>Pick a feed link(s) to add</p><ul>");
                     for (html_page.links) |link| {
                         const fmt_link =
@@ -299,9 +264,9 @@ const Server = struct {
                     return;
                 },
                 .unknown => {
-                    try res.print("<p>Failed to parse content. Don't handle mimetype {s}</p>", .{content_type_value});
-                    try res.print(form_fmt, .{ url, tags });
-                    g.sessions.remove(session_index.?);
+                    try w.print("<p>Failed to parse content. Don't handle mimetype {s}</p>", .{content_type_value});
+                    try w.print(form_fmt, .{ url, tags });
+                    ctx.sessions.remove(session_index.?);
                     return;
                 },
                 else => {},
@@ -312,10 +277,10 @@ const Server = struct {
             const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
             _ = try g.storage.addNewFeed(feed, feed_update, tags);
 
-            try res.print("<p>Added new feed {s}</p>", .{valid_url});
-            try res.print(form_fmt, .{ "", "" });
+            try w.print("<p>Added new feed {s}</p>", .{valid_url});
+            try w.print(form_fmt, .{ "", "" });
 
-            g.sessions.remove(session_index.?);
+            ctx.sessions.remove(session_index.?);
 
             return;
         }
@@ -334,24 +299,24 @@ const Server = struct {
             }
 
             if (links.items.len == 0) {
-                try res.write("<p>Please choose atleast one link</p>");
+                try w.writeAll("<p>Please choose atleast one link</p>");
                 try printFormWithLinks(res, session.data.links_body, tags);
                 return;
             }
 
-            defer g.sessions.remove(session_index.?);
+            defer ctx.sessions.remove(session_index.?);
 
             for (links.items) |link| {
                 const url_req = try http.resolveRequest(&arena, link, &http.general_request_headers);
                 const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
-                    try res.write("<p>No Content-Type HTTP header</p>");
-                    try res.print(form_fmt, .{ url, tags });
+                    try w.writeAll("<p>No Content-Type HTTP header</p>");
+                    try w.print(form_fmt, .{ url, tags });
                     return;
                 };
                 const content_type = http.ContentType.fromString(content_type_value);
                 switch (content_type) {
                     .html, .unknown => {
-                        try res.print(
+                        try w.print(
                             "<p>Failed to add url {s}. Don't handle mimetype {s}</p>",
                             .{ link, content_type_value },
                         );
@@ -363,105 +328,138 @@ const Server = struct {
                 const feed = try f.Feed.initParse(&arena, link, body, content_type);
                 const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
                 _ = try g.storage.addNewFeed(feed, feed_update, tags);
-                try res.print("<p>Added feed {s}</p>", .{link});
+                try w.print("<p>Added feed {s}</p>", .{link});
             }
-            try res.print(form_fmt, .{ "", "" });
+            try w.print(form_fmt, .{ "", "" });
             return;
         }
     }
 
-    fn feedAddPost(req: Request, res: Response) !void {
-        g.sessions.cleanOld();
+    fn feedAddPost(ctx: *Context, res: *web.Response, req: web.Request, _: ?*const anyopaque) !void {
+        ctx.sessions.cleanOld();
         var session_index: usize = 0;
         var session = blk: {
-            const token = try getCookieToken(req, g.allocator);
-            const index_opt = if (token) |t| g.sessions.getIndex(t) else null;
+            const token = try getCookieToken(req);
+            const index_opt = if (token) |t| ctx.sessions.getIndex(t) else null;
             if (index_opt) |index| {
                 session_index = index;
-                const session = &g.sessions.list.items[index];
+                const session = &ctx.sessions.list.items[index];
                 session.arena.allocator().free(session.data.form_body);
                 break :blk session;
             }
-            var arena = std.heap.ArenaAllocator.init(g.allocator);
-            break :blk try g.sessions.new(arena);
+            var arena = std.heap.ArenaAllocator.init(ctx.allocator);
+            break :blk try ctx.sessions.new(arena);
         };
-        errdefer g.sessions.remove(session_index);
+        errdefer ctx.sessions.remove(session_index);
         var arena = session.arena;
-        session.data.form_body = (try zuri.Uri.decode(arena.allocator(), req.body)) orelse (try Allocator.dupe(arena.allocator(), u8, req.body));
+        session.data.form_body = (try zuri.Uri.decode(arena.allocator(), req.body())) orelse (try Allocator.dupe(arena.allocator(), u8, req.body()));
 
         const token_fmt = "token={d}; path=/feed/add";
         const u64_max_char = 20;
         var buf: [token_fmt.len + u64_max_char]u8 = undefined;
         try res.headers.put("Set-Cookie", try fmt.bufPrint(&buf, token_fmt, .{session.id}));
-        res.status_code = .Found;
+        res.status_code = .found;
         try res.headers.put("Location", "/feed/add");
     }
 
-    fn printFormWithLinks(res: Response, links_body: []const u8, tags: []const u8) !void {
-        try res.write(form_start);
-        try res.print(input_tags, .{tags});
-        try res.write(links_body);
-        try res.print(button_fmt, .{ "submit_feed_links", "(s)" });
-        try res.write(form_end);
-    }
-
-    pub fn submitFeed(arena: *ArenaAllocator, url_input: []const u8) !SessionData {
-        if (url_input.len == 0) {
-            return SessionData{ .ty = .fail_no_url };
+    fn getCookieToken(req: web.Request) !?u64 {
+        var it = req.iterator();
+        while (it.next()) |header| {
+            if (std.ascii.eqlIgnoreCase("cookie", header.key)) {
+                const end = mem.indexOfScalar(u8, header.value, ';') orelse header.value.len;
+                var iter = mem.split(u8, header.value[0..end], "=");
+                if (iter.next()) |key| {
+                    if (mem.eql(u8, "token", mem.trim(u8, key, " "))) {
+                        const value = iter.next() orelse continue;
+                        return try fmt.parseUnsigned(u64, value, 10);
+                    }
+                }
+            }
         }
-        const url = url_util.makeValidUrl(arena.allocator(), url_input) catch {
-            return SessionData{ .ty = .fail_invalid_url };
-        };
-
-        var req = try http.resolveRequest(arena, url, &http.general_request_headers);
-        return SessionData{ .ty = .resolve, .req = req };
+        return null;
     }
 
-    fn addFeed(feed: parse.Feed, tags: []const u8) !u64 {
-        return try g.storage.addNewFeed(feed, tags);
+    const form_start = "<form action=\"/feed/add\" method=\"POST\">";
+    const form_end = "</form>";
+    const input_url_hidden = "<input type=\"hidden\" name=\"feed_url\" id=\"feed_url\" value=\"{s}\">";
+    const input_url =
+        \\<div>
+        \\<label for="feed_url">Feed/Site url</label>
+        \\<input type="text" name="feed_url" id="feed_url" placeholder="Enter site or feed url" value="{s}">
+        \\</div>
+    ;
+    const input_tags =
+        \\<div>
+        \\<label for="tags">Tags</label>
+        \\<input type="text" id="tags" name="tags" value="{s}">
+        \\</div>
+    ;
+
+    const button_fmt = "<button type=\"submit\" name=\"{s}\">Add feed{s}</button>";
+    const form_fmt = form_start ++ input_url ++ input_tags ++ fmt.comptimePrint(button_fmt, .{ "submit_feed", "" }) ++ form_end;
+
+    fn printFormWithLinks(res: *web.Response, links_body: []const u8, tags: []const u8) !void {
+        const w = res.writer();
+        try w.writeAll(form_start);
+        try w.print(input_tags, .{tags});
+        try w.writeAll(links_body);
+        try w.print(button_fmt, .{ "submit_feed_links", "(s)" });
+        try w.writeAll(form_end);
     }
 
-    fn tagHandler(req: Request, res: Response, args: *const struct { tags: []const u8 }) !void {
+    fn tagGet(ctx: *Context, res: *web.Response, req: web.Request, captures: ?*const anyopaque) !void {
+        _ = ctx;
         _ = req;
+        const w = res.writer();
+        try res.headers.put("Content-Type", "text/html");
         var arena = std.heap.ArenaAllocator.init(g.allocator);
         defer arena.deinit();
-        var all_tags = try g.storage.getAllTags();
 
         var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
 
-        // application/x-www-form-urlencoded encodes spaces as pluses (+)
-        var it = mem.split(u8, args.tags, "+");
+        var all_tags = try g.storage.getAllTags();
+        const tags_raw = @ptrCast(
+            *const []const u8,
+            @alignCast(
+                @alignOf(*const []const u8),
+                captures,
+            ),
+        );
+        const tags = (try zuri.Uri.decode(arena.allocator(), tags_raw.*)) orelse {
+            log.info("Failed to decode tag(s). Encoded input: '{s}'", .{tags_raw.*});
+            try w.writeAll("Failed to decode tag(s)");
+            return;
+        };
+        var it = mem.split(u8, tags, "+");
         while (it.next()) |tag| {
             if (hasTag(all_tags, tag)) {
                 try active_tags.append(tag);
-                continue;
             }
         }
 
-        try res.write("<a href='/'>Home</a>");
+        try w.writeAll("<a href=\"/\">Home</a>");
+        try w.writeAll("<p>Active tags:</p>");
+        try w.writeAll("<ul>");
 
-        try res.write("<p>Active tags:</p> ");
-
-        try res.write("<ul>");
         if (active_tags.items.len == 1) {
-            try res.print("<li><a href='/'>{s}</a></li>", .{active_tags.items[0]});
+            try w.print("<li><a href=\"/\">{s}</a></li>", .{active_tags.items[0]});
         } else {
             var fb_alloc = std.heap.stackFallback(1024, arena.allocator());
             for (active_tags.items) |a_tag| {
                 var alloc = fb_alloc.get();
                 const tags_slug = try tagsSlugRemove(fb_alloc.get(), a_tag, active_tags.items);
                 defer alloc.free(tags_slug);
-                try res.print("<li><a href='/tag/{s}'>{s}</a></li>", .{ tags_slug, a_tag });
+                try w.print("<li><a href=\"/tag/{s}\">{s}</a></li>", .{ tags_slug, a_tag });
             }
         }
-        try res.write("</ul>");
+        try w.writeAll("</ul>");
 
         var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
-        try res.write("<p>Feeds</p>");
+        try w.writeAll("<p>Feeds</p>");
         try printFeeds(res, recent_feeds);
 
-        try res.write("<p>All Tags</p>");
+        try w.writeAll("<p>All Tags</p>");
         try printTags(arena.allocator(), res, all_tags, active_tags.items);
     }
 
@@ -472,108 +470,116 @@ const Server = struct {
         return false;
     }
 
-    fn printElapsedTime(res: Response, dt: Datetime, now: Datetime) !void {
+    fn printElapsedTime(res: *web.Response, dt: Datetime, now: Datetime) !void {
         const delta = now.sub(dt);
+        const w = res.writer();
         if (delta.days > 0) {
             const months = @divFloor(delta.days, 30);
             const years = @divFloor(delta.days, 365);
             if (years > 0) {
-                try res.print("{d}Y", .{years});
+                try w.print("{d}Y", .{years});
             } else if (months > 0) {
-                try res.print("{d}M", .{months});
+                try w.print("{d}M", .{months});
             } else {
-                try res.print("{d}d", .{delta.days});
+                try w.print("{d}d", .{delta.days});
             }
         } else if (delta.seconds > 0) {
             const minutes = @divFloor(delta.seconds, 60);
             const hours = @divFloor(minutes, 60);
             if (hours > 0) {
-                try res.print("{d}h", .{hours});
+                try w.print("{d}h", .{hours});
             } else if (delta.days > 0) {
-                try res.print("{d}m", .{minutes});
+                try w.print("{d}m", .{minutes});
             }
         }
     }
 
-    fn printFeeds(res: Response, recent_feeds: []Storage.RecentFeed) !void {
+    fn printFeeds(res: *web.Response, recent_feeds: []Storage.RecentFeed) !void {
         const now = Datetime.now();
-        try res.write("<ul>");
+        const w = res.writer();
+        try w.writeAll("<ul>");
         for (recent_feeds) |feed| {
-            try res.write("<li>");
+            try w.writeAll("<li>");
             if (feed.link) |link| {
-                try res.print("<a href=\"{s}\">{s}</a>", .{ link, feed.title });
+                try w.print("<a href=\"{s}\">{s}</a>", .{ link, feed.title });
             } else {
-                try res.print("{s}", .{feed.title});
+                try w.print("{s}", .{feed.title});
             }
             if (feed.updated_timestamp) |timestamp| {
-                try res.write(" | ");
+                try w.writeAll(" | ");
                 const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
                 var buf: [32]u8 = undefined;
                 const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
                     dt.date.year, dt.date.month,  dt.date.day,
                     dt.time.hour, dt.time.minute, dt.time.second,
                 });
-                try res.print("<span title='{s}'>", .{timestamp_str});
+                try w.print("<span title=\"{s}\">", .{timestamp_str});
                 try printElapsedTime(res, dt, now);
-                try res.write("</span>");
+                try w.writeAll("</span>");
             }
 
             // Get feed items
             const items = try g.storage.getItems(feed.id);
-            try res.write("<ul>");
+            try w.writeAll("<ul>");
             for (items) |item| {
-                try res.write("<li>");
+                try w.writeAll("<li>");
                 if (item.link) |link| {
-                    try res.print("<a href=\"{s}\">{s}</a>", .{ link, item.title });
+                    try w.print("<a href=\"{s}\">{s}</a>", .{ link, item.title });
                 } else {
-                    try res.print("{s}", .{feed.title});
+                    try w.print("{s}", .{feed.title});
                 }
                 if (item.pub_date_utc) |timestamp| {
-                    try res.write(" | ");
+                    try w.writeAll(" | ");
                     const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
                     var buf: [32]u8 = undefined;
                     const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
                         dt.date.year, dt.date.month,  dt.date.day,
                         dt.time.hour, dt.time.minute, dt.time.second,
                     });
-                    try res.print("<span title='{s}'>", .{timestamp_str});
+                    try w.print("<span title=\"{s}\">", .{timestamp_str});
                     try printElapsedTime(res, dt, now);
-                    try res.write("</span>");
+                    try w.writeAll("</span>");
                 }
-                try res.write("</li>");
+                try w.writeAll("</li>");
             }
-            try res.write("</ul>");
+            try w.writeAll("</ul>");
 
-            try res.write("</li>");
+            try w.writeAll("</li>");
         }
-        try res.write("</ul>");
+        try w.writeAll("</ul>");
     }
 
     // Index displays most recenlty update feeds
-    fn indexHandler(req: Request, res: Response) !void {
+    fn indexGet(context: *Context, res: *web.Response, req: web.Request, captures: ?*const anyopaque) !void {
         _ = req;
-        try res.write("<a href='/feed/add'>Add new feed</a>");
+        _ = context;
+        _ = captures;
+        try res.headers.put("Content-Type", "text/html");
+        const w = res.writer();
+        try w.writeAll("<a href=\"/feed/add\">Add new feed</a>");
         // Get most recently update feeds
         var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
-        try res.write("<p>Feeds</p>");
+        try w.writeAll("<p>Feeds</p>");
         try printFeeds(res, recent_feeds);
 
         // Get tags with count
         var tags = try g.storage.getAllTags();
-        try res.write("<p>All Tags</p>");
+        try w.writeAll("<p>All Tags</p>");
         try printTags(g.allocator, res, tags, &[_][]const u8{});
     }
 
-    fn printTags(allocator: Allocator, res: Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
+    fn printTags(allocator: Allocator, res: *web.Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
+        const w = res.writer();
         var fb_alloc = std.heap.stackFallback(1024, allocator);
-        try res.write("<ul>");
+        try w.writeAll("<ul>");
         for (tags) |tag| {
             try printTag(fb_alloc.get(), res, tag, active_tags);
         }
-        try res.write("</ul>");
+        try w.writeAll("</ul>");
     }
 
-    fn printTag(allocator: Allocator, res: Response, tag: Storage.TagCount, active_tags: [][]const u8) !void {
+    fn printTag(allocator: Allocator, res: *web.Response, tag: Storage.TagCount, active_tags: [][]const u8) !void {
+        const w = res.writer();
         var is_active = false;
         for (active_tags) |a_tag| {
             if (mem.eql(u8, tag.name, a_tag)) {
@@ -593,20 +599,20 @@ const Server = struct {
             }
             arr_slug.appendSliceAssumeCapacity(tag.name);
 
-            try res.print(
+            try w.print(
                 \\<li>
-                \\<a href='/tag/{s}'>{s} - {d}</a>
-                \\<a href='/tag/{s}'>Add</a>
+                \\<a href="/tag/{s}">{s} - {d}</a>
+                \\<a href="/tag/{s}">Add</a>
                 \\</li>
             , .{ tag.name, tag.name, tag.count, arr_slug.items });
         } else {
             const tags_slug = try tagsSlugRemove(allocator, tag.name, active_tags);
             defer allocator.free(tags_slug);
 
-            try res.print(
+            try w.print(
                 \\<li>
-                \\<a href='/tag/{s}'>{s} - {d} [active]</a>
-                \\<a href='{s}'>Remove</a>
+                \\<a href="/tag/{s}">{s} - {d} [active]</a>
+                \\<a href="{s}">Remove</a>
                 \\</li>
             , .{ tag.name, tag.name, tag.count, tags_slug });
         }
@@ -634,26 +640,31 @@ const global = struct {
     const port = 8282;
 };
 
-pub fn run(storage: *Storage) !void {
-    print("run server\n", .{});
-    var gen_alloc = std.heap.GeneralPurposeAllocator(.{}){};
-    var sessions = Sessions.init(gen_alloc.allocator());
-    defer sessions.deinit();
-    var server = Server.init(gen_alloc.allocator(), storage, &sessions);
-    var addr = try Address.parseIp(global.ip, global.port);
-    try server.server.listen(addr);
-}
-
 fn testServer(allocator: Allocator) !void {
     var storage = try Storage.init(allocator, null);
-    try run(&storage);
+    const server = try Server.init(allocator, &storage);
+    server.deinit();
 }
 
-test "post, get" {
+fn expectContains(haystack: []const u8, needle: []const u8) !void {
+    if (mem.indexOf(u8, haystack, needle) != null) return;
+
+    print("\n====== expected to find: =========\n", .{});
+    print("{s}", .{needle});
+    print("\n========= in string: ==============\n", .{});
+    print("{s}", .{haystack});
+    print("\n======================================\n", .{});
+
+    return error.TestExpectedContains;
+}
+
+test "@active post, get" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
 
+    // TODO: also test db/storage?
+    // TODO: also test session?
     const thread = try std.Thread.spawn(.{}, testServer, .{arena.allocator()});
     defer thread.join();
     // TODO?: check for server address?
@@ -663,9 +674,25 @@ test "post, get" {
 
     const url = "http://localhost:8282/feed/add";
 
-    var cookie_value: []const u8 = "";
     var headers = zfetch.Headers.init(arena.allocator());
     defer headers.deinit();
+
+    {
+        // Index page
+        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/", null);
+        try req.do(.GET, headers, null);
+        try expectEqual(@as(u16, 200), req.status.code);
+    }
+
+    {
+        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/feed/add", null);
+        try req.do(.GET, headers, null);
+        try expectEqual(@as(u16, 200), req.status.code);
+        const resp_body = try http.getRequestBody(&arena, req);
+        try expectContains(resp_body, "name=\"feed_url\"");
+        try expectContains(resp_body, "name=\"tags\"");
+        try expectContains(resp_body, "name=\"submit_feed\"");
+    }
 
     {
         // Try to add feed. Links return multiple links.
@@ -674,18 +701,19 @@ test "post, get" {
         try req.do(.POST, headers, body);
         try expectEqual(@as(u16, 302), req.status.code);
         for (req.headers.list.items) |h| {
-            if (mem.eql(u8, "set-cookie", h.name)) cookie_value = h.value;
+            if (std.ascii.eqlIgnoreCase("set-cookie", h.name)) {
+                try headers.appendValue("Cookie", h.value);
+            }
         }
-        try expect(cookie_value.len > 0);
-        req.socket.close();
+        try expectEqual(headers.contains("Cookie"), true);
 
         const req1 = try zfetch.Request.init(arena.allocator(), url, null);
-        defer req1.deinit();
-        try headers.appendValue("Cookie", cookie_value);
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
         const resp_body = try http.getRequestBody(&arena, req1);
-        try expect(mem.indexOf(u8, resp_body, "name='submit_feed_links'") != null);
+        try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
+        try expectContains(resp_body, "name=\"feed_link_checkbox\"");
+        try expectContains(resp_body, "name=\"submit_feed_links\"");
     }
 
     {
@@ -693,15 +721,16 @@ test "post, get" {
         const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox&submit_feed_links=";
         const req2 = try zfetch.Request.init(arena.allocator(), url, null);
         try req2.do(.POST, headers, body_links);
-        try expect(cookie_value.len > 0);
-        req2.socket.close();
 
         const req1 = try zfetch.Request.init(arena.allocator(), url, null);
         defer req1.deinit();
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
         const resp_body = try http.getRequestBody(&arena, req1);
-        try expect(mem.indexOf(u8, resp_body, "name='submit_feed_links'") != null);
+        try expectContains(resp_body, "Please choose atleast one link");
+        try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
+        try expectContains(resp_body, "name=\"feed_link_checkbox\"");
+        try expectContains(resp_body, "name=\"submit_feed_links\"");
     }
 
     {
@@ -709,14 +738,27 @@ test "post, get" {
         const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&submit_feed_links=";
         const req2 = try zfetch.Request.init(arena.allocator(), url, null);
         try req2.do(.POST, headers, body_links);
-        try expect(cookie_value.len > 0);
-        req2.socket.close();
 
         const req1 = try zfetch.Request.init(arena.allocator(), url, null);
         defer req1.deinit();
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
         const resp_body = try http.getRequestBody(&arena, req1);
-        try expect(mem.indexOf(u8, resp_body, "name='submit_feed'") != null);
+        try expectContains(resp_body, "Added feed http://localhost:8080/rss2.rss");
+        try expectContains(resp_body, "name=\"submit_feed\"");
     }
+
+    {
+        // Tags page
+        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/tag/tag1%2Btag2%2Bhello%20tag", null);
+        try req.do(.GET, headers, null);
+        try expectEqual(@as(u16, 200), req.status.code);
+        const resp_body = try http.getRequestBody(&arena, req);
+        try expectContains(resp_body, "href=\"/tag/tag2\"");
+        try expectContains(resp_body, "href=\"http://liftoff.msfc.nasa.gov/\"");
+        try expectContains(resp_body, "[active]");
+        try expectContains(resp_body, "href=\"/tag/tag1+tag2+tag3\"");
+    }
+
+    print("Testing done\n", .{});
 }
