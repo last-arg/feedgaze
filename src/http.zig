@@ -4,7 +4,6 @@ const mem = std.mem;
 const fmt = std.fmt;
 const ascii = std.ascii;
 const Uri = @import("zuri").Uri;
-const gzip = std.compress.gzip;
 const log = std.log;
 const dateStrToTimeStamp = @import("parse.zig").Rss.pubDateToTimestamp;
 const zfetch = @import("zfetch");
@@ -140,7 +139,8 @@ pub fn getRequestBody(arena: *ArenaAllocator, req: *zfetch.Request) ![]const u8 
         if (mem.eql(u8, enc.value, "gzip")) {
             var stream = try std.compress.gzip.gzipStream(arena.allocator(), req_reader);
             defer stream.deinit(); // let ArenaAllocator free all the allocations?
-            return try stream.reader().readAllAlloc(arena.allocator(), std.math.maxInt(usize));
+            const reader = stream.reader();
+            return try reader.readAllAlloc(arena.allocator(), std.math.maxInt(usize));
         }
         log.warn("Can't handle Content-Encoding {s}. From url {s}", .{ enc.value, req.url });
         return error.UnhandledContentEncoding;

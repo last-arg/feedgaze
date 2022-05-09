@@ -223,7 +223,10 @@ pub fn main() !void {
     const reader = std.io.getStdIn().reader();
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcmd) {
-        .server => try server.run(&storage),
+        .server => {
+            const s = try server.Server.init(arena_allocator, &storage);
+            defer s.deinit();
+        },
         .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
         .remove => try cli.deleteFeed(args_rest),

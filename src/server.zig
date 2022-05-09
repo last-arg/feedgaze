@@ -118,7 +118,7 @@ const Sessions = struct {
     }
 };
 
-const Server = struct {
+pub const Server = struct {
     // TODO: make into struct fields in Context?
     const g = struct {
         var storage: *Storage = undefined;
