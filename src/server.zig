@@ -426,11 +426,7 @@ pub const Server = struct {
                 captures,
             ),
         );
-        const tags = (try zuri.Uri.decode(arena.allocator(), tags_raw.*)) orelse {
-            log.info("Failed to decode tag(s). Encoded input: '{s}'", .{tags_raw.*});
-            try w.writeAll("Failed to decode tag(s)");
-            return;
-        };
+        const tags = (try zuri.Uri.decode(arena.allocator(), tags_raw.*)) orelse tags_raw.*;
         var it = mem.split(u8, tags, "+");
         while (it.next()) |tag| {
             if (hasTag(all_tags, tag)) {
@@ -658,7 +654,7 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     return error.TestExpectedContains;
 }
 
-test "@active post, get" {
+test "post, get" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -760,5 +756,5 @@ test "@active post, get" {
         try expectContains(resp_body, "href=\"/tag/tag1+tag2+tag3\"");
     }
 
-    print("Testing done\n", .{});
+    print("\nTesting done\n", .{});
 }
