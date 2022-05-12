@@ -24,13 +24,8 @@ deps:
       url: "https://github.com/ziglibs/known-folders.git"
       ref: master
       root: known-folders.zig
-  routez:
+  apple_pie:
     git:
-      url: "https://github.com/Vexu/routez.git"
-      ref: 679dca1edce5a3498bf5491b0fdcea82322bd8ab
-      root: src/routez.zig
-  zhp:
-    git:
-      url: "https://github.com/frmdstryr/zhp.git"
-      ref: cee6604f28c09278fd6a1a2e4cb3d59172609235
-      root: src/zhp.zig
+      url: "https://github.com/Luukdegram/apple_pie.git"
+      ref: 55b25cf50018fe314606765ca984a0a841743eb5
+      root: src/apple_pie.zig
