@@ -238,11 +238,14 @@ pub fn main() !void {
     }
 }
 
-fn getDatabaseLocation(allocator: Allocator, db_option: ?[]const u8) ![:0]const u8 {
-    if (db_option) |loc| {
+fn getDatabaseLocation(allocator: Allocator, location_opt: ?[]const u8) ![:0]const u8 {
+    if (location_opt) |loc| {
         const db_file = block: {
             if (std.fs.path.isAbsolute(loc)) {
                 break :block try std.mem.joinZ(allocator, loc, &.{});
+            } else if (loc[0] == '~') {
+                const home = std.os.getenv("HOME") orelse return error.NoEnvHome;
+                break :block try std.fs.path.joinZ(allocator, &.{ home, loc[1..] });
             }
             break :block try std.fs.path.joinZ(allocator, &.{ try std.process.getCwdAlloc(allocator), loc });
         };
