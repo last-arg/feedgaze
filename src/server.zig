@@ -119,11 +119,6 @@ const Sessions = struct {
 };
 
 pub const Server = struct {
-    // TODO: make into struct fields in Context?
-    const g = struct {
-        var storage: *Storage = undefined;
-        var allocator: Allocator = undefined;
-    };
     const Self = @This();
     context: Context,
 
@@ -134,8 +129,6 @@ pub const Server = struct {
     };
 
     pub fn init(allocator: Allocator, storage: *Storage) !Self {
-        g.storage = storage;
-        g.allocator = allocator;
         var context: Context = .{
             .sessions = &Sessions.init(allocator),
             .storage = storage,
@@ -163,7 +156,7 @@ pub const Server = struct {
 
     fn feedAddGet(ctx: *Context, res: *web.Response, req: web.Request, _: ?*const anyopaque) !void {
         try res.headers.put("Content-Type", "text/html");
-        var arena = std.heap.ArenaAllocator.init(g.allocator);
+        var arena = std.heap.ArenaAllocator.init(ctx.allocator);
         defer arena.deinit();
         const w = res.writer();
 
@@ -275,7 +268,7 @@ pub const Server = struct {
             const body = try http.getRequestBody(&arena, url_req);
             const feed = try f.Feed.initParse(&arena, valid_url, body, content_type);
             const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
-            _ = try g.storage.addNewFeed(feed, feed_update, tags);
+            _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
 
             try w.print("<p>Added new feed {s}</p>", .{valid_url});
             try w.print(form_fmt, .{ "", "" });
@@ -327,7 +320,7 @@ pub const Server = struct {
                 const body = try http.getRequestBody(&arena, url_req);
                 const feed = try f.Feed.initParse(&arena, link, body, content_type);
                 const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
-                _ = try g.storage.addNewFeed(feed, feed_update, tags);
+                _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
                 try w.print("<p>Added feed {s}</p>", .{link});
             }
             try w.print(form_fmt, .{ "", "" });
@@ -412,13 +405,13 @@ pub const Server = struct {
         _ = req;
         const w = res.writer();
         try res.headers.put("Content-Type", "text/html");
-        var arena = std.heap.ArenaAllocator.init(g.allocator);
+        var arena = std.heap.ArenaAllocator.init(ctx.allocator);
         defer arena.deinit();
 
         var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
 
-        var all_tags = try g.storage.getAllTags();
+        var all_tags = try ctx.storage.getAllTags();
         const tags_raw = @ptrCast(
             *const []const u8,
             @alignCast(
@@ -451,9 +444,9 @@ pub const Server = struct {
         }
         try w.writeAll("</ul>");
 
-        var recent_feeds = try g.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
+        var recent_feeds = try ctx.storage.getRecentlyUpdatedFeedsByTags(active_tags.items);
         try w.writeAll("<p>Feeds</p>");
-        try printFeeds(res, recent_feeds);
+        try printFeeds(ctx.storage, res, recent_feeds);
 
         try w.writeAll("<p>All Tags</p>");
         try printTags(arena.allocator(), res, all_tags, active_tags.items);
@@ -490,7 +483,7 @@ pub const Server = struct {
         }
     }
 
-    fn printFeeds(res: *web.Response, recent_feeds: []Storage.RecentFeed) !void {
+    fn printFeeds(storage: *Storage, res: *web.Response, recent_feeds: []Storage.RecentFeed) !void {
         const now = Datetime.now();
         const w = res.writer();
         try w.writeAll("<ul>");
@@ -515,7 +508,7 @@ pub const Server = struct {
             }
 
             // Get feed items
-            const items = try g.storage.getItems(feed.id);
+            const items = try storage.getItems(feed.id);
             try w.writeAll("<ul>");
             for (items) |item| {
                 try w.writeAll("<li>");
@@ -546,22 +539,21 @@ pub const Server = struct {
     }
 
     // Index displays most recenlty update feeds
-    fn indexGet(context: *Context, res: *web.Response, req: web.Request, captures: ?*const anyopaque) !void {
+    fn indexGet(ctx: *Context, res: *web.Response, req: web.Request, captures: ?*const anyopaque) !void {
         _ = req;
-        _ = context;
         _ = captures;
         try res.headers.put("Content-Type", "text/html");
         const w = res.writer();
         try w.writeAll("<a href=\"/feed/add\">Add new feed</a>");
         // Get most recently update feeds
-        var recent_feeds = try g.storage.getRecentlyUpdatedFeeds();
+        var recent_feeds = try ctx.storage.getRecentlyUpdatedFeeds();
         try w.writeAll("<p>Feeds</p>");
-        try printFeeds(res, recent_feeds);
+        try printFeeds(ctx.storage, res, recent_feeds);
 
         // Get tags with count
-        var tags = try g.storage.getAllTags();
+        var tags = try ctx.storage.getAllTags();
         try w.writeAll("<p>All Tags</p>");
-        try printTags(g.allocator, res, tags, &[_][]const u8{});
+        try printTags(ctx.allocator, res, tags, &[_][]const u8{});
     }
 
     fn printTags(allocator: Allocator, res: *web.Response, tags: []Storage.TagCount, active_tags: [][]const u8) !void {
@@ -654,7 +646,7 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     return error.TestExpectedContains;
 }
 
-test "post, get" {
+test "@active post, get" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -666,7 +658,7 @@ test "post, get" {
     // TODO?: check for server address?
     // Hack to make sure server is up before making request
     std.time.sleep(1 * std.time.ns_per_ms);
-    print("Server running\n", .{});
+    print("Run server tests\n", .{});
 
     const url = "http://localhost:8282/feed/add";
 
