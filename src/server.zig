@@ -88,8 +88,8 @@ const Sessions = struct {
     // At the moment event is checked every time a POST request to /feed/add is made
     pub fn cleanOld(self: *Self) void {
         if (self.timestamps.items.len == 0) return;
-        const current = std.time.timestamp();
         const first = self.timestamps.items[0];
+        const current = std.time.timestamp();
         const first_passed = current - first;
         if (first_passed > max_age_seconds) {
             var index = self.timestamps.items.len - 1;
@@ -756,5 +756,5 @@ test "post, get" {
         try expectContains(resp_body, "href=\"/tag/tag1+tag2+tag3\"");
     }
 
-    print("\nTesting done\n", .{});
+    print("\nServer tests done\n", .{});
 }

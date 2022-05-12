@@ -4,6 +4,9 @@ const LibExeObjStep = @import("std").build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
 const pkgs = @import("deps.zig").pkgs;
 
+// build.zig example
+// https://stackoverflow.com/questions/68609919/using-zig-compiler-as-a-library
+
 pub fn build(b: *Builder) void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
@@ -34,6 +37,10 @@ pub fn build(b: *Builder) void {
     const test_file = if (b.args) |args| args[0] else "src/main.zig";
 
     var test_cmd = b.addTest(test_file);
+    // const test_options = b.addOptions();
+    // test_options.addOption(bool, "test-evented-io", true);
+    // exe.addOptions("test", test_options);
+
     test_cmd.setBuildMode(mode);
     stepSetup(test_cmd, target);
     if (b.args) |args| {
@@ -41,6 +48,7 @@ pub fn build(b: *Builder) void {
             test_cmd.setFilter(args[1]);
         }
     }
+
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
 }
