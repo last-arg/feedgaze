@@ -522,7 +522,10 @@ pub const Storage = struct {
             \\)
         ;
         for (results) |r| {
-            try self.db.exec(del_query, .{ r.feed_id, r.count - g.max_items_per_feed });
+            const del_count = r.count - g.max_items_per_feed;
+            if (del_count > 0) {
+                try self.db.exec(del_query, .{ r.feed_id, del_count });
+            }
         }
     }
 
