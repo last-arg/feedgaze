@@ -32,7 +32,7 @@ pub fn main() !void {
     const url_flag = comptime newFlag("url", true, "Apply action only to url feeds.");
     const local_flag = comptime newFlag("local", true, "Apply action only to local feeds.");
     const force_flag = comptime newFlag("force", false, "Force update all feeds.");
-    const default_flag = comptime newFlag("default", @as(u32, 1), "Auto pick a item from printed out list.");
+    const default_flag = comptime newFlag("default", @as(u32, 0), "Auto pick a item from printed out list.");
     const add_tags_flag = comptime newFlag("tags", "", "Add (comma separated) tags to feed .");
 
     comptime var base_flags = [_]FlagOpt{ help_flag, url_flag, local_flag, db_flag };
@@ -126,7 +126,8 @@ pub fn main() !void {
             }
 
             if (cmd.getFlag("default")) |value| {
-                cli_options.default = try value.getInt();
+                const value_int = try value.getInt();
+                if (value_int != 0) cli_options.default = value_int;
             }
 
             if (cmd.getFlag("tags")) |value| {
