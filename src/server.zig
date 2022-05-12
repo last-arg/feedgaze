@@ -655,25 +655,25 @@ test "@active post, get" {
     // TODO: also test session?
     const thread = try std.Thread.spawn(.{}, testServer, .{arena.allocator()});
     defer thread.join();
-    // TODO?: check for server address?
-    // Hack to make sure server is up before making request
+    // HACK: Make sure server is up before making request
     std.time.sleep(1 * std.time.ns_per_ms);
     print("Run server tests\n", .{});
-
-    const url = "http://localhost:8282/feed/add";
 
     var headers = zfetch.Headers.init(arena.allocator());
     defer headers.deinit();
 
+    const url = "http://localhost:8282";
+
     {
         // Index page
-        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/", null);
+        const req = try zfetch.Request.init(arena.allocator(), url ++ "/", null);
+        defer req.deinit();
         try req.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req.status.code);
     }
 
     {
-        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/feed/add", null);
+        const req = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         try req.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req.status.code);
         const resp_body = try http.getRequestBody(&arena, req);
@@ -685,7 +685,7 @@ test "@active post, get" {
     {
         // Try to add feed. Links return multiple links.
         const body = "feed_url=localhost%3A8080%2Fmany-links.html&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
-        const req = try zfetch.Request.init(arena.allocator(), url, null);
+        const req = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         try req.do(.POST, headers, body);
         try expectEqual(@as(u16, 302), req.status.code);
         for (req.headers.list.items) |h| {
@@ -695,7 +695,7 @@ test "@active post, get" {
         }
         try expectEqual(headers.contains("Cookie"), true);
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url, null);
+        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
         const resp_body = try http.getRequestBody(&arena, req1);
@@ -707,10 +707,10 @@ test "@active post, get" {
     {
         // No links chosen
         const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox&submit_feed_links=";
-        const req2 = try zfetch.Request.init(arena.allocator(), url, null);
+        const req2 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         try req2.do(.POST, headers, body_links);
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url, null);
+        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         defer req1.deinit();
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
@@ -724,10 +724,10 @@ test "@active post, get" {
     {
         // Choose two links
         const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&submit_feed_links=";
-        const req2 = try zfetch.Request.init(arena.allocator(), url, null);
+        const req2 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         try req2.do(.POST, headers, body_links);
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url, null);
+        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
         defer req1.deinit();
         try req1.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req1.status.code);
@@ -738,7 +738,7 @@ test "@active post, get" {
 
     {
         // Tags page
-        const req = try zfetch.Request.init(arena.allocator(), "http://localhost:8282/tag/tag1%2Btag2%2Bhello%20tag", null);
+        const req = try zfetch.Request.init(arena.allocator(), url ++ "/tag/tag1%2Btag2%2Bhello%20tag", null);
         try req.do(.GET, headers, null);
         try expectEqual(@as(u16, 200), req.status.code);
         const resp_body = try http.getRequestBody(&arena, req);
