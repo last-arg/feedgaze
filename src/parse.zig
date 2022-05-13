@@ -228,7 +228,7 @@ pub const Html = struct {
     }
 };
 
-test "@active Html.parse" {
+test "Html.parse" {
     const expectEqual = std.testing.expectEqual;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();

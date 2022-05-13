@@ -13,7 +13,7 @@
   [x] Web browser (http server)
 [ ] Zig
   [ ] XML parsing
-    [?] Replace current xml implementation: https://github.com/wooky/zig-xml/tree/master
+    - Depends on C: https://github.com/wooky/zig-xml/tree/master
     - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
   [ ] Async
     - https://github.com/kprotty/zap
