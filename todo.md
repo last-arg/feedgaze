@@ -7,19 +7,14 @@
       - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
   [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
 [ ] UI
-  [ ] CLI - initial
+  [x] CLI - initial
   [ ] TUI - NotCurses
     * Example: https://github.com/dundalek/notcurses-zig-example
-  [ ] Web browser (http server) - later
-    - https://github.com/Vexu/routez
-    - https://github.com/frmdstryr/zhp
+  [x] Web browser (http server)
 [ ] Zig
   [ ] XML parsing
-    - https://github.com/wooky/zupnp/tree/master/src/xml
+    [?] Replace current xml implementation: https://github.com/wooky/zig-xml/tree/master
     - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
-  [ ] Https client
-    - https://github.com/truemedian/zfetch
-    - https://github.com/haze/zelda
   [ ] Async
     - https://github.com/kprotty/zap
     - https://github.com/lithdew/pike

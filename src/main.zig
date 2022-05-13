@@ -12,6 +12,13 @@ const clap = @import("clap");
 const known_folders = @import("known-folders");
 const server = @import("server.zig");
 
+// TODO?: Try zig-clap with subcommands
+// https://github.com/Hejsil/zig-clap#streamingclap
+// Have separate params for subcommands
+// Check for subcommands
+// Parse args
+// Generate usage/help from separate params variables
+
 // NOTE: This will return error.CouldNotConnect when adding url
 // pub const io_mode = .evented;
 
