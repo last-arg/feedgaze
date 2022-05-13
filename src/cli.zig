@@ -154,13 +154,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer req.deinit();
             var content_type_value: []const u8 = "";
             var content_type: http.ContentType = .unknown;
-            const max_tries = 3;
-            var urls_tried_count: usize = 1;
-            while (urls_tried_count <= max_tries) : (urls_tried_count += 1) {
+            var tries_left: u8 = 3;
+            while (tries_left > 0) : (tries_left -= 1) {
                 try writer.print("Fetching feed {s}\n", .{url});
-                // clean previous request
-                if (urls_tried_count > 1) req.deinit();
-                req = try http.resolveRequest(&arena, url, &http.general_request_headers);
+                req = http.resolveRequest(&arena, url, &http.general_request_headers) catch |err| {
+                    log.warn("Failed to resolve link '{s}'. Error: {s}", .{ url, @errorName(err) });
+                    return;
+                };
                 if (req.status.code != 200) {
                     switch (req.status.code) {
                         301, 307, 308 => log.warn("Failed request. Too many redirects. Final request location {s}", .{req.url}),
@@ -191,6 +191,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try printPageLinks(self.writer, page, uri);
                     const link_index = try getValidInputNumber(self.reader, self.writer, page.links.len, self.options.default);
                     url = try url_util.makeWholeUrl(arena.allocator(), uri, page.links[link_index].href);
+                    req.deinit();
                     continue;
                 }
                 break;
