@@ -5,7 +5,8 @@ mkShell {
     zig
     sqlite
     pkg-config
-    rlwrap
+    automake
+    autoconf
     # zlib.dev
   ];
   shellHook = ''
