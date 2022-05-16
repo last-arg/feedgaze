@@ -43,6 +43,10 @@ pub fn build(b: *Builder) void {
 
     test_cmd.setBuildMode(mode);
     stepSetup(test_cmd, target);
+    const zig_libressl = @import("lib/zelda/zig-libressl/build.zig");
+    test_cmd.linkSystemLibrary("openssl");
+    zig_libressl.useLibreSslForStep(b, test_cmd, "lib/zelda/zig-libressl/libressl", false) catch unreachable;
+
     if (b.args) |args| {
         if (args.len >= 2) {
             test_cmd.setFilter(args[1]);

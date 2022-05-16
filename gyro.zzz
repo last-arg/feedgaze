@@ -29,3 +29,11 @@ deps:
       url: "https://github.com/Luukdegram/apple_pie.git"
       ref: 55b25cf50018fe314606765ca984a0a841743eb5
       root: src/apple_pie.zig
+  zelda:
+    local: lib/zelda
+    root: src/main.zig
+  libressl:
+    git:
+      url: "https://github.com/haze/zig-libressl.git"
+      ref: a752b489d11c236c51d11b226b69ae717c6cfc37
+      root: src/main.zig
