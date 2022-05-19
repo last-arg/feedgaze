@@ -29,11 +29,24 @@ deps:
       url: "https://github.com/Luukdegram/apple_pie.git"
       ref: 55b25cf50018fe314606765ca984a0a841743eb5
       root: src/apple_pie.zig
-  zelda:
-    local: lib/zelda
-    root: src/main.zig
-  libressl:
+build_deps:
+  mbedtls:
     git:
-      url: "https://github.com/haze/zig-libressl.git"
-      ref: a752b489d11c236c51d11b226b69ae717c6cfc37
-      root: src/main.zig
+      url: "https://github.com/mattnite/zig-mbedtls.git"
+      ref: main
+      root: mbedtls.zig
+  libssh2:
+    git:
+      url: "https://github.com/mattnite/zig-libssh2.git"
+      ref: main
+      root: libssh2.zig
+  zlib:
+    git:
+      url: "https://github.com/mattnite/zig-zlib.git"
+      ref: main
+      root: zlib.zig
+  libcurl:
+    git:
+      url: "https://github.com/mattnite/zig-libcurl.git"
+      ref: main
+      root: libcurl.zig
