@@ -14,9 +14,12 @@ const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
 
 pub var general_request_headers = [_]zfetch.Header{
-    .{ .name = "Connection", .value = "close" },
     .{ .name = "Accept-Encoding", .value = "gzip" },
     .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
+};
+
+pub var general_request_headers_curl = [_][:0]const u8{
+    "Accept: application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html",
 };
 
 pub const ContentEncoding = enum {
@@ -62,6 +65,64 @@ pub fn makeRequest(arena: *ArenaAllocator, url: []const u8, headers: zfetch.Head
     var req = try zfetch.Request.init(arena.allocator(), url, null);
     try req.do(.GET, headers, null);
     return req;
+}
+
+const curl = @import("curl_extend.zig");
+const Fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} });
+pub const Response = struct {
+    status_code: isize,
+    headers_fifo: Fifo,
+    body_fifo: Fifo,
+    allocator: std.mem.Allocator,
+    url: []const u8 = "", // when adding optional(?) zig compiler throws a fit
+
+    pub fn deinit(self: *@This()) void {
+        self.headers_fifo.deinit();
+        self.body_fifo.deinit();
+        self.allocator.free(self.url);
+    }
+};
+
+pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, req_headers: [][]const u8) !Response {
+    const allocator = arena.allocator();
+    var body_fifo = Fifo.init(allocator);
+    var headers_fifo = Fifo.init(allocator);
+
+    var headers = curl.HeaderList.init();
+    defer headers.freeAll();
+    var stack_alloc = std.heap.stackFallback(128, arena.allocator());
+    for (req_headers) |header| {
+        const header_null = try stack_alloc.get().dupeZ(u8, header);
+        try headers.append(header_null);
+    }
+
+    const easy = try curl.Easy.init();
+    defer easy.cleanup();
+
+    const url = try stack_alloc.get().dupeZ(u8, raw_url);
+
+    try easy.setUrl(url);
+    try easy.setAcceptEncodingGzip();
+    try easy.setFollowLocation(true);
+    try easy.setHeaders(headers);
+    try easy.setSslVerifyPeer(false);
+    try curl.setHeaderWriteFn(easy, curl.writeToFifo(Fifo));
+    try curl.setHeaderWriteData(easy, &headers_fifo);
+    try easy.setWriteFn(curl.writeToFifo(Fifo));
+    try easy.setWriteData(&body_fifo);
+    // try easy.setVerbose(true);
+    try easy.perform();
+
+    var resp = Response{
+        .status_code = try easy.getResponseCode(),
+        .headers_fifo = headers_fifo,
+        .body_fifo = body_fifo,
+        .allocator = allocator,
+    };
+
+    if (try curl.getEffectiveUrl(easy)) |val| resp.url = try allocator.dupe(u8, mem.span(val));
+
+    return resp;
 }
 
 pub fn resolveRequest(arena: *ArenaAllocator, url: []const u8, headers_slice: []zfetch.Header) !*zfetch.Request {
