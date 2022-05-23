@@ -148,72 +148,91 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const writer = self.writer;
-
-            var url = try url_util.makeValidUrl(arena.allocator(), input_url);
-            var req: *zfetch.Request = undefined;
-            defer req.deinit();
-            var content_type_value: []const u8 = "";
+            var start_url = try url_util.makeValidUrl(arena.allocator(), input_url);
+            var url = start_url;
+            var last_header: []const u8 = "";
             var content_type: http.ContentType = .unknown;
+            var resp: ?http.Response = null;
+            defer if (resp) |*r| r.deinit();
             var tries_left: u8 = 3;
             while (tries_left > 0) : (tries_left -= 1) {
                 try writer.print("Fetching feed {s}\n", .{url});
-                req = http.resolveRequest(&arena, url, &http.general_request_headers) catch |err| {
+                var tmp_resp = http.resolveRequestCurl(&arena, url, &http.general_request_headers_curl) catch |err| {
                     log.warn("Failed to resolve link '{s}'. Error: {s}", .{ url, @errorName(err) });
                     return;
                 };
-                if (req.status.code != 200) {
-                    switch (req.status.code) {
-                        301, 307, 308 => log.warn("Failed request. Too many redirects. Final request location {s}", .{req.url}),
-                        else => log.warn("Failed to resolve HTTP request: {d} {s}", .{ req.status.code, req.status.reason }),
+                // defer tmp_resp.deinit();
+                url = if (tmp_resp.url.len > 0) tmp_resp.url else url;
+                if (tmp_resp.status_code != 200) {
+                    log.warn("Failed to resolve link '{s}'. Failed HTTP status code: {d}", .{ url, tmp_resp.status_code });
+                    return;
+                }
+                var headers_slice = tmp_resp.headers_fifo.readableSlice(0);
+                const sep = "\r\n\r\n";
+                const header_start = mem.lastIndexOfLinear(u8, headers_slice[0 .. headers_slice.len - sep.len], sep) orelse 0;
+                // If there is only one header (no redirects) 4 characters from start of the status line
+                // will be remove. Don't care about it
+                last_header = headers_slice[header_start + sep.len ..];
+
+                const key_content_type = "content-type:";
+                var content_type_value: []const u8 = "";
+                var iter = mem.split(u8, last_header, "\r\n");
+                while (iter.next()) |line| {
+                    if (ascii.startsWithIgnoreCase(line, key_content_type)) {
+                        const value = line[key_content_type.len + 1 ..];
+                        const last_index = mem.indexOfScalar(u8, value, ';') orelse value.len;
+                        content_type_value = mem.trim(u8, value[0..last_index], "\r\n ");
+                        break;
                     }
+                }
+
+                if (content_type_value.len == 0) {
+                    log.warn("Didn't find Content-Type header. From url '{s}'", .{url});
                     return;
                 }
 
-                content_type_value = http.getContentType(req.headers.list.items) orelse {
-                    log.warn("Failed to get Content-Type header. From url {s}", .{req.url});
-                    return;
-                };
                 content_type = http.ContentType.fromString(content_type_value);
                 if (content_type == .unknown) {
-                    log.warn("Unhandle Content-Type {s}. From url {s}", .{ content_type_value, req.url });
+                    log.warn("Unhandled Content-Type '{s}'. From url '{s}'", .{ content_type_value, url });
                     return;
                 }
 
                 if (content_type == .html) {
-                    const body = try http.getRequestBody(&arena, req);
+                    const body = tmp_resp.body_fifo.readableSlice(0);
                     const page = try parse.Html.parseLinks(arena.allocator(), body);
                     if (page.links.len == 0) {
-                        log.warn("Found no feed links from returned html page. From url {s}", .{req.url});
+                        log.warn("Could not find any feed links. From url {s}", .{url});
                         return;
                     }
 
-                    const uri = try Uri.parse(req.url, true);
+                    const uri = try Uri.parse(url, true);
                     try printPageLinks(self.writer, page, uri);
                     const link_index = try getValidInputNumber(self.reader, self.writer, page.links.len, self.options.default);
                     url = try url_util.makeWholeUrl(arena.allocator(), uri, page.links[link_index].href);
-                    req.deinit();
+                    tmp_resp.deinit();
                     continue;
                 }
+
+                resp = tmp_resp;
                 break;
             } else {
-                log.warn("Failed to find feed link(s) from url {s}", .{req.url});
+                log.warn("Failed to find feed link(s) from url '{s}'", .{url});
                 return;
             }
 
-            const body = try http.getRequestBody(&arena, req);
-            if (body.len == 0) {
-                log.warn("No body to parse for feed", .{});
+            if (resp == null) {
+                log.warn("Failed to get response from HTTP request. From url '{s}'", .{url});
                 return;
             }
 
-            const feed = f.Feed.initParse(&arena, url, body, content_type) catch {
-                log.warn("Can't parse mimetype {s}'s body. From url {s}", .{ content_type_value, url });
+            const feed = f.Feed.initParse(&arena, url, resp.?.body_fifo.readableSlice(0), content_type) catch {
+                log.warn("Can't parse mimetype {s}'s body. From url {s}", .{ content_type, url });
                 return;
             };
-
-            var feed_update = try f.FeedUpdate.fromHeaders(req.headers.list.items);
+            var feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
             _ = try self.feed_db.addNewFeed(feed, feed_update, tags);
-            try writer.print("Feed added {s}\n", .{req.url});
+
+            try writer.print("Feed added '{s}'\n", .{url});
         }
 
         pub fn deleteFeed(self: *Self, search_inputs: [][]const u8) !void {
@@ -431,6 +450,71 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| mem.copy(u8, fbs.buffer, e);
     try cli.addFeed(locations, "");
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
+}
+
+const curl = @import("curl_extend.zig");
+test "tmp" {
+    std.testing.log_level = .debug;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try curl.globalInit();
+    defer curl.globalCleanup();
+
+    // const url = "https://en.wikipedia.org/wiki/Main_Page";
+    // const url = "https://www.youtube.com/channel/UCrwObTfqv8u1KO7Fgk-FXHQ/videos";
+    const url = "http://localhost:8080/rss2.rss";
+    // const url = "http://nitter.it/";
+    // const url = "https://twitter.com/";
+    // const url = "http://www.google.com/";
+
+    {
+        var resp = try http.resolveRequestCurl(&arena, url, &http.general_request_headers_curl);
+        defer resp.deinit();
+        print("STATUS_CODE: {d}\n", .{resp.status_code});
+        print("HEADERS: {s}\n", .{resp.headers_fifo.readableSlice(0)});
+        // print("BODY: {s}\n", .{resp.body_fifo.readableSlice(0)});
+    }
+}
+
+test "@active tmp" {
+    std.testing.log_level = .debug;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var storage = try Storage.init(allocator, null);
+
+    // Test adding file and link (html)
+    // Command: feedgaze add test/rss2.xml http://localhost:8080/many-links.html
+
+    // TODO: construct abs_path?
+    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
+    const url = "http://localhost:8080/many-links.html";
+
+    {
+        var local = abs_path;
+        var locations = &.{ local, url };
+        const expected_local = "Added local feed: " ++ abs_path ++ "\n";
+        const expected_url = comptime fmt.comptimePrint(
+            \\Fetching feed {s}
+            \\Parse Feed Links | http://localhost:8080/many-links.html
+            \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
+            \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
+            \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
+            \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
+            \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
+            \\Enter link number: <no-number>
+            \\Invalid number: '<no-number>'. Try again.
+            \\Enter link number: 111
+            \\Number out of range: '111'. Try again.
+            \\Enter link number: 2
+            \\Fetching feed http://localhost:8080/rss2.xml
+            \\Feed added 'http://localhost:8080/rss2.xml'
+            \\
+        , .{url});
+        const expected = expected_local ++ expected_url;
+        try testAddFeed(&storage, locations, expected);
+    }
 }
 
 test "local and url: add, update, delete, html links, print" {

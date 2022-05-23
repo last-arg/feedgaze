@@ -70,6 +70,38 @@ pub const FeedUpdate = struct {
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
 
+    pub fn fromHeadersCurl(header: []const u8) !@This() {
+        const etag_key = "etag";
+        const last_modified_key = "last-modified";
+        const expires_key = "expires";
+        const cache_control_key = "cache-control";
+        var result: @This() = .{};
+        var iter = mem.split(u8, header, "\r\n");
+        while (iter.next()) |line| {
+            if (ascii.startsWithIgnoreCase(line, etag_key)) {
+                result.etag = mem.trim(u8, line[etag_key.len + 1 ..], "\r\n ");
+            } else if (ascii.startsWithIgnoreCase(line, last_modified_key)) {
+                const val = mem.trim(u8, line[last_modified_key.len + 1 ..], "\r\n ");
+                result.last_modified_utc = dateStrToTimeStamp(val) catch continue;
+            } else if (ascii.startsWithIgnoreCase(line, expires_key)) {
+                const val = mem.trim(u8, line[expires_key.len + 1 ..], "\r\n ");
+                result.last_modified_utc = dateStrToTimeStamp(val) catch continue;
+            } else if (ascii.startsWithIgnoreCase(line, cache_control_key)) {
+                const raw_values = line[expires_key.len + 1 ..];
+                var iter_value = mem.split(u8, raw_values, ",");
+                while (iter_value.next()) |raw_value| {
+                    const value = mem.trimLeft(u8, raw_value, " \r\n\t");
+                    if (ascii.startsWithIgnoreCase(value, "max-age") or ascii.startsWithIgnoreCase(value, "s-maxage")) {
+                        const eq_index = mem.indexOfScalar(u8, value, '=') orelse continue;
+                        result.cache_control_max_age = try fmt.parseInt(u32, value[eq_index + 1 ..], 10);
+                        break;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+
     pub fn fromHeaders(headers: []zfetch.Header) !@This() {
         var result: @This() = .{};
         for (headers) |header| {
