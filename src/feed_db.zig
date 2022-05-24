@@ -977,7 +977,7 @@ test "different urls, same feed items" {
 }
 
 // Requires running test server - cmd: just test-server
-test "@active updateUrlFeeds: check that only neccessary url feeds are updated" {
+test "updateUrlFeeds: check that only neccessary url feeds are updated" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

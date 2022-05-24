@@ -441,70 +441,7 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
-test "tmp" {
-    std.testing.log_level = .debug;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-
-    try curl.globalInit();
-    defer curl.globalCleanup();
-
-    // const url = "https://en.wikipedia.org/wiki/Main_Page";
-    // const url = "https://www.youtube.com/channel/UCrwObTfqv8u1KO7Fgk-FXHQ/videos";
-    const url = "http://localhost:8080/rss2.rss";
-    // const url = "http://nitter.it/";
-    // const url = "https://twitter.com/";
-    // const url = "http://www.google.com/";
-
-    {
-        var resp = try http.resolveRequestCurl(&arena, url, &http.general_request_headers_curl);
-        defer resp.deinit();
-        print("STATUS_CODE: {d}\n", .{resp.status_code});
-        print("HEADERS: {s}\n", .{resp.headers_fifo.readableSlice(0)});
-        // print("BODY: {s}\n", .{resp.body_fifo.readableSlice(0)});
-    }
-}
-
-test "@active tmp" {
-    std.testing.log_level = .debug;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const allocator = arena.allocator();
-    var storage = try Storage.init(allocator, null);
-
-    // Test adding file and link (html)
-    // Command: feedgaze add test/rss2.xml http://localhost:8080/many-links.html
-
-    // TODO: construct abs_path?
-    const abs_path = "/media/hdd/code/feedgaze/test/rss2.xml";
-    const url = "http://localhost:8080/many-links.html";
-
-    {
-        var local = abs_path;
-        var locations = &.{ local, url };
-        const expected_local = "Added local feed: " ++ abs_path ++ "\n";
-        const expected_url = comptime fmt.comptimePrint(
-            \\Fetching feed {s}
-            \\Parse Feed Links | http://localhost:8080/many-links.html
-            \\  1. [RSS] Rss 2 http://localhost:8080/rss2.rss
-            \\  2. [Unknown] Rss 2 http://localhost:8080/rss2.xml
-            \\  3. [Atom] Atom feed http://localhost:8080/atom.atom
-            \\  4. [Atom] Not Duplicate http://localhost:8080/rss2.rss
-            \\  5. [Unknown] Atom feed http://localhost:8080/atom.xml
-            \\Enter link number: <no-number>
-            \\Invalid number: '<no-number>'. Try again.
-            \\Enter link number: 111
-            \\Number out of range: '111'. Try again.
-            \\Enter link number: 2
-            \\Fetching feed http://localhost:8080/rss2.xml
-            \\Feed added 'http://localhost:8080/rss2.xml'
-            \\
-        , .{url});
-        const expected = expected_local ++ expected_url;
-        try testAddFeed(&storage, locations, expected);
-    }
-}
-
+// TODO: test update (updateFeeds)
 test "local and url: add, update, delete, html links, print" {
     std.testing.log_level = .debug;
 
@@ -535,7 +472,7 @@ test "local and url: add, update, delete, html links, print" {
             \\Number out of range: '111'. Try again.
             \\Enter link number: 2
             \\Fetching feed http://localhost:8080/rss2.xml
-            \\Feed added http://localhost:8080/rss2.xml
+            \\Feed added 'http://localhost:8080/rss2.xml'
             \\
         , .{url});
         const expected = expected_local ++ expected_url;
