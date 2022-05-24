@@ -140,3 +140,11 @@ fn errorFromCurl(code: libcurl.c.CURLcode) libcurl.Error {
         },
     };
 }
+
+pub fn getLastHeader(headers_str: []const u8) []const u8 {
+    const sep = "\r\n\r\n";
+    const header_start = std.mem.lastIndexOfLinear(u8, headers_str[0 .. headers_str.len - sep.len], sep) orelse 0;
+    // If there is only one header (no redirects) 4 characters from start of the status line
+    // will be remove. Don't care about it
+    return headers_str[header_start + sep.len ..];
+}

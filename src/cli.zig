@@ -167,12 +167,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     log.warn("Failed to resolve link '{s}'. Failed HTTP status code: {d}", .{ url, tmp_resp.status_code });
                     return;
                 }
-                var headers_slice = tmp_resp.headers_fifo.readableSlice(0);
-                const sep = "\r\n\r\n";
-                const header_start = mem.lastIndexOfLinear(u8, headers_slice[0 .. headers_slice.len - sep.len], sep) orelse 0;
-                // If there is only one header (no redirects) 4 characters from start of the status line
-                // will be remove. Don't care about it
-                last_header = headers_slice[header_start + sep.len ..];
+
+                last_header = curl.getLastHeader(tmp_resp.headers_fifo.readableSlice(0));
 
                 const key_content_type = "content-type:";
                 var content_type_value: []const u8 = "";
