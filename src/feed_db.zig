@@ -19,6 +19,7 @@ const Table = @import("queries.zig").Table;
 const f = @import("feed.zig");
 const Feed = f.Feed;
 const zfetch = @import("zfetch");
+const curl = @import("curl_extend.zig");
 
 // TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
 // Storage would be specific functions. Db would be utility/helper/wrapper functions
@@ -317,21 +318,23 @@ pub const Storage = struct {
         var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
         for (rows) |row| {
             log.info("Updating: '{s}'", .{row.location});
-            const req = try http.resolveRequest(&arena, row.location, &http.general_request_headers);
+            var resp = try http.resolveRequestCurl(&arena, row.location, &http.general_request_headers_curl);
+            defer resp.deinit();
 
-            switch (req.status.code) {
+            switch (resp.status_code) {
                 200 => {},
                 304 => {
                     log.info("Skip updating feed {s}. Feed hasn't been modified/changed", .{row.location});
                     continue;
                 },
                 else => {
-                    log.info("Skip updating feed {s}. Something went wrong with HTTP request: {d} {s}", .{ row.location, req.status.code, req.status.reason });
+                    log.info("Skip updating feed {s}. Failed HTTP request code: {d} ", .{ row.location, resp.status_code });
                     continue;
                 },
             }
 
-            const content_type_value = http.getContentType(req.headers.list.items) orelse {
+            const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+            const content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
                 log.info("Skip updating feed {s}. Found no Content-Type HTTP header", .{row.location});
                 continue;
             };
@@ -346,9 +349,9 @@ pub const Storage = struct {
                 else => {},
             }
 
-            const body = try http.getRequestBody(&arena, req);
+            const body = resp.body_fifo.readableSlice(0);
             const feed = try f.Feed.initParse(&arena, row.location, body, content_type);
-            const feed_update = try f.FeedUpdate.fromHeaders(req.headers.list.items);
+            const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
             defer savepoint.rollback();
             const update_data = UpdateData{
@@ -780,7 +783,7 @@ pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, head
     return req;
 }
 
-test "@active add, delete feed" {
+test "add, delete feed" {
     // std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -974,7 +977,7 @@ test "different urls, same feed items" {
 }
 
 // Requires running test server - cmd: just test-server
-test "updateUrlFeeds: check that only neccessary url feeds are updated" {
+test "@active updateUrlFeeds: check that only neccessary url feeds are updated" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);

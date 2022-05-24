@@ -22,6 +22,7 @@ const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
 const assert = std.debug.assert;
 const Storage = @import("feed_db.zig").Storage;
+const curl = @import("curl_extend.zig");
 
 pub fn makeCli(
     allocator: Allocator,
@@ -436,7 +437,6 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
-const curl = @import("curl_extend.zig");
 test "tmp" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
