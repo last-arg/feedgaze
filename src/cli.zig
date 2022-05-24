@@ -150,6 +150,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer arena.deinit();
             const writer = self.writer;
             var start_url = try url_util.makeValidUrl(arena.allocator(), input_url);
+            try curl.globalInit();
+            defer curl.globalCleanup();
             var url = start_url;
             var last_header: []const u8 = "";
             var content_type: http.ContentType = .unknown;
@@ -307,6 +309,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         pub fn updateFeeds(self: *Self) !void {
             if (self.options.url) {
+                try curl.globalInit();
+                defer curl.globalCleanup();
                 self.feed_db.updateUrlFeeds(.{ .force = self.options.force }) catch {
                     log.err("Failed to update feeds", .{});
                     return;
