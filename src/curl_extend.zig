@@ -148,3 +148,15 @@ pub fn getLastHeader(headers_str: []const u8) []const u8 {
     // will be remove. Don't care about it
     return headers_str[header_start + sep.len ..];
 }
+
+pub fn getHeaderValue(header: []const u8, key: []const u8) ?[]const u8 {
+    var iter = std.mem.split(u8, header, "\r\n");
+    while (iter.next()) |line| {
+        if (std.ascii.startsWithIgnoreCase(line, key)) {
+            const value = line[key.len + 1 ..];
+            const last_index = std.mem.indexOfScalar(u8, value, ';') orelse value.len;
+            return std.mem.trim(u8, value[0..last_index], "\r\n ");
+        }
+    }
+    return null;
+}

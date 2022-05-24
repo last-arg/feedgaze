@@ -170,22 +170,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                 last_header = curl.getLastHeader(tmp_resp.headers_fifo.readableSlice(0));
 
-                const key_content_type = "content-type:";
-                var content_type_value: []const u8 = "";
-                var iter = mem.split(u8, last_header, "\r\n");
-                while (iter.next()) |line| {
-                    if (ascii.startsWithIgnoreCase(line, key_content_type)) {
-                        const value = line[key_content_type.len + 1 ..];
-                        const last_index = mem.indexOfScalar(u8, value, ';') orelse value.len;
-                        content_type_value = mem.trim(u8, value[0..last_index], "\r\n ");
-                        break;
-                    }
-                }
-
-                if (content_type_value.len == 0) {
+                var content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
                     log.warn("Didn't find Content-Type header. From url '{s}'", .{url});
                     return;
-                }
+                };
 
                 content_type = http.ContentType.fromString(content_type_value);
                 if (content_type == .unknown) {
