@@ -23,6 +23,7 @@ const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
 const web = @import("apple_pie");
 const router = web.router;
+const curl = @import("curl_extend.zig");
 
 // Resources
 // POST-REDIRECT-GET | https://andrewlock.net/post-redirect-get-using-tempdata-in-asp-net-core/
@@ -220,17 +221,20 @@ pub const Server = struct {
                 return;
             };
 
-            const url_req = try http.resolveRequest(&arena, valid_url, &http.general_request_headers);
-            const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
+            const resp = try http.resolveRequestCurl(&arena, valid_url, &http.general_request_headers_curl);
+            const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+
+            const content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
                 try w.writeAll("<p>Failed to find Content-Type</p>");
                 try w.print(form_fmt, .{ url, tags });
                 ctx.sessions.remove(session_index.?);
                 return;
             };
+
             const content_type = http.ContentType.fromString(content_type_value);
             switch (content_type) {
                 .html => {
-                    const body = try http.getRequestBody(&arena, url_req);
+                    const body = resp.body_fifo.readableSlice(0);
                     const html_page = try parse.Html.parseLinks(arena.allocator(), body);
                     const base_uri = try zuri.Uri.parse(valid_url, true);
                     const fallback_title = html_page.title orelse "<no-title>";
@@ -265,9 +269,9 @@ pub const Server = struct {
                 else => {},
             }
 
-            const body = try http.getRequestBody(&arena, url_req);
+            const body = resp.body_fifo.readableSlice(0);
             const feed = try f.Feed.initParse(&arena, valid_url, body, content_type);
-            const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
+            const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
             _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
 
             try w.print("<p>Added new feed {s}</p>", .{valid_url});
@@ -300,8 +304,10 @@ pub const Server = struct {
             defer ctx.sessions.remove(session_index.?);
 
             for (links.items) |link| {
-                const url_req = try http.resolveRequest(&arena, link, &http.general_request_headers);
-                const content_type_value = http.getContentType(url_req.headers.list.items) orelse {
+                const resp = try http.resolveRequestCurl(&arena, link, &http.general_request_headers_curl);
+
+                const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+                const content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
                     try w.writeAll("<p>No Content-Type HTTP header</p>");
                     try w.print(form_fmt, .{ url, tags });
                     return;
@@ -317,9 +323,9 @@ pub const Server = struct {
                     else => {},
                 }
 
-                const body = try http.getRequestBody(&arena, url_req);
+                const body = resp.body_fifo.readableSlice(0);
                 const feed = try f.Feed.initParse(&arena, link, body, content_type);
-                const feed_update = try f.FeedUpdate.fromHeaders(url_req.headers.list.items);
+                const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
                 _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
                 try w.print("<p>Added feed {s}</p>", .{link});
             }
@@ -646,7 +652,7 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     return error.TestExpectedContains;
 }
 
-test "post, get" {
+test "@active post, get" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
