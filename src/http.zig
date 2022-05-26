@@ -125,58 +125,18 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, req_heade
     return resp;
 }
 
-pub fn resolveRequest(arena: *ArenaAllocator, url: []const u8, headers_slice: []zfetch.Header) !*zfetch.Request {
-    try zfetch.init();
-    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
-
-    var headers = zfetch.Headers.init(arena.allocator());
-    defer headers.deinit();
-    try headers.appendSlice(headers_slice);
-
-    var current_url = url;
-    var req = try makeRequest(arena, url, headers);
-    var redirect_count: u16 = 0;
-    while (redirect_count < max_redirects) : (redirect_count += 1) {
-        switch (req.status.code) {
-            301, 307, 308 => {
-                const location = blk: {
-                    for (req.headers.list.items) |h| {
-                        if (ascii.eqlIgnoreCase("location", h.name)) break :blk h.value;
-                    }
-                    return error.MissingLocationHeader;
-                };
-                const uri = try Uri.parse(req.url, true);
-                current_url = try url_util.makeWholeUrl(arena.allocator(), uri, location);
-                log.info("Redirecting to {s}", .{current_url});
-                // Clean old request data
-                req.deinit();
-                req = try makeRequest(arena, current_url, headers);
-            },
-            else => break,
-        }
-    }
-
-    return req;
-}
-
-test "resolveRequest()" {
+test "resolveRequestCurl()" {
     std.testing.log_level = .debug;
     const testing = std.testing;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    try zfetch.init();
-    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
-
-    var headers = [_]zfetch.Header{
-        .{ .name = "Connection", .value = "close" },
-        .{ .name = "Accept-Encoding", .value = "gzip" },
-        .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
-    };
+    try curl.globalInit();
+    defer curl.globalCleanup();
 
     // url redirects
-    const req = try resolveRequest(&arena, "http://localhost:8080/rss2", &headers);
-    try expectEqual(req.status.code, 200);
+    const req = try resolveRequestCurl(&arena, "http://localhost:8080/rss2", &general_request_headers_curl);
+    try expectEqual(req.status_code, 200);
 }
 
 pub fn makeUri(location: []const u8) !Uri {
