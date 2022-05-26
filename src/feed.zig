@@ -7,7 +7,6 @@ const http = @import("http.zig");
 const url_util = @import("url.zig");
 const Uri = @import("zuri").Uri;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const zfetch = @import("zfetch");
 const log = std.log;
 const parse = @import("parse.zig");
 const dateStrToTimeStamp = parse.Rss.pubDateToTimestamp;
@@ -94,30 +93,6 @@ pub const FeedUpdate = struct {
                     if (ascii.startsWithIgnoreCase(value, "max-age") or ascii.startsWithIgnoreCase(value, "s-maxage")) {
                         const eq_index = mem.indexOfScalar(u8, value, '=') orelse continue;
                         result.cache_control_max_age = try fmt.parseInt(u32, value[eq_index + 1 ..], 10);
-                        break;
-                    }
-                }
-            }
-        }
-        return result;
-    }
-
-    pub fn fromHeaders(headers: []zfetch.Header) !@This() {
-        var result: @This() = .{};
-        for (headers) |header| {
-            if (ascii.eqlIgnoreCase("etag", header.name)) {
-                result.etag = header.value;
-            } else if (ascii.eqlIgnoreCase("last-modified", header.name)) {
-                result.last_modified_utc = dateStrToTimeStamp(header.value) catch continue;
-            } else if (ascii.eqlIgnoreCase("expires", header.name)) {
-                result.expires_utc = dateStrToTimeStamp(header.value) catch continue;
-            } else if (ascii.eqlIgnoreCase("cache-control", header.name)) {
-                var it = mem.split(u8, header.value, ",");
-                while (it.next()) |v_raw| {
-                    const v = mem.trimLeft(u8, v_raw, " \r\n\t");
-                    if (ascii.startsWithIgnoreCase(v, "max-age") or ascii.startsWithIgnoreCase(v, "s-maxage")) {
-                        const eq_index = mem.indexOfScalar(u8, v, '=') orelse continue;
-                        result.cache_control_max_age = try fmt.parseInt(u32, v[eq_index + 1 ..], 10);
                         break;
                     }
                 }

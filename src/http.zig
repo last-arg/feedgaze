@@ -12,11 +12,7 @@ const expectEqual = std.testing.expectEqual;
 const print = std.debug.print;
 const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
-
-pub var general_request_headers = [_]zfetch.Header{
-    .{ .name = "Accept-Encoding", .value = "gzip" },
-    .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html" },
-};
+const curl = @import("curl_extend.zig");
 
 pub var general_request_headers_curl = [_][:0]const u8{
     "Accept: application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html",
@@ -59,15 +55,6 @@ pub const ContentType = enum {
     }
 };
 
-const max_redirects = 3;
-
-pub fn makeRequest(arena: *ArenaAllocator, url: []const u8, headers: zfetch.Headers) !*zfetch.Request {
-    var req = try zfetch.Request.init(arena.allocator(), url, null);
-    try req.do(.GET, headers, null);
-    return req;
-}
-
-const curl = @import("curl_extend.zig");
 const Fifo = std.fifo.LinearFifo(u8, .{ .Dynamic = {} });
 pub const Response = struct {
     status_code: isize,
