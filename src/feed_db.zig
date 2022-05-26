@@ -318,7 +318,7 @@ pub const Storage = struct {
         var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
         for (rows) |row| {
             log.info("Updating: '{s}'", .{row.location});
-            var resp = try http.resolveRequestCurl(&arena, row.location, &http.general_request_headers_curl);
+            var resp = try http.resolveRequestCurl(&arena, row.location, .{});
             defer resp.deinit();
 
             switch (resp.status_code) {

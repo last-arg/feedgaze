@@ -160,7 +160,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var tries_left: u8 = 3;
             while (tries_left > 0) : (tries_left -= 1) {
                 try writer.print("Fetching feed {s}\n", .{url});
-                var tmp_resp = http.resolveRequestCurl(&arena, url, &http.general_request_headers_curl) catch |err| {
+                var tmp_resp = http.resolveRequestCurl(&arena, url, .{}) catch |err| {
                     log.warn("Failed to resolve link '{s}'. Error: {s}", .{ url, @errorName(err) });
                     return;
                 };

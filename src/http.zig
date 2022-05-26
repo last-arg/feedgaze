@@ -70,7 +70,13 @@ pub const Response = struct {
     }
 };
 
-pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, req_headers: [][]const u8) !Response {
+pub const RequestOptions = struct {
+    follow: bool = true,
+    headers: [][]const u8 = &general_request_headers_curl,
+    post_data: ?[]u8 = null,
+};
+
+pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: RequestOptions) !Response {
     const allocator = arena.allocator();
     var body_fifo = Fifo.init(allocator);
     var headers_fifo = Fifo.init(allocator);
@@ -78,7 +84,7 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, req_heade
     var headers = curl.HeaderList.init();
     defer headers.freeAll();
     var stack_alloc = std.heap.stackFallback(128, arena.allocator());
-    for (req_headers) |header| {
+    for (opts.headers) |header| {
         const header_null = try stack_alloc.get().dupeZ(u8, header);
         try headers.append(header_null);
     }
@@ -90,13 +96,17 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, req_heade
 
     try easy.setUrl(url);
     try easy.setAcceptEncodingGzip();
-    try easy.setFollowLocation(true);
+    try easy.setFollowLocation(opts.follow);
     try easy.setHeaders(headers);
     try easy.setSslVerifyPeer(false);
     try curl.setHeaderWriteFn(easy, curl.writeToFifo(Fifo));
     try curl.setHeaderWriteData(easy, &headers_fifo);
     try easy.setWriteFn(curl.writeToFifo(Fifo));
     try easy.setWriteData(&body_fifo);
+    if (opts.post_data) |*data| {
+        try easy.setPostFields(data.ptr);
+        try easy.setPostFieldSize(data.len);
+    }
     // try easy.setVerbose(true);
     try easy.perform();
 

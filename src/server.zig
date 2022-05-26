@@ -221,7 +221,7 @@ pub const Server = struct {
                 return;
             };
 
-            const resp = try http.resolveRequestCurl(&arena, valid_url, &http.general_request_headers_curl);
+            const resp = try http.resolveRequestCurl(&arena, valid_url, .{});
             const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
 
             const content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
@@ -304,7 +304,7 @@ pub const Server = struct {
             defer ctx.sessions.remove(session_index.?);
 
             for (links.items) |link| {
-                const resp = try http.resolveRequestCurl(&arena, link, &http.general_request_headers_curl);
+                const resp = try http.resolveRequestCurl(&arena, link, .{});
 
                 const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
                 const content_type_value = curl.getHeaderValue(last_header, "content-type:") orelse {
