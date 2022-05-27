@@ -18,7 +18,6 @@ const ArrayList = std.ArrayList;
 const Table = @import("queries.zig").Table;
 const f = @import("feed.zig");
 const Feed = f.Feed;
-const zfetch = @import("zfetch");
 const curl = @import("curl_extend.zig");
 
 // TODO: Mabye consolidate Storage (feed_db.zig) and Db (db.zig)
@@ -773,14 +772,6 @@ fn equalNullString(a: ?[]const u8, b: ?[]const u8) bool {
     if (a == null and b == null) return true;
     if (a == null or b == null) return false;
     return mem.eql(u8, a.?, b.?);
-}
-
-pub fn testResolveRequest(arena: *std.heap.ArenaAllocator, url: []const u8, headers_slice: []zfetch.Header) !*zfetch.Request {
-    _ = arena;
-    _ = url;
-    _ = headers_slice;
-    var req = try zfetch.Request.init(arena.allocator(), url, null);
-    return req;
 }
 
 test "add, delete feed" {

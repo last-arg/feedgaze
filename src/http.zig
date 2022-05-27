@@ -6,7 +6,6 @@ const ascii = std.ascii;
 const Uri = @import("zuri").Uri;
 const log = std.log;
 const dateStrToTimeStamp = @import("parse.zig").Rss.pubDateToTimestamp;
-const zfetch = @import("zfetch");
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const print = std.debug.print;
@@ -147,35 +146,4 @@ test "makeUri" {
     const url = try makeUri("google.com");
     try std.testing.expectEqualSlices(u8, "http", url.scheme);
     try std.testing.expectEqualSlices(u8, "/", url.path);
-}
-
-pub fn getRequestBody(arena: *ArenaAllocator, req: *zfetch.Request) ![]const u8 {
-    const req_reader = req.reader();
-    const encoding = req.headers.search("Content-Encoding");
-
-    if (encoding) |enc| {
-        if (mem.eql(u8, enc.value, "gzip")) {
-            var stream = try std.compress.gzip.gzipStream(arena.allocator(), req_reader);
-            defer stream.deinit(); // let ArenaAllocator free all the allocations?
-            const reader = stream.reader();
-            return try reader.readAllAlloc(arena.allocator(), std.math.maxInt(usize));
-        }
-        log.warn("Can't handle Content-Encoding {s}. From url {s}", .{ enc.value, req.url });
-        return error.UnhandledContentEncoding;
-    }
-
-    return try req_reader.readAllAlloc(arena.allocator(), std.math.maxInt(usize));
-}
-
-pub fn getContentType(headers: []zfetch.Header) ?[]const u8 {
-    var value_opt: ?[]const u8 = null;
-    for (headers) |h| {
-        if (ascii.eqlIgnoreCase(h.name, "content-type")) {
-            value_opt = h.value;
-        }
-    }
-
-    const value = value_opt orelse return null;
-    const end = mem.indexOf(u8, value, ";") orelse value.len;
-    return value[0..end];
 }

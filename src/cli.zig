@@ -7,7 +7,6 @@ const ascii = std.ascii;
 const log = std.log;
 const parse = @import("parse.zig");
 const http = @import("http.zig");
-const zfetch = @import("zfetch");
 const Uri = @import("zuri").Uri;
 const url_util = @import("url.zig");
 const f = @import("feed.zig");
