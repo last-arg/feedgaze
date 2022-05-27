@@ -17,7 +17,6 @@ const http = @import("http.zig");
 const parse = @import("parse.zig");
 const f = @import("feed.zig");
 const zuri = @import("zuri");
-const zfetch = @import("zfetch");
 const log = std.log;
 const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
@@ -417,6 +416,7 @@ pub const Server = struct {
         var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
 
+        // TODO: if now tags print something else
         var all_tags = try ctx.storage.getAllTags();
         const tags_raw = @ptrCast(
             *const []const u8,
@@ -652,7 +652,8 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     return error.TestExpectedContains;
 }
 
-test "@active post, get" {
+test "post, get" {
+    std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
@@ -665,24 +666,25 @@ test "@active post, get" {
     std.time.sleep(1 * std.time.ns_per_ms);
     print("Run server tests\n", .{});
 
-    var headers = zfetch.Headers.init(arena.allocator());
-    defer headers.deinit();
+    try curl.globalInit();
+    defer curl.globalCleanup();
+    const new_len = http.general_request_headers_curl.len + 1;
+    var new_headers: [new_len][]const u8 = undefined;
+    for (http.general_request_headers_curl) |header, i| new_headers[i] = header;
 
     const url = "http://localhost:8282";
 
     {
         // Index page
-        const req = try zfetch.Request.init(arena.allocator(), url ++ "/", null);
-        defer req.deinit();
-        try req.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req.status.code);
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/", .{ .follow = false });
+        defer resp.deinit();
+        try expectEqual(@as(isize, 200), resp.status_code);
     }
 
     {
-        const req = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        try req.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req.status.code);
-        const resp_body = try http.getRequestBody(&arena, req);
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false });
+        try expectEqual(@as(isize, 200), resp.status_code);
+        const resp_body = resp.body_fifo.readableSlice(0);
         try expectContains(resp_body, "name=\"feed_url\"");
         try expectContains(resp_body, "name=\"tags\"");
         try expectContains(resp_body, "name=\"submit_feed\"");
@@ -690,21 +692,19 @@ test "@active post, get" {
 
     {
         // Try to add feed. Links return multiple links.
-        const body = "feed_url=localhost%3A8080%2Fmany-links.html&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
-        const req = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        try req.do(.POST, headers, body);
-        try expectEqual(@as(u16, 302), req.status.code);
-        for (req.headers.list.items) |h| {
-            if (std.ascii.eqlIgnoreCase("set-cookie", h.name)) {
-                try headers.appendValue("Cookie", h.value);
-            }
-        }
-        try expectEqual(headers.contains("Cookie"), true);
+        const payload = "feed_url=localhost%3A8080%2Fmany-links.html&tags=tag1%2C+tag2%2C+tag3&submit_feed=";
+        var opts = .{ .follow = false, .post_data = try arena.allocator().dupe(u8, payload) };
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", opts);
+        defer resp.deinit();
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        try req1.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req1.status.code);
-        const resp_body = try http.getRequestBody(&arena, req1);
+        const cookie_value = curl.getHeaderValue(resp.headers_fifo.readableSlice(0), "set-cookie:");
+        try expect(cookie_value != null);
+        new_headers[new_len - 1] = try fmt.allocPrint(arena.allocator(), "Cookie: {s}", .{cookie_value.?});
+
+        var resp1 = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false, .headers = &new_headers });
+        defer resp1.deinit();
+        try expectEqual(@as(isize, 200), resp1.status_code);
+        const resp_body = resp1.body_fifo.readableSlice(0);
         try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
         try expectContains(resp_body, "name=\"feed_link_checkbox\"");
         try expectContains(resp_body, "name=\"submit_feed_links\"");
@@ -712,15 +712,15 @@ test "@active post, get" {
 
     {
         // No links chosen
-        const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox&submit_feed_links=";
-        const req2 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        try req2.do(.POST, headers, body_links);
+        const payload = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox&submit_feed_links=";
+        var opts = .{ .follow = false, .post_data = try arena.allocator().dupe(u8, payload), .headers = &new_headers };
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", opts);
+        defer resp.deinit();
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        defer req1.deinit();
-        try req1.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req1.status.code);
-        const resp_body = try http.getRequestBody(&arena, req1);
+        var resp1 = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false, .headers = &new_headers });
+        defer resp1.deinit();
+        try expectEqual(@as(isize, 200), resp1.status_code);
+        const resp_body = resp1.body_fifo.readableSlice(0);
         try expectContains(resp_body, "Please choose atleast one link");
         try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
         try expectContains(resp_body, "name=\"feed_link_checkbox\"");
@@ -729,25 +729,24 @@ test "@active post, get" {
 
     {
         // Choose two links
-        const body_links = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&submit_feed_links=";
-        const req2 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        try req2.do(.POST, headers, body_links);
+        const payload = "tags=tag1%2C+tag2%2C+tag3&feed_url=http%3A%2F%2Flocalhost%3A8080%2Fmany-links.html&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&feed_link_checkbox=http%3A%2F%2Flocalhost%3A8080%2Frss2.rss&submit_feed_links=";
+        var opts = .{ .follow = false, .post_data = try arena.allocator().dupe(u8, payload), .headers = &new_headers };
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", opts);
+        defer resp.deinit();
 
-        const req1 = try zfetch.Request.init(arena.allocator(), url ++ "/feed/add", null);
-        defer req1.deinit();
-        try req1.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req1.status.code);
-        const resp_body = try http.getRequestBody(&arena, req1);
+        var resp1 = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false, .headers = &new_headers });
+        defer resp1.deinit();
+        try expectEqual(@as(isize, 200), resp1.status_code);
+        const resp_body = resp1.body_fifo.readableSlice(0);
         try expectContains(resp_body, "Added feed http://localhost:8080/rss2.rss");
         try expectContains(resp_body, "name=\"submit_feed\"");
     }
 
     {
         // Tags page
-        const req = try zfetch.Request.init(arena.allocator(), url ++ "/tag/tag1%2Btag2%2Bhello%20tag", null);
-        try req.do(.GET, headers, null);
-        try expectEqual(@as(u16, 200), req.status.code);
-        const resp_body = try http.getRequestBody(&arena, req);
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/tag/tag1%2Btag2%2Bhello%20tag", .{ .follow = false });
+        try expectEqual(@as(isize, 200), resp.status_code);
+        const resp_body = resp.body_fifo.readableSlice(0);
         try expectContains(resp_body, "href=\"/tag/tag2\"");
         try expectContains(resp_body, "href=\"http://liftoff.msfc.nasa.gov/\"");
         try expectContains(resp_body, "[active]");

@@ -73,7 +73,7 @@ pub const Response = struct {
 pub const RequestOptions = struct {
     follow: bool = true,
     headers: [][]const u8 = &general_request_headers_curl,
-    post_data: ?[]u8 = null,
+    post_data: ?[]u8 = null, // At the moment only used when testing server.zig code
 };
 
 pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: RequestOptions) !Response {
