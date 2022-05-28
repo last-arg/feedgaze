@@ -649,16 +649,16 @@ const global = struct {
     const port = 8282;
 };
 
-fn expectContains(haystack: []const u8, needle: []const u8) !void {
-    if (mem.indexOf(u8, haystack, needle) != null) return;
-
-    print("\n====== expected to find: =========\n", .{});
-    print("{s}", .{needle});
-    print("\n========= in string: ==============\n", .{});
-    print("{s}", .{haystack});
-    print("\n======================================\n", .{});
-
-    return error.TestExpectedContains;
+fn expectContains(haystack: []const u8, needles: [][]const u8) !void {
+    for (needles) |needle| {
+        if (mem.indexOf(u8, haystack, needle) == null) {
+            print("\n====== expected to find: =========\n", .{});
+            print("{s}", .{needle});
+            print("\n========= in string: ==============\n", .{});
+            print("{s}", .{haystack});
+            print("\n======================================\n", .{});
+        }
+    }
 }
 
 // TODO: Reason why on failing test I don't get error trace
@@ -699,9 +699,12 @@ test "post, get" {
         var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false });
         try expectEqual(@as(isize, 200), resp.status_code);
         const resp_body = resp.body_fifo.readableSlice(0);
-        try expectContains(resp_body, "name=\"feed_url\"");
-        try expectContains(resp_body, "name=\"tags\"");
-        try expectContains(resp_body, "name=\"submit_feed\"");
+        var values = [_][]const u8{
+            "name=\"feed_url\"",
+            "name=\"tags\"",
+            "name=\"submit_feed\"",
+        };
+        try expectContains(resp_body, &values);
     }
 
     {
@@ -719,9 +722,12 @@ test "post, get" {
         defer resp1.deinit();
         try expectEqual(@as(isize, 200), resp1.status_code);
         const resp_body = resp1.body_fifo.readableSlice(0);
-        try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
-        try expectContains(resp_body, "name=\"feed_link_checkbox\"");
-        try expectContains(resp_body, "name=\"submit_feed_links\"");
+        var values = [_][]const u8{
+            "value=\"http://localhost:8080/rss2.rss\"",
+            "name=\"feed_link_checkbox\"",
+            "name=\"submit_feed_links\"",
+        };
+        try expectContains(resp_body, &values);
     }
 
     {
@@ -735,10 +741,13 @@ test "post, get" {
         defer resp1.deinit();
         try expectEqual(@as(isize, 200), resp1.status_code);
         const resp_body = resp1.body_fifo.readableSlice(0);
-        try expectContains(resp_body, "Please choose atleast one link");
-        try expectContains(resp_body, "value=\"http://localhost:8080/rss2.rss\"");
-        try expectContains(resp_body, "name=\"feed_link_checkbox\"");
-        try expectContains(resp_body, "name=\"submit_feed_links\"");
+        var values = [_][]const u8{
+            "Please choose atleast one link",
+            "value=\"http://localhost:8080/rss2.rss\"",
+            "name=\"feed_link_checkbox\"",
+            "name=\"submit_feed_links\"",
+        };
+        try expectContains(resp_body, &values);
     }
 
     {
@@ -752,8 +761,11 @@ test "post, get" {
         defer resp1.deinit();
         try expectEqual(@as(isize, 200), resp1.status_code);
         const resp_body = resp1.body_fifo.readableSlice(0);
-        try expectContains(resp_body, "Added feed http://localhost:8080/rss2.rss");
-        try expectContains(resp_body, "name=\"submit_feed\"");
+        var values = [_][]const u8{
+            "Added feed http://localhost:8080/rss2.rss",
+            "name=\"submit_feed\"",
+        };
+        try expectContains(resp_body, &values);
     }
 
     {
@@ -761,10 +773,13 @@ test "post, get" {
         var resp = try http.resolveRequestCurl(&arena, url ++ "/tag/tag1%2Btag2%2Bhello%20tag", .{ .follow = false });
         try expectEqual(@as(isize, 200), resp.status_code);
         const resp_body = resp.body_fifo.readableSlice(0);
-        try expectContains(resp_body, "href=\"/tag/tag2\"");
-        try expectContains(resp_body, "href=\"http://liftoff.msfc.nasa.gov/\"");
-        try expectContains(resp_body, "[active]");
-        try expectContains(resp_body, "href=\"/tag/tag1+tag2+tag3\"");
+        var values = [_][]const u8{
+            "href=\"/tag/tag2\"",
+            "href=\"http://liftoff.msfc.nasa.gov/\"",
+            "[active]",
+            "href=\"/tag/tag1+tag2+tag3\"",
+        };
+        try expectContains(resp_body, &values);
     }
 
     print("\nServer tests done\n", .{});
