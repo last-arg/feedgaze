@@ -121,6 +121,7 @@ const Sessions = struct {
 pub const Server = struct {
     const Self = @This();
     context: Context,
+    web_server: *web.Server,
 
     const Context = struct {
         storage: *Storage,
@@ -129,16 +130,27 @@ pub const Server = struct {
     };
 
     pub fn init(allocator: Allocator, storage: *Storage) !Self {
-        var context: Context = .{
-            .sessions = &Sessions.init(allocator),
+        var server = try allocator.create(web.Server);
+        errdefer allocator.destroy(server);
+        server.* = web.Server.init();
+        var sessions = try allocator.create(Sessions);
+        errdefer allocator.destroy(sessions);
+        sessions.* = Sessions.init(allocator);
+        const context: Context = .{
+            .sessions = sessions,
             .storage = storage,
             .allocator = allocator,
         };
+        return Server{ .context = context, .web_server = server };
+    }
+
+    pub fn run(self: *Self) !void {
+        const addr = try std.net.Address.parseIp(global.ip, global.port);
         const builder = router.Builder(*Context);
-        try web.listenAndServe(
-            allocator,
-            try std.net.Address.parseIp(global.ip, global.port),
-            &context,
+        try self.web_server.run(
+            self.context.allocator,
+            addr,
+            &self.context,
             comptime router.Router(*Context, &.{
                 builder.get("/", null, indexGet),
                 builder.get("/feed/add", null, feedAddGet),
@@ -146,12 +158,15 @@ pub const Server = struct {
                 builder.get("/tag/:tags", []const u8, tagGet),
             }),
         );
-
-        return Server{ .context = context };
     }
 
-    pub fn deinit(self: Self) void {
+    pub fn deinit(self: *Self) void {
         self.context.sessions.deinit();
+    }
+
+    pub fn shutdown(self: *Self) void {
+        self.deinit();
+        self.web_server.shutdown();
     }
 
     fn feedAddGet(ctx: *Context, res: *web.Response, req: web.Request, _: ?*const anyopaque) !void {
@@ -634,12 +649,6 @@ const global = struct {
     const port = 8282;
 };
 
-fn testServer(allocator: Allocator) !void {
-    var storage = try Storage.init(allocator, null);
-    const server = try Server.init(allocator, &storage);
-    server.deinit();
-}
-
 fn expectContains(haystack: []const u8, needle: []const u8) !void {
     if (mem.indexOf(u8, haystack, needle) != null) return;
 
@@ -652,27 +661,32 @@ fn expectContains(haystack: []const u8, needle: []const u8) !void {
     return error.TestExpectedContains;
 }
 
+// TODO: Reason why on failing test I don't get error trace
 test "post, get" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
 
-    // TODO: also test db/storage?
-    // TODO: also test session?
-    const thread = try std.Thread.spawn(.{}, testServer, .{arena.allocator()});
-    defer thread.join();
-    // HACK: Make sure server is up before making request
-    std.time.sleep(1 * std.time.ns_per_ms);
-    print("Run server tests\n", .{});
-
-    try curl.globalInit();
-    defer curl.globalCleanup();
+    const url = "http://localhost:8282";
     const new_len = http.general_request_headers_curl.len + 1;
     var new_headers: [new_len][]const u8 = undefined;
     for (http.general_request_headers_curl) |header, i| new_headers[i] = header;
 
-    const url = "http://localhost:8282";
+    try curl.globalInit();
+    defer curl.globalCleanup();
+
+    // TODO: also test db/storage?
+    // TODO: also test session?
+    var storage = try Storage.init(arena.allocator(), null);
+    // https://github.com/Luukdegram/apple_pie/blob/fb695aa9bc4d4a7bcabdd76c420e6b2ce118b2b7/src/server.zig#L210
+    var server = try Server.init(arena.allocator(), &storage);
+    errdefer server.deinit();
+    const thread = try std.Thread.spawn(.{}, Server.run, .{&server});
+    defer {
+        server.shutdown();
+        thread.join();
+    }
 
     {
         // Index page
