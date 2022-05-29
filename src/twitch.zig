@@ -4,7 +4,7 @@ const parse = @import("parse.zig");
 const Feed = parse.Feed;
 const zuri = @import("zuri");
 const ArrayList = std.ArrayList;
-const zfetch = @import("zfetch");
+const ArenaAllocator = std.heap.ArenaAllocator;
 const mem = std.mem;
 const json = std.json;
 const Allocator = mem.Allocator;
@@ -15,6 +15,7 @@ const log = std.log;
 const expect = std.testing.expect;
 const expectEqual = std.testing.expectEqual;
 const expectEqualStrings = std.testing.expectEqualStrings;
+const curl = @import("curl_extend.zig");
 
 // Resource:
 // https://github.com/kickscondor/fraidycat/blob/a0d38b0eef5eb3a6a463f58d17e76b02b0aea310/defs/social.json
@@ -44,31 +45,28 @@ const expectEqualStrings = std.testing.expectEqualStrings;
 // const access_token = "Bearer lwq7tbx9a1ut24nz4rq8uvgpzk10q1";
 // const base_url = "https://api.twitch.tv/helix";
 
-const client_id = "6219780769d92ac44c8797d8b20739";
-const access_token = "Bearer e11a98a862974be";
+const client_id = "15abb4936487b0d256e47253445f35";
+const access_token = "Bearer f3aecd0d35279ac";
 const base_url = "http://localhost:8181/mock";
+
+var twitch_headers = http.general_request_headers_curl ++ [_][:0]const u8{
+    fmt.comptimePrint("Client-Id: {s}", .{client_id}),
+    fmt.comptimePrint("Authorization: {s}", .{access_token}),
+};
 
 const User = struct {
     id: []const u8,
     display_name: []const u8, // Will be feed title
 };
 
-pub fn getFeed(allocator: Allocator, url: []const u8) !Feed {
+pub fn getFeed(arena: *ArenaAllocator, url: []const u8) !Feed {
     const login_name = (try urlToLoginName(url)) orelse return error.NoUserNameInPath;
-
-    try zfetch.init();
-    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
-
-    var headers = zfetch.Headers.init(allocator);
-    try headers.appendValue("Client-Id", client_id);
-    try headers.appendValue("Authorization", access_token);
-
-    const user = (try fetchUserByLogin(allocator, headers, login_name)) orelse return error.NoTwitchUser;
-    const videos = try fetchFeedItems(allocator, headers, user);
+    const user = (try fetchUserByLogin(arena, &twitch_headers, login_name)) orelse return error.NoTwitchUser;
+    const videos = try fetchFeedItems(arena, &twitch_headers, user);
 
     const feed = Feed{
         .title = user.display_name,
-        .link = try fmt.allocPrint(allocator, "https://twitch.tv/{s}/videos", .{login_name}),
+        .link = try fmt.allocPrint(arena.allocator(), "https://twitch.tv/{s}/videos", .{login_name}),
         .items = videos,
     };
 
@@ -76,47 +74,40 @@ pub fn getFeed(allocator: Allocator, url: []const u8) !Feed {
 }
 
 test "getFeed()" {
-    const base_allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(base_allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
+    try curl.globalInit();
+    defer curl.globalCleanup();
 
     const login_name = "skateboarddrake390";
     // There are no videos with type archive in twitch-cli mock database
-    const videos = try getFeed(allocator, "twitch.tv/" ++ login_name);
+    const videos = try getFeed(&arena, "twitch.tv/" ++ login_name);
     _ = videos;
 }
 
 // Fetches archived user videos
-pub fn fetchFeedItems(allocator: Allocator, headers: zfetch.Headers, user: User) ![]Feed.Item {
-    const url = try fmt.allocPrint(allocator, "{s}/videos?type=archive&user_id={s}", .{ base_url, user.id });
-    var req = try zfetch.Request.init(allocator, url, null);
-    // Closing file socket + freeing allocations
-    // defer req.deinit();
-    // Only close the file, let AreanAllocator take care of freeing allocations
-    defer req.socket.close();
+pub fn fetchFeedItems(arena: *ArenaAllocator, headers: [][]const u8, user: User) ![]Feed.Item {
+    const url = try fmt.allocPrint(arena.allocator(), "{s}/videos?type=archive&user_id={s}", .{ base_url, user.id });
+    var resp = try http.resolveRequestCurl(arena, url, .{ .headers = headers });
 
-    try req.do(.GET, headers, null);
-    if (req.status.code == 200) {
-        var is_content_type_json = false;
-        for (req.headers.list.items) |h| {
-            if (mem.eql(u8, h.name, "Content-Type") and mem.eql(u8, h.value, "application/json")) {
-                is_content_type_json = true;
-                break;
+    if (resp.status_code == 200) {
+        const is_content_type_json = blk: {
+            var last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+            if (curl.getHeaderValue(last_header, "content-type:")) |value| {
+                break :blk std.ascii.indexOfIgnoreCase(value, "application/json") != null;
             }
-        }
+            break :blk false;
+        };
         if (!is_content_type_json) return error.InvalidContentType;
 
-        const req_reader = req.reader();
-        const body = try req_reader.readAllAlloc(allocator, std.math.maxInt(usize));
-
-        var p = json.Parser.init(allocator, false);
+        const body = resp.body_fifo.readableSlice(0);
+        var p = json.Parser.init(arena.allocator(), false);
         defer p.deinit();
         var tree = try p.parse(body);
         defer tree.deinit();
 
         var data = tree.root.Object.get("data").?;
-        var items = try ArrayList(Feed.Item).initCapacity(allocator, data.Array.items.len);
+        var items = try ArrayList(Feed.Item).initCapacity(arena.allocator(), data.Array.items.len);
         defer items.deinit();
 
         for (data.Array.items) |video| {
@@ -131,59 +122,48 @@ pub fn fetchFeedItems(allocator: Allocator, headers: zfetch.Headers, user: User)
             });
         }
     } else {
-        log.err("Twitch request to get {s} archive videos failed. Error: {d} {s}", .{ user.display_name, req.status.code, req.status.reason });
+        log.err("Twitch request to get {s} archive videos failed. HTTP status code: {d}", .{ user.display_name, resp.status_code });
         return error.FetchingVideosFailed;
     }
     return &[_]Feed.Item{};
 }
 
-test "@active fetchFeedItems()" {
+test "fetchFeedItems()" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
 
-    try zfetch.init();
-    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
-
-    var headers = zfetch.Headers.init(allocator);
-    try headers.appendValue("Client-Id", client_id);
-    try headers.appendValue("Authorization", access_token);
+    try curl.globalInit();
+    defer curl.globalCleanup();
 
     const login_name = "skateboarddrake390";
-    const user = try fetchUserByLogin(allocator, headers, login_name);
+    const user = try fetchUserByLogin(&arena, &twitch_headers, login_name);
     std.debug.assert(user != null);
     // There are no videos with type archive in twitch-cli mock database
-    _ = try fetchFeedItems(allocator, headers, user.?);
+    _ = try fetchFeedItems(&arena, &twitch_headers, user.?);
 }
 
-pub fn fetchUserByLogin(allocator: Allocator, headers: zfetch.Headers, login_name: []const u8) !?User {
-    const url = try fmt.allocPrint(allocator, "{s}/users?login={s}", .{ base_url, login_name });
-    var req = try zfetch.Request.init(allocator, url, null);
-    // Closing file socket + freeing allocations
-    // defer req.deinit();
-    // Only close the file, let AreanAllocator take care of freeing allocations
-    defer req.socket.close();
+pub fn fetchUserByLogin(arena: *ArenaAllocator, headers: [][]const u8, login_name: []const u8) !?User {
+    const url = try fmt.allocPrint(arena.allocator(), "{s}/users?login={s}", .{ base_url, login_name });
+    var resp = try http.resolveRequestCurl(arena, url, .{ .headers = headers });
 
-    try req.do(.GET, headers, null);
-    if (req.status.code == 200) {
-        var is_content_type_json = false;
-        for (req.headers.list.items) |h| {
-            if (mem.eql(u8, h.name, "Content-Type") and mem.eql(u8, h.value, "application/json")) {
-                is_content_type_json = true;
-                break;
+    if (resp.status_code == 200) {
+        const is_content_type_json = blk: {
+            var last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+            if (curl.getHeaderValue(last_header, "content-type:")) |value| {
+                break :blk std.ascii.indexOfIgnoreCase(value, "application/json") != null;
             }
-        }
+            break :blk false;
+        };
         if (!is_content_type_json) return error.InvalidContentType;
 
-        const req_reader = req.reader();
-        const body = try req_reader.readAllAlloc(allocator, std.math.maxInt(usize));
+        const body = resp.body_fifo.readableSlice(0);
         const Internal = struct { data: []User };
         var stream = std.json.TokenStream.init(body);
-        const users = try std.json.parse(Internal, &stream, .{ .allocator = allocator, .ignore_unknown_fields = true });
+        const users = try std.json.parse(Internal, &stream, .{ .allocator = arena.allocator(), .ignore_unknown_fields = true });
         if (users.data.len > 0) return users.data[0];
     } else {
-        log.err("Twitch API request for login name {s} failed. Error: {d} {s}", .{ login_name, req.status.code, req.status.reason });
+        log.err("Twitch API request for login name '{s}' failed. HTTP status code: {d}", .{ login_name, resp.status_code });
         return error.FetchingUserFailed;
     }
 
@@ -194,23 +174,18 @@ test "fetchUserByLogin()" {
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator();
 
-    try zfetch.init();
-    defer zfetch.deinit(); // Does something on Windows systems. Doesn't allocate anything anyway
-
-    var headers = zfetch.Headers.init(allocator);
-    try headers.appendValue("Client-Id", client_id);
-    try headers.appendValue("Authorization", access_token);
+    try curl.globalInit();
+    defer curl.globalCleanup();
 
     {
         const login_name = "jackjack4";
-        const user = try fetchUserByLogin(allocator, headers, login_name);
+        const user = try fetchUserByLogin(&arena, &twitch_headers, login_name);
         try expect(user != null);
     }
 
     {
-        const user = try fetchUserByLogin(allocator, headers, "no_user");
+        const user = try fetchUserByLogin(&arena, &twitch_headers, "no_user");
         try expect(user == null);
     }
 }
