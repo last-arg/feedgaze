@@ -13,7 +13,7 @@ const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
 const curl = @import("curl_extend.zig");
 
-pub var general_request_headers_curl = [_][:0]const u8{
+pub const general_request_headers_curl = [_][:0]const u8{
     "Accept: application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html",
     "User-Agent: feedgaze 0.1.0",
 };
@@ -132,7 +132,8 @@ test "resolveRequestCurl()" {
     defer curl.globalCleanup();
 
     // url redirects
-    const req = try resolveRequestCurl(&arena, "http://localhost:8080/rss2", &general_request_headers_curl);
+    var headers = general_request_headers_curl;
+    const req = try resolveRequestCurl(&arena, "http://localhost:8080/rss2", .{ .headers = &headers });
     try expectEqual(req.status_code, 200);
 }
 
