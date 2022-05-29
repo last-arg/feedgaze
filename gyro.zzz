@@ -14,21 +14,16 @@ deps:
       url: "https://github.com/Vexu/zuri.git"
       ref: master
       root: src/zuri.zig
-  zfetch:
-    git:
-      url: "https://github.com/truemedian/zfetch.git"
-      ref: master
-      root: src/main.zig
-  known-folders:
-    git:
-      url: "https://github.com/ziglibs/known-folders.git"
-      ref: master
-      root: known-folders.zig
   apple_pie:
     git:
       url: "https://github.com/Luukdegram/apple_pie.git"
       ref: 55b25cf50018fe314606765ca984a0a841743eb5
       root: src/apple_pie.zig
+  known-folders:
+    git:
+      url: "https://github.com/ziglibs/known-folders.git"
+      ref: master
+      root: known-folders.zig
 build_deps:
   mbedtls:
     git:

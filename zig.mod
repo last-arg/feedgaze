@@ -6,6 +6,5 @@ dev_dependencies:
   - src: git https://github.com/vrischmann/zig-sqlite
   - src: git https://github.com/frmdstryr/zig-datetime
   - src: git https://github.com/Vexu/zuri
-  - src: git https://github.com/truemedian/zfetch
   - src: git https://github.com/ziglibs/known-folders
 
