@@ -15,6 +15,7 @@ const curl = @import("curl_extend.zig");
 
 pub var general_request_headers_curl = [_][:0]const u8{
     "Accept: application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html",
+    "User-Agent: feedgaze 0.1.0",
 };
 
 pub const ContentEncoding = enum {
@@ -106,7 +107,7 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: Req
         try easy.setPostFields(data.ptr);
         try easy.setPostFieldSize(data.len);
     }
-    // try easy.setVerbose(true);
+    try easy.setVerbose(false);
     try easy.perform();
 
     var resp = Response{
