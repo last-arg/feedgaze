@@ -118,8 +118,7 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: Req
     };
 
     if (try curl.getEffectiveUrl(easy)) |val| {
-        print("val: {s} | span: {s}\n", .{ val, mem.span(val) });
-        resp.url = try arena.allocator().dupe(u8, "test");
+        resp.url = try arena.allocator().dupe(u8, mem.span(val));
     }
 
     return resp;
