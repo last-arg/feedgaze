@@ -49,7 +49,7 @@ const client_id = "15abb4936487b0d256e47253445f35";
 const access_token = "Bearer f3aecd0d35279ac";
 const base_url = "http://localhost:8181/mock";
 
-var twitch_headers = http.general_request_headers_curl ++ [_][:0]const u8{
+var twitch_headers = http.base_headers ++ [_][]const u8{
     fmt.comptimePrint("Client-Id: {s}", .{client_id}),
     fmt.comptimePrint("Authorization: {s}", .{access_token}),
 };

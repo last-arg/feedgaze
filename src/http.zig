@@ -13,10 +13,11 @@ const Datetime = @import("datetime").datetime.Datetime;
 const url_util = @import("url.zig");
 const curl = @import("curl_extend.zig");
 
-pub const general_request_headers_curl = [_][:0]const u8{
+pub const base_headers = [_][]const u8{
     "Accept: application/atom+xml, application/rss+xml, application/feed+json, text/xml, application/xml, application/json, text/html",
     "User-Agent: feedgaze 0.1.0",
 };
+pub var general_request_headers_curl = base_headers;
 
 pub const ContentEncoding = enum {
     none,
