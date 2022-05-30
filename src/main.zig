@@ -233,6 +233,7 @@ pub fn main() !void {
     switch (subcmd) {
         .server => {
             var sessions = server.Sessions.init(arena_allocator);
+            defer sessions.deinit();
             var s = try server.Server.init(arena_allocator, &storage, &sessions);
             try s.run();
             defer s.deinit();

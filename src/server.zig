@@ -158,12 +158,7 @@ pub const Server = struct {
         );
     }
 
-    pub fn deinit(self: *Self) void {
-        self.context.sessions.deinit();
-    }
-
     pub fn shutdown(self: *Self) void {
-        self.deinit();
         self.web_server.shutdown();
     }
 
@@ -678,9 +673,9 @@ test "@active post, get" {
     // TODO: also test session?
     var storage = try Storage.init(arena.allocator(), null);
     var sessions = Sessions.init(arena.allocator());
+    defer sessions.deinit();
     // https://github.com/Luukdegram/apple_pie/blob/fb695aa9bc4d4a7bcabdd76c420e6b2ce118b2b7/src/server.zig#L210
     var server = try Server.init(arena.allocator(), &storage, &sessions);
-    errdefer server.deinit();
     const thread = try std.Thread.spawn(.{}, Server.run, .{&server});
     defer {
         server.shutdown();
