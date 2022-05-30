@@ -46,7 +46,7 @@ const Session = struct {
     }
 };
 
-const Sessions = struct {
+pub const Sessions = struct {
     const Self = @This();
     allocator: Allocator,
     random: std.rand.Random,
@@ -129,13 +129,11 @@ pub const Server = struct {
         sessions: *Sessions,
     };
 
-    pub fn init(allocator: Allocator, storage: *Storage) !Self {
+    pub fn init(allocator: Allocator, storage: *Storage, sessions: *Sessions) !Self {
         var server = try allocator.create(web.Server);
         errdefer allocator.destroy(server);
         server.* = web.Server.init();
-        var sessions = try allocator.create(Sessions);
-        errdefer allocator.destroy(sessions);
-        sessions.* = Sessions.init(allocator);
+
         const context: Context = .{
             .sessions = sessions,
             .storage = storage,
@@ -662,7 +660,7 @@ fn expectContains(haystack: []const u8, needles: [][]const u8) !void {
 }
 
 // TODO: Reason why on failing test I don't get error trace
-test "post, get" {
+test "@active post, get" {
     std.testing.log_level = .debug;
     const base_allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(base_allocator);
@@ -679,8 +677,9 @@ test "post, get" {
     // TODO: also test db/storage?
     // TODO: also test session?
     var storage = try Storage.init(arena.allocator(), null);
+    var sessions = Sessions.init(arena.allocator());
     // https://github.com/Luukdegram/apple_pie/blob/fb695aa9bc4d4a7bcabdd76c420e6b2ce118b2b7/src/server.zig#L210
-    var server = try Server.init(arena.allocator(), &storage);
+    var server = try Server.init(arena.allocator(), &storage, &sessions);
     errdefer server.deinit();
     const thread = try std.Thread.spawn(.{}, Server.run, .{&server});
     defer {

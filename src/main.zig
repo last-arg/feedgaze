@@ -232,7 +232,8 @@ pub fn main() !void {
     var cli = command.makeCli(arena_allocator, &storage, cli_options, writer, reader);
     switch (subcmd) {
         .server => {
-            var s = try server.Server.init(arena_allocator, &storage);
+            var sessions = server.Sessions.init(arena_allocator);
+            var s = try server.Server.init(arena_allocator, &storage, &sessions);
             try s.run();
             defer s.deinit();
         },
