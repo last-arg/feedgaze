@@ -62,12 +62,12 @@ pub const Response = struct {
     headers_fifo: Fifo,
     body_fifo: Fifo,
     allocator: std.mem.Allocator,
-    url: []const u8 = "", // when adding optional(?) zig compiler throws a fit
+    url: ?[]const u8 = null,
 
     pub fn deinit(self: *@This()) void {
         self.headers_fifo.deinit();
         self.body_fifo.deinit();
-        self.allocator.free(self.url);
+        if (self.url) |url| self.allocator.free(url);
     }
 };
 
@@ -78,9 +78,8 @@ pub const RequestOptions = struct {
 };
 
 pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: RequestOptions) !Response {
-    const allocator = arena.allocator();
-    var body_fifo = Fifo.init(allocator);
-    var headers_fifo = Fifo.init(allocator);
+    var body_fifo = Fifo.init(arena.allocator());
+    var headers_fifo = Fifo.init(arena.allocator());
 
     var headers = curl.HeaderList.init();
     defer headers.freeAll();
@@ -115,10 +114,13 @@ pub fn resolveRequestCurl(arena: *ArenaAllocator, raw_url: []const u8, opts: Req
         .status_code = try easy.getResponseCode(),
         .headers_fifo = headers_fifo,
         .body_fifo = body_fifo,
-        .allocator = allocator,
+        .allocator = arena.allocator(),
     };
 
-    if (try curl.getEffectiveUrl(easy)) |val| resp.url = try allocator.dupe(u8, mem.span(val));
+    if (try curl.getEffectiveUrl(easy)) |val| {
+        print("val: {s} | span: {s}\n", .{ val, mem.span(val) });
+        resp.url = try arena.allocator().dupe(u8, "test");
+    }
 
     return resp;
 }
