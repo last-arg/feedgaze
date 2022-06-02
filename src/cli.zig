@@ -164,7 +164,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 };
                 // defer tmp_resp.deinit();
-                url = if (tmp_resp.url.len > 0) tmp_resp.url else url;
+                url = tmp_resp.url orelse url;
                 if (tmp_resp.status_code != 200) {
                     log.warn("Failed to resolve link '{s}'. Failed HTTP status code: {d}", .{ url, tmp_resp.status_code });
                     return;

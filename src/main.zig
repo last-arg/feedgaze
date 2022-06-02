@@ -236,7 +236,7 @@ pub fn main() !void {
             defer sessions.deinit();
             var s = try server.Server.init(arena_allocator, &storage, &sessions);
             try s.run();
-            defer s.deinit();
+            defer s.shutdown();
         },
         .add => try cli.addFeed(args_rest, tags),
         .update => try cli.updateFeeds(),
