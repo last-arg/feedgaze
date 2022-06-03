@@ -421,11 +421,17 @@ pub const Server = struct {
         var arena = std.heap.ArenaAllocator.init(ctx.allocator);
         defer arena.deinit();
 
+        try w.writeAll("<a href=\"/\">Home</a>");
+
         var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
 
-        // TODO: if now tags print something else
         var all_tags = try ctx.storage.getAllTags();
+        if (all_tags.len == 0) {
+            try w.writeAll("<p>There are no tags<p>");
+            return;
+        }
+
         const tags_raw = @ptrCast(
             *const []const u8,
             @alignCast(
@@ -441,7 +447,6 @@ pub const Server = struct {
             }
         }
 
-        try w.writeAll("<a href=\"/\">Home</a>");
         try w.writeAll("<p>Active tags:</p>");
         try w.writeAll("<ul>");
 
