@@ -659,6 +659,15 @@ fn expectContains(haystack: []const u8, needles: [][]const u8) !void {
     }
 }
 
+// cmd: just test-server
+pub fn isTestServerRunning() !bool {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var resp = try http.resolveRequestCurl(&arena, "http://localhost:8080", .{ .follow = true });
+    defer resp.deinit();
+    return @as(isize, 200) == resp.status_code;
+}
+
 // TODO: Reason why on failing test I don't get error trace
 test "@active post, get" {
     std.testing.log_level = .debug;
@@ -673,6 +682,8 @@ test "@active post, get" {
 
     try curl.globalInit();
     defer curl.globalCleanup();
+
+    try expect(try isTestServerRunning());
 
     // TODO: also test db/storage?
     // TODO: also test session?
