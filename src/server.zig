@@ -423,15 +423,14 @@ pub const Server = struct {
 
         try w.writeAll("<a href=\"/\">Home</a>");
 
-        var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
-        defer active_tags.deinit();
-
         var all_tags = try ctx.storage.getAllTags();
         if (all_tags.len == 0) {
-            try w.writeAll("<p>There are no tags<p>");
+            try w.writeAll("<p>There are no tags</p>");
             return;
         }
 
+        var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
+        defer active_tags.deinit();
         const tags_raw = @ptrCast(
             *const []const u8,
             @alignCast(
@@ -445,6 +444,20 @@ pub const Server = struct {
             if (hasTag(all_tags, tag)) {
                 try active_tags.append(tag);
             }
+        }
+
+        if (active_tags.items.len == 0) {
+            var it_tags = mem.split(u8, tags, "+");
+            try w.writeAll("<p>Could not find tags: ");
+            while (it_tags.next()) |tag| {
+                try w.writeAll(tag);
+                if (it_tags.rest().len > 0) {
+                    try w.writeAll(", ");
+                }
+            }
+            try w.writeAll("</p>");
+            // TODO: print all tags
+            return;
         }
 
         try w.writeAll("<p>Active tags:</p>");
@@ -645,6 +658,7 @@ pub const Server = struct {
 const global = struct {
     const ip = "127.0.0.1";
     const port = 8282;
+    const url = fmt.comptimePrint("http://{s}:{d}", .{ ip, port });
 };
 
 fn expectContains(haystack: []const u8, needles: [][]const u8) !void {
@@ -668,6 +682,16 @@ pub fn isTestServerRunning() !bool {
     return @as(isize, 200) == resp.status_code;
 }
 
+pub fn expectTagPage(arena: *ArenaAllocator, tags: [][]const u8, expected_values: [][]const u8) !void {
+    const url_tags = try mem.join(arena.allocator(), "%2B", tags);
+    const path = try fmt.allocPrint(arena.allocator(), "{s}/tag/{s}", .{ global.url, url_tags });
+    var resp = try http.resolveRequestCurl(arena, path, .{ .follow = false });
+    try expectEqual(@as(isize, 200), resp.status_code);
+    const resp_body = resp.body_fifo.readableSlice(0);
+
+    try expectContains(resp_body, expected_values);
+}
+
 // TODO: Reason why on failing test I don't get error trace
 test "@active post, get" {
     std.testing.log_level = .debug;
@@ -675,7 +699,6 @@ test "@active post, get" {
     var arena = std.heap.ArenaAllocator.init(base_allocator);
     defer arena.deinit();
 
-    const url = "http://localhost:8282";
     const new_len = http.general_request_headers_curl.len + 1;
     var new_headers: [new_len][]const u8 = undefined;
     for (http.general_request_headers_curl) |header, i| new_headers[i] = header;
@@ -686,7 +709,6 @@ test "@active post, get" {
     try expect(try isTestServerRunning());
 
     // TODO: also test db/storage?
-    // TODO: also test session?
     var storage = try Storage.init(arena.allocator(), null);
     var sessions = Sessions.init(arena.allocator());
     defer sessions.deinit();
@@ -698,22 +720,26 @@ test "@active post, get" {
         thread.join();
     }
 
+    const url = global.url;
     {
-        // Index page
-        var resp = try http.resolveRequestCurl(&arena, url ++ "/", .{ .follow = false });
+        // Index page: check if server is up
+        var resp = try http.resolveRequestCurl(&arena, url ++ "/", .{ .follow = true });
         defer resp.deinit();
         try expectEqual(@as(isize, 200), resp.status_code);
+    }
+
+    {
+        // Tags page: no tags
+        var values = [_][]const u8{"<p>There are no tags</p>"};
+        var tags = [_][]const u8{};
+        try expectTagPage(&arena, &tags, &values);
     }
 
     {
         var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", .{ .follow = false });
         try expectEqual(@as(isize, 200), resp.status_code);
         const resp_body = resp.body_fifo.readableSlice(0);
-        var values = [_][]const u8{
-            "name=\"feed_url\"",
-            "name=\"tags\"",
-            "name=\"submit_feed\"",
-        };
+        var values = [_][]const u8{ "name=\"feed_url\"", "name=\"tags\"", "name=\"submit_feed\"" };
         try expectContains(resp_body, &values);
     }
 
@@ -723,6 +749,7 @@ test "@active post, get" {
         var opts = .{ .follow = false, .post_data = try arena.allocator().dupe(u8, payload) };
         var resp = try http.resolveRequestCurl(&arena, url ++ "/feed/add", opts);
         defer resp.deinit();
+        try expectEqual(sessions.list.items.len, 1);
 
         const cookie_value = curl.getHeaderValue(resp.headers_fifo.readableSlice(0), "set-cookie:");
         try expect(cookie_value != null);
@@ -771,25 +798,28 @@ test "@active post, get" {
         defer resp1.deinit();
         try expectEqual(@as(isize, 200), resp1.status_code);
         const resp_body = resp1.body_fifo.readableSlice(0);
-        var values = [_][]const u8{
-            "Added feed http://localhost:8080/rss2.rss",
-            "name=\"submit_feed\"",
-        };
+        var values = [_][]const u8{ "Added feed http://localhost:8080/rss2.rss", "name=\"submit_feed\"" };
         try expectContains(resp_body, &values);
+        try expectEqual(sessions.list.items.len, 0);
     }
 
     {
-        // Tags page
-        var resp = try http.resolveRequestCurl(&arena, url ++ "/tag/tag1%2Btag2%2Bhello%20tag", .{ .follow = false });
-        try expectEqual(@as(isize, 200), resp.status_code);
-        const resp_body = resp.body_fifo.readableSlice(0);
+        // Tags page: tags don't exist
+        var tags = [_][]const u8{ "missing_tag", "no_tag" };
+        var values = [_][]const u8{"<p>Could not find tags: missing_tag, no_tag</p>"};
+        try expectTagPage(&arena, &tags, &values);
+    }
+
+    {
+        // Tags page: check for valid tags
         var values = [_][]const u8{
             "href=\"/tag/tag2\"",
             "href=\"http://liftoff.msfc.nasa.gov/\"",
             "[active]",
             "href=\"/tag/tag1+tag2+tag3\"",
         };
-        try expectContains(resp_body, &values);
+        var tags = [_][]const u8{ "tag1", "tag2", "hello" };
+        try expectTagPage(&arena, &tags, &values);
     }
 
     print("\nServer tests done\n", .{});
