@@ -7,3 +7,4 @@ git https://github.com/mattnite/zig-mbedtls.git main mbedtls.zig a4f5357ca74a7d8
 git https://github.com/mattnite/zig-libssh2.git main libssh2.zig b5472a817a2b363565c984a3b3d5715b4a519a3f
 git https://github.com/mattnite/zig-zlib.git main zlib.zig eca7a5ba547ccf032f2094e2d4e7b1d61520e5eb
 git https://github.com/mattnite/zig-libcurl.git main libcurl.zig f1f316dc2dcd219fe9ad48e91812bc176f64dfe0
+git https://github.com/Hejsil/zig-clap.git 996821a3e1f186c9e5cdfd971d742c9815ea590e clap.zig 996821a3e1f186c9e5cdfd971d742c9815ea590e

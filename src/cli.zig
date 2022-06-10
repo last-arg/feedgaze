@@ -40,6 +40,7 @@ pub fn makeCli(
 }
 
 pub const CliOptions = struct {
+    // TODO: keep or remove url and local?
     url: bool = true,
     local: bool = true,
     force: bool = false,

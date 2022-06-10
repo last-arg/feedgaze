@@ -24,6 +24,11 @@ deps:
       url: "https://github.com/ziglibs/known-folders.git"
       ref: master
       root: known-folders.zig
+  clap:
+    git:
+      url: "https://github.com/Hejsil/zig-clap.git"
+      ref: 996821a3e1f186c9e5cdfd971d742c9815ea590e
+      root: clap.zig
 build_deps:
   mbedtls:
     git:
