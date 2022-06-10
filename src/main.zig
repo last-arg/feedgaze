@@ -29,9 +29,9 @@ pub fn main() !void {
 
     const args = try parseArgs(arena.allocator());
 
-    for ([_]Subcommand{ .add, .remove, .search }) |required| {
+    for (required_subcommands) |required| {
         if (required == args.command and args.pos_args == null) {
-            log.err("Subcommand '{s}' requires input(s)", .{args.command});
+            log.err("Subcommand '{s}' requires input(s)", .{@tagName(args.command)});
             return error.SubcommandRequiresInput;
         }
     }
@@ -188,7 +188,8 @@ const params = struct {
     };
 
     const search = &[_]clap.Param(clap.Help){
-        help_param,                                              db_param,
+        help_param,
+        db_param,
         .{ .id = .{ .val = "searches" }, .takes_value = .many },
     };
 
@@ -404,3 +405,26 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
 
     return parsed_args;
 }
+
+// Assume positional arg is last one.
+// Assume positional arg's id.desc value is empty ("")
+const required_subcommands = blk: {
+    var len: u32 = 0;
+    inline for (std.meta.declarations(params)) |decl| {
+        const s_params = @field(params, decl.name);
+        const last = s_params[s_params.len - 1];
+        if (last.id.desc.len == 0) len += 1;
+    }
+    var cmds: [len]Subcommand = undefined;
+    var index: u32 = 0;
+    inline for (std.meta.declarations(params)) |decl| {
+        const s_params = @field(params, decl.name);
+        const last = s_params[s_params.len - 1];
+        if (last.id.desc.len == 0) {
+            const subcmd = std.meta.stringToEnum(Subcommand, decl.name).?;
+            cmds[index] = subcmd;
+            index += 1;
+        }
+    }
+    break :blk cmds;
+};
