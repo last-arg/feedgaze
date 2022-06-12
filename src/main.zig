@@ -263,7 +263,7 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
         return error.NoSubcommandProvided;
     };
 
-    if (mem.eql(u8, subcmd_str, "--help") and mem.eql(u8, subcmd_str, "-h")) {
+    if (mem.eql(u8, subcmd_str, "--help") or mem.eql(u8, subcmd_str, "-h")) {
         log.err("TODO: print all help", .{});
         std.os.exit(0);
     }
