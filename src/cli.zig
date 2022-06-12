@@ -47,8 +47,7 @@ pub const CliOptions = struct {
     default: ?i32 = null,
 };
 
-pub const TagActionCmd =
-    enum { add, remove, print };
+pub const TagActionCmd = enum { add, remove, print };
 
 pub const TagArgs = struct {
     action: TagActionCmd,
