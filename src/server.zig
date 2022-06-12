@@ -279,7 +279,12 @@ pub const Server = struct {
             const body = resp.body_fifo.readableSlice(0);
             const feed = try f.Feed.initParse(&arena, valid_url, body, content_type);
             const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
-            _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
+            var tags_slice = ArrayList([]const u8).init(arena.allocator());
+            var iter_tags = mem.split(u8, tags, ",");
+            while (iter_tags.next()) |tag| {
+                try tags_slice.append(tag);
+            }
+            _ = try ctx.storage.addNewFeed(feed, feed_update, tags_slice.items);
 
             try w.print("<p>Added new feed {s}</p>", .{valid_url});
             try w.print(form_fmt, .{ "", "" });
@@ -333,7 +338,12 @@ pub const Server = struct {
                 const body = resp.body_fifo.readableSlice(0);
                 const feed = try f.Feed.initParse(&arena, link, body, content_type);
                 const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
-                _ = try ctx.storage.addNewFeed(feed, feed_update, tags);
+                var tags_slice = ArrayList([]const u8).init(arena.allocator());
+                var iter_tags = mem.split(u8, tags, ",");
+                while (iter_tags.next()) |tag| {
+                    try tags_slice.append(tag);
+                }
+                _ = try ctx.storage.addNewFeed(feed, feed_update, tags_slice.items);
                 try w.print("<p>Added feed {s}</p>", .{link});
             }
             try w.print(form_fmt, .{ "", "" });

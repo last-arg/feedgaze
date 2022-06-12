@@ -37,7 +37,7 @@ pub const Storage = struct {
         return Self{ .db = try db.Db.init(allocator, location), .allocator = allocator };
     }
 
-    pub fn addNewFeed(self: *Self, feed: Feed, feed_update: f.FeedUpdate, tags: []const u8) !u64 {
+    pub fn addNewFeed(self: *Self, feed: Feed, feed_update: f.FeedUpdate, tags: [][]const u8) !u64 {
         std.debug.assert(feed.location.len != 0);
         var savepoint = try self.db.sql_db.savepoint("addNewFeed");
         defer savepoint.rollback();
@@ -212,15 +212,14 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addTags(self: *Self, id: u64, tags: []const u8) !void {
+    pub fn addTags(self: *Self, id: u64, tags: [][]const u8) !void {
         if (tags.len == 0) return;
         const query =
             \\INSERT INTO feed_tag VALUES (?, ?)
             \\ON CONFLICT(feed_id, tag) DO NOTHING;
         ;
-        var iter = mem.split(u8, tags, ",");
-        while (iter.next()) |tag| {
-            try self.db.exec(query, .{ id, mem.trim(u8, tag, " +") });
+        for (tags) |tag| {
+            try self.db.exec(query, .{ id, tag });
         }
         // Make sure there is no 'untagged' tag
         const del_query = comptime fmt.comptimePrint(
@@ -590,7 +589,7 @@ pub const Storage = struct {
         return results;
     }
 
-    pub fn addTagsByLocation(self: *Self, tags: []const u8, location: []const u8) !void {
+    pub fn addTagsByLocation(self: *Self, tags: [][]const u8, location: []const u8) !void {
         const feed_id = (try self.db.one(u64, "select id from feed where location = ?;", .{location})) orelse {
             log.err("Failed to find feed with location '{s}'", .{location});
             return;
@@ -598,7 +597,7 @@ pub const Storage = struct {
         try self.addTags(feed_id, tags);
     }
 
-    pub fn addTagsById(self: *Self, tags: []const u8, feed_id: u64) !void {
+    pub fn addTagsById(self: *Self, tags: [][]const u8, feed_id: u64) !void {
         _ = (try self.db.one(void, "select id from feed where id = ?;", .{feed_id})) orelse {
             log.err("Failed to find feed with id '{d}'", .{feed_id});
             return;

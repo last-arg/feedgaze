@@ -64,9 +64,9 @@ pub fn main() !void {
         .remove => try cli.deleteFeed(args.pos_args.?),
         .search => try cli.search(args.pos_args.?),
         .clean => try cli.cleanItems(),
-        // TODO: calling .tag
-        // .tag => try cli.tagCmd(args.pos_args.?, .{}),
-        .tag => {},
+        .tag => {
+            try cli.tagCmd(args.pos_args.?, args.tag_args.?);
+        },
         .@"print-feeds" => try cli.printFeeds(),
         .@"print-items" => try cli.printAllItems(),
     }
@@ -223,7 +223,6 @@ const ParsedCli = struct {
     command: Subcommand,
     db_path: ?[]const u8 = null,
     default: ?i32 = null,
-    // TODO?: make into ?[][]const u8
     tags: ?[][]const u8 = null,
     tag_args: ?command.TagArgs = null,
     force: bool = false,

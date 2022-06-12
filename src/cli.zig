@@ -47,10 +47,13 @@ pub const CliOptions = struct {
     default: ?i32 = null,
 };
 
+pub const TagActionCmd =
+    enum { add, remove, print };
+
 pub const TagArgs = struct {
-    action: enum { add, remove, remove_all, none } = .none,
-    location: []const u8 = "",
-    id: u64 = 0,
+    action: TagActionCmd,
+    url: ?[]const u8 = null,
+    id: ?u64 = null,
 };
 
 pub fn Cli(comptime Writer: type, comptime Reader: type) type {
@@ -83,7 +86,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn addFeed(
             self: *Self,
             locations: []const []const u8,
-            tags: []const u8, // comma separated
+            tags: [][]const u8,
         ) !void {
             var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
             for (locations) |location| {
@@ -110,7 +113,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: []const u8) !void {
+        pub fn addFeedLocal(self: *Self, abs_path: []const u8, tags: [][]const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const feed = blk: {
@@ -145,7 +148,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             savepoint.commit();
         }
 
-        pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: []const u8) !void {
+        pub fn addFeedHttp(self: *Self, input_url: []const u8, tags: [][]const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
             const writer = self.writer;
@@ -392,36 +395,28 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn tagCmd(self: *Self, tags: [][]const u8, args: TagArgs) !void {
-            assert(args.id != 0 or args.location.len != 0);
-            assert(args.action != .none);
-
             switch (args.action) {
                 .add => {
-                    var cap = tags.len - 1; // commas
-                    for (tags) |tag| cap += tag.len;
-                    var arr_tags = try ArrayList(u8).initCapacity(self.allocator, cap);
-                    if (tags.len > 0) {
-                        arr_tags.appendSliceAssumeCapacity(tags[0]);
-                        for (tags[1..]) |tag| {
-                            arr_tags.appendAssumeCapacity(',');
-                            arr_tags.appendSliceAssumeCapacity(tag);
+                    if (args.id) |id| {
+                        try self.feed_db.addTagsById(tags, id);
+                    } else {
+                        if (args.url) |url| {
+                            try self.feed_db.addTagsByLocation(tags, url);
                         }
-                    }
-                    if (args.id != 0) {
-                        try self.feed_db.addTagsById(arr_tags.items, args.id);
-                    } else if (args.location.len != 0) {
-                        try self.feed_db.addTagsByLocation(arr_tags.items, args.location);
                     }
                 },
                 .remove => {
-                    if (args.id != 0) {
-                        try self.feed_db.removeTagsById(tags, args.id);
-                    } else if (args.location.len != 0) {
-                        try self.feed_db.removeTagsByLocation(tags, args.location);
+                    if (args.id) |id| {
+                        try self.feed_db.removeTagsById(tags, id);
+                    } else {
+                        if (args.url) |url| {
+                            try self.feed_db.removeTagsByLocation(tags, url);
+                        }
                     }
                 },
-                .remove_all => try self.feed_db.removeTags(tags),
-                .none => unreachable,
+                .print => {
+                    log.info("TODO: tag print", .{});
+                },
             }
         }
     };
