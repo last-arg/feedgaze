@@ -251,13 +251,20 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
     _ = iter.next();
 
     const subcmd_str = iter.next() orelse {
-        log.err("No subcommand provided. See 'feedgaze --help' ", .{});
-        log.err("TODO: print all help", .{});
+        const subcmd_output = comptime blk: {
+            const decls = std.meta.declarations(params);
+            comptime var result: []const u8 = decls[0].name;
+            inline for (decls[1..]) |decl| {
+                result = result ++ ", " ++ decl.name;
+            }
+            break :blk result;
+        };
+        log.err("No subcommand provided. See 'feedgaze --help'.\nSubcommands: {s}", .{subcmd_output});
         return error.NoSubcommandProvided;
     };
 
     if (mem.eql(u8, subcmd_str, "--help") and mem.eql(u8, subcmd_str, "-h")) {
-        log.err("TODO: print help", .{});
+        log.err("TODO: print all help", .{});
         std.os.exit(0);
     }
 
