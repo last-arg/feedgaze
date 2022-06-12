@@ -293,7 +293,7 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
 
     const subcmd_params = blk: {
         var s_params: []const clap.Param(clap.Help) = undefined;
-        // NOTE: 'inline for' doesn't like use of 'break'
+        // NOTE: 'inline for' doesn't like the use of 'break'
         inline for (comptime std.meta.declarations(params)) |decl| {
             if (std.meta.stringToEnum(Subcommand, decl.name) == subcmd) {
                 s_params = @field(params, decl.name);
