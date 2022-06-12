@@ -201,8 +201,18 @@ const params = struct {
 
     const tag = &[_]clap.Param(clap.Help){
         help_param,
-        // TODO: add flags
+        .{
+            .id = .{ .val = "id", .desc = "Feed's id." },
+            .names = .{ .long = "id" },
+            .takes_value = .one,
+        },
+        .{
+            .id = .{ .val = "url", .desc = "Feed's url." },
+            .names = .{ .short = 'u', .long = "url" },
+            .takes_value = .one,
+        },
         db_param,
+        .{ .id = .{ .val = "tag" }, .takes_value = .many },
     };
 
     const server = &[_]clap.Param(clap.Help){ help_param, db_param };
@@ -214,7 +224,8 @@ const ParsedCli = struct {
     db_path: ?[]const u8 = null,
     default: ?i32 = null,
     // TODO?: make into ?[][]const u8
-    tags: ?[]const u8 = null,
+    tags: ?[][]const u8 = null,
+    tag_args: ?command.TagArgs = null,
     force: bool = false,
     pos_args: ?[][]const u8 = null,
 };
@@ -241,13 +252,13 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
     _ = iter.next();
 
     const subcmd_str = iter.next() orelse {
-        log.info("No subcommand provided", .{});
-        log.info("TODO: print all help", .{});
-        return error.NoSubCommandProvided;
+        log.err("No subcommand provided. See 'feedgaze --help' ", .{});
+        log.err("TODO: print all help", .{});
+        return error.NoSubcommandProvided;
     };
 
     if (mem.eql(u8, subcmd_str, "--help") and mem.eql(u8, subcmd_str, "-h")) {
-        log.info("TODO: print help", .{});
+        log.err("TODO: print help", .{});
         std.os.exit(0);
     }
 
@@ -255,7 +266,18 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
         log.info("Unknown subcommand '{s}'. See 'feedgaze --help'", .{subcmd_str});
         // TODO: suggest closest match to unknown subcommand
         // https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
-        return error.UnknownSubCommand;
+        return error.UnknownSubcommand;
+    };
+
+    const tag_action_cmd = blk: {
+        const action_str = iter.next() orelse {
+            log.err("'tag' subcommand requires one these action commands: add, remove, print", .{});
+            return error.MissingSubcommand;
+        };
+        break :blk std.meta.stringToEnum(command.TagActionCmd, action_str) orelse {
+            log.err("Invalid action command '{s}' provided to 'tag' subcommand. Valid 'tag' action commands: add, remove, print", .{action_str});
+            return error.UnknownSubcommand;
+        };
     };
 
     const subcmd_params = blk: {
@@ -279,8 +301,8 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
 
     var pos_args = std.ArrayList([]const u8).init(allocator);
     defer pos_args.deinit();
-    // var tags = std.ArrayList([]const u8).init(allocator);
-    // defer tags.deinit();
+    var tags = std.ArrayList([]const u8).init(allocator);
+    defer tags.deinit();
 
     var parsed_args = ParsedCli{ .command = subcmd };
     switch (subcmd) {
@@ -296,12 +318,10 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                     }
                 } else if (mem.eql(u8, param_id, "tags")) {
                     if (arg.value) |tags_raw| {
-                        parsed_args.tags = tags_raw;
-                        // this makes tag into [][]const u8
-                        // var tags_iter = mem.split(u8, tags_raw, ",");
-                        // while (tags_iter.next()) |tag| {
-                        //     try tags.append(mem.trim(u8, tag, " "));
-                        // }
+                        var tags_iter = mem.split(u8, tags_raw, ",");
+                        while (tags_iter.next()) |tag| {
+                            try tags.append(mem.trim(u8, tag, " "));
+                        }
                     }
                 } else if (mem.eql(u8, param_id, "default")) {
                     if (arg.value) |value| {
@@ -391,7 +411,52 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
             }
         },
         .tag => {
-            // TODO: subcommand tag
+            // Add and remove tags from feed (id or url)
+            // subcommands:
+            // * add - requires id or url
+            // * remove - requires id or url
+            // * print - print all tags if no id or url provided
+            //   * id - print feed tags
+            //   * url - print all feeds and their tags with matching url
+
+            parsed_args.tag_args = .{ .action = tag_action_cmd };
+            while (parser.next() catch |err| {
+                diag.report(stderr_writer, err) catch {};
+                return err;
+            }) |arg| {
+                const param_id = arg.param.id.val;
+                if (mem.eql(u8, param_id, "tag")) {
+                    if (arg.value) |value| {
+                        try pos_args.append(value);
+                    }
+                } else if (mem.eql(u8, param_id, "id")) {
+                    if (arg.value) |value| {
+                        parsed_args.tag_args.?.id = try std.fmt.parseUnsigned(u64, value, 10);
+                    }
+                } else if (mem.eql(u8, param_id, "url")) {
+                    parsed_args.tag_args.?.url = arg.value;
+                } else if (mem.eql(u8, param_id, "db")) {
+                    parsed_args.db_path = arg.value;
+                } else if (mem.eql(u8, param_id, "help")) {
+                    try printSubcommandHelp(subcmd_params, subcmd_str, null);
+                    std.os.exit(0);
+                }
+            }
+
+            const has_id = parsed_args.tag_args.?.id != null;
+            const has_url = parsed_args.tag_args.?.url != null;
+            if (has_id and has_url) {
+                log.err("Subcommand 'tag <add|remove>' can only have one these flags '--id' or '--url'", .{});
+                std.os.exit(0);
+            } else if (tag_action_cmd != .print and (!has_id and !has_url)) {
+                log.err("Subcommand 'tag <add|remove>' must have one these flags '--id' or '--url'", .{});
+                std.os.exit(0);
+            }
+
+            // Print all tags if no flags or arguements provided to 'tag print'
+            if (tag_action_cmd == .print and !(has_id and has_url) and pos_args.items.len == 0) {
+                try pos_args.append("*");
+            }
         },
     }
 
@@ -399,15 +464,16 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
         parsed_args.pos_args = pos_args.toOwnedSlice();
     }
 
-    // if (tags.items.len > 0) {
-    //     parsed_args.tags = tags.toOwnedSlice();
-    // }
+    if (tags.items.len > 0) {
+        parsed_args.tags = tags.toOwnedSlice();
+    }
 
     return parsed_args;
 }
 
-// Assume positional arg is last one.
-// Assume positional arg's id.desc value is empty ("")
+// Makes two assumtions:
+// 1) positional arg is last one.
+// 2) positional arg's id.desc value is empty ("")
 const required_subcommands = blk: {
     var len: u32 = 0;
     inline for (std.meta.declarations(params)) |decl| {
