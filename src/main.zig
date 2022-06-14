@@ -280,26 +280,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
         return error.UnknownSubcommand;
     };
 
-    // TODO: throws error when 'feedgaze tag -h'
-    const tag_action_cmd = blk: {
-        if (subcmd == .tag) {
-            const enum_tags = comptime std.meta.fields(command.TagActionCmd);
-            comptime var actions_output = enum_tags[0].name;
-            inline for (enum_tags) |tag| {
-                actions_output = actions_output ++ ", " ++ tag.name;
-            }
-            const action_str = iter.next() orelse {
-                log.err("'tag' subcommand requires one these action commands: {s}", .{actions_output});
-                return error.MissingSubcommand;
-            };
-            break :blk std.meta.stringToEnum(command.TagActionCmd, action_str) orelse {
-                log.err("Invalid action command '{s}' provided to 'tag' subcommand. Valid 'tag' action commands: add, remove, print", .{actions_output});
-                return error.UnknownSubcommand;
-            };
-        }
-        break :blk .print; // Don't care about return value
-    };
-
     const subcmd_params = blk: {
         var s_params: []const clap.Param(clap.Help) = undefined;
         // NOTE: 'inline for' doesn't like the use of 'break'
@@ -419,7 +399,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 diag.report(stderr_writer, err) catch {};
                 return err;
             }) |arg| {
-                print("arg.value: {s}\n", .{arg.value});
                 const param_id = arg.param.id.val;
                 if (mem.eql(u8, param_id, "db")) {
                     parsed_args.db_path = arg.value;
@@ -437,6 +416,35 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
             // * print - print all tags if no id or url provided
             //   * id - print feed tags
             //   * url - print all feeds and their tags with matching url
+
+            const tag_action_cmd = blk: {
+                const enum_tags = comptime std.meta.fields(command.TagActionCmd);
+                comptime var actions_output = enum_tags[0].name;
+                inline for (enum_tags[1..]) |tag| {
+                    actions_output = actions_output ++ ", " ++ tag.name;
+                }
+                const arg = (parser.next() catch |err| {
+                    diag.report(stderr_writer, err) catch {};
+                    return err;
+                }) orelse {
+                    log.err("'tag' subcommand requires one these action commands: {s}", .{actions_output});
+                    return error.MissingSubcommandAction;
+                };
+                if (mem.eql(u8, arg.param.id.val, "help")) {
+                    // TODO: need to add tag actions
+                    try printSubcommandHelp(subcmd_params, subcmd_str, null);
+                    std.os.exit(0);
+                }
+                const value = arg.value orelse {
+                    log.err("'tag' subcommand requires one these action commands: {s}", .{actions_output});
+                    return error.MissingSubcommandAction;
+                };
+
+                break :blk std.meta.stringToEnum(command.TagActionCmd, value) orelse {
+                    log.err("Invalid action command '{s}' provided to 'tag' subcommand. Valid 'tag' action commands: {s}", .{ value, actions_output });
+                    return error.UnknownSubcommandAction;
+                };
+            };
 
             parsed_args.tag_args = .{ .action = tag_action_cmd };
             while (parser.next() catch |err| {
@@ -457,11 +465,13 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 } else if (mem.eql(u8, param_id, "db")) {
                     parsed_args.db_path = arg.value;
                 } else if (mem.eql(u8, param_id, "help")) {
+                    // TODO: need to add tag actions
                     try printSubcommandHelp(subcmd_params, subcmd_str, null);
                     std.os.exit(0);
                 }
             }
 
+            // Make sure there is only one of these flags: --id, --url
             const has_id = parsed_args.tag_args.?.id != null;
             const has_url = parsed_args.tag_args.?.url != null;
             if (has_id and has_url) {
