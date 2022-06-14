@@ -276,19 +276,22 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
     };
 
     const tag_action_cmd = blk: {
-        const enum_tags = comptime std.meta.fields(command.TagActionCmd);
-        comptime var actions_output = enum_tags[0].name;
-        inline for (enum_tags) |tag| {
-            actions_output = actions_output ++ ", " ++ tag.name;
+        if (subcmd == .tag) {
+            const enum_tags = comptime std.meta.fields(command.TagActionCmd);
+            comptime var actions_output = enum_tags[0].name;
+            inline for (enum_tags) |tag| {
+                actions_output = actions_output ++ ", " ++ tag.name;
+            }
+            const action_str = iter.next() orelse {
+                log.err("'tag' subcommand requires one these action commands: {s}", .{actions_output});
+                return error.MissingSubcommand;
+            };
+            break :blk std.meta.stringToEnum(command.TagActionCmd, action_str) orelse {
+                log.err("Invalid action command '{s}' provided to 'tag' subcommand. Valid 'tag' action commands: add, remove, print", .{actions_output});
+                return error.UnknownSubcommand;
+            };
         }
-        const action_str = iter.next() orelse {
-            log.err("'tag' subcommand requires one these action commands: {s}", .{actions_output});
-            return error.MissingSubcommand;
-        };
-        break :blk std.meta.stringToEnum(command.TagActionCmd, action_str) orelse {
-            log.err("Invalid action command '{s}' provided to 'tag' subcommand. Valid 'tag' action commands: add, remove, print", .{actions_output});
-            return error.UnknownSubcommand;
-        };
+        break :blk .print; // Don't care about return value
     };
 
     const subcmd_params = blk: {
