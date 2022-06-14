@@ -417,6 +417,14 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
             //   * id - print feed tags
             //   * url - print all feeds and their tags with matching url
 
+            // subcommand + actions is 'tag <add|remove|print>'
+            var buf: [32]u8 = undefined;
+            const action_str = blk: {
+                const enum_tags = comptime std.meta.fields(command.TagActionCmd);
+                comptime var result = enum_tags[0].name;
+                inline for (enum_tags[1..]) |tag| result = result ++ "|" ++ tag.name;
+                break :blk "<" ++ result ++ ">";
+            };
             const tag_action_cmd = blk: {
                 const enum_tags = comptime std.meta.fields(command.TagActionCmd);
                 comptime var actions_output = enum_tags[0].name;
@@ -431,8 +439,8 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                     return error.MissingSubcommandAction;
                 };
                 if (mem.eql(u8, arg.param.id.val, "help")) {
-                    // TODO: need to add tag actions
-                    try printSubcommandHelp(subcmd_params, subcmd_str, null);
+                    const str = try std.fmt.bufPrint(&buf, "{s} {s}", .{ subcmd_str, action_str });
+                    try printSubcommandHelp(subcmd_params, str, null);
                     std.os.exit(0);
                 }
                 const value = arg.value orelse {
@@ -465,8 +473,8 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 } else if (mem.eql(u8, param_id, "db")) {
                     parsed_args.db_path = arg.value;
                 } else if (mem.eql(u8, param_id, "help")) {
-                    // TODO: need to add tag actions
-                    try printSubcommandHelp(subcmd_params, subcmd_str, null);
+                    const str = try std.fmt.bufPrint(&buf, "{s} {s}", .{ subcmd_str, action_str });
+                    try printSubcommandHelp(subcmd_params, str, null);
                     std.os.exit(0);
                 }
             }
