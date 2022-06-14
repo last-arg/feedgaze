@@ -160,7 +160,6 @@ const default_param = clap.Param(clap.Help){
 
 const params = struct {
     const add = &[_]clap.Param(clap.Help){
-        help_param,
         default_param,
         .{
             .id = .{ .val = "tags", .desc = "Add tags to feed (comma separated)." },
@@ -168,39 +167,39 @@ const params = struct {
             .takes_value = .many,
         },
         db_param,
+        help_param,
         .{ .id = .{ .val = "url" }, .takes_value = .many },
     };
 
     const remove = &[_]clap.Param(clap.Help){
-        help_param,
         default_param,
         db_param,
+        help_param,
         .{ .id = .{ .val = "searches" }, .takes_value = .many },
     };
 
     const update = &[_]clap.Param(clap.Help){
-        help_param,
         .{
             .id = .{ .val = "force", .desc = "Force update all feeds." },
             .names = .{ .short = 'f', .long = "force" },
         },
         db_param,
+        help_param,
     };
 
     const search = &[_]clap.Param(clap.Help){
-        help_param,
         db_param,
+        help_param,
         .{ .id = .{ .val = "searches" }, .takes_value = .many },
     };
 
-    const clean = &[_]clap.Param(clap.Help){ help_param, db_param };
+    const clean = &[_]clap.Param(clap.Help){ db_param, help_param };
 
-    const @"print-feeds" = &[_]clap.Param(clap.Help){ help_param, db_param };
+    const @"print-feeds" = &[_]clap.Param(clap.Help){ db_param, help_param };
 
-    const @"print-items" = &[_]clap.Param(clap.Help){ help_param, db_param };
+    const @"print-items" = &[_]clap.Param(clap.Help){ db_param, help_param };
 
     const tag = &[_]clap.Param(clap.Help){
-        help_param,
         .{
             .id = .{ .val = "id", .desc = "Feed's id." },
             .names = .{ .long = "id" },
@@ -212,10 +211,11 @@ const params = struct {
             .takes_value = .one,
         },
         db_param,
+        help_param,
         .{ .id = .{ .val = "tag" }, .takes_value = .many },
     };
 
-    const server = &[_]clap.Param(clap.Help){ help_param, db_param };
+    const server = &[_]clap.Param(clap.Help){ db_param, help_param };
 };
 const Subcommand = std.meta.DeclEnum(params);
 
@@ -246,6 +246,7 @@ pub fn printSubcommandHelp(sub_params: []const clap.Param(clap.Help), subcmd: []
 }
 
 pub fn parseArgs(allocator: Allocator) !ParsedCli {
+    const stderr_writer = std.io.getStdErr().writer();
     var iter = try process.ArgIterator.initWithAllocator(allocator);
     defer iter.deinit();
     _ = iter.next();
@@ -264,17 +265,22 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
     };
 
     if (mem.eql(u8, subcmd_str, "--help") or mem.eql(u8, subcmd_str, "-h")) {
-        log.err("TODO: print all help", .{});
+        try stderr_writer.writeAll("Usage: feedgaze <subcommand> [subcommand action] [options] [inputs]\n");
+        inline for (comptime std.meta.declarations(params)) |decl| {
+            try stderr_writer.print("\nSubcommand: {s}\n", .{decl.name});
+            try clap.help(stderr_writer, clap.Help, @field(params, decl.name), .{});
+        }
         std.os.exit(0);
     }
 
     const subcmd = std.meta.stringToEnum(Subcommand, subcmd_str) orelse {
-        log.info("Unknown subcommand '{s}'. See 'feedgaze --help'", .{subcmd_str});
+        log.err("Unknown subcommand '{s}'. See 'feedgaze --help'", .{subcmd_str});
         // TODO: suggest closest match to unknown subcommand
         // https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance
         return error.UnknownSubcommand;
     };
 
+    // TODO: throws error when 'feedgaze tag -h'
     const tag_action_cmd = blk: {
         if (subcmd == .tag) {
             const enum_tags = comptime std.meta.fields(command.TagActionCmd);
@@ -305,7 +311,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
         break :blk s_params;
     };
 
-    const stderr_writer = std.io.getStdErr().writer();
     var diag = clap.Diagnostic{};
     var parser = clap.streaming.Clap(clap.Help, process.ArgIterator){
         .params = subcmd_params,
