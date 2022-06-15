@@ -47,8 +47,8 @@ pub const CliOptions = struct {
     default: ?i32 = null,
 };
 
-pub const TagActionCmd = enum { add, remove, print };
-
+pub const PrintAction = enum { feeds, items };
+pub const TagActionCmd = enum { add, remove };
 pub const TagArgs = struct {
     action: TagActionCmd,
     url: ?[]const u8 = null,
@@ -413,10 +413,26 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         }
                     }
                 },
-                .print => {
-                    log.info("TODO: tag print", .{});
-                },
             }
+        }
+
+        pub fn printCmd(self: *Self, action: ?PrintAction, tags: ?[][]const u8) !void {
+            if (action == null and tags != null and tags.?.len == 0) {
+                const all_tags = try self.feed_db.getAllTags();
+                try self.writer.print("All tags ({d}):\n", .{all_tags.len});
+                for (all_tags) |tag| {
+                    try self.writer.print("{s} ({d})\n", .{ tag.name, tag.count });
+                }
+            }
+
+            if (action) |a| switch (a) {
+                .feeds => {
+                    try self.printFeeds();
+                },
+                .items => {
+                    try self.printAllItems();
+                },
+            };
         }
     };
 }

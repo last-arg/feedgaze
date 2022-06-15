@@ -67,8 +67,11 @@ pub fn main() !void {
         .tag => {
             try cli.tagCmd(args.pos_args.?, args.tag_args.?);
         },
-        .@"print-feeds" => try cli.printFeeds(),
-        .@"print-items" => try cli.printAllItems(),
+        .print => {
+            try cli.printCmd(args.print_action, args.tags);
+        },
+        // .@"print-feeds" => try cli.printFeeds(),
+        // .@"print-items" => try cli.printAllItems(),
     }
 }
 
@@ -195,9 +198,22 @@ const params = struct {
 
     const clean = &[_]clap.Param(clap.Help){ db_param, help_param };
 
-    const @"print-feeds" = &[_]clap.Param(clap.Help){ db_param, help_param };
-
-    const @"print-items" = &[_]clap.Param(clap.Help){ db_param, help_param };
+    const print = &[_]clap.Param(clap.Help){
+        .{
+            .id = .{ .val = "feeds", .desc = "Print most recently updated feeds." },
+            .names = .{ .short = 'f', .long = "feeds" },
+        },
+        .{
+            .id = .{ .val = "items", .desc = "Print most recently updated items." },
+            .names = .{ .short = 'i', .long = "items" },
+        },
+        .{
+            .id = .{ .val = "tags", .desc = "Only display feeds or items with these tags. To print all tags don't provide any input." },
+            .names = .{ .short = 't', .long = "tags" },
+        },
+        db_param,
+        help_param,
+    };
 
     const tag = &[_]clap.Param(clap.Help){
         .{
@@ -224,6 +240,7 @@ const ParsedCli = struct {
     db_path: ?[]const u8 = null,
     default: ?i32 = null,
     tags: ?[][]const u8 = null,
+    print_action: ?command.PrintAction = null,
     tag_args: ?command.TagArgs = null,
     force: bool = false,
     pos_args: ?[][]const u8 = null,
@@ -394,7 +411,7 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 }
             }
         },
-        .clean, .@"print-feeds", .@"print-items", .server => {
+        .clean, .server => {
             while (parser.next() catch |err| {
                 diag.report(stderr_writer, err) catch {};
                 return err;
@@ -408,16 +425,43 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 }
             }
         },
-        .tag => {
-            // Add and remove tags from feed (id or url)
-            // subcommands:
-            // * add - requires id or url
-            // * remove - requires id or url
-            // * print - print all tags if no id or url provided
-            //   * id - print feed tags
-            //   * url - print all feeds and their tags with matching url
+        .print => {
+            while (parser.next() catch |err| {
+                diag.report(stderr_writer, err) catch {};
+                return err;
+            }) |arg| {
+                const param_id = arg.param.id.val;
+                if (mem.eql(u8, param_id, "feeds")) {
+                    if (parsed_args.print_action) |action| {
+                        if (action == .items) {
+                            log.err("Subcommand 'print' can only have one these flags: --feeds, --items", .{});
+                        }
+                    }
+                    parsed_args.print_action = .feeds;
+                } else if (mem.eql(u8, param_id, "items")) {
+                    if (parsed_args.print_action) |action| {
+                        if (action == .feeds) {
+                            log.err("Subcommand 'print' can only have one these flags: --feeds, --items", .{});
+                        }
+                    }
+                    parsed_args.print_action = .items;
+                } else if (mem.eql(u8, param_id, "tags")) {
+                    parsed_args.tags = &.{};
+                } else if (mem.eql(u8, param_id, "db")) {
+                    parsed_args.db_path = arg.value;
+                } else if (mem.eql(u8, param_id, "help")) {
+                    try printSubcommandHelp(subcmd_params, subcmd_str, null);
+                    std.os.exit(0);
+                }
+            }
 
-            // subcommand + actions is 'tag <add|remove|print>'
+            if (parsed_args.print_action == null and parsed_args.tags == null) {
+                log.err("Subcommand 'print' requires one of these flags: --feeds, --items, --tags", .{});
+                std.os.exit(0);
+            }
+        },
+        .tag => {
+            // subcommand + actions is 'tag <add|remove>'
             var buf: [32]u8 = undefined;
             const action_str = blk: {
                 const enum_tags = comptime std.meta.fields(command.TagActionCmd);
@@ -485,14 +529,9 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
             if (has_id and has_url) {
                 log.err("Subcommand 'tag <add|remove>' can only have one these flags '--id' or '--url'", .{});
                 std.os.exit(0);
-            } else if (tag_action_cmd != .print and (!has_id and !has_url)) {
+            } else if (!has_id and !has_url) {
                 log.err("Subcommand 'tag <add|remove>' must have one these flags '--id' or '--url'", .{});
                 std.os.exit(0);
-            }
-
-            // Print all tags if no flags or arguements provided to 'tag print'
-            if (tag_action_cmd == .print and !(has_id and has_url) and pos_args.items.len == 0) {
-                try pos_args.append("*");
             }
         },
     }
