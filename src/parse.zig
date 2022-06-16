@@ -6,6 +6,7 @@ const ascii = std.ascii;
 const testing = std.testing;
 const print = std.debug.print;
 const expect = testing.expect;
+const expectEqual = std.testing.expectEqual;
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -18,6 +19,13 @@ const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
 pub const Feed = @import("feed.zig").Feed;
 
+// TODO: Might want to increase 'max_title_len' value from 50. When it is
+// twitter(nitter) feed I would want more than 50 characters (would want
+// all the tweet text).At the moment it isn't a problem because nitter feed
+// is an atom feed and atom feeds have to have a title (don't limit title length)
+//
+// This only used in Rss and Json feed where title is optional and description/text
+// is used as fallback.
 const max_title_len = 50;
 
 pub const Html = struct {
@@ -72,23 +80,23 @@ pub const Html = struct {
 
         var page_title: ?[]const u8 = null;
 
-        const title_elem = "<title>";
+        const title_elem = "title>";
         // Seach for 'title' element
-        while (ascii.indexOfIgnoreCase(contents, "<")) |start_index| {
-            contents = contents[start_index..];
+        while (mem.indexOfScalar(u8, contents, '<')) |start_index| {
+            contents = contents[start_index + 1 ..];
             if (ascii.startsWithIgnoreCase(contents, title_elem)) {
                 contents = contents[title_elem.len..];
-                const title_end_index = ascii.indexOfIgnoreCase(contents, "</title>") orelse break;
+                const title_end_index = mem.indexOfAny(u8, contents, "</") orelse break;
                 page_title = contents[0..title_end_index];
                 break;
-            } else if (ascii.startsWithIgnoreCase(contents, "<!--")) {
-                if (ascii.indexOfIgnoreCase(contents, "-->")) |comment_end_index| {
+            } else if (mem.startsWith(u8, contents, "!--")) {
+                if (mem.indexOf(u8, contents, "-->")) |comment_end_index| {
                     // skip comments
                     contents = contents[comment_end_index + 3 ..];
                     continue;
                 } else break;
             }
-            const end_index = ascii.indexOfIgnoreCase(contents, ">") orelse break;
+            const end_index = mem.indexOfScalar(u8, contents, '>') orelse break;
             contents = contents[end_index..];
         }
 
@@ -97,41 +105,46 @@ pub const Html = struct {
         var link_title: ?[]const u8 = null;
         var link_href: ?[]const u8 = null;
 
-        const link_elem = "<link ";
-        const a_elem = "<a ";
+        const link_elem = "link ";
+        const a_elem = "a ";
 
         contents = contents_const;
         // Seach for 'a' or 'link' html elements
-        while (ascii.indexOfIgnoreCase(contents, "<")) |start_index| {
-            contents = contents[start_index..];
-            if (ascii.startsWithIgnoreCase(contents, "<!--")) {
-                if (ascii.indexOfIgnoreCase(contents, "-->")) |comment_end_index| {
+        while (mem.indexOfScalar(u8, contents, '<')) |start_index| {
+            contents = contents[start_index + 1 ..];
+            if (contents[0] == '/') {
+                if (mem.indexOfScalar(u8, contents, '>')) |end_index| {
+                    contents = contents[end_index + 1 ..];
+                    continue;
+                } else break;
+            } else if (mem.startsWith(u8, contents, "!--")) {
+                if (mem.indexOf(u8, contents, "-->")) |comment_end_index| {
                     // skip comments
                     contents = contents[comment_end_index + 3 ..];
                     continue;
                 } else break;
             }
 
-            // Check anymore links exist
-            const link_index = ascii.indexOfIgnoreCase(contents, link_elem);
-            const a_index = ascii.indexOfIgnoreCase(contents, a_elem);
-            const index = blk: {
-                if (link_index != null and a_index != null) {
-                    break :blk std.math.min(link_index.?, a_index.?);
-                }
-                break :blk link_index orelse a_index orelse break;
-            };
-            const start = if (link_index == index) link_elem.len else a_elem.len;
+            // Check for links
+            const is_tag_a = ascii.startsWithIgnoreCase(contents, a_elem);
+            const is_tag_link = ascii.startsWithIgnoreCase(contents, link_elem);
+            if (!is_tag_a and !is_tag_link) {
+                if (mem.indexOfScalar(u8, contents, '>')) |end_index| {
+                    contents = contents[end_index + 1 ..];
+                    continue;
+                } else break;
+            }
+            const start = if (is_tag_a) a_elem.len else link_elem.len;
 
             var key: []const u8 = "";
             var value: []const u8 = "";
             contents = mem.trimLeft(u8, contents[start..], &ascii.spaces);
-            const end_index = ascii.indexOfIgnoreCase(contents, ">") orelse break;
+            const end_index = mem.indexOfScalar(u8, contents, '>') orelse break;
             if (end_index == 0) continue;
 
             var elem_attrs = contents[0..end_index];
             while (elem_attrs.len > 0) {
-                const eql_index = mem.indexOf(u8, elem_attrs, "=") orelse break;
+                const eql_index = mem.indexOfScalar(u8, elem_attrs, '=') orelse break;
                 key = mem.trimLeft(u8, elem_attrs[0..eql_index], &ascii.spaces);
                 elem_attrs = elem_attrs[eql_index + 1 ..];
                 const end_char = blk: {
@@ -144,7 +157,7 @@ pub const Html = struct {
                 if (end_char != ' ') {
                     elem_attrs = elem_attrs[1..];
                 }
-                const elem_end_index = mem.indexOf(u8, elem_attrs, &[_]u8{end_char}) orelse elem_attrs.len;
+                const elem_end_index = mem.indexOfScalar(u8, elem_attrs, end_char) orelse elem_attrs.len;
                 value = mem.trim(u8, elem_attrs[0..elem_end_index], &[_]u8{end_char});
                 elem_attrs = elem_attrs[elem_end_index..];
                 if (end_char != ' ') {
@@ -229,7 +242,6 @@ pub const Html = struct {
 };
 
 test "Html.parse" {
-    const expectEqual = std.testing.expectEqual;
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
