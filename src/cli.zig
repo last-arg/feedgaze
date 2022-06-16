@@ -358,22 +358,21 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\{s}
                 \\  link: {s}
                 \\  location: {s}
-                \\
             ;
 
-            for (all_items) |item| {
+            for (all_items) |item, i| {
                 const link = item.link orelse "<no-link>";
+                if (i != 0) try self.writer.writeAll("\n\n");
                 try self.writer.print(print_fmt, .{ item.title, link, item.location });
 
                 const tags = try self.feed_db.db.selectAll(struct { tag: []const u8 }, "select tag from feed_tag where feed_id = ?", .{item.id});
                 if (tags.len > 0) {
-                    try self.writer.print("  tags: ", .{});
+                    try self.writer.print("\n  tags: ", .{});
                     try self.writer.print("{s}", .{tags[0].tag});
                     for (tags[1..]) |tag| {
-                        try self.writer.print(", {s}\n", .{tag.tag});
+                        try self.writer.print(", {s}", .{tag.tag});
                     }
                 }
-                try self.writer.print("\n", .{});
             }
         }
 
