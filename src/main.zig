@@ -357,7 +357,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 diag.report(stderr_writer, err) catch {};
                 return err;
             }) |arg| {
-                print("arg.value: {s}\n", .{arg.value});
                 const param_id = arg.param.id.val;
                 if (mem.eql(u8, param_id, "searches")) {
                     if (arg.value) |value| {
@@ -380,7 +379,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 diag.report(stderr_writer, err) catch {};
                 return err;
             }) |arg| {
-                print("arg.value: {s}\n", .{arg.value});
                 const param_id = arg.param.id.val;
                 if (mem.eql(u8, param_id, "force")) {
                     parsed_args.force = true;
@@ -397,7 +395,6 @@ pub fn parseArgs(allocator: Allocator) !ParsedCli {
                 diag.report(stderr_writer, err) catch {};
                 return err;
             }) |arg| {
-                print("arg.value: {s}\n", .{arg.value});
                 const param_id = arg.param.id.val;
                 if (mem.eql(u8, param_id, "searches")) {
                     if (arg.value) |value| {
