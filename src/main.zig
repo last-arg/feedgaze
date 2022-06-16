@@ -59,7 +59,7 @@ pub fn main() !void {
             try s.run();
             defer s.shutdown();
         },
-        .add => try cli.addFeed(args.pos_args.?, args.tags.?),
+        .add => try cli.addFeed(args.pos_args.?, args.tags orelse &.{}),
         .update => try cli.updateFeeds(),
         .remove => try cli.deleteFeed(args.pos_args.?),
         .search => try cli.search(args.pos_args.?),
