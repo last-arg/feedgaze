@@ -614,7 +614,7 @@ pub const Storage = struct {
     }
 
     pub fn removeTagsById(self: *Self, tags: [][]const u8, id: u64) !void {
-        const query = "DELETE FROM feed_tag WHERE tag = ? AND id = ?;";
+        const query = "DELETE FROM feed_tag WHERE tag = ? AND feed_id = ?;";
         for (tags) |tag| {
             try self.db.exec(query, .{ tag, id });
         }
