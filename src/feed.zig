@@ -84,7 +84,7 @@ pub const FeedUpdate = struct {
                 result.last_modified_utc = dateStrToTimeStamp(val) catch continue;
             } else if (ascii.startsWithIgnoreCase(line, expires_key)) {
                 const val = mem.trim(u8, line[expires_key.len + 1 ..], "\r\n ");
-                result.last_modified_utc = dateStrToTimeStamp(val) catch continue;
+                result.expires_utc = dateStrToTimeStamp(val) catch continue;
             } else if (ascii.startsWithIgnoreCase(line, cache_control_key)) {
                 const raw_values = line[expires_key.len + 1 ..];
                 var iter_value = mem.split(u8, raw_values, ",");
