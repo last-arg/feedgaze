@@ -289,7 +289,6 @@ pub const Storage = struct {
             ;
             try self.db.exec(update_countdown_query, .{});
         }
-        if (true) return;
         const UrlFeed = struct {
             location: []const u8,
             feed_id: u64,
@@ -316,9 +315,23 @@ pub const Storage = struct {
         defer arena.deinit();
 
         var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
+        var headers = try ArrayList([]const u8).initCapacity(arena.allocator(), http.general_request_headers_curl.len + 2);
+        headers.appendSliceAssumeCapacity(&http.general_request_headers_curl);
+        var stack_fallback = std.heap.stackFallback(128, arena.allocator());
         for (rows) |row| {
             log.info("Updating: '{s}'", .{row.location});
-            var resp = try http.resolveRequestCurl(&arena, row.location, .{});
+            try headers.resize(http.general_request_headers_curl.len);
+            var stack_alloc = stack_fallback.get();
+            if (row.etag) |etag| {
+                const header = try fmt.allocPrint(stack_alloc, "If-None-Match: {s}", .{etag});
+                headers.appendAssumeCapacity(header);
+            } else if (row.last_modified_utc) |last_modified_utc| {
+                var buf: [32]u8 = undefined;
+                const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, last_modified_utc);
+                const header = try fmt.allocPrint(stack_alloc, "If-Modified-Since: {s}", .{date_str});
+                headers.appendAssumeCapacity(header);
+            }
+            var resp = try http.resolveRequestCurl(&arena, row.location, .{ .headers = headers.items });
             defer resp.deinit();
 
             switch (resp.status_code) {
