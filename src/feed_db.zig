@@ -278,12 +278,13 @@ pub const Storage = struct {
     pub fn updateUrlFeeds(self: *Self, opts: UpdateOptions) !void {
         if (!opts.force) {
             // Update every update_countdown value
+            // (expires_utc / 1000) - convert into seconds
             const update_countdown_query =
                 \\WITH const AS (SELECT strftime('%s', 'now') as current_utc)
                 \\UPDATE feed_update_http SET update_countdown = COALESCE(
-                \\  const.current_utc - last_update + cache_control_max_age,
-                \\  expires_utc - const.current_utc,
-                \\  const.current_utc - last_update + update_interval
+                \\  (last_update + cache_control_max_age) - const.current_utc,
+                \\  (expires_utc / 1000) - const.current_utc,
+                \\  (last_update + update_interval) - const.current_utc
                 \\) from const;
             ;
             try self.db.exec(update_countdown_query, .{});
