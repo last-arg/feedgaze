@@ -11,12 +11,6 @@ const log = std.log;
 const parse = @import("parse.zig");
 const dateStrToTimeStamp = parse.Rss.pubDateToTimestamp;
 
-// TODO?: add field interval (ttl/)
-// <sy:updatePeriod>hourly</sy:updatePeriod>
-// <sy:updateFrequency>1</sy:updateFrequency>
-// has something to do with attributes in xml element
-// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
-
 pub const Feed = struct {
     const Self = @This();
     // Atom: title (required)
@@ -92,7 +86,8 @@ pub const FeedUpdate = struct {
                     const value = mem.trimLeft(u8, raw_value, " \r\n\t");
                     if (ascii.startsWithIgnoreCase(value, "max-age") or ascii.startsWithIgnoreCase(value, "s-maxage")) {
                         const eq_index = mem.indexOfScalar(u8, value, '=') orelse continue;
-                        result.cache_control_max_age = try fmt.parseInt(u32, value[eq_index + 1 ..], 10);
+                        const nr = fmt.parseInt(u32, value[eq_index + 1 ..], 10) catch break;
+                        if (nr > 0) result.cache_control_max_age = nr;
                         break;
                     }
                 }
