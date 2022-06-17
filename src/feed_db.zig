@@ -337,6 +337,15 @@ pub const Storage = struct {
             switch (resp.status_code) {
                 200 => {},
                 304 => {
+                    // status code 304 might not contain 'Expires' header like status code '200'
+                    const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+                    if (curl.getHeaderValue(last_header, "expires:")) |value| {
+                        const query_http_update =
+                            \\UPDATE feed_update_http SET expires_utc = ? WHERE feed_id = ?;
+                        ;
+                        const expires_utc = try parse.Rss.pubDateToTimestamp(value);
+                        try self.db.exec(query_http_update, .{ expires_utc, row.feed_id });
+                    }
                     log.info("Skip updating feed {s}. Feed hasn't been modified/changed", .{row.location});
                     continue;
                 },
