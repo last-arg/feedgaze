@@ -284,11 +284,12 @@ pub const Storage = struct {
                 \\UPDATE feed_update_http SET update_countdown = COALESCE(
                 \\  (last_update + cache_control_max_age) - const.current_utc,
                 \\  (expires_utc / 1000) - const.current_utc,
-                \\  (last_update + update_interval) - const.current_utc
+                \\  (last_update + (update_interval * 60)) - const.current_utc
                 \\) from const;
             ;
             try self.db.exec(update_countdown_query, .{});
         }
+        if (true) return;
         const UrlFeed = struct {
             location: []const u8,
             feed_id: u64,
