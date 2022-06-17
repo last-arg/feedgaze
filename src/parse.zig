@@ -19,6 +19,20 @@ const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
 pub const Feed = @import("feed.zig").Feed;
 
+// TODO: title/description might be encoded. Need decode it
+
+// TODO: add different interval fields/elements
+//   1) ttl - maybe
+//   2) <sy:updatePeriod>hourly</sy:updatePeriod>
+//   3) <sy:updateFrequency>1</sy:updateFrequency>
+// has something to do with attributes in xml element
+// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+//
+// Discovered that some sites set HTTP header to no cache. Either
+// 'Cache-control: max-age=0' or/and 'expires: <now>'. Although HTTP
+// response is no cache, feed content might contain values that
+// indicate how often to check for udpates
+
 // TODO: Might want to increase 'max_title_len' value from 50. When it is
 // twitter(nitter) feed I would want more than 50 characters (would want
 // all the tweet text).At the moment it isn't a problem because nitter feed
