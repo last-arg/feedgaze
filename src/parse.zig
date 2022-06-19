@@ -641,6 +641,8 @@ pub const Rss = struct {
         pub_date,
         last_build_date,
         ttl,
+        sy_update_period,
+        sy_update_frequency,
         _ignore,
     };
 
@@ -651,6 +653,28 @@ pub const Rss = struct {
         pub_date,
         guid,
         _ignore,
+    };
+
+    const SyUpdatePeriod = enum {
+        hourly,
+        daily,
+        weekly,
+        monthly,
+        yearly,
+
+        pub fn fromString(value: []const u8) ?@This() {
+            return std.meta.stringToEnum(@This(), value);
+        }
+
+        pub fn toSeconds(self: @This()) u32 {
+            return switch (self) {
+                .hourly => 3600,
+                .daily => 86400,
+                .weekly => 604800,
+                .monthly => 2629800,
+                .yearly => 31536000,
+            };
+        }
     };
 
     pub fn parse(arena: *std.heap.ArenaAllocator, contents: []const u8) !Feed {
@@ -672,6 +696,8 @@ pub const Rss = struct {
         var feed_pub_date: ?[]const u8 = null;
         var feed_build_date: ?[]const u8 = null;
         var feed_ttl: ?u32 = null;
+        var sy_update_period: ?SyUpdatePeriod = null;
+        var sy_update_frequency: u32 = 1;
 
         var xml_parser = xml.Parser.init(contents);
         while (xml_parser.next()) |event| {
@@ -690,6 +716,10 @@ pub const Rss = struct {
                                 channel_field = .last_build_date;
                             } else if (mem.eql(u8, "ttl", tag)) {
                                 channel_field = .ttl;
+                            } else if (mem.eql(u8, "sy:updatePeriod", tag)) {
+                                channel_field = .sy_update_period;
+                            } else if (mem.eql(u8, "sy:updateFrequency", tag)) {
+                                channel_field = .sy_update_frequency;
                             } else if (mem.eql(u8, "item", tag)) {
                                 state = .item;
                                 item_title = null;
@@ -772,6 +802,14 @@ pub const Rss = struct {
                                 .ttl => {
                                     feed_ttl = try std.fmt.parseInt(u32, value, 10);
                                 },
+                                .sy_update_period => {
+                                    if (SyUpdatePeriod.fromString(value)) |val| {
+                                        sy_update_period = val;
+                                    }
+                                },
+                                .sy_update_frequency => {
+                                    sy_update_frequency = try std.fmt.parseInt(u32, value, 10);
+                                },
                                 ._ignore => {},
                             }
                         },
@@ -820,12 +858,23 @@ pub const Rss = struct {
             }
         }
 
+        const interval = blk: {
+            if (sy_update_period) |update_period| {
+                break :blk update_period.toSeconds() * sy_update_frequency;
+            }
+            if (feed_ttl) |ttl| {
+                break :blk ttl * 60;
+            }
+            break :blk null;
+        };
+
         const result = Feed{
             .title = feed_title orelse return error.InvalidRssFeed,
             .link = feed_link,
             .updated_raw = date_raw,
             .items = items.toOwnedSlice(),
             .updated_timestamp = updated_timestamp,
+            .interval_sec = interval,
         };
 
         return result;

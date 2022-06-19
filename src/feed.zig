@@ -25,6 +25,7 @@ pub const Feed = struct {
     link: ?[]const u8 = null,
     location: []const u8 = "",
     items: []Item = &[_]Item{},
+    interval_sec: ?u32 = null,
 
     pub const Item = struct {
         // Atom: title (required)
@@ -78,6 +79,7 @@ pub const FeedUpdate = struct {
                 result.last_modified_utc = dateStrToTimeStamp(val) catch continue;
             } else if (ascii.startsWithIgnoreCase(line, expires_key)) {
                 const val = mem.trim(u8, line[expires_key.len + 1 ..], "\r\n ");
+                // TODO?: Don't use expires value if it is now (current) or close to it
                 result.expires_utc = dateStrToTimeStamp(val) catch continue;
             } else if (ascii.startsWithIgnoreCase(line, cache_control_key)) {
                 const raw_values = line[expires_key.len + 1 ..];
@@ -85,6 +87,7 @@ pub const FeedUpdate = struct {
                 while (iter_value.next()) |raw_value| {
                     const value = mem.trimLeft(u8, raw_value, " \r\n\t");
                     if (ascii.startsWithIgnoreCase(value, "max-age") or ascii.startsWithIgnoreCase(value, "s-maxage")) {
+                        // TODO?: move this check to somewhere else? Before entering DB?
                         const eq_index = mem.indexOfScalar(u8, value, '=') orelse continue;
                         const nr = fmt.parseInt(u32, value[eq_index + 1 ..], 10) catch break;
                         if (nr > 0) result.cache_control_max_age = nr;

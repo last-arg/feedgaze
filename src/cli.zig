@@ -219,6 +219,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 return;
             };
             var feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
+            if (feed.interval_sec) |interval_sec| {
+                feed_update.cache_control_max_age = interval_sec;
+            }
+            if (feed_update.cache_control_max_age) |interval| {
+                if (interval == 0) {
+                    feed_update.cache_control_max_age = null;
+                }
+            }
+            // TODO: check if Expires '<=' current_time
             _ = try self.feed_db.addNewFeed(feed, feed_update, tags);
 
             try writer.print("Feed added '{s}'\n", .{url});

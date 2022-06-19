@@ -373,7 +373,15 @@ pub const Storage = struct {
 
             const body = resp.body_fifo.readableSlice(0);
             const feed = try f.Feed.initParse(&arena, row.location, body, content_type);
-            const feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
+            var feed_update = try f.FeedUpdate.fromHeadersCurl(last_header);
+            if (feed.interval_sec) |interval_sec| {
+                feed_update.cache_control_max_age = interval_sec;
+            }
+            if (feed_update.cache_control_max_age) |interval| {
+                if (interval == 0) {
+                    feed_update.cache_control_max_age = null;
+                }
+            }
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
             defer savepoint.rollback();
             const update_data = UpdateData{
