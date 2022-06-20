@@ -1,5 +1,7 @@
-// Source: https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
+// Source: https://github.com/ifreund/zig-wayland/blob/master/src/xml.zig
+
 const std = @import("std");
+const mem = std.mem;
 
 pub const Parser = struct {
     document: []const u8,
@@ -27,7 +29,7 @@ pub const Parser = struct {
         switch (p.peek(0) orelse return null) {
             '<' => switch (p.peek(1) orelse return null) {
                 '?' => {
-                    if (std.mem.indexOf(u8, p.document[2..], "?>")) |end| {
+                    if (mem.indexOf(u8, p.document[2..], "?>")) |end| {
                         const ev = Event{ .processing_instruction = p.document[2 .. end + 2] };
                         p.document = p.document[end + 4 ..];
                         return ev;
@@ -35,7 +37,7 @@ pub const Parser = struct {
                 },
                 '/' => switch (p.peek(2) orelse return null) {
                     ':', 'A'...'Z', '_', 'a'...'z' => {
-                        if (std.mem.indexOfScalar(u8, p.document[3..], '>')) |end| {
+                        if (mem.indexOfScalar(u8, p.document[3..], '>')) |end| {
                             const ev = Event{ .close_tag = p.document[2 .. end + 3] };
                             p.document = p.document[end + 4 ..];
                             return ev;
@@ -45,14 +47,14 @@ pub const Parser = struct {
                 },
                 '!' => switch (p.peek(2) orelse return null) {
                     '-' => if ((p.peek(3) orelse return null) == '-') {
-                        if (std.mem.indexOf(u8, p.document[3..], "-->")) |end| {
+                        if (mem.indexOf(u8, p.document[3..], "-->")) |end| {
                             const ev = Event{ .comment = p.document[4 .. end + 3] };
                             p.document = p.document[end + 6 ..];
                             return ev;
                         }
                     },
-                    '[' => if (std.mem.startsWith(u8, p.document[3..], "CDATA[")) {
-                        if (std.mem.indexOf(u8, p.document, "]]>")) |end| {
+                    '[' => if (mem.startsWith(u8, p.document[3..], "CDATA[")) {
+                        if (mem.indexOf(u8, p.document, "]]>")) |end| {
                             const ev = Event{ .character_data = p.document[9..end] };
                             p.document = p.document[end + 3 ..];
                             return ev;
@@ -61,15 +63,15 @@ pub const Parser = struct {
                     else => {},
                 },
                 ':', 'A'...'Z', '_', 'a'...'z' => {
-                    const angle = std.mem.indexOfScalar(u8, p.document, '>') orelse return null;
-                    if (std.mem.indexOfScalar(u8, p.document[0..angle], ' ')) |space| {
+                    const angle = mem.indexOfScalar(u8, p.document, '>') orelse return null;
+                    if (mem.indexOfScalar(u8, p.document[0..angle], ' ')) |space| {
                         const ev = Event{ .open_tag = p.document[1..space] };
                         p.current_tag = ev.open_tag;
                         p.document = p.document[space..];
                         p.mode = .attrs;
                         return ev;
                     }
-                    if (std.mem.indexOfScalar(u8, p.document[0..angle], '/')) |slash| {
+                    if (mem.indexOfScalar(u8, p.document[0..angle], '/')) |slash| {
                         const ev = Event{ .open_tag = p.document[1..slash] };
                         p.current_tag = ev.open_tag;
                         p.document = p.document[slash..];
@@ -127,7 +129,7 @@ pub const Parser = struct {
         const c = p.peek(0) orelse return null;
         switch (c) {
             '\'', '"' => {
-                if (std.mem.indexOfScalar(u8, p.document[1..], c)) |end| {
+                if (mem.indexOfScalar(u8, p.document[1..], c)) |end| {
                     const ev = Event{
                         .attribute = .{
                             .name = name,
@@ -167,24 +169,24 @@ pub const Parser = struct {
     }
 
     fn parseEntity(s: []const u8, buf: *[4]u8) ?usize {
-        const semi = std.mem.indexOfScalar(u8, s, ';') orelse return null;
+        const semi = mem.indexOfScalar(u8, s, ';') orelse return null;
         const entity = s[0..semi];
-        if (std.mem.eql(u8, entity, "lt")) {
-            buf.* = std.mem.toBytes(@as(u32, '<'));
-        } else if (std.mem.eql(u8, entity, "gt")) {
-            buf.* = std.mem.toBytes(@as(u32, '>'));
-        } else if (std.mem.eql(u8, entity, "amp")) {
-            buf.* = std.mem.toBytes(@as(u32, '&'));
-        } else if (std.mem.eql(u8, entity, "apos")) {
-            buf.* = std.mem.toBytes(@as(u32, '\''));
-        } else if (std.mem.eql(u8, entity, "quot")) {
-            buf.* = std.mem.toBytes(@as(u32, '"'));
-        } else if (std.mem.startsWith(u8, entity, "#x")) {
+        if (mem.eql(u8, entity, "lt")) {
+            buf.* = mem.toBytes(@as(u32, '<'));
+        } else if (mem.eql(u8, entity, "gt")) {
+            buf.* = mem.toBytes(@as(u32, '>'));
+        } else if (mem.eql(u8, entity, "amp")) {
+            buf.* = mem.toBytes(@as(u32, '&'));
+        } else if (mem.eql(u8, entity, "apos")) {
+            buf.* = mem.toBytes(@as(u32, '\''));
+        } else if (mem.eql(u8, entity, "quot")) {
+            buf.* = mem.toBytes(@as(u32, '"'));
+        } else if (mem.startsWith(u8, entity, "#x")) {
             const codepoint = std.fmt.parseInt(u21, entity[2..semi], 16) catch return null;
-            buf.* = std.mem.toBytes(@as(u32, codepoint));
-        } else if (std.mem.startsWith(u8, entity, "#")) {
+            buf.* = mem.toBytes(@as(u32, codepoint));
+        } else if (mem.startsWith(u8, entity, "#")) {
             const codepoint = std.fmt.parseInt(u21, entity[1..semi], 10) catch return null;
-            buf.* = std.mem.toBytes(@as(u32, codepoint));
+            buf.* = mem.toBytes(@as(u32, codepoint));
         } else {
             return null;
         }
@@ -196,7 +198,7 @@ pub const Parser = struct {
             return null;
 
         if (parseEntity(p.document[1..], &p.char_buffer)) |semi| {
-            const codepoint = std.mem.bytesToValue(u32, &p.char_buffer);
+            const codepoint = mem.bytesToValue(u32, &p.char_buffer);
             const n = std.unicode.utf8Encode(@intCast(u21, codepoint), &p.char_buffer) catch return null;
             p.document = p.document[semi + 2 ..];
             p.mode = .chars;
@@ -248,7 +250,7 @@ pub const Attribute = struct {
     raw_value: []const u8,
     char_buffer: [4]u8 = undefined,
 
-    pub fn dupeValue(attr: Attribute, allocator: *std.mem.Allocator) error{OutOfMemory}![]u8 {
+    pub fn dupeValue(attr: Attribute, allocator: mem.Allocator) error{OutOfMemory}![]u8 {
         var list = std.ArrayList(u8).init(allocator);
         errdefer list.deinit();
         var attr_copy = attr;
@@ -262,7 +264,7 @@ pub const Attribute = struct {
         var i: usize = 0;
 
         while (attr_copy.next()) |fragment| {
-            if (std.mem.startsWith(u8, fragment, prefix[i..])) {
+            if (mem.startsWith(u8, fragment, prefix[i..])) {
                 i += fragment.len;
             } else {
                 return false;
@@ -277,7 +279,7 @@ pub const Attribute = struct {
         var i: usize = 0;
 
         while (attr_copy.next()) |fragment| {
-            if (std.mem.startsWith(u8, value[i..], fragment)) {
+            if (mem.startsWith(u8, value[i..], fragment)) {
                 i += fragment.len;
             } else {
                 return false;
@@ -293,7 +295,7 @@ pub const Attribute = struct {
 
         if (attr.raw_value[0] == '&') {
             if (Parser.parseEntity(attr.raw_value[1..], &attr.char_buffer)) |semi| {
-                const codepoint = std.mem.bytesToValue(u32, &attr.char_buffer);
+                const codepoint = mem.bytesToValue(u32, &attr.char_buffer);
                 const n = std.unicode.utf8Encode(@intCast(u21, codepoint), &attr.char_buffer) catch return null;
                 attr.raw_value = attr.raw_value[semi + 2 ..];
                 return attr.char_buffer[0..n];
