@@ -810,7 +810,7 @@ pub const Rss = struct {
                         .channel => {
                             switch (channel_field) {
                                 .title => {
-                                    feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    feed_title = try xmlCharacterData(&xml_parser, arena.allocator(), value, "title");
                                     channel_field = ._ignore;
                                 },
                                 .link => {
@@ -839,7 +839,7 @@ pub const Rss = struct {
                         .item => {
                             switch (item_field) {
                                 .title => {
-                                    item_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    item_title = try xmlCharacterData(&xml_parser, arena.allocator(), value, "title");
                                     item_field = ._ignore;
                                 },
                                 .link => {
@@ -852,7 +852,7 @@ pub const Rss = struct {
                                     item_guid = value;
                                 },
                                 .description => {
-                                    item_description = xmlCharacterData(&xml_parser, contents, value, "description");
+                                    item_description = try xmlCharacterData(&xml_parser, arena.allocator(), value, "description");
                                     const len = std.math.min(item_description.?.len, max_title_len);
                                     item_description = item_description.?[0..len];
                                 },
@@ -905,29 +905,44 @@ pub const Rss = struct {
 
     fn xmlCharacterData(
         xml_parser: *xml.Parser,
-        contents: []const u8,
+        allocator: Allocator,
         start_value: []const u8,
         close_tag: []const u8,
-    ) []const u8 {
-        print("====== start\n", .{});
-        defer print("====== end\n", .{});
+    ) ![]const u8 {
+        var values = try ArrayList(u8).initCapacity(allocator, start_value.len);
+        defer values.deinit();
+        {
+            var iter = mem.split(u8, start_value, "\n");
+            const first = iter.next() orelse unreachable;
+            values.appendSliceAssumeCapacity(first);
+            while (iter.next()) |value| {
+                const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                if (trimmed.len == 0) continue;
+                values.appendAssumeCapacity(' ');
+                values.appendSliceAssumeCapacity(trimmed);
+            }
+        }
 
-        var end_value = start_value;
         while (xml_parser.next()) |item_event| {
-            print("character_data: |{s}|\n", .{end_value});
             switch (item_event) {
                 .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
-                .character_data => |title_value| end_value = title_value,
+                .character_data => |title_value| {
+                    try values.ensureTotalCapacity(values.items.len + title_value.len);
+                    var iter = mem.split(u8, title_value, "\n");
+                    const first = iter.next() orelse unreachable;
+                    values.appendSliceAssumeCapacity(first);
+                    while (iter.next()) |value| {
+                        const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                        if (trimmed.len == 0) continue;
+                        values.appendAssumeCapacity(' ');
+                        values.appendSliceAssumeCapacity(trimmed);
+                    }
+                },
                 else => std.debug.panic("Xml(RSS): Failed to parse {s}'s value\n", .{close_tag}),
             }
         }
 
-        if (start_value.ptr == end_value.ptr) return start_value;
-
-        const content_ptr = @ptrToInt(contents.ptr);
-        const start_index = @ptrToInt(start_value.ptr) - content_ptr;
-        const end_index = @ptrToInt(end_value.ptr) + end_value.len - content_ptr;
-        return contents[start_index..end_index];
+        return values.toOwnedSlice();
     }
 
     pub fn pubDateToTimestamp(str: []const u8) !i64 {
