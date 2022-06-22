@@ -11,19 +11,29 @@
  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
 
  <entry>
-   <title>Atom-Powered Robots Run Amok</title>
+   <title>
+     Atom-Powered
+     Robots Run Amok
+   </title>
    <link href="http://example.org/2003/12/13/atom03"/>
    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
    <updated>2008-11-13T18:30:02Z</updated>
-   <summary>Some text.</summary>
+   <summary>
+     Some text.
+     Multi line.
+   </summary>
  </entry>
 
  <entry>
-   <title>Entry one&#39;s 1</title>
+   <title>
+     Entry one&#39;s 1
+   </title>
    <link href="http://example.org/2008/12/13/entry-1"/>
    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
    <updated>2005-12-13T18:30:02Z</updated>
-   <summary>Some text.</summary>
+   <summary>
+     Some text.
+   </summary>
  </entry>
 
 </feed>

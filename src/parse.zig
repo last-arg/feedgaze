@@ -19,26 +19,31 @@ const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
 pub const Feed = @import("feed.zig").Feed;
 
-// TODO: title/description might be encoded. Need decode it
-
-// TODO: add different interval fields/elements
-//   1) ttl - maybe
-//   2) <sy:updatePeriod>hourly</sy:updatePeriod>
-//   3) <sy:updateFrequency>1</sy:updateFrequency>
-// has something to do with attributes in xml element
-// xmlns:sy="http://purl.org/rss/1.0/modules/syndication/"
+// TODO: parsing multiline xml/atom value is wrong. title/description
+// Need to remove line breaks and whitespace from beginning of new line.
+// 1) Ignore intial whitespace until non-whitespace character
+// 2) Found newline
+// 3) Ignore whitespace, until non-whitespace character
+// 4) Found non-whitespace character. Add space and character
+// 5) Repeat from point 2 until end of text
 //
-// Discovered that some sites set HTTP header to no cache. Either
-// 'Cache-control: max-age=0' or/and 'expires: <now>'. Although HTTP
-// response is no cache, feed content might contain values that
-// indicate how often to check for udpates
+// TODO: Could instead construct value from parse provided characters.
+// The xml.zig parse actually removes whitespace and decodes html character entities.
+// I just don't use parsed characters but take a slice from raw input.
+// Doesn't seem to remove all whitespace. Still need remove whitespace myself.
+
+// TODO: decode html character entities
+// Resource:
+// * https://en.m.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
+// * https://www.rssboard.org/rss-encoding-examples
 
 // TODO: Might want to increase 'max_title_len' value from 50. When it is
 // twitter(nitter) feed I would want more than 50 characters (would want
 // all the tweet text).At the moment it isn't a problem because nitter feed
 // is an atom feed and atom feeds have to have a title (don't limit title length)
 //
-// This only used in Rss and Json feed where title is optional and description/text
+// This is only applied to description/text if there is no title.
+// Used in Rss and Json feed where title is optional and description/text
 // is used as fallback.
 const max_title_len = 50;
 
@@ -416,12 +421,11 @@ pub const Atom = struct {
                     // warn("processing_instruction: {s}\n", .{str});
                 },
                 .character_data => |value| {
-                    // warn("character_data: {s}\n", .{value});
                     switch (state) {
                         .feed => {
                             switch (field) {
                                 .title => {
-                                    feed_title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    feed_title = try xmlCharacterData(&xml_parser, arena.allocator(), value, "title");
                                     field = .ignore;
                                 },
                                 .updated => {
@@ -436,7 +440,8 @@ pub const Atom = struct {
                                     id = value;
                                 },
                                 .title => {
-                                    title = xmlCharacterData(&xml_parser, contents, value, "title");
+                                    title = try xmlCharacterData(&xml_parser, arena.allocator(), value, "title");
+                                    print("whole title: |{s}|\n", .{title});
                                     field = .ignore;
                                 },
                                 .updated => {
@@ -482,25 +487,44 @@ pub const Atom = struct {
 
     fn xmlCharacterData(
         xml_parser: *xml.Parser,
-        contents: []const u8,
+        allocator: Allocator,
         start_value: []const u8,
         close_tag: []const u8,
-    ) []const u8 {
-        var end_value = start_value;
+    ) ![]const u8 {
+        var values = try ArrayList(u8).initCapacity(allocator, start_value.len);
+        defer values.deinit();
+        {
+            var iter = mem.split(u8, start_value, "\n");
+            const first = iter.next() orelse unreachable;
+            values.appendSliceAssumeCapacity(first);
+            while (iter.next()) |value| {
+                const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                if (trimmed.len == 0) continue;
+                values.appendAssumeCapacity(' ');
+                values.appendSliceAssumeCapacity(trimmed);
+            }
+        }
+
         while (xml_parser.next()) |item_event| {
             switch (item_event) {
                 .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
-                .character_data => |title_value| end_value = title_value,
+                .character_data => |title_value| {
+                    try values.ensureTotalCapacity(values.items.len + title_value.len);
+                    var iter = mem.split(u8, title_value, "\n");
+                    const first = iter.next() orelse unreachable;
+                    values.appendSliceAssumeCapacity(first);
+                    while (iter.next()) |value| {
+                        const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                        if (trimmed.len == 0) continue;
+                        values.appendAssumeCapacity(' ');
+                        values.appendSliceAssumeCapacity(trimmed);
+                    }
+                },
                 else => std.debug.panic("Xml(Atom): Failed to parse {s}'s value\n", .{close_tag}),
             }
         }
 
-        if (start_value.ptr == end_value.ptr) return start_value;
-
-        const content_ptr = @ptrToInt(contents.ptr);
-        const start_index = @ptrToInt(start_value.ptr) - content_ptr;
-        const end_index = @ptrToInt(end_value.ptr) + end_value.len - content_ptr;
-        return contents[start_index..end_index];
+        return values.toOwnedSlice();
     }
 
     // Atom updated_timestamp: http://www.faqs.org/rfcs/rfc3339.html
@@ -547,7 +571,6 @@ pub const Atom = struct {
 };
 
 test "Atom.parse" {
-    l.warn("\n", .{});
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
@@ -571,7 +594,7 @@ test "Atom.parse" {
 
     {
         const item = result.items[1];
-        try testing.expectEqualStrings("Entry one&#39;s 1", item.title);
+        try testing.expectEqualStrings("Entry one's 1", item.title);
         try testing.expectEqualStrings("http://example.org/2008/12/13/entry-1", item.link.?);
         try testing.expectEqualStrings("2005-12-13T18:30:02Z", item.updated_raw.?);
     }
@@ -886,8 +909,12 @@ pub const Rss = struct {
         start_value: []const u8,
         close_tag: []const u8,
     ) []const u8 {
+        print("====== start\n", .{});
+        defer print("====== end\n", .{});
+
         var end_value = start_value;
         while (xml_parser.next()) |item_event| {
+            print("character_data: |{s}|\n", .{end_value});
             switch (item_event) {
                 .close_tag => |tag| if (mem.eql(u8, close_tag, tag)) break,
                 .character_data => |title_value| end_value = title_value,
