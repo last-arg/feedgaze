@@ -19,24 +19,6 @@ const l = std.log;
 const expectEqualStrings = std.testing.expectEqualStrings;
 pub const Feed = @import("feed.zig").Feed;
 
-// TODO: parsing multiline xml/atom value is wrong. title/description
-// Need to remove line breaks and whitespace from beginning of new line.
-// 1) Ignore intial whitespace until non-whitespace character
-// 2) Found newline
-// 3) Ignore whitespace, until non-whitespace character
-// 4) Found non-whitespace character. Add space and character
-// 5) Repeat from point 2 until end of text
-//
-// TODO: Could instead construct value from parse provided characters.
-// The xml.zig parse actually removes whitespace and decodes html character entities.
-// I just don't use parsed characters but take a slice from raw input.
-// Doesn't seem to remove all whitespace. Still need remove whitespace myself.
-
-// TODO: decode html character entities
-// Resource:
-// * https://en.m.wikipedia.org/wiki/List_of_XML_and_HTML_character_entity_references
-// * https://www.rssboard.org/rss-encoding-examples
-
 // TODO: Might want to increase 'max_title_len' value from 50. When it is
 // twitter(nitter) feed I would want more than 50 characters (would want
 // all the tweet text).At the moment it isn't a problem because nitter feed
