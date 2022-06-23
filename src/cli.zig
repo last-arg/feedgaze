@@ -154,6 +154,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var start_url = try url_util.makeValidUrl(arena.allocator(), input_url);
             try curl.globalInit();
             defer curl.globalCleanup();
+
             var url = start_url;
             var last_header: []const u8 = "";
             var content_type: http.ContentType = .unknown;
@@ -227,7 +228,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     feed_update.cache_control_max_age = null;
                 }
             }
-            // TODO: check if Expires '<=' current_time
+            if (feed_update.expires_utc) |expires| {
+                const curr_time = std.time.nanoTimestamp();
+                if (expires <= curr_time) feed_update.expires_utc = null;
+            }
             _ = try self.feed_db.addNewFeed(feed, feed_update, tags);
 
             try writer.print("Feed added '{s}'\n", .{url});

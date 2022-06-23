@@ -382,6 +382,10 @@ pub const Storage = struct {
                     feed_update.cache_control_max_age = null;
                 }
             }
+            if (feed_update.expires_utc) |expires| {
+                const curr_time = std.time.nanoTimestamp();
+                if (expires <= curr_time) feed_update.expires_utc = null;
+            }
             var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
             defer savepoint.rollback();
             const update_data = UpdateData{
