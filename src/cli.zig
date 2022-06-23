@@ -455,7 +455,8 @@ fn testAddFeed(storage: *Storage, locations: [][]const u8, expected: ?[]const u8
         .reader = fbs.reader(),
     };
     if (expected) |e| mem.copy(u8, fbs.buffer, e);
-    try cli.addFeed(locations, "");
+    var empty = .{};
+    try cli.addFeed(locations, &empty);
     if (expected) |e| try expectEqualStrings(e, fbs.getWritten());
 }
 
@@ -617,7 +618,7 @@ test "local and url: add, update, delete, html links, print" {
     {
         const expected = fmt.comptimePrint(
             \\Liftoff News - http://liftoff.msfc.nasa.gov/
-            \\  Star City&#39;s Test
+            \\  Star City's Test
             \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
             \\
             \\  Sky watchers in Europe, Asia, and parts of Alaska{s}
@@ -649,8 +650,6 @@ test "local and url: add, update, delete, html links, print" {
             \\Liftoff News
             \\  link: http://liftoff.msfc.nasa.gov/
             \\  location: {s}
-            \\
-            \\
         , .{feed_url});
         fbs.reset();
         try cli.printFeeds();
