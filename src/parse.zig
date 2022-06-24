@@ -423,7 +423,6 @@ pub const Atom = struct {
                                 },
                                 .title => {
                                     title = try xmlCharacterData(&xml_parser, arena.allocator(), value, "title");
-                                    print("whole title: |{s}|\n", .{title});
                                     field = .ignore;
                                 },
                                 .updated => {
@@ -813,7 +812,7 @@ pub const Rss = struct {
                                     }
                                 },
                                 .sy_update_frequency => {
-                                    sy_update_frequency = try std.fmt.parseInt(u32, value, 10);
+                                    sy_update_frequency = try std.fmt.parseInt(u32, mem.trim(u8, value, &ascii.spaces), 10);
                                 },
                                 ._ignore => {},
                             }

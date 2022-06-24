@@ -326,17 +326,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             if (self.options.url) {
                 try curl.globalInit();
                 defer curl.globalCleanup();
-                self.feed_db.updateUrlFeeds(.{ .force = self.options.force }) catch {
-                    log.err("Failed to update feeds", .{});
-                    return;
-                };
+                try self.feed_db.updateUrlFeeds(.{ .force = self.options.force });
                 try self.writer.print("Updated url feeds\n", .{});
             }
             if (self.options.local) {
-                self.feed_db.updateLocalFeeds(.{ .force = self.options.force }) catch {
-                    log.err("Failed to update local feeds", .{});
-                    return;
-                };
+                try self.feed_db.updateLocalFeeds(.{ .force = self.options.force });
                 try self.writer.print("Updated local feeds\n", .{});
             }
         }

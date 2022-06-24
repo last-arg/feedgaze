@@ -889,7 +889,8 @@ test "Storage local" {
     var tmp_items = try allocator.alloc(Feed.Item, last_items.len);
     std.mem.copy(Feed.Item, tmp_items, last_items);
     try feed_db.addItems(id, tmp_items);
-    try feed_db.addTags(id, "local,local,not-net");
+    var local_tags = .{ "local", "local", "not-net" };
+    try feed_db.addTags(id, &local_tags);
 
     const LocalItem = struct { title: []const u8 };
     const all_items_query = "select title from item order by id DESC";
@@ -1025,12 +1026,10 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
         const location1 = "http://localhost:8080/atom.xml";
         const parsed_feed = Feed{ .title = "Title: location 2" };
         const id1 = try storage.insertFeed(parsed_feed, location1);
-        const feed_update = f.FeedUpdate{
-            .cache_control_max_age = 300,
-        };
+        const feed_update = f.FeedUpdate{ .cache_control_max_age = 300 };
         try storage.addFeedUrl(id1, feed_update);
         // will update feed
-        const query = "update feed_update_http set last_update = ? where feed_id = ?;";
+        const query = "update feed_update_http set update_countdown = ? where feed_id = ?;";
         try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
     }
 
@@ -1041,22 +1040,21 @@ test "updateUrlFeeds: check that only neccessary url feeds are updated" {
         const feed_update = f.FeedUpdate{};
         try storage.addFeedUrl(id1, feed_update);
         // will update feed
-        const query = "update feed_update_http set last_update = ? where feed_id = ?;";
+        const query = "update feed_update_http set update_countdown = ? where feed_id = ?;";
         try storage.db.exec(query, .{ std.math.maxInt(u32), id1 });
     }
 
-    try storage.updateUrlFeeds(Storage.UpdateOptions{});
-    const query_last_update = "select last_update from feed_update_http";
-    {
-        const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
-        for (last_updates) |last_update| try expect(last_update < std.math.maxInt(u32));
+    for (try storage.db.selectAll(i64, "select update_countdown from feed_update_http;", .{})) |countdown| {
+        print("countdown: {d}\n", .{countdown});
     }
 
-    try storage.db.exec("update feed_update_http set last_update = 0;", .{});
     try storage.updateUrlFeeds(Storage.UpdateOptions{ .force = true });
-
+    for (try storage.db.selectAll(i64, "select update_countdown from feed_update_http;", .{})) |countdown| {
+        print("countdown: {d}\n", .{countdown});
+    }
+    const query_last_update = "select update_countdown from feed_update_http;";
     {
-        const last_updates = try storage.db.selectAll(i64, query_last_update, .{});
-        for (last_updates) |last_update| try expect(last_update > 0);
+        const countdowns = try storage.db.selectAll(i64, query_last_update, .{});
+        for (countdowns) |countdown| try expect(countdown >= 0);
     }
 }
