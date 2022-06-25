@@ -1,5 +1,5 @@
 const comptimePrint = @import("std").fmt.comptimePrint;
-pub const update_interval = 600;
+pub const update_interval = 300; // in minutes
 pub const Table = struct {
     pub const item = struct {
         pub const create =
