@@ -364,10 +364,11 @@ pub const Storage = struct {
             const content_type = http.ContentType.fromString(content_type_value);
             switch (content_type) {
                 .html, .unknown => {
-                    print(
+                    log.warn(
                         "Failed to add url {s}. Don't handle mimetype {s}",
                         .{ row.location, content_type_value },
                     );
+                    continue;
                 },
                 else => {},
             }
@@ -387,16 +388,19 @@ pub const Storage = struct {
                 const curr_time = std.time.nanoTimestamp();
                 if (expires <= curr_time) feed_update.expires_utc = null;
             }
-            var savepoint = try self.db.sql_db.savepoint("updateUrlFeeds");
-            defer savepoint.rollback();
-            const update_data = UpdateData{
-                .current = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp },
-                .headers = feed_update,
-                .feed = feed,
-            };
-            try self.updateUrlFeed(update_data, opts);
-            savepoint.commit();
-            log.info("Updated: '{s}'", .{row.location});
+            if (self.db.sql_db.savepoint("updateUrlFeeds")) |*savepoint| {
+                defer savepoint.rollback();
+                const update_data = UpdateData{
+                    .current = .{ .feed_id = row.feed_id, .updated_timestamp = row.updated_timestamp },
+                    .headers = feed_update,
+                    .feed = feed,
+                };
+                try self.updateUrlFeed(update_data, opts);
+                savepoint.commit();
+                log.info("Updated: '{s}'", .{row.location});
+            } else |err| {
+                log.warn("Failed to update feed info in database. Error: {s}", .{err});
+            }
         }
     }
 
