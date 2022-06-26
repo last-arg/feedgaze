@@ -327,7 +327,7 @@ pub const Storage = struct {
                 headers.appendAssumeCapacity(header);
             } else if (row.last_modified_utc) |last_modified_utc| {
                 var buf: [32]u8 = undefined;
-                const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, last_modified_utc);
+                const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, last_modified_utc * 1000);
                 const header = try fmt.allocPrint(stack_alloc, "If-Modified-Since: {s}", .{date_str});
                 headers.appendAssumeCapacity(header);
             }
