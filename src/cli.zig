@@ -278,7 +278,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 id: u64,
             };
 
-            // most recently updated feed
+            // TODO: feeds with newest item first
             const most_recent_feeds_query = "SELECT title, link, id FROM feed;";
             const most_recent_feeds = try self.feed_db.db.selectAll(Result, most_recent_feeds_query, .{});
 
@@ -290,7 +290,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             // grouped by feed_id
             const all_items_query =
                 \\SELECT
-                \\	title, link, feed_id
+                \\	title, link, feed_id, pub_date_utc
                 \\FROM
                 \\	item
                 \\ORDER BY
@@ -299,8 +299,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  modified_at DESC
             ;
 
-            const all_items = try self.feed_db.db.selectAll(Result, all_items_query, .{});
+            const all_items = try self.feed_db.db.selectAll(struct {
+                title: []const u8,
+                link: ?[]const u8,
+                id: u64,
+                pub_date_utc: ?i64,
+            }, all_items_query, .{});
 
+            // TODO: print dates
             for (most_recent_feeds) |feed| {
                 const id = feed.id;
                 const start_index = blk: {
@@ -314,10 +320,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 for (all_items[start_index..]) |item| {
                     if (item.id != id) break;
                     const item_link = item.link orelse "<no-link>";
-                    try self.writer.print("  {s}\n  {s}\n\n", .{
-                        item.title,
-                        item_link,
-                    });
+                    try self.writer.print("  {s}", .{item.title});
+                    if (item.pub_date_utc) |date| {
+                        var buf: [32]u8 = undefined;
+                        const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, date * 1000);
+                        try self.writer.print(" - {s}", .{date_str});
+                    }
+                    try self.writer.print("\n  {s}\n\n", .{item_link});
                 }
             }
         }
