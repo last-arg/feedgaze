@@ -501,6 +501,7 @@ pub const Server = struct {
         return false;
     }
 
+    // TODO?: Move calculating elapsed time to client side?
     fn printElapsedTime(res: *web.Response, dt: Datetime, now: Datetime) !void {
         const delta = now.sub(dt);
         const w = res.writer();

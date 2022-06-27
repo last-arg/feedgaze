@@ -278,8 +278,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 id: u64,
             };
 
-            // TODO: feeds with newest item first
-            const most_recent_feeds_query = "SELECT title, link, id FROM feed;";
+            const most_recent_feeds_query =
+                \\WITH most_recent_ids AS (select feed_id from item group by feed_id order by max(pub_date_utc) desc)
+                \\SELECT title, link, id FROM feed JOIN most_recent_ids ON feed_id = id;
+            ;
             const most_recent_feeds = try self.feed_db.db.selectAll(Result, most_recent_feeds_query, .{});
 
             if (most_recent_feeds.len == 0) {
@@ -319,7 +321,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 for (all_items[start_index..]) |item| {
                     if (item.id != id) break;
                     const item_link = item.link orelse "<no-link>";
-                    try self.writer.print("  {s}", .{item.title});
+                    try self.writer.print("- {s}", .{item.title});
                     if (item.pub_date_utc) |date| {
                         const Datetime = @import("datetime").datetime.Datetime;
                         const dt = Datetime.fromSeconds(@intToFloat(f64, date));
