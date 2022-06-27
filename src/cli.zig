@@ -314,7 +314,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     for (all_items) |item, idx| {
                         if (item.id == id) break :blk idx;
                     }
-                    break; // Should not happen
+                    continue; // If feed happens to have no items skip it
                 };
                 const feed_link = feed.link orelse "<no-link>";
                 try self.writer.print("{s} - {s}\n", .{ feed.title, feed_link });
