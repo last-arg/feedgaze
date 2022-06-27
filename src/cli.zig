@@ -321,11 +321,41 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const item_link = item.link orelse "<no-link>";
                     try self.writer.print("  {s}", .{item.title});
                     if (item.pub_date_utc) |date| {
-                        const datetime = @import("datetime").datetime;
-                        const dt = datetime.Datetime.fromSeconds(@intToFloat(f64, date));
-                        // var buf: [32]u8 = undefined;
-                        // TODO: print elapsed time - <elapsed time> (<date>)
-                        try self.writer.print(" - {d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{ dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute });
+                        const Datetime = @import("datetime").datetime.Datetime;
+                        const dt = Datetime.fromSeconds(@intToFloat(f64, date));
+                        const delta = Datetime.sub(Datetime.now(), dt);
+                        var elapsed_value: i64 = 0;
+                        var elapsed_type: []const u8 = undefined;
+                        if (delta.days > 1) {
+                            const months = @divFloor(delta.days, 30);
+                            const years = @divFloor(months, 12);
+                            if (years > 0) {
+                                elapsed_value = years;
+                                elapsed_type = "years";
+                            } else if (months > 0) {
+                                elapsed_value = months;
+                                elapsed_type = "months";
+                            } else {
+                                elapsed_value = delta.days;
+                                elapsed_type = "days";
+                            }
+                        } else {
+                            const seconds = if (delta.seconds < 0) (86400 + delta.seconds) else delta.seconds;
+                            const minutes = @divFloor(seconds, 60);
+                            const hours = @divFloor(minutes, 60);
+                            if (hours > 0) {
+                                elapsed_value = hours;
+                                elapsed_type = "hours";
+                            } else {
+                                elapsed_value = minutes;
+                                elapsed_type = "minutes";
+                            }
+                        }
+                        if (elapsed_value == 1) {
+                            elapsed_type = elapsed_type[0 .. elapsed_type.len - 1];
+                        }
+
+                        try self.writer.print(" - [{d} {s} ago | {d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}]", .{ elapsed_value, elapsed_type, dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute });
                     }
                     try self.writer.print("\n  {s}\n\n", .{item_link});
                 }
