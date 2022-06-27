@@ -306,7 +306,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 pub_date_utc: ?i64,
             }, all_items_query, .{});
 
-            // TODO: print dates
             for (most_recent_feeds) |feed| {
                 const id = feed.id;
                 const start_index = blk: {
@@ -322,9 +321,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const item_link = item.link orelse "<no-link>";
                     try self.writer.print("  {s}", .{item.title});
                     if (item.pub_date_utc) |date| {
-                        var buf: [32]u8 = undefined;
-                        const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, date * 1000);
-                        try self.writer.print(" - {s}", .{date_str});
+                        const datetime = @import("datetime").datetime;
+                        const dt = datetime.Datetime.fromSeconds(@intToFloat(f64, date));
+                        // var buf: [32]u8 = undefined;
+                        // TODO: print elapsed time - <elapsed time> (<date>)
+                        try self.writer.print(" - {d}-{d:0>2}-{d:0>2} {d:0>2}:{d:0>2}", .{ dt.date.year, dt.date.month, dt.date.day, dt.time.hour, dt.time.minute });
                     }
                     try self.writer.print("\n  {s}\n\n", .{item_link});
                 }
