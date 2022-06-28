@@ -315,7 +315,7 @@ pub const Storage = struct {
         defer arena.deinit();
 
         var rows = try stmt.all(UrlFeed, arena.allocator(), .{}, .{});
-        var headers = try ArrayList([]const u8).initCapacity(arena.allocator(), http.general_request_headers_curl.len + 2);
+        var headers = try ArrayList([]const u8).initCapacity(arena.allocator(), http.general_request_headers_curl.len + 1);
         headers.appendSliceAssumeCapacity(&http.general_request_headers_curl);
         var stack_fallback = std.heap.stackFallback(128, arena.allocator());
         for (rows) |row| {
@@ -326,8 +326,9 @@ pub const Storage = struct {
                 const header = try fmt.allocPrint(stack_alloc, "If-None-Match: {s}", .{etag});
                 headers.appendAssumeCapacity(header);
             } else if (row.last_modified_utc) |last_modified_utc| {
+                const Datetime = @import("datetime").datetime.Datetime;
                 var buf: [32]u8 = undefined;
-                const date_str = try @import("datetime").datetime.Datetime.formatHttpFromTimestamp(&buf, last_modified_utc * 1000);
+                const date_str = try Datetime.formatHttpFromTimestamp(&buf, last_modified_utc);
                 const header = try fmt.allocPrint(stack_alloc, "If-Modified-Since: {s}", .{date_str});
                 headers.appendAssumeCapacity(header);
             }
