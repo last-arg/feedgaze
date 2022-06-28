@@ -344,7 +344,11 @@ pub const Storage = struct {
                         const query_http_update =
                             \\UPDATE feed_update_http SET expires_utc = ? WHERE feed_id = ?;
                         ;
-                        const expires_utc = try parse.Rss.pubDateToTimestamp(value);
+                        var expires_utc = blk: {
+                            const result = try parse.Rss.pubDateToTimestamp(value);
+                            if (result <= std.time.milliTimestamp()) break :blk null;
+                            break :blk result;
+                        };
                         try self.db.exec(query_http_update, .{ expires_utc, row.feed_id });
                     }
                     try self.db.exec("UPDATE feed_update_http SET last_update = strftime('%s', 'now') WHERE feed_id = ?;", .{row.feed_id});
