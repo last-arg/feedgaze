@@ -229,7 +229,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
             }
             if (feed_update.expires_utc) |expires| {
-                const curr_time = std.time.nanoTimestamp();
+                const curr_time = std.time.milliTimestamp();
                 if (expires <= curr_time) feed_update.expires_utc = null;
             }
             _ = try self.feed_db.addNewFeed(feed, feed_update, tags);

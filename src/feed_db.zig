@@ -386,7 +386,7 @@ pub const Storage = struct {
                 }
             }
             if (feed_update.expires_utc) |expires| {
-                const curr_time = std.time.nanoTimestamp();
+                const curr_time = std.time.milliTimestamp();
                 if (expires <= curr_time) feed_update.expires_utc = null;
             }
             if (self.db.sql_db.savepoint("updateUrlFeeds")) |*savepoint| {
