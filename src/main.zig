@@ -9,6 +9,30 @@ const Client = http.Client;
 
 pub const log_level = std.log.Level.debug;
 
+const FeedLink = struct {
+    link: []const u8,
+    type: Type,
+    title: ?[]const u8 = null,
+
+    const Type = enum {
+        rss,
+        atom,
+        xml,
+
+        fn fromString(input: []const u8) ?Type {
+            if (std.ascii.eqlIgnoreCase(input, "application/rss+xml")) {
+                return .rss;
+            } else if (std.ascii.eqlIgnoreCase(input, "application/atom+xml")) {
+                return .atom;
+            } else if (std.ascii.eqlIgnoreCase(input, "application/xml") or std.ascii.eqlIgnoreCase(input, "text/xml")) {
+                return .xml;
+            }
+            return null;
+        }
+    };
+};
+const FeedLinkArray = std.ArrayList(FeedLink);
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const base_allocator = gpa.allocator();
@@ -32,27 +56,61 @@ pub fn main() !void {
 
     std.debug.print("{}\n", .{req.response.state});
     var total: usize = 0;
-    var buf: [5000]u8 = undefined;
+    // NOTE: if there is no '>' symbol found in buf, will skip parsing.
+    // Make sure buf is big enough to hold <a> or <link> attributes in buffer.
+    var buf: [4 * 100]u8 = undefined;
+    var buf_len: usize = 0;
     var amt = try req.readAll(&buf);
     total += amt;
 
     const header_value = parseHeader(req.response.header_bytes.items);
-    parseHtml(buf[0..amt]);
     print("{?s}\n", .{header_value.content_type});
     print("{?s}\n", .{header_value.last_modified});
     print("{?s}\n", .{header_value.etag});
 
+    var feed_links = try FeedLinkArray.initCapacity(arena_allocator, 3);
+    defer feed_links.deinit();
+
+    buf_len = if (mem.lastIndexOfScalar(u8, buf[0..amt], '>')) |last_lne_sign|
+        last_lne_sign + @boolToInt(last_lne_sign < amt)
+    else
+        0;
+
+    const len = if (buf_len == 0) amt else buf_len;
+    try parseHtmlForFeedLinks(buf[0..len], &feed_links);
+    // TODO: prefill start of buf with characters after last_lne_sign
+    if (buf_len != 0) {
+        mem.copy(u8, buf[0..], buf[buf_len..]);
+        buf_len = amt - buf_len;
+    }
+
     while (true) {
-        std.debug.print("Read start\n", .{});
-        amt = try req.readAll(&buf);
+        // std.debug.print("Read start\n", .{});
+        amt = try req.readAll(buf[buf_len..]);
         total += amt;
+        // std.debug.print("  got {d} bytes (total {d})\n", .{ amt, total });
         if (amt == 0) break;
-        std.debug.print("  got {d} bytes (total {d})\n", .{ amt, total });
-        std.debug.print("{s}\n", .{buf[0..10]});
+        const new_len = buf_len + amt;
+        buf_len = if (mem.lastIndexOfScalar(u8, buf[0..new_len], '>')) |last_lne_sign|
+            last_lne_sign + @boolToInt(last_lne_sign < amt)
+        else
+            0;
+        try parseHtmlForFeedLinks(buf[0..new_len], &feed_links);
+        if (buf_len != 0) {
+            mem.copy(u8, &buf, buf[buf_len..new_len]);
+            buf_len = new_len - buf_len;
+        }
+        // std.debug.print("{s}\n", .{buf[0..amt]});
         // std.debug.print("Read end\n", .{});
     }
 
-    std.debug.print("{}\n", .{req.response});
+    for (feed_links.items) |link| {
+        print("link: {s}\n", .{link.link});
+        print("type: {}\n", .{link.type});
+        print("title: {?s}\n", .{link.title});
+    }
+
+    // std.debug.print("{}\n", .{req.response});
 
     try bw.flush();
 
@@ -115,8 +173,8 @@ fn parseHeader(raw_header: []const u8) HeaderValues {
 // '/feed.xml'
 // '/feed'
 // '/rss'
-fn parseHtml(input: []const u8) void {
-    print("|{s}|\n", .{input});
+fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
+    // print("|{s}|\n", .{input});
     var content = input;
     while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
         content = content[start_index + 1 ..];
@@ -133,16 +191,21 @@ fn parseHtml(input: []const u8) void {
             }
             continue;
         }
-        var end_index = std.mem.indexOfScalar(u8, content, '>') orelse break;
+        var end_index = std.mem.indexOfScalar(u8, content, '>') orelse return;
         if (is_link and content[end_index - 1] == '/') {
             end_index -= 1;
         }
         const new_start: usize = if (is_a) 2 else 5;
         var attrs_raw = content[new_start..end_index];
-        print("  link: {s}\n", .{attrs_raw});
+        content = content[end_index..];
+
+        var rel: ?[]const u8 = null;
+        var title: ?[]const u8 = null;
+        var link: ?[]const u8 = null;
+        var link_type: ?[]const u8 = null;
+
         while (mem.indexOfScalar(u8, attrs_raw, '=')) |eql_index| {
             const name = std.mem.trimLeft(u8, attrs_raw[0..eql_index], " ");
-            print("    name: |{s}|\n", .{name});
             attrs_raw = attrs_raw[eql_index + 1 ..];
             var sep: u8 = ' ';
             const first = attrs_raw[0];
@@ -155,8 +218,29 @@ fn parseHtml(input: []const u8) void {
             if (attr_end != attrs_raw.len) {
                 attrs_raw = attrs_raw[attr_end + 1 ..];
             }
-            print("    value: |{s}|\n", .{value});
+
+            if (std.ascii.eqlIgnoreCase(name, "type")) {
+                link_type = value;
+            } else if (std.ascii.eqlIgnoreCase(name, "rel")) {
+                rel = value;
+            } else if (std.ascii.eqlIgnoreCase(name, "href")) {
+                link = value;
+            } else if (std.ascii.eqlIgnoreCase(name, "title")) {
+                title = value;
+            }
+        }
+
+        if (rel != null and link != null and link_type != null and
+            std.ascii.eqlIgnoreCase(rel.?, "alternate"))
+        {
+            if (FeedLink.Type.fromString(link_type.?)) |valid_type| {
+                const allocator = feed_arr.allocator;
+                try feed_arr.append(.{
+                    .title = if (title) |t| try allocator.dupe(u8, t) else null,
+                    .link = try allocator.dupe(u8, link.?),
+                    .type = valid_type,
+                });
+            }
         }
     }
-    // print("|{s}|\n", .{std.ascii.startsWithIgnoreCase(input)});
 }
