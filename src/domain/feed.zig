@@ -16,9 +16,8 @@ const CreateResponse = usize;
 
 const CreateError = error{
     InvalidUri,
-    Conflict,
     FeedExists,
-    InsertFailed,
+    Unknown,
 };
 
 pub fn create(repo: *InMemoryRepository, req: CreateRequest) CreateError!CreateResponse {
@@ -38,7 +37,7 @@ pub fn create(repo: *InMemoryRepository, req: CreateRequest) CreateError!CreateR
         .updated_timestamp = timestamp,
     }) catch |err| return switch (err) {
         error.FeedExists => CreateError.FeedExists,
-        else => CreateError.InsertFailed,
+        else => CreateError.Unknown,
     };
     return insert_id;
 }
@@ -57,7 +56,7 @@ fn testRequestInvalid() CreateRequest {
     };
 }
 
-test "return Conflict" {
+test "return FeedExists" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
     const req = testRequest();
