@@ -83,3 +83,44 @@ test "return Response" {
     const res = try create(&repo, req);
     try std.testing.expectEqual(@as(usize, 0), res);
 }
+
+const DeleteRequest = struct {
+    feed_url: []const u8,
+};
+
+const DeleteError = error{
+    InvalidUri,
+    NotFound,
+};
+
+pub fn delete(repo: *InMemoryRepository, req: DeleteRequest) DeleteError!void {
+    _ = Uri.parse(req.feed_url) catch return CreateError.InvalidUri;
+    return repo.delete(req.feed_url) catch |err| switch (err) {
+        error.NotFound => DeleteError.NotFound,
+    };
+}
+
+test "delete: InvalidUri" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = delete(&repo, .{ .feed_url = "<invalid_url>" });
+    try std.testing.expectError(DeleteError.InvalidUri, res);
+}
+
+test "delete: NotFound" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = delete(&repo, .{ .feed_url = "http://localhost/valid_url" });
+    try std.testing.expectError(DeleteError.NotFound, res);
+}
+
+test "delete: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    const req = testRequest();
+    _ = try repo.insert(.{ .feed_url = req.feed_url });
+
+    try delete(&repo, .{ .feed_url = req.feed_url });
+}

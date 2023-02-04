@@ -35,6 +35,21 @@ pub const InMemoryRepository = struct {
         return false;
     }
 
+    // Invalidates all feed indices after remove 'index'
+    pub fn delete(self: *Self, url: []const u8) !void {
+        const index = findFeed(url, self.feeds.items) orelse return error.NotFound;
+        _ = self.feeds.swapRemove(index);
+    }
+
+    fn findFeed(url: []const u8, feeds: []Feed) ?usize {
+        for (feeds) |feed, index| {
+            if (std.mem.eql(u8, url, feed.feed_url)) {
+                return index;
+            }
+        }
+        return null;
+    }
+
     pub fn deinit(self: Self) void {
         self.feeds.deinit();
     }
