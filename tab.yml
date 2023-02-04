@@ -1,8 +1,0 @@
-repo: feedgaze
-doc: "feedgaze"
-shell: fish
-
-tabs:
-  - tab: edit
-    dir: src/
-    doc: "feedgaze/src/"
