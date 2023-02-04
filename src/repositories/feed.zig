@@ -50,6 +50,11 @@ pub const InMemoryRepository = struct {
         return null;
     }
 
+    pub fn update(self: *Self, feed: Feed) !void {
+        const index = findFeed(feed.feed_url, self.feeds.items) orelse return error.NotFound;
+        self.feeds.items[index] = feed;
+    }
+
     pub fn deinit(self: Self) void {
         self.feeds.deinit();
     }

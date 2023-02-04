@@ -124,3 +124,57 @@ test "delete: success" {
 
     try delete(&repo, .{ .feed_url = req.feed_url });
 }
+
+const UpdateRequest = CreateRequest;
+
+const UpdateError = error{
+    InvalidUri,
+    NotFound,
+};
+
+pub fn update(repo: *InMemoryRepository, req: UpdateRequest) UpdateError!void {
+    _ = Uri.parse(req.feed_url) catch return UpdateError.InvalidUri;
+    var timestamp: ?i64 = null;
+    if (req.updated_raw) |date| {
+        // TODO: validate date string
+        if (date.len > 0) {
+            timestamp = @as(i64, 22);
+        }
+    }
+    return repo.update(.{
+        .name = req.name,
+        .feed_url = req.feed_url,
+        .page_url = req.page_url,
+        .updated_raw = req.updated_raw,
+        .updated_timestamp = timestamp,
+    }) catch |err| switch (err) {
+        error.NotFound => UpdateError.NotFound,
+    };
+}
+
+test "update: InvalidUri" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = update(&repo, .{ .feed_url = "<invalid_url>" });
+    try std.testing.expectError(UpdateError.InvalidUri, res);
+}
+
+test "update: NotFound" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = update(&repo, .{ .feed_url = "http://localhost/valid_url" });
+    try std.testing.expectError(UpdateError.NotFound, res);
+}
+
+test "update: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    var req = testRequest();
+    _ = try repo.insert(.{ .feed_url = req.feed_url });
+
+    const name = "New title";
+    try update(&repo, .{ .feed_url = req.feed_url, .name = name });
+    try std.testing.expectEqualStrings(name, repo.feeds.items[0].name.?);
+}
