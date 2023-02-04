@@ -2,6 +2,9 @@ const std = @import("std");
 const Uri = std.Uri;
 const print = std.debug.print;
 const InMemoryRepository = @import("../repositories/feed.zig").InMemoryRepository;
+const entities = @import("../domain/entities.zig");
+const Feed = entities.Feed;
+
 // business logic
 // https://alexis-lozano.com/hexagonal-architecture-in-rust-1/
 
@@ -177,4 +180,50 @@ test "update: success" {
     const name = "New title";
     try update(&repo, .{ .feed_url = req.feed_url, .name = name });
     try std.testing.expectEqualStrings(name, repo.feeds.items[0].name.?);
+}
+
+const GetRequest = struct {
+    feed_url: []const u8,
+};
+
+const GetRespond = Feed;
+
+const GetError = error{
+    InvalidUri,
+    NotFound,
+};
+
+pub fn get(repo: *InMemoryRepository, req: GetRequest) GetError!GetRespond {
+    _ = Uri.parse(req.feed_url) catch return GetError.InvalidUri;
+    return repo.get(req.feed_url) catch |err| switch (err) {
+        error.NotFound => GetError.NotFound,
+    };
+}
+
+test "get: InvalidUri" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = get(&repo, .{ .feed_url = "<invalid_url>" });
+    try std.testing.expectError(GetError.InvalidUri, res);
+}
+
+test "get: NotFound" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = get(&repo, .{ .feed_url = "http://localhost/valid_url" });
+    try std.testing.expectError(GetError.NotFound, res);
+}
+
+test "get: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    var req = testRequest();
+    _ = try repo.insert(.{ .feed_url = req.feed_url, .name = req.name });
+
+    const res = try get(&repo, .{ .feed_url = req.feed_url });
+    try std.testing.expectEqualStrings(req.feed_url, res.feed_url);
+    try std.testing.expectEqualStrings(req.name.?, res.name.?);
+    try std.testing.expectEqual(req.updated_raw, res.updated_raw);
 }

@@ -2,7 +2,8 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
-const Feed = @import("../domain/entities.zig").Feed;
+const entities = @import("../domain/entities.zig");
+const Feed = entities.Feed;
 const Uri = std.Uri;
 
 pub const InMemoryRepository = struct {
@@ -53,6 +54,11 @@ pub const InMemoryRepository = struct {
     pub fn update(self: *Self, feed: Feed) !void {
         const index = findFeed(feed.feed_url, self.feeds.items) orelse return error.NotFound;
         self.feeds.items[index] = feed;
+    }
+
+    pub fn get(self: *Self, url: []const u8) !Feed {
+        const index = findFeed(url, self.feeds.items) orelse return error.NotFound;
+        return self.feeds.items[index];
     }
 
     pub fn deinit(self: Self) void {
