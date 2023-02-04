@@ -15,16 +15,11 @@ const CreateRequest = struct {
 const CreateResponse = usize;
 
 const CreateError = error{
-    BadRequest,
     InvalidUri,
     Conflict,
 };
 
 pub fn create(repo: *InMemoryRepository, req: CreateRequest) CreateError!CreateResponse {
-    // TODO: validate req fields
-    if (req.feed_url.len == 0) {
-        return CreateError.BadRequest;
-    }
     _ = Uri.parse(req.feed_url) catch return CreateError.InvalidUri;
     var timestamp: ?i64 = null;
     if (req.updated_raw) |date| {
@@ -65,17 +60,6 @@ test "return Conflict" {
 
     const res = create(&repo, req);
     try std.testing.expectError(CreateError.Conflict, res);
-}
-
-test "return BadRequest" {
-    const expectError = std.testing.expectError;
-    var repo = InMemoryRepository.init(std.testing.allocator);
-    defer repo.deinit();
-    var req = testRequestInvalid();
-    req.feed_url = "";
-
-    const res = create(&repo, req);
-    try expectError(CreateError.BadRequest, res);
 }
 
 test "return InvalidUri" {
