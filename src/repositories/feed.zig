@@ -19,7 +19,7 @@ pub const InMemoryRepository = struct {
 
     pub fn insert(self: *Self, feed: Feed) !usize {
         if (hasUrl(feed.feed_url, self.feeds.items)) {
-            return error.Conflict;
+            return error.FeedExists;
         }
         const index = self.feeds.items.len;
         try self.feeds.append(feed);
