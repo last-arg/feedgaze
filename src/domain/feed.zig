@@ -14,7 +14,7 @@ const CreateRequest = struct {
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
 
-    pub fn toFeed(req: @This(), ts: i64) Feed {
+    pub fn toFeed(req: @This(), ts: ?i64) Feed {
         return .{
             .name = req.name,
             .feed_url = req.feed_url,
