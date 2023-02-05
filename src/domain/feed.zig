@@ -13,6 +13,16 @@ const CreateRequest = struct {
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
+
+    pub fn toFeed(req: @This(), ts: i64) Feed {
+        return .{
+            .name = req.name,
+            .feed_url = req.feed_url,
+            .page_url = req.page_url,
+            .updated_raw = req.updated_raw,
+            .updated_timestamp = ts,
+        };
+    }
 };
 
 const CreateResponse = usize;
@@ -32,13 +42,7 @@ pub fn create(repo: *InMemoryRepository, req: CreateRequest) CreateError!CreateR
             timestamp = @as(i64, 22);
         }
     }
-    const insert_id = repo.insert(.{
-        .name = req.name,
-        .feed_url = req.feed_url,
-        .page_url = req.page_url,
-        .updated_raw = req.updated_raw,
-        .updated_timestamp = timestamp,
-    }) catch |err| return switch (err) {
+    const insert_id = repo.insert(req.toFeed(timestamp)) catch |err| return switch (err) {
         error.FeedExists => CreateError.FeedExists,
         else => CreateError.Unknown,
     };
