@@ -219,11 +219,10 @@ test "get: NotFound" {
 test "get: success" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
-    var req = testRequest();
-    _ = try repo.insert(.{ .feed_url = req.feed_url, .name = req.name });
+    const req = testRequest();
+    const feed = Feed{ .feed_url = req.feed_url, .name = req.name };
+    _ = try repo.insert(feed);
 
     const res = try get(&repo, .{ .feed_url = req.feed_url });
-    try std.testing.expectEqualStrings(req.feed_url, res.feed_url);
-    try std.testing.expectEqualStrings(req.name.?, res.name.?);
-    try std.testing.expectEqual(req.updated_raw, res.updated_raw);
+    try std.testing.expectEqual(feed, res);
 }
