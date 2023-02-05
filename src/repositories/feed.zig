@@ -104,6 +104,11 @@ pub const InMemoryRepository = struct {
         return false;
     }
 
+    pub fn getItem(self: Self, item_id: usize) !FeedItem {
+        const index = findFeedItemById(item_id, self.feed_items.items) orelse return error.NotFound;
+        return self.feed_items.items[index];
+    }
+
     pub fn deleteItem(self: *Self, item_id: usize) !void {
         const index = findFeedItemById(item_id, self.feed_items.items) orelse return error.NotFound;
         _ = self.feed_items.swapRemove(index);

@@ -1,6 +1,8 @@
 const std = @import("std");
 const Uri = std.Uri;
 const InMemoryRepository = @import("../repositories/feed.zig").InMemoryRepository;
+const entities = @import("../domain/entities.zig");
+const FeedItem = entities.FeedItem;
 
 const CreateRequest = struct {
     feed_id: usize,
@@ -82,9 +84,9 @@ const DeleteError = error{
     NotFound,
 };
 
-pub fn delete(repo: *InMemoryRepository, req: DeleteRequest) DeleteError!void {
+pub fn delete(repo: *InMemoryRepository, req: GetRequest) GetError!void {
     return repo.deleteItem(req.item_id) catch |err| switch (err) {
-        error.NotFound => DeleteError.NotFound,
+        error.NotFound => GetError.NotFound,
     };
 }
 
@@ -93,7 +95,7 @@ test "delete: NotFound" {
     defer repo.deinit();
 
     const res = delete(&repo, .{ .item_id = 1 });
-    try std.testing.expectError(DeleteError.NotFound, res);
+    try std.testing.expectError(GetError.NotFound, res);
 }
 
 test "delete: success" {
@@ -103,4 +105,37 @@ test "delete: success" {
     const feed_id = try repo.insert(.{ .feed_url = url });
     const item_id = try repo.insertItem(.{ .feed_id = feed_id, .name = "Item name" });
     try delete(&repo, .{ .item_id = item_id });
+}
+
+const GetRequest = struct {
+    item_id: usize,
+};
+
+const GetError = error{
+    NotFound,
+};
+
+pub fn get(repo: *InMemoryRepository, req: GetRequest) GetError!FeedItem {
+    return repo.getItem(req.item_id) catch |err| switch (err) {
+        error.NotFound => GetError.NotFound,
+    };
+}
+
+test "get: NotFound" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = get(&repo, .{ .item_id = 1 });
+    try std.testing.expectError(GetError.NotFound, res);
+}
+
+test "get: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    const url = "http://localhost/valid_url";
+    const feed_id = try repo.insert(.{ .feed_url = url });
+    var item = FeedItem{ .feed_id = feed_id, .name = "Item name" };
+    item.item_id = try repo.insertItem(item);
+    const res = try get(&repo, .{ .item_id = item.item_id });
+    try std.testing.expectEqual(item, res);
 }
