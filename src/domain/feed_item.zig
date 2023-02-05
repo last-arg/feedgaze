@@ -73,3 +73,34 @@ test "create: success" {
     const res = try create(&repo, .{ .feed_id = feed_id, .name = "Item name" });
     try std.testing.expectEqual(@as(usize, 1), res);
 }
+
+const DeleteRequest = struct {
+    item_id: usize,
+};
+
+const DeleteError = error{
+    NotFound,
+};
+
+pub fn delete(repo: *InMemoryRepository, req: DeleteRequest) DeleteError!void {
+    return repo.deleteItem(req.item_id) catch |err| switch (err) {
+        error.NotFound => DeleteError.NotFound,
+    };
+}
+
+test "delete: NotFound" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+
+    const res = delete(&repo, .{ .item_id = 1 });
+    try std.testing.expectError(DeleteError.NotFound, res);
+}
+
+test "delete: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    const url = "http://localhost/valid_url";
+    const feed_id = try repo.insert(.{ .feed_url = url });
+    const item_id = try repo.insertItem(.{ .feed_id = feed_id, .name = "Item name" });
+    try delete(&repo, .{ .item_id = item_id });
+}
