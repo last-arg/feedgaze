@@ -3,18 +3,25 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const entities = @import("../domain/entities.zig");
+const print = std.debug.print;
 const Feed = entities.Feed;
+const FeedItem = entities.FeedItem;
 const Uri = std.Uri;
+const assert = std.debug.assert;
 
 pub const InMemoryRepository = struct {
     const Self = @This();
     allocator: Allocator,
     feeds: ArrayList(Feed),
+    feed_id: usize = 0,
+    feed_items: ArrayList(FeedItem),
+    feed_item_id: usize = 0,
 
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
             .feeds = ArrayList(Feed).init(allocator),
+            .feed_items = ArrayList(FeedItem).init(allocator),
         };
     }
 
@@ -22,9 +29,13 @@ pub const InMemoryRepository = struct {
         if (hasUrl(feed.feed_url, self.feeds.items)) {
             return error.FeedExists;
         }
-        const index = self.feeds.items.len;
-        try self.feeds.append(feed);
-        return index;
+        const id = self.feed_id + 1;
+        self.feed_id = id;
+        var new_feed = feed;
+        new_feed.feed_id = id;
+        try self.feeds.append(new_feed);
+        assert(id > 0);
+        return id;
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -61,7 +72,31 @@ pub const InMemoryRepository = struct {
         return self.feeds.items[index];
     }
 
+    pub fn insertItem(self: *Self, item: FeedItem) !usize {
+        assert(item.feed_id == 0);
+        if (!hasFeedWithId(item.feed_id, self.feeds.items)) {
+            return error.FeedNotFound;
+        }
+        const id = self.feed_item_id + 1;
+        var new_item = item;
+        self.feed_item_id = id;
+        new_item.item_id = id;
+        try self.feed_items.append(new_item);
+        assert(id > 0);
+        return id;
+    }
+
+    fn hasFeedWithId(id: usize, feeds: []Feed) bool {
+        for (feeds) |feed| {
+            if (id == feed.feed_id) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     pub fn deinit(self: Self) void {
         self.feeds.deinit();
+        self.feed_items.deinit();
     }
 };

@@ -84,7 +84,7 @@ test "return Response" {
     const req = testRequest();
 
     const res = try create(&repo, req);
-    try std.testing.expectEqual(@as(usize, 0), res);
+    try std.testing.expectEqual(@as(usize, 1), res);
 }
 
 const DeleteRequest = struct {
@@ -220,8 +220,8 @@ test "get: success" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
     const req = testRequest();
-    const feed = Feed{ .feed_url = req.feed_url, .name = req.name };
-    _ = try repo.insert(feed);
+    var feed = Feed{ .feed_url = req.feed_url, .name = req.name };
+    feed.feed_id = try repo.insert(feed);
 
     const res = try get(&repo, .{ .feed_url = req.feed_url });
     try std.testing.expectEqual(feed, res);
