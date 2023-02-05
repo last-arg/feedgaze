@@ -128,7 +128,13 @@ test "delete: success" {
     try delete(&repo, .{ .feed_url = req.feed_url });
 }
 
-const UpdateRequest = CreateRequest;
+const UpdateRequest = struct {
+    feed_id: usize,
+    feed_url: []const u8,
+    name: ?[]const u8 = null,
+    page_url: ?[]const u8 = null,
+    updated_raw: ?[]const u8 = null,
+};
 
 const UpdateError = error{
     InvalidUri,
@@ -145,6 +151,7 @@ pub fn update(repo: *InMemoryRepository, req: UpdateRequest) UpdateError!void {
         }
     }
     return repo.update(.{
+        .feed_id = req.feed_id,
         .name = req.name,
         .feed_url = req.feed_url,
         .page_url = req.page_url,
@@ -159,7 +166,7 @@ test "update: InvalidUri" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
 
-    const res = update(&repo, .{ .feed_url = "<invalid_url>" });
+    const res = update(&repo, .{ .feed_id = 1, .feed_url = "<invalid_url>" });
     try std.testing.expectError(UpdateError.InvalidUri, res);
 }
 
@@ -167,7 +174,7 @@ test "update: NotFound" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
 
-    const res = update(&repo, .{ .feed_url = "http://localhost/valid_url" });
+    const res = update(&repo, .{ .feed_id = 1, .feed_url = "http://localhost/valid_url" });
     try std.testing.expectError(UpdateError.NotFound, res);
 }
 
@@ -175,10 +182,10 @@ test "update: success" {
     var repo = InMemoryRepository.init(std.testing.allocator);
     defer repo.deinit();
     var req = testRequest();
-    _ = try repo.insert(.{ .feed_url = req.feed_url });
+    const feed_id = try repo.insert(.{ .feed_url = req.feed_url });
 
     const name = "New title";
-    try update(&repo, .{ .feed_url = req.feed_url, .name = name });
+    try update(&repo, .{ .feed_id = feed_id, .feed_url = req.feed_url, .name = name });
     try std.testing.expectEqualStrings(name, repo.feeds.items[0].name.?);
 }
 

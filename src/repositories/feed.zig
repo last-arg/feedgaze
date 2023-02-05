@@ -61,8 +61,18 @@ pub const InMemoryRepository = struct {
         return null;
     }
 
+    fn findFeedById(id: usize, feeds: []Feed) ?usize {
+        for (feeds) |feed, index| {
+            if (id == feed.feed_id) {
+                return index;
+            }
+        }
+        return null;
+    }
+
     pub fn update(self: *Self, feed: Feed) !void {
-        const index = findFeed(feed.feed_url, self.feeds.items) orelse return error.NotFound;
+        assert(feed.feed_id > 0);
+        const index = findFeedById(feed.feed_id, self.feeds.items) orelse return error.NotFound;
         self.feeds.items[index] = feed;
     }
 
