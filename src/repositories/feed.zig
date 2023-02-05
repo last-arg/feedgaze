@@ -3,7 +3,6 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const entities = @import("../domain/entities.zig");
-const print = std.debug.print;
 const Feed = entities.Feed;
 const FeedItem = entities.FeedItem;
 const Uri = std.Uri;
@@ -73,7 +72,7 @@ pub const InMemoryRepository = struct {
     }
 
     pub fn insertItem(self: *Self, item: FeedItem) !usize {
-        assert(item.feed_id == 0);
+        assert(item.feed_id > 0);
         if (!hasFeedWithId(item.feed_id, self.feeds.items)) {
             return error.FeedNotFound;
         }

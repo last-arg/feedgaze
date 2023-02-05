@@ -43,6 +43,7 @@ pub fn create(repo: *InMemoryRepository, req: CreateRequest) !CreateResponse {
     };
 
     const insert_id = repo.insertItem(.{
+        .feed_id = req.feed_id,
         .name = req.name,
         .id = req.id,
         .link = req.link,
@@ -62,4 +63,13 @@ test "create: FeedNotFound" {
 
     const res = create(&repo, .{ .feed_id = 1, .name = "Feed name" });
     try std.testing.expectError(CreateError.FeedNotFound, res);
+}
+
+test "create: success" {
+    var repo = InMemoryRepository.init(std.testing.allocator);
+    defer repo.deinit();
+    const feed_id = try repo.insert(.{ .feed_url = "http://localhost/valid_url", .name = "Feed name" });
+
+    const res = try create(&repo, .{ .feed_id = feed_id, .name = "Item name" });
+    try std.testing.expectEqual(@as(usize, 1), res);
 }
