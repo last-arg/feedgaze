@@ -13,6 +13,11 @@ pub const Storage = struct {
     feeds: ArrayList(Feed),
     feed_id: usize = 0,
 
+    pub const Error = error{
+        NotFound,
+        FeedExists,
+    };
+
     pub fn init(allocator: Allocator) Self {
         return .{
             .allocator = allocator,
@@ -22,7 +27,7 @@ pub const Storage = struct {
 
     pub fn insertFeed(self: *Self, feed_insert: FeedInsert) !usize {
         if (hasUrl(feed_insert.feed_url, self.feeds.items)) {
-            return error.FeedExists;
+            return Error.FeedExists;
         }
         const id = self.feed_id + 1;
         const feed = feed_insert.toFeed(id);
@@ -56,8 +61,14 @@ pub const Storage = struct {
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
-        const index = findFeedIndex(id, self.feeds.items) orelse return error.NotFound;
+        const index = findFeedIndex(id, self.feeds.items) orelse return Error.NotFound;
         _ = self.feeds.swapRemove(index);
+    }
+
+    pub fn updateFeed(self: *Self, id: usize, feed_insert: FeedInsert) !void {
+        assert(id > 0);
+        const index = findFeedIndex(id, self.feeds.items) orelse return Error.NotFound;
+        self.feeds.items[index] = feed_insert.toFeed(id);
     }
 
     pub fn deinit(self: *Self) void {

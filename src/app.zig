@@ -12,6 +12,7 @@ const App = struct {
 
     const Error = error{
         FeedExists,
+        NotFound,
     };
 
     pub fn init(allocator: Allocator) Self {
@@ -39,6 +40,19 @@ const App = struct {
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
         try self.storage.deleteFeed(id);
+    }
+
+    pub fn updateFeed(self: *Self, id: usize, data: FeedRaw) !void {
+        const f = try data.toFeedInsert();
+        f.validate() catch |err| switch (err) {
+            else => error.Unknown,
+        };
+        const insert_id = self.storage.updateFeed(id, f) catch |err| switch (err) {
+            Storage.Error.NotFound => Error.NotFound,
+            else => error.Unknown,
+        };
+
+        return insert_id;
     }
 
     pub fn deinit(self: *Self) void {
@@ -100,5 +114,23 @@ test "App.deleteFeed" {
         const id = try app.insertFeed(testFeedRaw());
         try app.deleteFeed(id);
         try std.testing.expectEqual(@as(usize, 0), app.storage.feeds.items.len);
+    }
+}
+
+test "App.updateFeed" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
+    {
+        const res = app.updateFeed(1, testFeedRaw());
+        try std.testing.expectError(error.NotFound, res);
+    }
+
+    {
+        var feed = testFeedRaw();
+        const id = try app.insertFeed(feed);
+        feed.name = "Updated title";
+        try app.updateFeed(id, feed);
+        try std.testing.expectEqual(feed.name, app.storage.feeds.items[0].name);
     }
 }
