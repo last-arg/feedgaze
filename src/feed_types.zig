@@ -61,3 +61,64 @@ pub const FeedRaw = struct {
         };
     }
 };
+
+pub const FeedItem = struct {
+    feed_id: usize,
+    item_id: usize,
+    name: []const u8,
+    id: ?[]const u8 = null,
+    link: ?[]const u8 = null,
+    updated_raw: ?[]const u8 = null,
+    updated_timestamp: ?i64 = null,
+};
+
+pub const FeedItemInsert = struct {
+    feed_id: usize,
+    name: []const u8,
+    id: ?[]const u8 = null,
+    link: ?[]const u8 = null,
+    updated_raw: ?[]const u8 = null,
+    updated_timestamp: ?i64 = null,
+
+    pub fn validate(self: @This()) !void {
+        _ = self;
+    }
+
+    pub fn toFeedItem(raw: FeedItemInsert, id: usize) FeedItem {
+        return .{
+            .feed_id = raw.feed_id,
+            .item_id = id,
+            .name = raw.name,
+            .id = raw.id,
+            .link = raw.link,
+            .updated_raw = raw.updated_raw,
+            .updated_timestamp = raw.updated_timestamp,
+        };
+    }
+};
+
+pub const FeedItemRaw = struct {
+    feed_id: usize,
+    name: []const u8,
+    id: ?[]const u8 = null,
+    link: ?[]const u8 = null,
+    updated_raw: ?[]const u8 = null,
+
+    pub fn toFeedInsert(raw: FeedItemRaw) FeedItemInsert {
+        var timestamp: ?i64 = null;
+        if (raw.updated_raw) |date| {
+            // TODO: validate date string
+            if (date.len > 0) {
+                timestamp = @as(i64, 22);
+            }
+        }
+        return .{
+            .feed_id = raw.feed_id,
+            .name = raw.name,
+            .id = raw.id,
+            .link = raw.link,
+            .updated_raw = raw.updated_raw,
+            .updated_timestamp = timestamp,
+        };
+    }
+};

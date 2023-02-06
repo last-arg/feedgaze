@@ -6,12 +6,16 @@ const ArrayList = std.ArrayList;
 const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
 const FeedInsert = feed_types.FeedInsert;
+const FeedItem = feed_types.FeedItem;
+const FeedItemInsert = feed_types.FeedItemInsert;
 
 pub const Storage = struct {
     const Self = @This();
     allocator: Allocator,
     feeds: ArrayList(Feed),
     feed_id: usize = 0,
+    feed_items: ArrayList(FeedItem),
+    feed_item_id: usize = 0,
 
     pub const Error = error{
         NotFound,
@@ -22,6 +26,7 @@ pub const Storage = struct {
         return .{
             .allocator = allocator,
             .feeds = ArrayList(Feed).init(allocator),
+            .feed_items = ArrayList(FeedItem).init(allocator),
         };
     }
 
@@ -73,5 +78,27 @@ pub const Storage = struct {
 
     pub fn deinit(self: *Self) void {
         self.feeds.deinit();
+        self.feed_items.deinit();
+    }
+
+    pub fn insertFeedItem(self: *Self, insert: FeedItemInsert) !usize {
+        if (!hasFeedWithId(insert.feed_id, self.feeds.items)) {
+            return Error.NotFound;
+        }
+        const id = self.feed_item_id + 1;
+        const feed = insert.toFeedItem(id);
+        try self.feed_items.append(feed);
+        assert(id > 0);
+        self.feed_item_id = id;
+        return id;
+    }
+
+    fn hasFeedWithId(id: usize, feeds: []Feed) bool {
+        for (feeds) |feed| {
+            if (id == feed.feed_id) {
+                return true;
+            }
+        }
+        return false;
     }
 };
