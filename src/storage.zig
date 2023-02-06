@@ -41,6 +41,20 @@ pub const Storage = struct {
         return false;
     }
 
+    pub fn getFeed(self: Self, id: usize) ?Feed {
+        const index = findFeedIndex(id, self.feeds.items) orelse return null;
+        return self.feeds.items[index];
+    }
+
+    fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
+        for (feeds) |f, i| {
+            if (id == f.feed_id) {
+                return i;
+            }
+        }
+        return null;
+    }
+
     pub fn deinit(self: *Self) void {
         self.feeds.deinit();
     }

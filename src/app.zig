@@ -4,6 +4,7 @@ const Allocator = mem.Allocator;
 const Storage = @import("./storage.zig").Storage;
 const feed_types = @import("./feed_types.zig");
 const FeedRaw = feed_types.FeedRaw;
+const Feed = feed_types.Feed;
 
 const App = struct {
     const Self = @This();
@@ -30,6 +31,10 @@ const App = struct {
         };
 
         return insert_id;
+    }
+
+    pub fn getFeed(self: Self, id: usize) ?Feed {
+        return self.storage.getFeed(id);
     }
 
     pub fn deinit(self: *Self) void {
@@ -59,5 +64,21 @@ test "App.insertFeed" {
 
         const res = app.insertFeed(testFeedRaw());
         try std.testing.expectError(App.Error.FeedExists, res);
+    }
+}
+
+test "App.getFeed" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
+    {
+        const res = app.getFeed(1);
+        try std.testing.expect(null == res);
+    }
+
+    {
+        const id = try app.insertFeed(testFeedRaw());
+        const res = app.getFeed(id);
+        try std.testing.expectEqual(id, res.?.feed_id);
     }
 }
