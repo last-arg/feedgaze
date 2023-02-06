@@ -37,6 +37,10 @@ const App = struct {
         return self.storage.getFeed(id);
     }
 
+    pub fn deleteFeed(self: *Self, id: usize) !void {
+        try self.storage.deleteFeed(id);
+    }
+
     pub fn deinit(self: *Self) void {
         defer self.storage.deinit();
     }
@@ -80,5 +84,21 @@ test "App.getFeed" {
         const id = try app.insertFeed(testFeedRaw());
         const res = app.getFeed(id);
         try std.testing.expectEqual(id, res.?.feed_id);
+    }
+}
+
+test "App.deleteFeed" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
+    {
+        const res = app.deleteFeed(1);
+        try std.testing.expectError(error.NotFound, res);
+    }
+
+    {
+        const id = try app.insertFeed(testFeedRaw());
+        try app.deleteFeed(id);
+        try std.testing.expectEqual(@as(usize, 0), app.storage.feeds.items.len);
     }
 }

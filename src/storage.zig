@@ -55,6 +55,11 @@ pub const Storage = struct {
         return null;
     }
 
+    pub fn deleteFeed(self: *Self, id: usize) !void {
+        const index = findFeedIndex(id, self.feeds.items) orelse return error.NotFound;
+        _ = self.feeds.swapRemove(index);
+    }
+
     pub fn deinit(self: *Self) void {
         self.feeds.deinit();
     }
