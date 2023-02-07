@@ -115,4 +115,9 @@ pub const Storage = struct {
         }
         return null;
     }
+
+    pub fn deleteFeedItem(self: *Self, id: usize) !void {
+        const index = findFeedItemIndex(id, self.feed_items.items) orelse return Error.NotFound;
+        _ = self.feed_items.swapRemove(index);
+    }
 };
