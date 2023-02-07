@@ -81,16 +81,18 @@ pub const Storage = struct {
         self.feed_items.deinit();
     }
 
-    pub fn insertFeedItem(self: *Self, insert: FeedItemInsert) !usize {
-        if (!hasFeedWithId(insert.feed_id, self.feeds.items)) {
-            return Error.NotFound;
+    pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
+        for (inserts) |*item| {
+            if (!hasFeedWithId(item.feed_id, self.feeds.items)) {
+                return Error.NotFound;
+            }
+            const id = self.feed_item_id + 1;
+            item.item_id = id;
+            try self.feed_items.append(item.*);
+            assert(id > 0);
+            self.feed_item_id = id;
         }
-        const id = self.feed_item_id + 1;
-        const feed = insert.toFeedItem(id);
-        try self.feed_items.append(feed);
-        assert(id > 0);
-        self.feed_item_id = id;
-        return id;
+        return inserts;
     }
 
     fn hasFeedWithId(id: usize, feeds: []Feed) bool {

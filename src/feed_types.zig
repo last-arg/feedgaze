@@ -64,12 +64,16 @@ pub const FeedRaw = struct {
 
 pub const FeedItem = struct {
     feed_id: usize,
-    item_id: usize,
+    item_id: ?usize = null,
     name: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
+
+    pub fn prepareAndValidate(self: *@This()) !void {
+        _ = self;
+    }
 };
 
 pub const FeedItemInsert = struct {
@@ -79,10 +83,6 @@ pub const FeedItemInsert = struct {
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
-
-    pub fn validate(self: @This()) !void {
-        _ = self;
-    }
 
     pub fn toFeedItem(raw: FeedItemInsert, id: usize) FeedItem {
         return .{
