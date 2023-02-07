@@ -101,4 +101,18 @@ pub const Storage = struct {
         }
         return false;
     }
+
+    pub fn getFeedItem(self: Self, id: usize) ?FeedItem {
+        const index = findFeedItemIndex(id, self.feed_items.items) orelse return null;
+        return self.feed_items.items[index];
+    }
+
+    fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
+        for (items) |item, i| {
+            if (id == item.feed_id) {
+                return i;
+            }
+        }
+        return null;
+    }
 };

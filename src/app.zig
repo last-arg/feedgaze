@@ -71,6 +71,10 @@ const App = struct {
         return insert_id;
     }
 
+    pub fn getFeedItem(self: *Self, id: usize) ?FeedItem {
+        return self.storage.getFeedItem(id);
+    }
+
     pub fn deinit(self: *Self) void {
         defer self.storage.deinit();
     }
@@ -167,5 +171,24 @@ test "App.insertFeedItem" {
         const feed_id = try app.insertFeed(testFeedRaw());
         const item_id = try app.insertFeedItem(.{ .feed_id = feed_id, .name = "Item title" });
         try std.testing.expectEqual(@as(usize, 1), item_id);
+    }
+}
+
+test "App.getFeedItem" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
+    {
+        const res = app.getFeedItem(1);
+        try std.testing.expect(null == res);
+    }
+
+    {
+        const feed_id = try app.insertFeed(testFeedRaw());
+        const insert_item = .{ .feed_id = feed_id, .name = "Item title" };
+        const item_id = try app.insertFeedItem(insert_item);
+        const item = app.getFeedItem(item_id);
+        try std.testing.expectEqual(item.?.item_id, item_id);
+        try std.testing.expectEqualStrings(item.?.name, insert_item.name);
     }
 }
