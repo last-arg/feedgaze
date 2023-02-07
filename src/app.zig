@@ -59,7 +59,7 @@ const App = struct {
     }
 
     pub fn insertFeedItem(self: *Self, insert: FeedItemRaw) !usize {
-        const f = insert.toFeedInsert();
+        const f = insert.toFeedItemInsert();
         f.validate() catch |err| switch (err) {
             else => error.Unknown,
         };
@@ -77,6 +77,19 @@ const App = struct {
 
     pub fn deleteFeedItem(self: *Self, id: usize) !void {
         try self.storage.deleteFeedItem(id);
+    }
+
+    pub fn updateFeedItem(self: *Self, id: usize, data: FeedItemRaw) !void {
+        const item = data.toFeedItemInsert();
+        item.validate() catch |err| switch (err) {
+            else => error.Unknown,
+        };
+        const insert_id = self.storage.updateFeedItem(id, item) catch |err| switch (err) {
+            Storage.Error.NotFound => Error.NotFound,
+            else => error.Unknown,
+        };
+
+        return insert_id;
     }
 
     pub fn deinit(self: *Self) void {
@@ -212,5 +225,24 @@ test "App.deleteFeedItem" {
         try app.deleteFeedItem(item_id);
         try std.testing.expectEqual(@as(usize, 0), app.storage.feed_items.items.len);
         // try std.testing.expectEqualStrings(item.?.name, insert_item.name);
+    }
+}
+
+test "App.updateFeedItem" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
+    {
+        const res = app.updateFeedItem(1, .{ .feed_id = 1, .name = "Item title" });
+        try std.testing.expectError(error.NotFound, res);
+    }
+
+    {
+        const feed_id = try app.insertFeed(testFeedRaw());
+        const item_id = try app.insertFeedItem(.{ .feed_id = feed_id, .name = "Item title" });
+        const new_title = "Updated title";
+        try app.updateFeedItem(item_id, .{ .feed_id = feed_id, .name = new_title });
+        const item = app.getFeedItem(item_id);
+        try std.testing.expectEqualStrings(new_title, item.?.name);
     }
 }

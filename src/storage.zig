@@ -120,4 +120,10 @@ pub const Storage = struct {
         const index = findFeedItemIndex(id, self.feed_items.items) orelse return Error.NotFound;
         _ = self.feed_items.swapRemove(index);
     }
+
+    pub fn updateFeedItem(self: *Self, id: usize, item_insert: FeedItemInsert) !void {
+        assert(id > 0);
+        const index = findFeedItemIndex(id, self.feed_items.items) orelse return Error.NotFound;
+        self.feed_items.items[index] = item_insert.toFeedItem(id);
+    }
 };

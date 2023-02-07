@@ -104,7 +104,7 @@ pub const FeedItemRaw = struct {
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
 
-    pub fn toFeedInsert(raw: FeedItemRaw) FeedItemInsert {
+    pub fn toFeedItemInsert(raw: FeedItemRaw) FeedItemInsert {
         var timestamp: ?i64 = null;
         if (raw.updated_raw) |date| {
             // TODO: validate date string
