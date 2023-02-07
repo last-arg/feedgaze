@@ -45,7 +45,7 @@ pub fn main() !void {
     };
     try client.ca_bundle.rescan(arena_allocator);
 
-    const input = "http://localhost:8080/many-links.html";
+    const input = "http://localhost:8282/many-links.html";
     const url = try std.Uri.parse(input);
     var req = try client.request(url, .{}, .{});
     defer req.deinit();
