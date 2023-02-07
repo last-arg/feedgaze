@@ -75,8 +75,8 @@ const App = struct {
         return self.storage.getFeedItem(id);
     }
 
-    pub fn deleteFeedItem(self: *Self, id: usize) !void {
-        try self.storage.deleteFeedItem(id);
+    pub fn deleteFeedItems(self: *Self, ids: []usize) !void {
+        try self.storage.deleteFeedItems(ids);
     }
 
     pub fn updateFeedItem(self: *Self, id: usize, data: FeedItemRaw) !void {
@@ -217,7 +217,8 @@ test "App.deleteFeedItem" {
     defer app.deinit();
 
     {
-        const res = app.deleteFeedItem(1);
+        var ids = [_]usize{1};
+        const res = app.deleteFeedItems(&ids);
         try std.testing.expectError(error.NotFound, res);
     }
 
@@ -225,9 +226,9 @@ test "App.deleteFeedItem" {
         const feed_id = try app.insertFeed(testFeedRaw());
         var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
-        try app.deleteFeedItem(new_items[0].item_id.?);
+        var ids = [_]usize{new_items[0].item_id.?};
+        try app.deleteFeedItems(&ids);
         try std.testing.expectEqual(@as(usize, 0), app.storage.feed_items.items.len);
-        // try std.testing.expectEqualStrings(item.?.name, insert_item.name);
     }
 }
 
