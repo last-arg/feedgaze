@@ -2,15 +2,6 @@ const std = @import("std");
 const Builder = @import("std").build.Builder;
 const LibExeObjStep = @import("std").build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
-const deps = @import("deps.zig");
-const pkgs = deps.pkgs;
-const mbedtls = deps.build_pkgs.mbedtls;
-const libssh2 = deps.build_pkgs.libssh2;
-const zlib = deps.build_pkgs.zlib;
-const libcurl = deps.build_pkgs.libcurl;
-
-// build.zig example
-// https://stackoverflow.com/questions/68609919/using-zig-compiler-as-a-library
 
 pub fn build(b: *Builder) !void {
     // Standard target options allows the person running `zig build` to choose
@@ -19,34 +10,60 @@ pub fn build(b: *Builder) !void {
     // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
 
-    // Standard release options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall.
-    const mode = b.standardReleaseOptions();
+    // Standard optimization options allow the person running `zig build` to select
+    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
+    // set a preferred release mode, allowing the user to decide how to optimize.
+    const optimize = b.standardOptimizeOption(.{});
 
-    const exe = b.addExecutable("feedgaze", "src/main.zig");
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
+    const exe = b.addExecutable(.{
+        .name = "feedgaze",
+        .root_source_file = .{ .path = "src/main.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    exe.addAnonymousModule("atom.atom", .{
+        .source_file = .{ .path = "./test/atom.atom" },
+    });
 
-    try stepSetup(b, exe, target, mode);
+    // This declares intent for the executable to be installed into the
+    // standard location when the user invokes the "install" step (the default
+    // step when running `zig build`).
     exe.install();
 
+    // This *creates* a RunStep in the build graph, to be executed when another
+    // step is evaluated that depends on it. The next line below will establish
+    // such a dependency.
     const run_cmd = exe.run();
+
+    // By making the run step depend on the install step, it will be run from the
+    // installation directory rather than directly from within the cache directory.
+    // This is not necessary, however, if the application depends on other installed
+    // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(b.getInstallStep());
+
+    // This allows the user to pass arguments to the application in the build
+    // command itself, like this: `zig build run -- arg1 arg2 etc`
     if (b.args) |args| {
         run_cmd.addArgs(args);
     }
 
+    // This creates a build step. It will be visible in the `zig build --help` menu,
+    // and can be selected like this: `zig build run`
+    // This will evaluate the `run` step rather than the default, which is "install".
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
     const test_file = if (b.args) |args| args[0] else "src/main.zig";
-    var test_cmd = b.addTest(test_file);
-    // const test_options = b.addOptions();
-    // test_options.addOption(bool, "test-evented-io", true);
-    // exe.addOptions("test", test_options);
+    // Creates a step for unit testing.
+    const test_cmd = b.addTest(.{
+        .root_source_file = .{ .path = test_file },
+        .target = target,
+        .optimize = optimize,
+    });
 
-    test_cmd.setBuildMode(mode);
-    try stepSetup(b, test_cmd, target, mode);
+    test_cmd.addAnonymousModule("atom.atom", .{
+        .source_file = .{ .path = "./test/atom.atom" },
+    });
 
     if (b.args) |args| {
         if (args.len >= 2) {
@@ -56,27 +73,4 @@ pub fn build(b: *Builder) !void {
 
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
-}
-
-fn stepSetup(b: *Builder, step: *LibExeObjStep, target: CrossTarget, mode: std.builtin.Mode) !void {
-    step.linkLibC();
-    step.linkSystemLibrary("sqlite3");
-    step.addPackagePath("xml", "lib/zig-xml/xml.zig");
-
-    const z = zlib.create(b, target, mode);
-    const tls = mbedtls.create(b, target, mode);
-    const ssh2 = libssh2.create(b, target, mode);
-    tls.link(ssh2.step);
-
-    const curl = try libcurl.create(b, target, mode);
-    ssh2.link(curl.step);
-    tls.link(curl.step);
-    z.link(curl.step, .{});
-
-    z.link(step, .{});
-    tls.link(step);
-    ssh2.link(step);
-    curl.link(step, .{ .import_name = "curl" });
-
-    pkgs.addAllTo(step);
 }
