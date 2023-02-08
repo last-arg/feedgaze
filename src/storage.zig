@@ -30,16 +30,17 @@ pub const Storage = struct {
         };
     }
 
-    pub fn insertFeed(self: *Self, feed_insert: FeedInsert) !usize {
-        if (hasUrl(feed_insert.feed_url, self.feeds.items)) {
+    pub fn insertFeed(self: *Self, feed: Feed) !Feed {
+        if (hasUrl(feed.feed_url, self.feeds.items)) {
             return Error.FeedExists;
         }
+        var result = feed;
         const id = self.feed_id + 1;
-        const feed = feed_insert.toFeed(id);
-        try self.feeds.append(feed);
+        result.feed_id = id;
+        try self.feeds.append(result);
         assert(id > 0);
         self.feed_id = id;
-        return id;
+        return result;
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -68,6 +69,7 @@ pub const Storage = struct {
     pub fn deleteFeed(self: *Self, id: usize) !void {
         const index = findFeedIndex(id, self.feeds.items) orelse return Error.NotFound;
         _ = self.feeds.swapRemove(index);
+        // TODO: delete items with feed_id
     }
 
     pub fn updateFeed(self: *Self, id: usize, feed_insert: FeedInsert) !void {

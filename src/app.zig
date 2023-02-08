@@ -24,17 +24,14 @@ const App = struct {
         };
     }
 
-    pub fn insertFeed(self: *Self, data: FeedRaw) !usize {
-        const f = try data.toFeedInsert();
-        f.validate() catch |err| switch (err) {
-            else => error.Unknown,
-        };
-        const insert_id = self.storage.insertFeed(f) catch |err| switch (err) {
-            error.FeedExists => Error.FeedExists,
-            else => error.Unknown,
+    pub fn insertFeed(self: *Self, feed: Feed) !usize {
+        var result = try feed.prepareAndValidate();
+        result = self.storage.insertFeed(feed) catch |err| switch (err) {
+            error.FeedExists => return Error.FeedExists,
+            else => return error.Unknown,
         };
 
-        return insert_id;
+        return result.feed_id;
     }
 
     pub fn getFeed(self: Self, id: usize) ?Feed {
@@ -97,6 +94,13 @@ const App = struct {
     }
 };
 
+fn testFeed() Feed {
+    return .{
+        .name = "Feed title",
+        .feed_url = "http://localhost/valid_url",
+    };
+}
+
 fn testFeedRaw() FeedRaw {
     return .{
         .name = "Feed title",
@@ -110,14 +114,14 @@ test "App.insertFeed" {
 
     {
         const res = app.insertFeed(.{ .feed_url = "<invalid_url>" });
-        try std.testing.expectError(FeedRaw.Error.InvalidUri, res);
+        try std.testing.expectError(Feed.Error.InvalidUri, res);
     }
 
     {
-        _ = try app.insertFeed(testFeedRaw());
+        _ = try app.insertFeed(testFeed());
         try std.testing.expectEqual(app.storage.feeds.items.len, 1);
 
-        const res = app.insertFeed(testFeedRaw());
+        const res = app.insertFeed(testFeed());
         try std.testing.expectError(App.Error.FeedExists, res);
     }
 }
@@ -132,7 +136,7 @@ test "App.getFeed" {
     }
 
     {
-        const id = try app.insertFeed(testFeedRaw());
+        const id = try app.insertFeed(testFeed());
         const res = app.getFeed(id);
         try std.testing.expectEqual(id, res.?.feed_id);
     }
@@ -148,7 +152,7 @@ test "App.deleteFeed" {
     }
 
     {
-        const id = try app.insertFeed(testFeedRaw());
+        const id = try app.insertFeed(testFeed());
         try app.deleteFeed(id);
         try std.testing.expectEqual(@as(usize, 0), app.storage.feeds.items.len);
     }
@@ -164,11 +168,12 @@ test "App.updateFeed" {
     }
 
     {
-        var feed = testFeedRaw();
+        var feed = testFeed();
         const id = try app.insertFeed(feed);
-        feed.name = "Updated title";
-        try app.updateFeed(id, feed);
-        try std.testing.expectEqual(feed.name, app.storage.feeds.items[0].name);
+        var raw = testFeedRaw();
+        raw.name = "Updated title";
+        try app.updateFeed(id, raw);
+        try std.testing.expectEqualStrings(raw.name.?, app.storage.feeds.items[0].name.?);
     }
 }
 
@@ -185,7 +190,7 @@ test "App.insertFeedItem" {
     }
 
     {
-        const feed_id = try app.insertFeed(testFeedRaw());
+        const feed_id = try app.insertFeed(testFeed());
         items[0].feed_id = feed_id;
         const new_items = try app.insertFeedItems(&items);
         try std.testing.expectEqual(@as(usize, 1), new_items.len);
@@ -202,7 +207,7 @@ test "App.getFeedItem" {
     }
 
     {
-        const feed_id = try app.insertFeed(testFeedRaw());
+        const feed_id = try app.insertFeed(testFeed());
         var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         const new_item_id = new_items[0].item_id.?;
@@ -223,7 +228,7 @@ test "App.deleteFeedItem" {
     }
 
     {
-        const feed_id = try app.insertFeed(testFeedRaw());
+        const feed_id = try app.insertFeed(testFeed());
         var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         var ids = [_]usize{new_items[0].item_id.?};
@@ -242,7 +247,7 @@ test "App.updateFeedItem" {
     }
 
     {
-        const feed_id = try app.insertFeed(testFeedRaw());
+        const feed_id = try app.insertFeed(testFeed());
         var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         const item_id = new_items[0].item_id.?;
@@ -254,9 +259,18 @@ test "App.updateFeedItem" {
 }
 
 test "add feed" {
+    var app = App.init(std.testing.allocator);
+    defer app.deinit();
+
     // feedgaze add http://localhost:8282/atom.xml
     // - fetch url content
-    // - content to feed (raw) and feed items (raw)
-    // - app.insertFeed(FeedRaw)
-    // - app.insertItems([]FeedItemRaw)
+    // - content to feed (FeedRaw) and feed items ([]FeedItem)
+    const raw = Feed{ .feed_url = "http://localhost/valid_url" };
+    const feed_id = app.insertFeed(raw);
+    const feed_items = [_]FeedItem{};
+    for (feed_items) |*item| {
+        item.feed_id = feed_id;
+    }
+    const new_items = try app.insertFeedItems(&feed_items);
+    _ = new_items;
 }

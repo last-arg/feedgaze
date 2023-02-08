@@ -25,12 +25,30 @@ pub const FeedInsert = struct {
 };
 
 pub const Feed = struct {
+    const Self = @This();
     feed_id: usize = 0,
     name: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
+
+    pub const Error = error{
+        InvalidUri,
+    };
+
+    pub fn prepareAndValidate(self: Self) !Self {
+        _ = Uri.parse(self.feed_url) catch return Error.InvalidUri;
+        var timestamp: ?i64 = null;
+        if (self.updated_raw) |date| {
+            // TODO: validate date string
+            if (date.len > 0) {
+                timestamp = @as(i64, 22);
+            }
+        }
+
+        return self;
+    }
 };
 
 pub const FeedRaw = struct {
