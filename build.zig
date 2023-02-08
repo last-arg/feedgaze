@@ -53,16 +53,28 @@ pub fn build(b: *Builder) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    const test_file = if (b.args) |args| args[0] else "src/main.zig";
+    var test_file: []const u8 = "src/main.zig";
+    var filter: ?[]const u8 = null;
+    if (b.args) |args| {
+        test_file = args[0];
+        if (args.len >= 2) {
+            filter = args[1];
+        }
+    }
     // Creates a step for unit testing.
-    const test_cmd = b.addTest(.{
+    var test_cmd = b.addTest(.{
         .root_source_file = .{ .path = test_file },
         .target = target,
         .optimize = optimize,
     });
+    test_cmd.filter = filter;
 
     test_cmd.addAnonymousModule("atom.atom", .{
         .source_file = .{ .path = "./test/atom.atom" },
+    });
+
+    test_cmd.addAnonymousModule("zig-xml", .{
+        .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });
 
     if (b.args) |args| {
