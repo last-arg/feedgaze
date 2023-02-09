@@ -313,9 +313,9 @@ const AtomParseTag = enum {
 };
 
 const xml = @import("zig-xml");
+const max_title_len = 1024;
 pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !void {
-    // NOTE: Limits Feed title max length to 1024
-    var tmp_str = try std.BoundedArray(u8, 1024).init(0);
+    var tmp_str = try std.BoundedArray(u8, max_title_len).init(0);
     var parser = xml.Parser.init(content);
     var feed = Feed{
         .feed_url = url,
