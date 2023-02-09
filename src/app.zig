@@ -97,14 +97,14 @@ const App = struct {
 
 fn testFeed() Feed {
     return .{
-        .name = "Feed title",
+        .title = "Feed title",
         .feed_url = "http://localhost/valid_url",
     };
 }
 
 fn testFeedRaw() FeedRaw {
     return .{
-        .name = "Feed title",
+        .title = "Feed title",
         .feed_url = "http://localhost/valid_url",
     };
 }
@@ -172,9 +172,9 @@ test "App.updateFeed" {
         var feed = testFeed();
         const id = try app.insertFeed(feed);
         var raw = testFeedRaw();
-        raw.name = "Updated title";
+        raw.title = "Updated title";
         try app.updateFeed(id, raw);
-        try std.testing.expectEqualStrings(raw.name.?, app.storage.feeds.items[0].name.?);
+        try std.testing.expectEqualStrings(raw.title.?, app.storage.feeds.items[0].title.?);
     }
 }
 
@@ -183,7 +183,7 @@ test "App.insertFeedItem" {
     defer app.deinit();
 
     var items = [_]FeedItem{
-        .{ .feed_id = 1, .name = "Item title" },
+        .{ .feed_id = 1, .title = "Item title" },
     };
     {
         const res = app.insertFeedItems(&items);
@@ -209,12 +209,12 @@ test "App.getFeedItem" {
 
     {
         const feed_id = try app.insertFeed(testFeed());
-        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
+        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .title = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         const new_item_id = new_items[0].item_id.?;
         const item = app.getFeedItem(new_item_id);
         try std.testing.expectEqual(item.?.item_id, new_item_id);
-        try std.testing.expectEqualStrings(item.?.name, insert_items[0].name);
+        try std.testing.expectEqualStrings(item.?.title, insert_items[0].title);
     }
 }
 
@@ -230,7 +230,7 @@ test "App.deleteFeedItem" {
 
     {
         const feed_id = try app.insertFeed(testFeed());
-        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
+        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .title = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         var ids = [_]usize{new_items[0].item_id.?};
         try app.deleteFeedItems(&ids);
@@ -243,19 +243,19 @@ test "App.updateFeedItem" {
     defer app.deinit();
 
     {
-        const res = app.updateFeedItem(1, .{ .feed_id = 1, .name = "Item title" });
+        const res = app.updateFeedItem(1, .{ .feed_id = 1, .title = "Item title" });
         try std.testing.expectError(error.NotFound, res);
     }
 
     {
         const feed_id = try app.insertFeed(testFeed());
-        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .name = "Item title" }};
+        var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .title = "Item title" }};
         const new_items = try app.insertFeedItems(&insert_items);
         const item_id = new_items[0].item_id.?;
         const new_title = "Updated title";
-        try app.updateFeedItem(item_id, .{ .feed_id = feed_id, .name = new_title });
+        try app.updateFeedItem(item_id, .{ .feed_id = feed_id, .title = new_title });
         const item = app.getFeedItem(item_id);
-        try std.testing.expectEqualStrings(new_title, item.?.name);
+        try std.testing.expectEqualStrings(new_title, item.?.title);
     }
 }
 
@@ -282,7 +282,7 @@ const FeedAndItems = struct {
 };
 
 // feed_id: usize = 0,
-// name: ?[]const u8 = null,
+// title: ?[]const u8 = null,
 // feed_url: []const u8,
 // page_url: ?[]const u8 = null,
 // updated_raw: ?[]const u8 = null,
@@ -314,6 +314,7 @@ const AtomParseTag = enum {
 
 const xml = @import("zig-xml");
 pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !void {
+    // NOTE: Limits Feed title max length to 1024
     var tmp_str = try std.BoundedArray(u8, 1024).init(0);
     var parser = xml.Parser.init(content);
     var feed = Feed{
@@ -344,7 +345,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                 if (state == .feed) {
                     switch (current_tag.?) {
                         .title => {
-                            feed.name = try allocator.dupe(u8, tmp_str.slice());
+                            feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.resize(0) catch unreachable;
                         },
                         .link => {
@@ -412,7 +413,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
         }
     }
     print("feed: {any}\n", .{feed});
-    print("feed.name: {s}\n", .{feed.name.?});
+    print("feed.title: {s}\n", .{feed.title.?});
 }
 
 test "parseAtom" {

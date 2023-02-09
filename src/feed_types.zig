@@ -2,7 +2,7 @@ const std = @import("std");
 const Uri = std.Uri;
 
 pub const FeedInsert = struct {
-    name: ?[]const u8 = null,
+    title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -15,7 +15,7 @@ pub const FeedInsert = struct {
     pub fn toFeed(self: @This(), id: usize) Feed {
         return .{
             .feed_id = id,
-            .name = self.name,
+            .title = self.title,
             .feed_url = self.feed_url,
             .page_url = self.page_url,
             .updated_raw = self.updated_raw,
@@ -27,7 +27,7 @@ pub const FeedInsert = struct {
 pub const Feed = struct {
     const Self = @This();
     feed_id: usize = 0,
-    name: ?[]const u8 = null,
+    title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -52,7 +52,7 @@ pub const Feed = struct {
 };
 
 pub const FeedRaw = struct {
-    name: ?[]const u8 = null,
+    title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -71,7 +71,7 @@ pub const FeedRaw = struct {
             }
         }
         return .{
-            .name = feed_raw.name,
+            .title = feed_raw.title,
             .feed_url = feed_raw.feed_url,
             .page_url = feed_raw.page_url,
             .updated_raw = feed_raw.updated_raw,
@@ -83,7 +83,7 @@ pub const FeedRaw = struct {
 pub const FeedItem = struct {
     feed_id: usize,
     item_id: ?usize = null,
-    name: []const u8,
+    title: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -96,7 +96,7 @@ pub const FeedItem = struct {
 
 pub const FeedItemInsert = struct {
     feed_id: usize,
-    name: []const u8,
+    title: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -106,7 +106,7 @@ pub const FeedItemInsert = struct {
         return .{
             .feed_id = raw.feed_id,
             .item_id = id,
-            .name = raw.name,
+            .title = raw.title,
             .id = raw.id,
             .link = raw.link,
             .updated_raw = raw.updated_raw,
@@ -117,7 +117,7 @@ pub const FeedItemInsert = struct {
 
 pub const FeedItemRaw = struct {
     feed_id: usize,
-    name: []const u8,
+    title: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
     updated_raw: ?[]const u8 = null,
@@ -132,7 +132,7 @@ pub const FeedItemRaw = struct {
         }
         return .{
             .feed_id = raw.feed_id,
-            .name = raw.name,
+            .title = raw.title,
             .id = raw.id,
             .link = raw.link,
             .updated_raw = raw.updated_raw,
