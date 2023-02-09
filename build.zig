@@ -1,6 +1,8 @@
 const std = @import("std");
-const Builder = @import("std").build.Builder;
-const LibExeObjStep = @import("std").build.LibExeObjStep;
+const std_build = @import("std").build;
+const Builder = std_build.Builder;
+const CompileStep = std_build.CompileStep;
+const LibExeObjStep = std_build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
 
 pub fn build(b: *Builder) !void {
@@ -21,9 +23,6 @@ pub fn build(b: *Builder) !void {
         .target = target,
         .optimize = optimize,
     });
-    exe.addAnonymousModule("atom.atom", .{
-        .source_file = .{ .path = "./test/atom.atom" },
-    });
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -34,6 +33,8 @@ pub fn build(b: *Builder) !void {
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
     const run_cmd = exe.run();
+
+    commonModules(exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -73,9 +74,7 @@ pub fn build(b: *Builder) !void {
         .source_file = .{ .path = "./test/atom.atom" },
     });
 
-    test_cmd.addAnonymousModule("zig-xml", .{
-        .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
-    });
+    commonModules(test_cmd);
 
     if (b.args) |args| {
         if (args.len >= 2) {
@@ -85,4 +84,10 @@ pub fn build(b: *Builder) !void {
 
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
+}
+
+fn commonModules(step: *CompileStep) void {
+    step.addAnonymousModule("zig-xml", .{
+        .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
+    });
 }
