@@ -8,6 +8,7 @@ const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const FeedItemInsert = feed_types.FeedItemInsert;
 const FeedItemRaw = feed_types.FeedItemRaw;
+const print = std.debug.print;
 
 const App = struct {
     const Self = @This();
@@ -273,4 +274,151 @@ test "add feed" {
     }
     const new_items = try app.insertFeedItems(&feed_items);
     _ = new_items;
+}
+
+const FeedAndItems = struct {
+    feed: Feed,
+    items: []FeedItem,
+};
+
+// feed_id: usize = 0,
+// name: ?[]const u8 = null,
+// feed_url: []const u8,
+// page_url: ?[]const u8 = null,
+// updated_raw: ?[]const u8 = null,
+// updated_timestamp: ?i64 = null,
+
+const AtomParseState = enum {
+    feed,
+    entry,
+
+    const Self = @This();
+
+    pub fn fromString(str: []const u8) ?Self {
+        return std.meta.stringToEnum(Self, str);
+    }
+};
+
+const AtomParseTag = enum {
+    title,
+    link,
+    updated,
+    id,
+
+    const Self = @This();
+
+    pub fn fromString(str: []const u8) ?Self {
+        return std.meta.stringToEnum(Self, str);
+    }
+};
+
+const xml = @import("zig-xml");
+pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !void {
+    var tmp_str = try std.BoundedArray(u8, 1024).init(0);
+    var parser = xml.Parser.init(content);
+    var feed = Feed{
+        .feed_url = url,
+    };
+    var state: AtomParseState = .feed;
+    var current_tag: ?AtomParseTag = null;
+    var link_href: ?[]const u8 = null;
+    var link_rel: []const u8 = "alternate";
+    while (parser.next()) |event| {
+        print("parent_tag: {?}\n", .{state});
+        print("  current_tag: {?}\n", .{current_tag});
+        switch (event) {
+            .open_tag => |tag| {
+                state = AtomParseState.fromString(tag) orelse .feed;
+                current_tag = AtomParseTag.fromString(tag);
+            },
+            .close_tag => |tag| {
+                const end_tag = AtomParseState.fromString(tag);
+                if (end_tag != null and end_tag.? == .entry) {
+                    state = .feed;
+                }
+
+                if (current_tag == null) {
+                    continue;
+                }
+
+                if (state == .feed) {
+                    switch (current_tag.?) {
+                        .title => {
+                            feed.name = try allocator.dupe(u8, tmp_str.slice());
+                            tmp_str.resize(0) catch unreachable;
+                        },
+                        .link => {
+                            if (link_href) |href| {
+                                if (mem.eql(u8, "alternate", link_rel)) {
+                                    feed.page_url = href;
+                                } else if (mem.eql(u8, "self", link_rel)) {
+                                    // TODO: do I want to change feed_url?
+                                    // Already have it from fn args 'url'.
+                                }
+                            }
+                            link_href = null;
+                            link_rel = "alternate";
+                        },
+                        .id, .updated => {},
+                    }
+                }
+                current_tag = null;
+            },
+            .attribute => |attr| {
+                if (current_tag == null) {
+                    continue;
+                }
+                switch (current_tag.?) {
+                    .link => {
+                        if (mem.eql(u8, "href", attr.name)) {
+                            link_href = attr.raw_value;
+                        } else if (mem.eql(u8, "rel", attr.name)) {
+                            link_rel = attr.raw_value;
+                        }
+                    },
+                    .title, .id, .updated => {},
+                }
+            },
+            .comment => {},
+            .processing_instruction => {},
+            .character_data => |data| {
+                print("character_data: |{s}|\n", .{data});
+                if (current_tag == null) {
+                    continue;
+                }
+                if (state == .feed) {
+                    switch (current_tag.?) {
+                        .title => {
+                            const end = blk: {
+                                const new_len = tmp_str.len + data.len;
+                                if (new_len > tmp_str.capacity()) {
+                                    break :blk new_len - tmp_str.capacity();
+                                }
+                                break :blk data.len;
+                            };
+                            if (end > 0) {
+                                tmp_str.appendSliceAssumeCapacity(data[0..end]);
+                            }
+                        },
+                        // <link /> is void element
+                        .link => {},
+                        // Can be site url. Don't need it because already
+                        // have fallback url from fn arg 'url'.
+                        .id => {},
+                        .updated => feed.updated_raw = data,
+                    }
+                }
+            },
+        }
+    }
+    print("feed: {any}\n", .{feed});
+    print("feed.name: {s}\n", .{feed.name.?});
+}
+
+test "parseAtom" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const content = @embedFile("atom.atom");
+    try parseAtom(arena.allocator(), content, "http://localhost/valid_url");
 }
