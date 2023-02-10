@@ -312,10 +312,27 @@ const AtomParseTag = enum {
     }
 };
 
+fn constructTmpStr(tmp_str: *TmpStr, data: []const u8) void {
+    if (tmp_str.capacity() == tmp_str.len) {
+        return;
+    }
+    const end = blk: {
+        const new_len = tmp_str.len + data.len;
+        if (new_len > tmp_str.capacity()) {
+            break :blk tmp_str.capacity() - tmp_str.len;
+        }
+        break :blk data.len;
+    };
+    if (end > 0) {
+        tmp_str.appendSliceAssumeCapacity(data[0..end]);
+    }
+}
+
 const xml = @import("zig-xml");
 const max_title_len = 1024;
+const TmpStr = std.BoundedArray(u8, max_title_len);
 pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !void {
-    var tmp_str = try std.BoundedArray(u8, max_title_len).init(0);
+    var tmp_str = try TmpStr.init(0);
     var tmp_entries = try std.BoundedArray(FeedItem, 10).init(0);
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, 10);
     var parser = xml.Parser.init(content);
@@ -429,21 +446,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                 }
                 switch (state) {
                     .feed => switch (current_tag.?) {
-                        .title => {
-                            if (tmp_str.capacity() == tmp_str.len) {
-                                continue;
-                            }
-                            const end = blk: {
-                                const new_len = tmp_str.len + data.len;
-                                if (new_len > tmp_str.capacity()) {
-                                    break :blk tmp_str.capacity() - tmp_str.len;
-                                }
-                                break :blk data.len;
-                            };
-                            if (end > 0) {
-                                tmp_str.appendSliceAssumeCapacity(data[0..end]);
-                            }
-                        },
+                        .title => constructTmpStr(&tmp_str, data),
                         // <link /> is void element
                         .link => {},
                         // Can be site url. Don't need it because already
@@ -452,21 +455,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                         .updated => feed.updated_raw = data,
                     },
                     .entry => switch (current_tag.?) {
-                        .title => {
-                            if (tmp_str.capacity() == tmp_str.len) {
-                                continue;
-                            }
-                            const end = blk: {
-                                const new_len = tmp_str.len + data.len;
-                                if (new_len > tmp_str.capacity()) {
-                                    break :blk tmp_str.capacity() - tmp_str.len;
-                                }
-                                break :blk data.len;
-                            };
-                            if (end > 0) {
-                                tmp_str.appendSliceAssumeCapacity(data[0..end]);
-                            }
-                        },
+                        .title => constructTmpStr(&tmp_str, data),
                         // <link /> is void element
                         .link => {},
                         .id => current_entry.?.id = data,
