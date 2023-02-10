@@ -74,6 +74,10 @@ pub fn build(b: *Builder) !void {
         .source_file = .{ .path = "./test/atom.atom" },
     });
 
+    test_cmd.addAnonymousModule("rss2.xml", .{
+        .source_file = .{ .path = "./test/rss2.xml" },
+    });
+
     commonModules(test_cmd);
 
     if (b.args) |args| {
