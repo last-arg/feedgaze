@@ -316,12 +316,15 @@ const xml = @import("zig-xml");
 const max_title_len = 1024;
 pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !void {
     var tmp_str = try std.BoundedArray(u8, max_title_len).init(0);
+    var tmp_entries = try std.BoundedArray(FeedItem, 10).init(0);
+    var entries = try std.ArrayList(FeedItem).initCapacity(allocator, 10);
     var parser = xml.Parser.init(content);
     var feed = Feed{
         .feed_url = url,
     };
     var state: AtomParseState = .feed;
     var current_tag: ?AtomParseTag = null;
+    var current_entry: ?*FeedItem = null;
     var link_href: ?[]const u8 = null;
     var link_rel: []const u8 = "alternate";
     while (parser.next()) |event| {
@@ -329,21 +332,32 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
         print("  current_tag: {?}\n", .{current_tag});
         switch (event) {
             .open_tag => |tag| {
-                state = AtomParseState.fromString(tag) orelse .feed;
                 current_tag = AtomParseTag.fromString(tag);
+                if (AtomParseState.fromString(tag)) |new_state| {
+                    state = new_state;
+                    if (state == .entry) {
+                        current_entry = tmp_entries.addOne() catch blk: {
+                            try entries.appendSlice(tmp_entries.slice());
+                            tmp_entries.resize(0) catch unreachable;
+                            break :blk tmp_entries.addOne() catch unreachable;
+                        };
+                        current_entry.?.* = .{ .title = undefined };
+                    }
+                }
             },
             .close_tag => |tag| {
-                const end_tag = AtomParseState.fromString(tag);
-                if (end_tag != null and end_tag.? == .entry) {
-                    state = .feed;
+                if (AtomParseState.fromString(tag)) |end_tag| {
+                    if (end_tag == .entry) {
+                        state = .feed;
+                    }
                 }
 
                 if (current_tag == null) {
                     continue;
                 }
 
-                if (state == .feed) {
-                    switch (current_tag.?) {
+                switch (state) {
+                    .feed => switch (current_tag.?) {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.resize(0) catch unreachable;
@@ -361,7 +375,33 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                             link_rel = "alternate";
                         },
                         .id, .updated => {},
-                    }
+                    },
+                    .entry => {
+                        switch (current_tag.?) {
+                            .title => {
+                                current_entry.?.title = try allocator.dupe(u8, tmp_str.slice());
+                                tmp_str.resize(0) catch unreachable;
+                            },
+                            .link => {
+                                if (link_href) |href| {
+                                    if (mem.eql(u8, "alternate", link_rel)) {
+                                        current_entry.?.link = href;
+                                    } else if (mem.eql(u8, "self", link_rel)) {
+                                        // TODO: do I want to change feed_url?
+                                        // Already have it from fn args 'url'.
+                                    }
+                                }
+                                link_href = null;
+                                link_rel = "alternate";
+                            },
+                            .id, .updated => {
+                                print("close entry\n", .{});
+                            },
+                        }
+                        if (mem.eql(u8, "entry", tag)) {
+                            current_entry = null;
+                        }
+                    },
                 }
                 current_tag = null;
             },
@@ -387,13 +427,16 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                 if (current_tag == null) {
                     continue;
                 }
-                if (state == .feed) {
-                    switch (current_tag.?) {
+                switch (state) {
+                    .feed => switch (current_tag.?) {
                         .title => {
+                            if (tmp_str.capacity() == tmp_str.len) {
+                                continue;
+                            }
                             const end = blk: {
                                 const new_len = tmp_str.len + data.len;
                                 if (new_len > tmp_str.capacity()) {
-                                    break :blk new_len - tmp_str.capacity();
+                                    break :blk tmp_str.capacity() - tmp_str.len;
                                 }
                                 break :blk data.len;
                             };
@@ -407,13 +450,49 @@ pub fn parseAtom(allocator: Allocator, content: []const u8, url: []const u8) !vo
                         // have fallback url from fn arg 'url'.
                         .id => {},
                         .updated => feed.updated_raw = data,
-                    }
+                    },
+                    .entry => switch (current_tag.?) {
+                        .title => {
+                            if (tmp_str.capacity() == tmp_str.len) {
+                                continue;
+                            }
+                            const end = blk: {
+                                const new_len = tmp_str.len + data.len;
+                                if (new_len > tmp_str.capacity()) {
+                                    break :blk tmp_str.capacity() - tmp_str.len;
+                                }
+                                break :blk data.len;
+                            };
+                            if (end > 0) {
+                                tmp_str.appendSliceAssumeCapacity(data[0..end]);
+                            }
+                        },
+                        // <link /> is void element
+                        .link => {},
+                        .id => current_entry.?.id = data,
+                        .updated => current_entry.?.updated_raw = data,
+                    },
                 }
             },
         }
     }
-    print("feed: {any}\n", .{feed});
-    print("feed.title: {s}\n", .{feed.title.?});
+    if (tmp_entries.len > 0) {
+        try entries.appendSlice(tmp_entries.slice());
+    }
+    print("==== Feed ====\n", .{});
+    print("  title: {?s}\n", .{feed.title});
+    print("  feed_url: {?s}\n", .{feed.feed_url});
+    print("  page_url: {?s}\n", .{feed.page_url});
+    print("  updated_raw: {?s}\n", .{feed.updated_raw});
+
+    print("  title: {?s}\n", .{entries.items[0].title});
+    for (entries.items) |entry| {
+        print("==== Entry ====\n", .{});
+        print("  title: {s}\n", .{entry.title});
+        print("  id: {?s}\n", .{entry.id});
+        print("  link: {?s}\n", .{entry.link});
+        print("  updated_raw: {?s}\n", .{entry.updated_raw});
+    }
 }
 
 test "parseAtom" {

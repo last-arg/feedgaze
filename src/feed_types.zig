@@ -81,7 +81,7 @@ pub const FeedRaw = struct {
 };
 
 pub const FeedItem = struct {
-    feed_id: usize,
+    feed_id: usize = 0,
     item_id: ?usize = null,
     title: []const u8,
     id: ?[]const u8 = null,
