@@ -91,6 +91,11 @@ pub fn build(b: *Builder) !void {
 }
 
 fn commonModules(step: *CompileStep) void {
+    step.linkLibC();
+    step.linkSystemLibrary("sqlite3");
+    step.addAnonymousModule("sqlite", .{
+        .source_file = .{ .path = "./lib/zig-sqlite/sqlite.zig" },
+    });
     step.addAnonymousModule("zig-xml", .{
         .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });

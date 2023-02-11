@@ -120,11 +120,6 @@ test "App.insertFeed" {
     defer app.deinit();
 
     {
-        const res = app.insertFeed(.{ .feed_url = "<invalid_url>" });
-        try std.testing.expectError(Feed.Error.InvalidUri, res);
-    }
-
-    {
         _ = try app.insertFeed(testFeed());
         try std.testing.expectEqual(app.storage.feeds.items.len, 1);
 

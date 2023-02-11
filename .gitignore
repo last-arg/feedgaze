@@ -1,7 +1,5 @@
-.gyro/
 tmp/
 zig-out/
 zig-cache/
 *.wip
-.zigmod
 deps.zig
