@@ -275,6 +275,6 @@ test "add feed" {
     // - fetch url content
     const input_url = "http://localhost/valid_url";
     const content = @embedFile("rss2.xml");
-    var result = try parse.parseRss(arena.allocator(), content);
+    var result = try parse.parse(arena.allocator(), content, .rss);
     try app.insertFeedAndItems(&result, input_url);
 }

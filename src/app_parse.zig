@@ -196,7 +196,7 @@ test "parseAtom" {
     defer arena.deinit();
 
     const content = @embedFile("atom.atom");
-    const result = try parseAtom(arena.allocator(), content);
+    const result = try parse(arena.allocator(), content, .atom);
     const expect_feed = Feed{
         .title = "Example Feed",
         .feed_url = "http://example.org/feed/",
@@ -352,7 +352,7 @@ test "parseRss" {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const result = try parseRss(arena.allocator(), content);
+    const result = try parse(arena.allocator(), content, .rss);
     const expect_feed = Feed{
         .title = "Liftoff News",
         .feed_url = "",
@@ -381,7 +381,7 @@ const ContentType = enum {
 };
 
 // TODO: also check html?
-pub fn parseType(content: []const u8) ?ContentType {
+pub fn getContentType(content: []const u8) ?ContentType {
     var parser = xml.Parser.init(content);
     var depth: usize = 0;
     while (parser.next()) |event| {
@@ -408,7 +408,7 @@ pub fn parseType(content: []const u8) ?ContentType {
     return null;
 }
 
-test "parseType" {
+test "getContentType" {
     const rss =
         \\<?xml version="1.0"?>
         \\<rss version="2.0">
@@ -416,7 +416,7 @@ test "parseType" {
         \\   </channel>
         \\</rss>
     ;
-    const rss_type = parseType(rss);
+    const rss_type = getContentType(rss);
     try std.testing.expectEqual(ContentType.rss, rss_type.?);
 
     const atom =
@@ -424,7 +424,7 @@ test "parseType" {
         \\<feed xmlns="http://www.w3.org/2005/Atom">
         \\</feed>
     ;
-    const atom_type = parseType(atom);
+    const atom_type = getContentType(atom);
     try std.testing.expectEqual(ContentType.atom, atom_type.?);
 
     // const html =
@@ -432,6 +432,14 @@ test "parseType" {
     //     \\<html>
     //     \\</html>
     // ;
-    // const html_type = parseType(html);
+    // const html_type = getContentType(html);
     // print("html_type: {?}\n", .{html_type});
+}
+
+pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentType) !FeedAndItems {
+    const ct = content_type orelse getContentType(content) orelse return error.UnknownContentType;
+    return switch (ct) {
+        .atom => parseAtom(allocator, content),
+        .rss => parseRss(allocator, content),
+    };
 }
