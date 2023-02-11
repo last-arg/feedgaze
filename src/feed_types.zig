@@ -37,7 +37,10 @@ pub const Feed = struct {
         InvalidUri,
     };
 
-    pub fn prepareAndValidate(self: Self) !Self {
+    pub fn prepareAndValidate(self: *Self, fallback_url: []const u8) !void {
+        if (self.feed_url.len == 0) {
+            self.feed_url = fallback_url;
+        }
         _ = Uri.parse(self.feed_url) catch return Error.InvalidUri;
         var timestamp: ?i64 = null;
         if (self.updated_raw) |date| {
@@ -46,8 +49,6 @@ pub const Feed = struct {
                 timestamp = @as(i64, 22);
             }
         }
-
-        return self;
     }
 };
 
@@ -89,8 +90,17 @@ pub const FeedItem = struct {
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
-    pub fn prepareAndValidate(self: *@This()) !void {
-        _ = self;
+    const Self = @This();
+
+    pub fn prepareAndValidate(self: *Self, feed_id: usize) !void {
+        self.feed_id = feed_id;
+        // TODO: parse date
+    }
+
+    pub fn prepareAndValidateAll(items: []Self, feed_id: usize) !void {
+        for (items) |*item| {
+            try item.prepareAndValidate(feed_id);
+        }
     }
 };
 

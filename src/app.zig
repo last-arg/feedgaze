@@ -9,9 +9,12 @@ const FeedItem = feed_types.FeedItem;
 const FeedItemInsert = feed_types.FeedItemInsert;
 const FeedItemRaw = feed_types.FeedItemRaw;
 const print = std.debug.print;
+const parse = @import("./app_parse.zig");
+const FeedAndItems = parse.FeedAndItems;
 
 const App = struct {
     const Self = @This();
+    allocator: Allocator,
     storage: Storage,
 
     const Error = error{
@@ -21,13 +24,13 @@ const App = struct {
 
     pub fn init(allocator: Allocator) Self {
         return .{
+            .allocator = allocator,
             .storage = Storage.init(allocator),
         };
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
-        var result = try feed.prepareAndValidate();
-        result = self.storage.insertFeed(feed) catch |err| switch (err) {
+        const result = self.storage.insertFeed(feed) catch |err| switch (err) {
             error.FeedExists => return Error.FeedExists,
             else => return error.Unknown,
         };
@@ -57,10 +60,6 @@ const App = struct {
     }
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
-        for (inserts) |*item| {
-            // TODO: how to handle errors, invalid item?
-            try item.prepareAndValidate();
-        }
         const new_inserts = self.storage.insertFeedItems(inserts) catch |err| switch (err) {
             Storage.Error.NotFound => Error.NotFound,
             else => error.Unknown,
@@ -88,6 +87,13 @@ const App = struct {
         };
 
         return insert_id;
+    }
+
+    pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: []const u8) !void {
+        try feed_and_items.feed.prepareAndValidate(fallback_url);
+        const feed_id = try self.insertFeed(feed_and_items.feed);
+        try FeedItem.prepareAndValidateAll(feed_and_items.items, feed_id);
+        _ = try self.insertFeedItems(feed_and_items.items);
     }
 
     pub fn deinit(self: *Self) void {
@@ -260,19 +266,15 @@ test "App.updateFeedItem" {
 }
 
 test "add feed" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
     var app = App.init(std.testing.allocator);
     defer app.deinit();
 
     // feedgaze add http://localhost:8282/atom.xml
     // - fetch url content
-    // - content to feed (Feed) and feed items ([]FeedItem)
-    // - prepare Feed and []FeedItem
-    const raw = Feed{ .feed_url = "http://localhost/valid_url" };
-    const feed_id = app.insertFeed(raw);
-    const feed_items = [_]FeedItem{};
-    for (feed_items) |*item| {
-        item.feed_id = feed_id;
-    }
-    const new_items = try app.insertFeedItems(&feed_items);
-    _ = new_items;
+    const input_url = "http://localhost/valid_url";
+    const content = @embedFile("rss2.xml");
+    var result = try parse.parseRss(arena.allocator(), content);
+    try app.insertFeedAndItems(&result, input_url);
 }
