@@ -125,8 +125,8 @@ test "App.insertFeed" {
     {
         const test_feed = testFeed();
         const feed_id = try app.insertFeed(test_feed);
-        const feed = try app.storage.getFeedByUrl(arena.allocator(), test_feed.feed_url);
-        try std.testing.expectEqual(feed_id, feed.?.feed_id);
+        const feeds = try app.storage.getFeedsByUrl(arena.allocator(), test_feed.feed_url);
+        try std.testing.expectEqual(feed_id, feeds[0].feed_id);
 
         const res = app.insertFeed(testFeed());
         try std.testing.expectError(App.Error.FeedExists, res);
