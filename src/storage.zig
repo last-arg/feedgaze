@@ -8,6 +8,8 @@ const Feed = feed_types.Feed;
 const FeedInsert = feed_types.FeedInsert;
 const FeedItem = feed_types.FeedItem;
 const FeedItemInsert = feed_types.FeedItemInsert;
+const sql = @import("sqlite");
+const print = std.debug.print;
 
 pub const Storage = struct {
     const Self = @This();
@@ -17,30 +19,83 @@ pub const Storage = struct {
     feed_items: ArrayList(FeedItem),
     feed_item_id: usize = 0,
 
+    sql_db: sql.Db,
+
     pub const Error = error{
         NotFound,
         FeedExists,
     };
 
-    pub fn init(allocator: Allocator) Self {
+    pub fn init(allocator: Allocator) !Self {
+        var db = try sql.Db.init(.{
+            .mode = .{ .Memory = {} },
+            .open_flags = .{ .write = true, .create = true },
+        });
+
+        try setupDb(&db);
+
         return .{
             .allocator = allocator,
             .feeds = ArrayList(Feed).init(allocator),
             .feed_items = ArrayList(FeedItem).init(allocator),
+            .sql_db = db,
         };
     }
 
-    pub fn insertFeed(self: *Self, feed: Feed) !Feed {
-        if (hasUrl(feed.feed_url, self.feeds.items)) {
-            return Error.FeedExists;
+    fn setupDb(db: *sql.Db) !void {
+        const user_version = try db.pragma(usize, .{}, "user_version", null);
+        if (user_version == null or user_version.? == 0) {
+            errdefer std.log.err("Failed to create new database", .{});
+            _ = try db.pragma(usize, .{}, "user_version", "1");
+            _ = try db.pragma(usize, .{}, "foreign_keys", "1");
+            _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
+            _ = try db.pragma(usize, .{}, "synchronous", "normal");
+            _ = try db.pragma(usize, .{}, "temp_store", "2");
+            _ = try db.pragma(usize, .{}, "cache_size", "-32000");
+            std.log.info("New database created", .{});
         }
-        var result = feed;
-        const id = self.feed_id + 1;
-        result.feed_id = id;
-        try self.feeds.append(result);
-        assert(id > 0);
-        self.feed_id = id;
-        return result;
+
+        try setupTables(db);
+    }
+
+    fn setupTables(db: *sql.Db) !void {
+        errdefer std.log.err("Failed to create database tables", .{});
+        inline for (tables) |query| {
+            db.exec(query, .{}, .{}) catch |err| {
+                print("err: {}\n", .{err});
+                std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+                return err;
+            };
+        }
+        std.log.info("Created database tables", .{});
+    }
+
+    pub fn insertFeed(self: *Self, feed: Feed) !usize {
+        const query =
+            \\INSERT INTO feed (title, feed_url, page_url, updated_raw, updated_timestamp)
+            \\VALUES (
+            \\  @title,
+            \\  @feed_url,
+            \\  @page_url,
+            \\  @updated_raw,
+            \\  @updated_timestamp
+            \\) ON CONFLICT(feed_url) DO NOTHING
+            \\RETURNING feed_id;
+        ;
+        const feed_id = try one(&self.sql_db, usize, query, .{
+            .title = feed.title,
+            .feed_url = feed.feed_url,
+            .page_url = feed.page_url,
+            .updated_raw = feed.updated_raw,
+            .updated_timestamp = feed.updated_timestamp,
+        });
+        return feed_id orelse Error.FeedExists;
+    }
+
+    pub fn getFeedByUrl(self: *Self, url: []const u8) !?usize {
+        const query = "select feed_id from feed where feed_url = ?";
+        const feed_id = try one(&self.sql_db, usize, query, .{url});
+        return feed_id;
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -133,3 +188,35 @@ pub const Storage = struct {
         self.feed_items.items[index] = item_insert.toFeedItem(id);
     }
 };
+
+const tables = &[_][]const u8{
+    \\CREATE TABLE IF NOT EXISTS feed(
+    \\  feed_id INTEGER PRIMARY KEY,
+    \\  title TEXT NOT NULL,
+    \\  feed_url TEXT NOT NULL UNIQUE,
+    \\  page_url TEXT DEFAULT NULL,
+    \\  updated_raw TEXT DEFAULT NULL,
+    \\  updated_timestamp INTEGER DEFAULT NULL
+    \\);
+    ,
+    \\CREATE TABLE IF NOT EXISTS item(
+    \\  item_id INTEGER PRIMARY KEY,
+    \\  feed_id INTEGER NOT NULL,
+    \\  title TEXT NOT NULL,
+    \\  link TEXT DEFAULT NULL,
+    \\  id TEXT DEFAULT NULL,
+    \\  updated_raw TEXT DEFAULT NULL,
+    \\  updated_timestamp INTEGER DEFAULT NULL,
+    \\  modified_at INTEGER DEFAULT (strftime('%s', 'now')),
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
+    \\  UNIQUE(feed_id, id),
+    \\  UNIQUE(feed_id, link)
+    \\);
+};
+
+fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
+    return db.one(T, query, .{}, args) catch |err| {
+        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}

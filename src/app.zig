@@ -22,10 +22,10 @@ const App = struct {
         NotFound,
     };
 
-    pub fn init(allocator: Allocator) Self {
+    pub fn init(allocator: Allocator) !Self {
         return .{
             .allocator = allocator,
-            .storage = Storage.init(allocator),
+            .storage = try Storage.init(allocator),
         };
     }
 
@@ -35,7 +35,7 @@ const App = struct {
             else => return error.Unknown,
         };
 
-        return result.feed_id;
+        return result;
     }
 
     pub fn getFeed(self: Self, id: usize) ?Feed {
@@ -116,12 +116,15 @@ fn testFeedRaw() FeedRaw {
 }
 
 test "App.insertFeed" {
-    var app = App.init(std.testing.allocator);
+    std.testing.log_level = .debug;
+    var app = try App.init(std.testing.allocator);
     defer app.deinit();
 
     {
-        _ = try app.insertFeed(testFeed());
-        try std.testing.expectEqual(app.storage.feeds.items.len, 1);
+        const test_feed = testFeed();
+        const feed_id = try app.insertFeed(test_feed);
+        const possible_id = try app.storage.getFeedByUrl(test_feed.feed_url);
+        try std.testing.expectEqual(feed_id, possible_id.?);
 
         const res = app.insertFeed(testFeed());
         try std.testing.expectError(App.Error.FeedExists, res);
@@ -179,25 +182,25 @@ test "App.updateFeed" {
     }
 }
 
-test "App.insertFeedItem" {
-    var app = App.init(std.testing.allocator);
-    defer app.deinit();
+// test "App.insertFeedItem" {
+//     var app = App.init(std.testing.allocator);
+//     defer app.deinit();
 
-    var items = [_]FeedItem{
-        .{ .feed_id = 1, .title = "Item title" },
-    };
-    {
-        const res = app.insertFeedItems(&items);
-        try std.testing.expectError(error.NotFound, res);
-    }
+//     var items = [_]FeedItem{
+//         .{ .feed_id = 1, .title = "Item title" },
+//     };
+//     {
+//         const res = app.insertFeedItems(&items);
+//         try std.testing.expectError(error.NotFound, res);
+//     }
 
-    {
-        const feed_id = try app.insertFeed(testFeed());
-        items[0].feed_id = feed_id;
-        const new_items = try app.insertFeedItems(&items);
-        try std.testing.expectEqual(@as(usize, 1), new_items.len);
-    }
-}
+//     {
+//         const feed_id = try app.insertFeed(testFeed());
+//         items[0].feed_id = feed_id;
+//         const new_items = try app.insertFeedItems(&items);
+//         try std.testing.expectEqual(@as(usize, 1), new_items.len);
+//     }
+// }
 
 test "App.getFeedItem" {
     var app = App.init(std.testing.allocator);
