@@ -93,8 +93,8 @@ pub const Storage = struct {
     }
 
     pub fn getFeedsByUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
-        const query = "select feed_id, title, feed_url, page_url, updated_raw, updated_timestamp from feed where feed_url = ?";
-        const feed = try selectAll(&self.sql_db, allocator, Feed, query, .{url});
+        const query = "select feed_id, title, feed_url, page_url, updated_raw, updated_timestamp from feed where feed_url like '%' || ? || '%'";
+        const feed = try selectAll(&self.sql_db, allocator, Feed, query, .{ .search = url });
         return feed;
     }
 
