@@ -117,14 +117,16 @@ fn testFeedRaw() FeedRaw {
 
 test "App.insertFeed" {
     std.testing.log_level = .debug;
-    var app = try App.init(std.testing.allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var app = try App.init(arena.allocator());
     defer app.deinit();
 
     {
         const test_feed = testFeed();
         const feed_id = try app.insertFeed(test_feed);
-        const possible_id = try app.storage.getFeedByUrl(test_feed.feed_url);
-        try std.testing.expectEqual(feed_id, possible_id.?);
+        const feed = try app.storage.getFeedByUrl(arena.allocator(), test_feed.feed_url);
+        try std.testing.expectEqual(feed_id, feed.?.feed_id);
 
         const res = app.insertFeed(testFeed());
         try std.testing.expectError(App.Error.FeedExists, res);

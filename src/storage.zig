@@ -92,10 +92,10 @@ pub const Storage = struct {
         return feed_id orelse Error.FeedExists;
     }
 
-    pub fn getFeedByUrl(self: *Self, url: []const u8) !?usize {
-        const query = "select feed_id from feed where feed_url = ?";
-        const feed_id = try one(&self.sql_db, usize, query, .{url});
-        return feed_id;
+    pub fn getFeedByUrl(self: *Self, allocator: Allocator, url: []const u8) !?Feed {
+        const query = "select feed_id, title, feed_url, page_url, updated_raw, updated_timestamp from feed where feed_url = ?";
+        const feed = try oneAlloc(allocator, &self.sql_db, Feed, query, .{url});
+        return feed;
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -216,6 +216,13 @@ const tables = &[_][]const u8{
 
 fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
     return db.one(T, query, .{}, args) catch |err| {
+        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        return err;
+    };
+}
+
+pub fn oneAlloc(allocator: Allocator, db: *sql.Db, comptime T: type, comptime query: []const u8, opts: anytype) !?T {
+    return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
         std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
