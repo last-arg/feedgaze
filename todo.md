@@ -18,7 +18,9 @@
   [ ] Async
     - https://github.com/kprotty/zap
     - https://github.com/lithdew/pike
+[ ] HTTP ranges: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
  
+
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
 [ ] Image (icon/logo)
