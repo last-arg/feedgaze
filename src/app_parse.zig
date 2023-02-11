@@ -10,7 +10,7 @@ const print = std.debug.print;
 const max_title_len = 512;
 const default_item_count = 10;
 
-const FeedAndItems = struct {
+pub const FeedAndItems = struct {
     feed: Feed,
     items: []FeedItem,
 };
@@ -373,4 +373,65 @@ test "parseRss" {
     // into a slice.
     var start: usize = 0;
     try std.testing.expectEqualDeep(expect_items[start..], result.items);
+}
+
+const ContentType = enum {
+    rss,
+    atom,
+};
+
+// TODO: also check html?
+pub fn parseType(content: []const u8) ?ContentType {
+    var parser = xml.Parser.init(content);
+    var depth: usize = 0;
+    while (parser.next()) |event| {
+        if (event == .open_tag) {
+            const tag = event.open_tag;
+            if (depth == 0) {
+                if (mem.eql(u8, "feed", tag)) {
+                    return .atom;
+                } else if (mem.eql(u8, "rss", tag)) {
+                    // pass through
+                } else {
+                    break;
+                }
+            } else if (depth == 1) {
+                if (mem.eql(u8, "channel", tag)) {
+                    return .rss;
+                }
+            } else {
+                break;
+            }
+            depth += 1;
+        }
+    }
+    return null;
+}
+
+test "parseType" {
+    const rss =
+        \\<?xml version="1.0"?>
+        \\<rss version="2.0">
+        \\   <channel>
+        \\   </channel>
+        \\</rss>
+    ;
+    const rss_type = parseType(rss);
+    try std.testing.expectEqual(ContentType.rss, rss_type.?);
+
+    const atom =
+        \\<?xml version="1.0" encoding="utf-8"?>
+        \\<feed xmlns="http://www.w3.org/2005/Atom">
+        \\</feed>
+    ;
+    const atom_type = parseType(atom);
+    try std.testing.expectEqual(ContentType.atom, atom_type.?);
+
+    // const html =
+    //     \\<!DOCTYPE html>
+    //     \\<html>
+    //     \\</html>
+    // ;
+    // const html_type = parseType(html);
+    // print("html_type: {?}\n", .{html_type});
 }
