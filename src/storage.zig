@@ -127,10 +127,20 @@ pub const Storage = struct {
         // TODO: delete items with feed_id
     }
 
-    pub fn updateFeed(self: *Self, id: usize, feed_insert: FeedInsert) !void {
-        assert(id > 0);
-        const index = findFeedIndex(id, self.feeds.items) orelse return Error.NotFound;
-        self.feeds.items[index] = feed_insert.toFeed(id);
+    pub fn updateFeed(self: *Self, feed: Feed) !void {
+        if (!try self.hasFeedWithId(feed.feed_id)) {
+            return Error.FeedNotFound;
+        }
+        const query =
+            \\UPDATE feed SET
+            \\  title = @title,
+            \\  feed_url = @feed_url,
+            \\  page_url = @page_url,
+            \\  updated_raw = @updated_raw,
+            \\  updated_timestamp = @updated_timestamp
+            \\WHERE feed_id = @feed_id;
+        ;
+        try self.sql_db.exec(query, .{}, feed);
     }
 
     pub fn deinit(self: *Self) void {
@@ -138,13 +148,16 @@ pub const Storage = struct {
         self.feed_items.deinit();
     }
 
+    pub fn hasFeedWithId(self: *Self, feed_id: usize) !bool {
+        const exists_query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
+        return (try one(&self.sql_db, bool, exists_query, .{feed_id})).?;
+    }
+
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
         if (inserts.len == 0) {
             return error.NothingToInsert;
         }
-        const exists_query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
-        const has_feed = try one(&self.sql_db, bool, exists_query, .{inserts[0].feed_id});
-        if (!has_feed.?) {
+        if (!try self.hasFeedWithId(inserts[0].feed_id)) {
             return Error.FeedNotFound;
         }
 
@@ -166,15 +179,6 @@ pub const Storage = struct {
             item.item_id = item_id;
         }
         return inserts;
-    }
-
-    fn hasFeedWithId(id: usize, feeds: []Feed) bool {
-        for (feeds) |feed| {
-            if (id == feed.feed_id) {
-                return true;
-            }
-        }
-        return false;
     }
 
     pub fn getFeedItem(self: Self, id: usize) ?FeedItem {

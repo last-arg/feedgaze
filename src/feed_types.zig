@@ -37,9 +37,12 @@ pub const Feed = struct {
         InvalidUri,
     };
 
-    pub fn prepareAndValidate(self: *Self, fallback_url: []const u8) !void {
+    pub fn prepareAndValidate(self: *Self, fallback_url: ?[]const u8) !void {
+        if (self.feed_url.len == 0 and fallback_url == null) {
+            return error.NoFeedUrl;
+        }
         if (self.feed_url.len == 0) {
-            self.feed_url = fallback_url;
+            self.feed_url = fallback_url.?;
         }
         _ = Uri.parse(self.feed_url) catch return Error.InvalidUri;
         var timestamp: ?i64 = null;
