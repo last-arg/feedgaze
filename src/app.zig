@@ -277,10 +277,25 @@ test "feed lifecycle" {
     const input_url = "http://localhost/valid_url";
     const content = @embedFile("rss2.xml");
     var result = try parse.parse(arena.allocator(), content, .rss);
+    try std.testing.expectEqual(@as(usize, 2), result.items.len);
+
+    // Setup: add/insert feed and items
+    const feed_id = try app.insertFeedAndItems(&result, input_url);
+    const feeds = try app.storage.getFeedsByUrl(arena.allocator(), input_url);
+    try std.testing.expectEqual(feed_id, feeds[0].feed_id);
+    const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+    try std.testing.expectEqual(result.items.len, items.len);
 
     {
-        const feed_id = try app.insertFeedAndItems(&result, input_url);
-        const feeds = try app.storage.getFeedsByUrl(arena.allocator(), input_url);
-        try std.testing.expectEqual(feed_id, feeds[0].feed_id);
+        // Update feed
+        var feed = Feed{ .feed_id = feed_id, .feed_url = "<invalid_ur>" };
+        const err = app.updateFeed(&feed);
+        try std.testing.expectError(error.InvalidUri, err);
+        const expected_url: []const u8 = "http://localhost/updated_url";
+        feed.feed_url = expected_url;
+        feed.title = "";
+        try app.updateFeed(&feed);
+        const updated_feeds = try app.storage.getFeedsByUrl(arena.allocator(), expected_url);
+        try std.testing.expectEqualStrings(expected_url, updated_feeds[0].feed_url);
     }
 }
