@@ -122,9 +122,7 @@ pub const Storage = struct {
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
-        const index = findFeedIndex(id, self.feeds.items) orelse return Error.NotFound;
-        _ = self.feeds.swapRemove(index);
-        // TODO: delete items with feed_id
+        try self.sql_db.exec("DELETE FROM feed WHERE feed_id = ?", .{}, .{id});
     }
 
     pub fn updateFeed(self: *Self, feed: Feed) !void {
