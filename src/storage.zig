@@ -22,6 +22,7 @@ pub const Storage = struct {
     sql_db: sql.Db,
 
     pub const Error = error{
+        FeedNotFound,
         NotFound,
         FeedExists,
     };
@@ -62,8 +63,7 @@ pub const Storage = struct {
         errdefer std.log.err("Failed to create database tables", .{});
         inline for (tables) |query| {
             db.exec(query, .{}, .{}) catch |err| {
-                print("err: {}\n", .{err});
-                std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
                 return err;
             };
         }
@@ -139,15 +139,31 @@ pub const Storage = struct {
     }
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
+        if (inserts.len == 0) {
+            return error.NothingToInsert;
+        }
+        const exists_query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
+        const has_feed = try one(&self.sql_db, bool, exists_query, .{inserts[0].feed_id});
+        if (!has_feed.?) {
+            return Error.FeedNotFound;
+        }
+
+        const query =
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp)
+            \\RETURNING item_id;
+        ;
+
         for (inserts) |*item| {
-            if (!hasFeedWithId(item.feed_id, self.feeds.items)) {
-                return Error.NotFound;
-            }
-            const id = self.feed_item_id + 1;
-            item.item_id = id;
-            try self.feed_items.append(item.*);
-            assert(id > 0);
-            self.feed_item_id = id;
+            const item_id = try one(&self.sql_db, usize, query, .{
+                .feed_id = item.feed_id,
+                .title = item.title,
+                .link = item.link,
+                .id = item.id,
+                .updated_raw = item.updated_raw,
+                .updated_timestamp = item.updated_timestamp,
+            });
+            item.item_id = item_id;
         }
         return inserts;
     }
@@ -216,14 +232,14 @@ const tables = &[_][]const u8{
 
 fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
     return db.one(T, query, .{}, args) catch |err| {
-        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
 
 pub fn oneAlloc(db: *sql.Db, allocator: Allocator, comptime T: type, comptime query: []const u8, opts: anytype) !?T {
     return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
-        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
 }
@@ -235,13 +251,11 @@ pub fn selectAll(
     comptime query: []const u8,
     opts: anytype,
 ) ![]T {
-    var stmt = db.prepare(query) catch |err| {
-        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
+    var stmt = try db.prepare(query);
     defer stmt.deinit();
-    return stmt.all(T, allocator, .{}, opts) catch |err| {
-        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+    const result = stmt.all(T, allocator, .{}, opts) catch |err| {
+        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
     };
+    return result;
 }

@@ -19,7 +19,7 @@ const App = struct {
 
     const Error = error{
         FeedExists,
-        NotFound,
+        FeedNotFound,
     };
 
     pub fn init(allocator: Allocator) !Self {
@@ -61,7 +61,7 @@ const App = struct {
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
         const new_inserts = self.storage.insertFeedItems(inserts) catch |err| switch (err) {
-            Storage.Error.NotFound => Error.NotFound,
+            Storage.Error.FeedNotFound => Error.FeedNotFound,
             else => error.Unknown,
         };
 
@@ -89,11 +89,12 @@ const App = struct {
         return insert_id;
     }
 
-    pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: []const u8) !void {
+    pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: []const u8) !usize {
         try feed_and_items.feed.prepareAndValidate(fallback_url);
         const feed_id = try self.insertFeed(feed_and_items.feed);
         try FeedItem.prepareAndValidateAll(feed_and_items.items, feed_id);
         _ = try self.insertFeedItems(feed_and_items.items);
+        return feed_id;
     }
 
     pub fn deinit(self: *Self) void {
@@ -184,25 +185,25 @@ test "App.updateFeed" {
     }
 }
 
-// test "App.insertFeedItem" {
-//     var app = App.init(std.testing.allocator);
-//     defer app.deinit();
+test "App.insertFeedItems" {
+    var app = try App.init(std.testing.allocator);
+    defer app.deinit();
 
-//     var items = [_]FeedItem{
-//         .{ .feed_id = 1, .title = "Item title" },
-//     };
-//     {
-//         const res = app.insertFeedItems(&items);
-//         try std.testing.expectError(error.NotFound, res);
-//     }
+    var items = [_]FeedItem{
+        .{ .feed_id = 1, .title = "Item title" },
+    };
+    {
+        const res = app.insertFeedItems(&items);
+        try std.testing.expectError(error.FeedNotFound, res);
+    }
 
-//     {
-//         const feed_id = try app.insertFeed(testFeed());
-//         items[0].feed_id = feed_id;
-//         const new_items = try app.insertFeedItems(&items);
-//         try std.testing.expectEqual(@as(usize, 1), new_items.len);
-//     }
-// }
+    {
+        const feed_id = try app.insertFeed(testFeed());
+        items[0].feed_id = feed_id;
+        const new_items = try app.insertFeedItems(&items);
+        try std.testing.expectEqual(@as(usize, 1), new_items.len);
+    }
+}
 
 test "App.getFeedItem" {
     var app = App.init(std.testing.allocator);
@@ -268,7 +269,7 @@ test "App.updateFeedItem" {
 test "add feed" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    var app = App.init(std.testing.allocator);
+    var app = try App.init(std.testing.allocator);
     defer app.deinit();
 
     // feedgaze add http://localhost:8282/atom.xml
@@ -276,5 +277,7 @@ test "add feed" {
     const input_url = "http://localhost/valid_url";
     const content = @embedFile("rss2.xml");
     var result = try parse.parse(arena.allocator(), content, .rss);
-    try app.insertFeedAndItems(&result, input_url);
+    const feed_id = try app.insertFeedAndItems(&result, input_url);
+    const feeds = try app.storage.getFeedsByUrl(arena.allocator(), input_url);
+    try std.testing.expectEqual(feed_id, feeds[0].feed_id);
 }

@@ -7,7 +7,7 @@ const Allocator = std.mem.Allocator;
 const http = std.http;
 const Client = http.Client;
 
-pub const log_level = std.log.Level.debug;
+// pub const log_level = std.log.Level.debug;
 
 const FeedLink = struct {
     link: []const u8,
