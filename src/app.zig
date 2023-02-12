@@ -71,17 +71,8 @@ const App = struct {
         try self.storage.deleteFeedItems(ids);
     }
 
-    pub fn updateFeedItem(self: *Self, id: usize, data: FeedItemRaw) !void {
-        const item = data.toFeedItemInsert();
-        // item.validate() catch |err| switch (err) {
-        //     else => error.Unknown,
-        // };
-        const insert_id = self.storage.updateFeedItem(id, item) catch |err| switch (err) {
-            Storage.Error.NotFound => Error.NotFound,
-            else => error.Unknown,
-        };
-
-        return insert_id;
+    pub fn updateFeedItem(self: *Self, item: FeedItem) !void {
+        try self.storage.updateFeedItem(item);
     }
 
     pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: []const u8) !usize {
@@ -297,5 +288,15 @@ test "feed lifecycle" {
         try app.updateFeed(&feed);
         const updated_feeds = try app.storage.getFeedsByUrl(arena.allocator(), expected_url);
         try std.testing.expectEqualStrings(expected_url, updated_feeds[0].feed_url);
+    }
+
+    {
+        // Update item
+        var item = items[0];
+        var updated_title = "Updated title";
+        item.title = updated_title;
+        try app.updateFeedItem(item);
+        const updated_items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+        try std.testing.expectEqualStrings(updated_title, updated_items[0].title);
     }
 }

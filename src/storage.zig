@@ -23,6 +23,7 @@ pub const Storage = struct {
 
     pub const Error = error{
         FeedNotFound,
+        FeedItemNotFound,
         NotFound,
         FeedExists,
     };
@@ -198,10 +199,18 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{feed_id});
     }
 
-    pub fn updateFeedItem(self: *Self, id: usize, item_insert: FeedItemInsert) !void {
-        assert(id > 0);
-        const index = findFeedItemIndex(id, self.feed_items.items) orelse return Error.NotFound;
-        self.feed_items.items[index] = item_insert.toFeedItem(id);
+    pub fn updateFeedItem(self: *Self, item: FeedItem) !void {
+        const query =
+            \\update item set 
+            \\  title = @title, 
+            \\  feed_id = @feed_id, 
+            \\  link = @link, 
+            \\  id = @id, 
+            \\  updated_raw = @updated_raw, 
+            \\  updated_timestamp = @updated_timestamp
+            \\where item_id = @item_id;
+        ;
+        try self.sql_db.exec(query, .{}, item);
     }
 };
 
