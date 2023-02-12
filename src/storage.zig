@@ -179,9 +179,9 @@ pub const Storage = struct {
         return inserts;
     }
 
-    pub fn getFeedItem(self: Self, id: usize) ?FeedItem {
-        const index = findFeedItemIndex(id, self.feed_items.items) orelse return null;
-        return self.feed_items.items[index];
+    pub fn getFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
+        const query = "select feed_id, item_id, title, id, link, updated_raw, updated_timestamp from item where feed_id = ?";
+        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
@@ -193,11 +193,9 @@ pub const Storage = struct {
         return null;
     }
 
-    pub fn deleteFeedItems(self: *Self, ids: []usize) !void {
-        for (ids) |id| {
-            const index = findFeedItemIndex(id, self.feed_items.items) orelse return Error.NotFound;
-            _ = self.feed_items.swapRemove(index);
-        }
+    pub fn deleteFeedItemsWithFeedId(self: *Self, feed_id: usize) !void {
+        const query = "DELETE FROM item WHERE feed_id = ?;";
+        try self.sql_db.exec(query, .{}, .{feed_id});
     }
 
     pub fn updateFeedItem(self: *Self, id: usize, item_insert: FeedItemInsert) !void {

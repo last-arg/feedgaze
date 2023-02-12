@@ -63,8 +63,8 @@ const App = struct {
         return new_inserts;
     }
 
-    pub fn getFeedItem(self: *Self, id: usize) ?FeedItem {
-        return self.storage.getFeedItem(id);
+    pub fn getFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
+        return try self.storage.getFeedItemsWithFeedId(allocator, feed_id);
     }
 
     pub fn deleteFeedItems(self: *Self, ids: []usize) !void {
@@ -204,23 +204,24 @@ test "App.insertFeedItems" {
     }
 }
 
-test "App.getFeedItem" {
-    var app = App.init(std.testing.allocator);
+test "App.getFeedItemsByFeedId" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var app = try App.init(std.testing.allocator);
     defer app.deinit();
 
     {
-        const res = app.getFeedItem(1);
-        try std.testing.expect(null == res);
+        const items = try app.getFeedItemsWithFeedId(arena.allocator(), 1);
+        try std.testing.expectEqual(@as(usize, 0), items.len);
     }
 
     {
         const feed_id = try app.insertFeed(testFeed());
         var insert_items = [_]FeedItem{.{ .feed_id = feed_id, .title = "Item title" }};
-        const new_items = try app.insertFeedItems(&insert_items);
-        const new_item_id = new_items[0].item_id.?;
-        const item = app.getFeedItem(new_item_id);
-        try std.testing.expectEqual(item.?.item_id, new_item_id);
-        try std.testing.expectEqualStrings(item.?.title, insert_items[0].title);
+        _ = try app.insertFeedItems(&insert_items);
+        const items = try app.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+        try std.testing.expectEqual(@as(usize, 1), items.len);
+        try std.testing.expectEqualStrings(insert_items[0].title, items[0].title);
     }
 }
 
