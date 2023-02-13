@@ -113,6 +113,23 @@ pub const Storage = struct {
         return self.feeds.items[index];
     }
 
+    pub fn getFeedWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
+        const query = "SELECT * from feed where feed_url = ? or page_url = ?";
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
+    }
+
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, feeds: []Feed) ![]usize {
+        var ids = try ArrayList(usize).initCapacity(allocator, feeds.len);
+        defer ids.deinit();
+        const query = "SELECT feed_id from feed_update where feed_id = ?";
+        for (feeds) |feed| {
+            if (try one(&self.sql_db, usize, query, .{feed.feed_id})) |id| {
+                ids.appendAssumeCapacity(id);
+            }
+        }
+        return ids.toOwnedSlice();
+    }
+
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
         for (feeds) |f, i| {
             if (id == f.feed_id) {
@@ -212,8 +229,29 @@ pub const Storage = struct {
         ;
         try self.sql_db.exec(query, .{}, item);
     }
+
+    pub fn insertFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
+        const query =
+            \\INSERT INTO feed_update
+            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
+            \\VALUES (
+            \\  @feed_id,
+            \\  @cache_control_max_age,
+            \\  @expires_utc,
+            \\  @last_modified_utc,
+            \\  @etag
+            \\) ON CONFLICT(feed_id) DO UPDATE SET
+            \\  cache_control_max_age = excluded.cache_control_max_age,
+            \\  expires_utc = excluded.expires_utc,
+            \\  last_modified_utc = excluded.last_modified_utc,
+            \\  etag = excluded.etag,
+            \\  last_update = (strftime('%s', 'now'))
+        ;
+        try self.sql_db.exec(query, .{}, feed_update);
+    }
 };
 
+pub const update_interval = 480; // in minutes
 const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed(
     \\  feed_id INTEGER PRIMARY KEY,
@@ -237,6 +275,20 @@ const tables = &[_][]const u8{
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
     \\);
+    ,
+    comptimePrint(
+        \\CREATE TABLE IF NOT EXISTS feed_update (
+        \\  feed_id INTEGER UNIQUE,
+        \\  update_countdown INTEGER DEFAULT 0,
+        \\  update_interval INTEGER DEFAULT {d},
+        \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
+        \\  cache_control_max_age INTEGER DEFAULT NULL,
+        \\  expires_utc INTEGER DEFAULT NULL,
+        \\  last_modified_utc INTEGER DEFAULT NULL,
+        \\  etag TEXT DEFAULT NULL,
+        \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
+        \\);
+    , .{ .update_interval = update_interval }),
 };
 
 fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
