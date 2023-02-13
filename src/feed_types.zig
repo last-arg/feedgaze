@@ -56,9 +56,14 @@ pub const FeedItem = struct {
 };
 
 pub const FeedUpdate = struct {
-    feed_id: ?usize = 0,
+    feed_id: ?usize = null,
     cache_control_max_age: ?u32 = null,
     expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
+};
+
+pub const FeedToUpdate = struct {
+    feed_id: usize,
+    feed_url: []const u8,
 };

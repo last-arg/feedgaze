@@ -7,6 +7,7 @@ const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
+const FeedToUpdate = feed_types.FeedToUpdate;
 const sql = @import("sqlite");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
@@ -118,16 +119,13 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
     }
 
-    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, feeds: []Feed) ![]usize {
-        var ids = try ArrayList(usize).initCapacity(allocator, feeds.len);
-        defer ids.deinit();
-        const query = "SELECT feed_id from feed_update where feed_id = ?";
-        for (feeds) |feed| {
-            if (try one(&self.sql_db, usize, query, .{feed.feed_id})) |id| {
-                ids.appendAssumeCapacity(id);
-            }
-        }
-        return ids.toOwnedSlice();
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: []const u8) ![]FeedToUpdate {
+        const query =
+            \\SELECT feed.feed_id, feed.feed_url from feed 
+            \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
+            \\WHERE feed.feed_url = ? or feed.page_url = ?;
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedToUpdate, query, .{ search_term, search_term });
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
@@ -231,6 +229,9 @@ pub const Storage = struct {
     }
 
     pub fn insertFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
+        if (feed_update.feed_id == null) {
+            return error.FeedIdNull;
+        }
         const query =
             \\INSERT INTO feed_update
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
@@ -278,7 +279,7 @@ const tables = &[_][]const u8{
     ,
     comptimePrint(
         \\CREATE TABLE IF NOT EXISTS feed_update (
-        \\  feed_id INTEGER UNIQUE,
+        \\  feed_id INTEGER UNIQUE NOT NULL,
         \\  update_countdown INTEGER DEFAULT 0,
         \\  update_interval INTEGER DEFAULT {d},
         \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
@@ -312,7 +313,10 @@ pub fn selectAll(
     comptime query: []const u8,
     opts: anytype,
 ) ![]T {
-    var stmt = try db.prepare(query);
+    var stmt = db.prepare(query) catch |err| {
+        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
+        return err;
+    };
     defer stmt.deinit();
     const result = stmt.all(T, allocator, .{}, opts) catch |err| {
         std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });

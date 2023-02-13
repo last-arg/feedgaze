@@ -6,6 +6,7 @@ const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
+const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
 const parse = @import("./app_parse.zig");
 const FeedAndItems = parse.FeedAndItems;
@@ -44,8 +45,8 @@ const App = struct {
         return self.storage.getFeedWithUrl(allocator, url);
     }
 
-    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, feeds: []Feed) ![]usize {
-        return self.storage.getFeedsToUpdate(allocator, feeds);
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, url: []const u8) ![]FeedToUpdate {
+        return self.storage.getFeedsToUpdate(allocator, url);
     }
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
@@ -280,6 +281,8 @@ test "all" {
         try std.testing.expectEqual(@as(usize, 2), result.items.len);
 
         feed_id = try app.insertFeedAndItems(&result, input_url);
+        const feed_id_null = app.insertFeedUpdate(.{});
+        try std.testing.expectError(error.FeedIdNull, feed_id_null);
         try app.insertFeedUpdate(.{ .feed_id = feed_id });
 
         const feeds = try app.storage.getFeedsByUrl(arena.allocator(), input_url);
@@ -296,23 +299,15 @@ test "all" {
         //   - see if feed needs updating
         // - update if needed
         const invalid_url = "<invalid_url>";
-        var feeds = try app.getFeedsWithUrl(arena.allocator(), invalid_url);
-        try std.testing.expectEqual(@as(usize, 0), feeds.len);
-        feeds = try app.getFeedsWithUrl(arena.allocator(), input_url);
-        try std.testing.expectEqual(@as(usize, 1), feeds.len);
+        var updates = try app.getFeedsToUpdate(arena.allocator(), invalid_url);
+        try std.testing.expectEqual(@as(usize, 0), updates.len);
+        updates = try app.getFeedsToUpdate(arena.allocator(), input_url);
+        try std.testing.expectEqual(@as(usize, 1), updates.len);
+        try std.testing.expectEqualStrings(input_url, updates[0].feed_url);
 
-        const ids = try app.getFeedsToUpdate(arena.allocator(), feeds);
-        _ = ids;
-        // print("ids: {?}\n", .{ids});
-        // var feed = Feed{ .feed_id = feed_id, .feed_url = invalid_url };
-        // const err = app.updateFeed(&feed);
-        // try std.testing.expectError(error.InvalidUri, err);
-        // const expected_url: []const u8 = "http://localhost/updated_url";
-        // feed.feed_url = expected_url;
-        // feed.title = "";
-        // try app.updateFeed(&feed);
-        // const updated_feeds = try app.storage.getFeedsByUrl(arena.allocator(), expected_url);
-        // try std.testing.expectEqualStrings(expected_url, updated_feeds[0].feed_url);
+        // update feeds
+        // update feed items
+        // update feed_update
     }
 
     {
