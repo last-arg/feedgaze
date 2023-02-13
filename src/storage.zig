@@ -5,11 +5,11 @@ const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
-const FeedInsert = feed_types.FeedInsert;
 const FeedItem = feed_types.FeedItem;
-const FeedItemInsert = feed_types.FeedItemInsert;
+const FeedUpdate = feed_types.FeedUpdate;
 const sql = @import("sqlite");
 const print = std.debug.print;
+const comptimePrint = std.fmt.comptimePrint;
 
 pub const Storage = struct {
     const Self = @This();
