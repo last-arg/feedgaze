@@ -305,6 +305,9 @@ test "all" {
         try std.testing.expectEqual(@as(usize, 1), updates.len);
         try std.testing.expectEqualStrings(input_url, updates[0].feed_url);
 
+        // Use updates.expires_utc and updates.last_modified_utc to make http
+        // requests
+
         // update feeds
         // update feed items
         // update feed_update

@@ -121,9 +121,14 @@ pub const Storage = struct {
 
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: []const u8) ![]FeedToUpdate {
         const query =
-            \\SELECT feed.feed_id, feed.feed_url from feed 
+            \\SELECT 
+            \\  feed.feed_id,
+            \\  feed.feed_url,
+            \\  feed_update.expires_utc,
+            \\  feed_update.last_modified_utc 
+            \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-            \\WHERE feed.feed_url = ? or feed.page_url = ?;
+            \\WHERE feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';
         ;
         return try selectAll(&self.sql_db, allocator, FeedToUpdate, query, .{ search_term, search_term });
     }
