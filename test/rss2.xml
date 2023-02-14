@@ -21,5 +21,9 @@
       <item>
          <description>Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a &lt;a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm"&gt;partial eclipse of the Sun&lt;/a&gt; on Saturday, May 31st.</description>
       </item>
+      <item>
+         <title>Third title</title>
+         <guid>third_id</guid>
+      </item>
    </channel>
 </rss>

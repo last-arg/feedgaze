@@ -334,7 +334,7 @@ test "all" {
 
         // parse content
         var result = try parse.parse(arena.allocator(), content, .rss);
-        try std.testing.expectEqual(@as(usize, 2), result.items.len);
+        try std.testing.expectEqual(@as(usize, 3), result.items.len);
 
         feed_id = try app.insertFeedAndItems(&result, input_url);
         const feed_id_null = app.insertFeedUpdate(.{});
@@ -357,11 +357,9 @@ test "all" {
         var cli = Cli{ .allocator = arena.allocator(), .storage = app.storage };
         try cli.update(.{ .search_term = input_url });
         const update_feeds = (try app.storage.getFeedsByUrl(arena.allocator(), input_url));
-        var items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
-        try std.testing.expectEqual(@as(usize, 2), items.len);
-        cli.clean_opts.max_item_count = 1;
+        cli.clean_opts.max_item_count = 2;
         try cli.update(.{ .search_term = input_url });
-        items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
-        try std.testing.expectEqual(@as(usize, 1), items.len);
+        const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        try std.testing.expectEqual(@as(usize, 2), items.len);
     }
 }
