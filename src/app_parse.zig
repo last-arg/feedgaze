@@ -375,7 +375,7 @@ test "parseRss" {
     try std.testing.expectEqualDeep(expect_items[start..], result.items);
 }
 
-const ContentType = enum {
+pub const ContentType = enum {
     rss,
     atom,
 };

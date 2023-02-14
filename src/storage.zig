@@ -268,6 +268,9 @@ pub const Storage = struct {
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
+        if (feed_update.feed_id == null) {
+            return error.FeedIdIsNull;
+        }
         const query =
             \\UPDATE feed_update SET
             \\  cache_control_max_age = @cache_control_max_age,

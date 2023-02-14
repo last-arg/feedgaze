@@ -10,6 +10,8 @@ const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
 const parse = @import("./app_parse.zig");
 const FeedAndItems = parse.FeedAndItems;
+const ContentType = parse.ContentType;
+const builtin = @import("builtin");
 
 const App = struct {
     const Self = @This();
@@ -296,10 +298,8 @@ const Cli = struct {
         for (feed_updates) |f_update| {
             // TODO: fetch update.feed_url content.
             // use updates.expires_utc and updates.last_modified_utc in http header.
-            const feed_update = FeedUpdate{ .feed_id = f_update.feed_id };
-            const content = @embedFile("rss2.xml");
-            const content_type = .rss;
-            var parsed = try parse.parse(arena.allocator(), content, content_type);
+            var resp = try self.fetchFeed(arena.allocator(), f_update.feed_url);
+            var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
 
             // feed url has changed, update feed
             if (parsed.feed.feed_url.len > 0 and !mem.eql(u8, f_update.feed_url, parsed.feed.feed_url)) {
@@ -312,8 +312,31 @@ const Cli = struct {
             try self.storage.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
             // Update feed_update
-            try self.storage.updateFeedUpdate(feed_update);
+            try self.storage.updateFeedUpdate(resp.feed_update);
         }
+    }
+
+    pub const Response = struct {
+        feed_update: FeedUpdate,
+        content: []const u8,
+        content_type: ContentType,
+    };
+
+    fn fetchFeed(self: *Self, allocator: Allocator, url: []const u8) !Response {
+        return if (!builtin.is_test) self.fetchFeedImpl(allocator, url) else self.testFetch(allocator, url);
+    }
+
+    fn fetchFeedImpl() !Response {
+        @panic("TODO: implement fetchFeedImpl fn");
+    }
+
+    fn testFetch(self: *Self, allocator: Allocator, url: []const u8) !Response {
+        const feeds = try self.storage.getFeedsByUrl(allocator, url);
+        return .{
+            .feed_update = FeedUpdate{ .feed_id = feeds[0].feed_id },
+            .content = @embedFile("rss2.xml"),
+            .content_type = .rss,
+        };
     }
 };
 
@@ -322,10 +345,13 @@ test "all" {
     defer arena.deinit();
     var app = try App.init(std.testing.allocator);
     defer app.deinit();
+    var cli = Cli{ .allocator = arena.allocator(), .storage = app.storage };
 
     const input_url = "http://localhost/valid_url";
     var feed_id: usize = 0;
     {
+        // Add feed
+        // feedgaze add <url>
         // Setup: add/insert feed and items
         // feedgaze add http://localhost:8282/rss2.xml
 
@@ -354,12 +380,16 @@ test "all" {
         // - if not --force
         //   - see if feed needs updating
         // - update if needed
-        var cli = Cli{ .allocator = arena.allocator(), .storage = app.storage };
         try cli.update(.{ .search_term = input_url });
         const update_feeds = (try app.storage.getFeedsByUrl(arena.allocator(), input_url));
         cli.clean_opts.max_item_count = 2;
         try cli.update(.{ .search_term = input_url });
         const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
         try std.testing.expectEqual(@as(usize, 2), items.len);
+    }
+
+    {
+        // Delete feed
+        // feedgaze remove <url>
     }
 }
