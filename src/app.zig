@@ -82,7 +82,7 @@ const App = struct {
         try self.storage.updateFeedItem(item);
     }
 
-    pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: []const u8) !usize {
+    pub fn insertFeedAndItems(self: *Self, feed_and_items: *FeedAndItems, fallback_url: ?[]const u8) !usize {
         try feed_and_items.feed.prepareAndValidate(fallback_url);
         const feed_id = try self.insertFeed(feed_and_items.feed);
         try FeedItem.prepareAndValidateAll(feed_and_items.items, feed_id);
@@ -264,6 +264,7 @@ test "App.getFeedItemsByFeedId" {
 const Cli = struct {
     allocator: Allocator,
     storage: Storage,
+    clean_opts: Storage.CleanOptions = .{},
     const Self = @This();
 
     const UpdateOptions = struct {
@@ -301,14 +302,14 @@ const Cli = struct {
             var parsed = try parse.parse(arena.allocator(), content, content_type);
 
             // feed url has changed, update feed
-            if (!mem.eql(u8, f_update.feed_url, parsed.feed.feed_url)) {
+            if (parsed.feed.feed_url.len > 0 and !mem.eql(u8, f_update.feed_url, parsed.feed.feed_url)) {
                 parsed.feed.feed_id = f_update.feed_id;
                 try self.storage.updateFeed(parsed.feed);
             }
 
             // Update feed items
             try FeedItem.prepareAndValidateAll(parsed.items, f_update.feed_id);
-            try self.storage.updateAndRemoveFeedItems(parsed.items);
+            try self.storage.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
             // Update feed_update
             try self.storage.updateFeedUpdate(feed_update);
@@ -355,22 +356,12 @@ test "all" {
         // - update if needed
         var cli = Cli{ .allocator = arena.allocator(), .storage = app.storage };
         try cli.update(.{ .search_term = input_url });
-        // const invalid_url = "<invalid_url>";
-        // var updates = try app.getFeedsToUpdate(arena.allocator(), invalid_url);
-        // try std.testing.expectEqual(@as(usize, 0), updates.len);
-        // updates = try app.getFeedsToUpdate(arena.allocator(), input_url);
-        // try std.testing.expectEqual(@as(usize, 1), updates.len);
-        // try std.testing.expectEqualStrings(input_url, updates[0].feed_url);
-    }
-
-    {
-        // Update item
-        const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        var item = items[0];
-        var updated_title = "Updated title";
-        item.title = updated_title;
-        try app.updateFeedItem(item);
-        const updated_items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        try std.testing.expectEqualStrings(updated_title, updated_items[0].title);
+        const update_feeds = (try app.storage.getFeedsByUrl(arena.allocator(), input_url));
+        var items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        try std.testing.expectEqual(@as(usize, 2), items.len);
+        cli.clean_opts.max_item_count = 1;
+        try cli.update(.{ .search_term = input_url });
+        items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        try std.testing.expectEqual(@as(usize, 1), items.len);
     }
 }

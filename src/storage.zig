@@ -95,9 +95,11 @@ pub const Storage = struct {
     }
 
     pub fn getFeedsByUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
-        const query = "select feed_id, title, feed_url, page_url, updated_raw, updated_timestamp from feed where feed_url like '%' || ? || '%'";
-        const feed = try selectAll(&self.sql_db, allocator, Feed, query, .{ .search = url });
-        return feed;
+        const query =
+            \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
+            \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%';
+        ;
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -278,8 +280,9 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, feed_update);
     }
 
-    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
+    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem, clean_opts: CleanOptions) !void {
         try self.upsertFeedItems(items);
+        try self.cleanFeedItems(items, clean_opts);
     }
 
     pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
@@ -309,19 +312,60 @@ pub const Storage = struct {
             \\WHERE updated_timestamp != excluded.updated_timestamp;
         ;
 
-        for (inserts) |item| {
-            try self.sql_db.exec(query, .{}, .{
-                .feed_id = item.feed_id,
-                .title = item.title,
-                .link = item.link,
-                .id = item.id,
-                .updated_raw = item.updated_raw,
-                .updated_timestamp = item.updated_timestamp,
-                .latest_count = latest_count,
-            });
-        }
+        const query_no_id =
+            \\  INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, latest_count)
+            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @latest_count 
+            \\  where not exists (select 1 from item where feed_id = @w_feed_id and title != @w_title);
+        ;
 
-        // TODO: remove extra feed items
+        for (inserts) |item| {
+            if (item.link == null and item.id == null) {
+                try self.sql_db.exec(query_no_id, .{}, .{
+                    .feed_id = item.feed_id,
+                    .title = item.title,
+                    .updated_raw = item.updated_raw,
+                    .updated_timestamp = item.updated_timestamp,
+                    .latest_count = latest_count,
+                    .w_feed_id = item.feed_id,
+                    .w_title = item.title,
+                });
+            } else {
+                try self.sql_db.exec(query, .{}, .{
+                    .feed_id = item.feed_id,
+                    .title = item.title,
+                    .link = item.link,
+                    .id = item.id,
+                    .updated_raw = item.updated_raw,
+                    .updated_timestamp = item.updated_timestamp,
+                    .latest_count = latest_count,
+                });
+            }
+        }
+    }
+
+    pub const CleanOptions = struct {
+        max_item_count: usize = 10,
+    };
+
+    pub fn cleanFeedItems(self: *Self, items: ?[]FeedItem, opts: CleanOptions) !void {
+        if (items == null) {
+            // TODO: clean all items
+            return;
+        }
+        const feed_items = items.?;
+        const query =
+            \\DELETE FROM item
+            \\WHERE item_id IN
+            \\  (SELECT item_id FROM item
+            \\    WHERE feed_id = ?
+            \\    ORDER BY id ASC
+            \\    LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
+            \\  );
+        ;
+
+        for (feed_items) |item| {
+            try self.sql_db.exec(query, .{}, .{ item.feed_id, opts.max_item_count, item.feed_id });
+        }
     }
 };
 
