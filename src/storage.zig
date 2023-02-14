@@ -185,9 +185,12 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
+        var latest_count = try one(&self.sql_db, usize, "select max(latest_count) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
+        latest_count += 1;
+
         const query =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp)
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, latest_count)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @latest_count)
             \\RETURNING item_id;
         ;
 
@@ -199,6 +202,7 @@ pub const Storage = struct {
                 .id = item.id,
                 .updated_raw = item.updated_raw,
                 .updated_timestamp = item.updated_timestamp,
+                .latest_count = latest_count,
             });
             item.item_id = item_id;
         }
@@ -286,21 +290,22 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
+        var latest_count = try one(&self.sql_db, usize, "select max(latest_count) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
+        latest_count += 1;
+
         const query =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp)
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, latest_count)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @latest_count)
             \\ON CONFLICT(feed_id, id) DO UPDATE SET
             \\  title = excluded.title,
             \\  link = excluded.link,
             \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp,
-            \\  modified_at = (strftime('%s', 'now'))
+            \\  updated_timestamp = excluded.updated_timestamp
             \\WHERE updated_timestamp != excluded.updated_timestamp
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp,
-            \\  modified_at = (strftime('%s', 'now'))
+            \\  updated_timestamp = excluded.updated_timestamp
             \\WHERE updated_timestamp != excluded.updated_timestamp;
         ;
 
@@ -312,6 +317,7 @@ pub const Storage = struct {
                 .id = item.id,
                 .updated_raw = item.updated_raw,
                 .updated_timestamp = item.updated_timestamp,
+                .latest_count = latest_count,
             });
         }
 
@@ -338,7 +344,7 @@ const tables = &[_][]const u8{
     \\  id TEXT DEFAULT NULL,
     \\  updated_raw TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
-    \\  modified_at INTEGER DEFAULT (strftime('%s', 'now')),
+    \\  latest_count INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
