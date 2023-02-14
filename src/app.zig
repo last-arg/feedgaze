@@ -261,6 +261,61 @@ test "App.getFeedItemsByFeedId" {
 //     }
 // }
 
+const Cli = struct {
+    allocator: Allocator,
+    storage: Storage,
+    const Self = @This();
+
+    const UpdateOptions = struct {
+        search_term: ?[]const u8 = null,
+        force: bool = false,
+        all: bool = false,
+    };
+
+    pub fn update(self: *Self, options: UpdateOptions) !void {
+        if (options.search_term == null and !options.all) {
+            std.log.info(
+                \\subcommand 'update' is missing one of required arguments: 
+                \\1) '<url>' search term. Example: 'feedgaze update duckduckgo.com'
+                \\2) flag '--all'. Example: 'feedgaze update --all'
+            , .{});
+            return error.MissingArgument;
+        }
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+
+        const feed_updates = blk: {
+            if (options.search_term) |url| {
+                break :blk try self.storage.getFeedsToUpdate(arena.allocator(), url);
+            }
+            // gets all feeds
+            break :blk try self.storage.getFeedsToUpdate(arena.allocator(), null);
+        };
+
+        for (feed_updates) |f_update| {
+            // TODO: fetch update.feed_url content.
+            // use updates.expires_utc and updates.last_modified_utc in http header.
+            const feed_update = FeedUpdate{ .feed_id = f_update.feed_id };
+            const content = @embedFile("rss2.xml");
+            const content_type = .rss;
+            var parsed = try parse.parse(arena.allocator(), content, content_type);
+
+            // feed url has changed, update feed
+            if (!mem.eql(u8, f_update.feed_url, parsed.feed.feed_url)) {
+                parsed.feed.feed_id = f_update.feed_id;
+                try self.storage.updateFeed(parsed.feed);
+            }
+
+            // Update feed items
+            try FeedItem.prepareAndValidateAll(parsed.items, f_update.feed_id);
+            try self.storage.updateAndRemoveFeedItems(parsed.items);
+
+            // Update feed_update
+            try self.storage.updateFeedUpdate(feed_update);
+        }
+    }
+};
+
 test "all" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -298,19 +353,14 @@ test "all" {
         // - if not --force
         //   - see if feed needs updating
         // - update if needed
-        const invalid_url = "<invalid_url>";
-        var updates = try app.getFeedsToUpdate(arena.allocator(), invalid_url);
-        try std.testing.expectEqual(@as(usize, 0), updates.len);
-        updates = try app.getFeedsToUpdate(arena.allocator(), input_url);
-        try std.testing.expectEqual(@as(usize, 1), updates.len);
-        try std.testing.expectEqualStrings(input_url, updates[0].feed_url);
-
-        // Use updates.expires_utc and updates.last_modified_utc to make http
-        // requests
-
-        // update feeds
-        // update feed items
-        // update feed_update
+        var cli = Cli{ .allocator = arena.allocator(), .storage = app.storage };
+        try cli.update(.{ .search_term = input_url });
+        // const invalid_url = "<invalid_url>";
+        // var updates = try app.getFeedsToUpdate(arena.allocator(), invalid_url);
+        // try std.testing.expectEqual(@as(usize, 0), updates.len);
+        // updates = try app.getFeedsToUpdate(arena.allocator(), input_url);
+        // try std.testing.expectEqual(@as(usize, 1), updates.len);
+        // try std.testing.expectEqualStrings(input_url, updates[0].feed_url);
     }
 
     {

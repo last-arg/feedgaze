@@ -119,7 +119,7 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
     }
 
-    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: []const u8) ![]FeedToUpdate {
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8) ![]FeedToUpdate {
         const query =
             \\SELECT 
             \\  feed.feed_id,
@@ -128,9 +128,14 @@ pub const Storage = struct {
             \\  feed_update.last_modified_utc 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-            \\WHERE feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';
         ;
-        return try selectAll(&self.sql_db, allocator, FeedToUpdate, query, .{ search_term, search_term });
+
+        if (search_term) |term| {
+            const query_term = query ++
+                " WHERE feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';";
+            return try selectAll(&self.sql_db, allocator, FeedToUpdate, query_term, .{ term, term });
+        }
+        return try selectAll(&self.sql_db, allocator, FeedToUpdate, query, .{});
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
@@ -251,9 +256,66 @@ pub const Storage = struct {
             \\  expires_utc = excluded.expires_utc,
             \\  last_modified_utc = excluded.last_modified_utc,
             \\  etag = excluded.etag,
-            \\  last_update = (strftime('%s', 'now'))
+            \\  last_update = (strftime('%s', 'now'));
         ;
         try self.sql_db.exec(query, .{}, feed_update);
+    }
+
+    pub fn updateFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
+        const query =
+            \\UPDATE feed_update SET
+            \\  cache_control_max_age = @cache_control_max_age,
+            \\  expires_utc = @expires_utc,
+            \\  last_modified_utc = @last_modified_utc,
+            \\  etag = @etag,
+            \\  last_update = (strftime('%s', 'now'))
+            \\WHERE feed_id = @feed_id;
+        ;
+        try self.sql_db.exec(query, .{}, feed_update);
+    }
+
+    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
+        try self.upsertFeedItems(items);
+    }
+
+    pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
+        if (inserts.len == 0) {
+            return error.NothingToInsert;
+        }
+        if (!try self.hasFeedWithId(inserts[0].feed_id)) {
+            return Error.FeedNotFound;
+        }
+
+        const query =
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp)
+            \\ON CONFLICT(feed_id, id) DO UPDATE SET
+            \\  title = excluded.title,
+            \\  link = excluded.link,
+            \\  updated_raw = excluded.updated_raw,
+            \\  updated_timestamp = excluded.updated_timestamp,
+            \\  modified_at = (strftime('%s', 'now'))
+            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\ON CONFLICT(feed_id, link) DO UPDATE SET
+            \\  title = excluded.title,
+            \\  updated_raw = excluded.updated_raw,
+            \\  updated_timestamp = excluded.updated_timestamp,
+            \\  modified_at = (strftime('%s', 'now'))
+            \\WHERE updated_timestamp != excluded.updated_timestamp;
+        ;
+
+        for (inserts) |item| {
+            try self.sql_db.exec(query, .{}, .{
+                .feed_id = item.feed_id,
+                .title = item.title,
+                .link = item.link,
+                .id = item.id,
+                .updated_raw = item.updated_raw,
+                .updated_timestamp = item.updated_timestamp,
+            });
+        }
+
+        // TODO: remove extra feed items
     }
 };
 
