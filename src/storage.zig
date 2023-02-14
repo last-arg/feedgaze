@@ -94,7 +94,7 @@ pub const Storage = struct {
         return feed_id orelse Error.FeedExists;
     }
 
-    pub fn getFeedsByUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
+    pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%';
@@ -116,9 +116,9 @@ pub const Storage = struct {
         return self.feeds.items[index];
     }
 
-    pub fn getFeedWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
-        const query = "SELECT * from feed where feed_url = ? or page_url = ?";
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
+    pub fn hasFeedWithFeedUrl(self: *Self, url: []const u8) !bool {
+        const query = "SELECT 1 from feed where feed_url = ?";
+        return (try one(&self.sql_db, bool, query, .{url})) orelse false;
     }
 
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8) ![]FeedToUpdate {
