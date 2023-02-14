@@ -293,7 +293,6 @@ const Cli = struct {
             }
         }
 
-        // parse content
         var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
         try parsed.feed.prepareAndValidate(resp.location);
         const feed_id = try self.storage.insertFeed(parsed.feed);
@@ -405,9 +404,11 @@ test "all" {
         // - update if needed
         try cli.update(.{ .search_term = input_url });
         const update_feeds = (try app.storage.getFeedsWithUrl(arena.allocator(), input_url));
+        var items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        try std.testing.expectEqual(@as(usize, 3), items.len);
         cli.clean_opts.max_item_count = 2;
         try cli.update(.{ .search_term = input_url });
-        const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
         try std.testing.expectEqual(@as(usize, 2), items.len);
     }
 

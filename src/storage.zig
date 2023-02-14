@@ -316,9 +316,9 @@ pub const Storage = struct {
         ;
 
         const query_no_id =
-            \\  INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, latest_count)
-            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @latest_count 
-            \\  where not exists (select 1 from item where feed_id = @w_feed_id and title != @w_title);
+            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, latest_count)
+            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @latest_count
+            \\  where not exists (select * from item where feed_id == @w_feed_id and title == @w_title);
         ;
 
         for (inserts) |item| {
