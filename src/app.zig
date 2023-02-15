@@ -153,16 +153,15 @@ pub fn Cli(comptime Out: anytype) type {
             _ = opts;
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            // TODO: get recently updated feeds first
             // TODO: use --limit flag
-            const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url orelse "");
+            const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), url orelse "");
 
             for (feeds) |feed| {
                 const title = feed.title orelse "<no title>";
                 const url_out = feed.page_url orelse feed.feed_url;
                 _ = try self.out.print("{s} - {s}\n", .{ title, url_out });
-                // TODO: get most recently added (updated) feeds first
-                const items = try self.storage.getFeedItemsWithFeedId(arena.allocator(), feed.feed_id);
+                // TODO: use --limit flag? Or some other limit flag
+                const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id);
                 if (items.len == 0) {
                     _ = try self.out.write("  ");
                     _ = try self.out.write("Feed has no items.");
@@ -170,6 +169,7 @@ pub fn Cli(comptime Out: anytype) type {
                 }
 
                 for (items) |item| {
+                    // _ = try self.out.print("{d}. ", .{item.item_id.?});
                     _ = try self.out.print("\n  {s}\n  {s}\n", .{ item.title, item.link orelse "<no link>" });
                 }
                 _ = try self.out.write("\n");
@@ -213,17 +213,18 @@ test "all" {
         // - will show latest updated feeds first
         try cli.show(input_url, .{});
         const r = fb.getWritten();
+        // print("|{s}|\n", .{fb.getWritten()});
         const expect =
             \\Liftoff News - http://liftoff.msfc.nasa.gov/
+            \\
+            \\  Star City's Test
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
             \\
             \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
             \\  <no link>
             \\
             \\  Third title
             \\  <no link>
-            \\
-            \\  Star City's Test
-            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
             \\
             \\
         ;

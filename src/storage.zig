@@ -93,6 +93,15 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
     }
 
+    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
+        const query =
+            \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
+            \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%'
+            \\ORDER BY updated_timestamp DESC;
+        ;
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
+    }
+
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
         for (feeds) |feed| {
             if (std.mem.eql(u8, url, feed.feed_url)) {
@@ -204,6 +213,16 @@ pub const Storage = struct {
 
     pub fn getFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
         const query = "select feed_id, item_id, title, id, link, updated_raw, updated_timestamp from item where feed_id = ?";
+        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
+    }
+
+    pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
+        const query =
+            \\SELECT feed_id, item_id, title, id, link, updated_raw, updated_timestamp
+            \\FROM item 
+            \\WHERE feed_id = ?
+            \\ORDER BY updated_timestamp DESC, latest_count DESC, item_id ASC;
+        ;
         return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
     }
 
@@ -382,6 +401,8 @@ const tables = &[_][]const u8{
     \\  id TEXT DEFAULT NULL,
     \\  updated_raw TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
+    // TODO: go back to added_at from latest_count.
+    // With added added_at it would easier to get latest items
     \\  latest_count INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
