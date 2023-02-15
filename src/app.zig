@@ -88,6 +88,7 @@ pub fn Cli(comptime Out: anytype) type {
                 }
 
                 parsed.feed.feed_id = f_update.feed_id;
+                try parsed.feed.prepareAndValidate(resp.location);
                 try self.storage.updateFeed(parsed.feed);
 
                 // Update feed items
@@ -154,12 +155,8 @@ pub fn Cli(comptime Out: anytype) type {
             defer arena.deinit();
             const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url orelse "");
 
-            _ = try self.out.write("start\n");
-
             for (feeds) |feed| {
-                _ = feed;
-                // _ = try out.writer().write(feed.feed_url);
-                _ = try self.out.write("hello\n");
+                _ = try self.out.write(feed.feed_url);
             }
         }
     };
@@ -179,8 +176,8 @@ test "all" {
         .out = fb_writer,
     };
 
-    const input_url = "http://localhost/valid_url";
-    var feed_id: usize = 1;
+    const input_url: []const u8 = "http://localhost/valid_url";
+    var feed_id: usize = 0;
     {
         // Add feed
         // feedgaze add <url>
@@ -188,6 +185,7 @@ test "all" {
         // feedgaze add http://localhost:8282/rss2.xml
         try cli.add(input_url);
         const feeds = try storage.getFeedsWithUrl(arena.allocator(), input_url);
+        feed_id = feeds[0].feed_id;
         try std.testing.expectEqual(feed_id, feeds[0].feed_id);
         const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 3), items.len);
@@ -210,12 +208,11 @@ test "all" {
         //   - see if feed needs updating
         // - update if needed
         try cli.update(.{ .search_term = input_url });
-        const update_feeds = (try storage.getFeedsWithUrl(arena.allocator(), input_url));
-        var items = try storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        var items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 3), items.len);
         cli.clean_opts.max_item_count = 2;
         try cli.update(.{ .search_term = input_url });
-        items = try storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
+        items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 2), items.len);
     }
     cli.clean_opts.max_item_count = 10;
