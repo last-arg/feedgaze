@@ -46,6 +46,9 @@ pub fn Cli(comptime Out: anytype) type {
             }
 
             var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
+            if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
+                parsed.feed.updated_raw = parsed.items[0].updated_raw;
+            }
             try parsed.feed.prepareAndValidate(resp.location);
             const feed_id = try self.storage.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
@@ -80,11 +83,12 @@ pub fn Cli(comptime Out: anytype) type {
                 var resp = try self.fetchFeed(arena.allocator(), f_update.feed_url);
                 var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
 
-                // feed url has changed, update feed
-                if (parsed.feed.feed_url.len > 0 and !mem.eql(u8, f_update.feed_url, parsed.feed.feed_url)) {
-                    parsed.feed.feed_id = f_update.feed_id;
-                    try self.storage.updateFeed(parsed.feed);
+                if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
+                    parsed.feed.updated_raw = parsed.items[0].updated_raw;
                 }
+
+                parsed.feed.feed_id = f_update.feed_id;
+                try self.storage.updateFeed(parsed.feed);
 
                 // Update feed items
                 try FeedItem.prepareAndValidateAll(parsed.items, f_update.feed_id);
@@ -194,6 +198,8 @@ test "all" {
         // feedgaze show [<url>] [--limit]
         // - will show latest updated feeds first
         try cli.show(input_url, .{});
+        const r = fb.getWritten();
+        print("|{s}|\n", .{r});
     }
 
     {
