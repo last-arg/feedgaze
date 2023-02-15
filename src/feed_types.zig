@@ -68,4 +68,5 @@ pub const FeedToUpdate = struct {
     feed_url: []const u8,
     expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
+    etag: ?[]const u8 = null,
 };

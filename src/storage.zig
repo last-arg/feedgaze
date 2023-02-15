@@ -127,7 +127,8 @@ pub const Storage = struct {
             \\  feed.feed_id,
             \\  feed.feed_url,
             \\  feed_update.expires_utc,
-            \\  feed_update.last_modified_utc 
+            \\  feed_update.last_modified_utc,
+            \\  feed_update.etag 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
         ;

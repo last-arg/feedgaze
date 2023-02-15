@@ -37,7 +37,7 @@ pub fn Cli(comptime Out: anytype) type {
             defer arena.deinit();
 
             // fetch url content
-            var resp = try self.fetchFeed(arena.allocator(), url);
+            var resp = try self.fetchFeed(arena.allocator(), url, .{});
             if (!mem.eql(u8, url, resp.location)) {
                 if (try self.storage.hasFeedWithFeedUrl(resp.location)) {
                     std.log.info("There already exists feed '{s}'", .{url});
@@ -78,9 +78,10 @@ pub fn Cli(comptime Out: anytype) type {
             };
 
             for (feed_updates) |f_update| {
-                // TODO: fetch update.feed_url content.
-                // use updates.expires_utc and updates.last_modified_utc in http header.
-                var resp = try self.fetchFeed(arena.allocator(), f_update.feed_url);
+                var resp = try self.fetchFeed(arena.allocator(), f_update.feed_url, .{
+                    .etag = f_update.etag,
+                    .last_modified_utc = f_update.last_modified_utc,
+                });
                 var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
 
                 if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
@@ -108,11 +109,19 @@ pub fn Cli(comptime Out: anytype) type {
             location: []const u8,
         };
 
-        fn fetchFeed(self: *Self, allocator: Allocator, url: []const u8) !Response {
-            return if (!builtin.is_test) self.fetchFeedImpl(allocator, url) else self.testFetch(allocator, url);
+        const FetchOptions = struct {
+            etag: ?[]const u8 = null,
+            last_modified_utc: ?i64 = null,
+        };
+        fn fetchFeed(self: *Self, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
+            return if (!builtin.is_test) self.fetchFeedImpl(allocator, url, opts) else self.testFetch(allocator, url);
         }
 
-        fn fetchFeedImpl() !Response {
+        fn fetchFeedImpl(self: *Self, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
+            _ = opts;
+            _ = url;
+            _ = allocator;
+            _ = self;
             @panic("TODO: implement fetchFeedImpl fn");
         }
 
