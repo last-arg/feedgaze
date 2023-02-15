@@ -14,12 +14,6 @@ const comptimePrint = std.fmt.comptimePrint;
 
 pub const Storage = struct {
     const Self = @This();
-    allocator: Allocator,
-    feeds: ArrayList(Feed),
-    feed_id: usize = 0,
-    feed_items: ArrayList(FeedItem),
-    feed_item_id: usize = 0,
-
     sql_db: sql.Db,
 
     pub const Error = error{
@@ -29,7 +23,7 @@ pub const Storage = struct {
         FeedExists,
     };
 
-    pub fn init(allocator: Allocator) !Self {
+    pub fn init() !Self {
         var db = try sql.Db.init(.{
             .mode = .{ .Memory = {} },
             .open_flags = .{ .write = true, .create = true },
@@ -38,9 +32,6 @@ pub const Storage = struct {
         try setupDb(&db);
 
         return .{
-            .allocator = allocator,
-            .feeds = ArrayList(Feed).init(allocator),
-            .feed_items = ArrayList(FeedItem).init(allocator),
             .sql_db = db,
         };
     }
