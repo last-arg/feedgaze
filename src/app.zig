@@ -340,6 +340,7 @@ const Cli = struct {
 
             // Update feed_update
             try self.storage.updateFeedUpdate(resp.feed_update);
+            std.log.info("Updated feed '{s}'", .{f_update.feed_url});
         }
     }
 
@@ -372,9 +373,25 @@ const Cli = struct {
             .location = feed_url,
         };
     }
+
+    pub fn remove(self: *Self, url: []const u8) !void {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+        const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url);
+        if (feeds.len == 0) {
+            std.log.info("Found no feeds for search term '{s}'", .{url});
+            return;
+        }
+
+        for (feeds) |feed| {
+            try self.storage.deleteFeed(feed.feed_id);
+            std.log.info("Removed feed '{s}'", .{feed.feed_url});
+        }
+    }
 };
 
 test "all" {
+    std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var app = try App.init(std.testing.allocator);
@@ -411,9 +428,17 @@ test "all" {
         items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), update_feeds[0].feed_id);
         try std.testing.expectEqual(@as(usize, 2), items.len);
     }
+    cli.clean_opts.max_item_count = 10;
 
     {
         // Delete feed
         // feedgaze remove <url>
+        try cli.remove(input_url);
+        const remove_feeds = try app.storage.getFeedsWithUrl(arena.allocator(), input_url);
+        try std.testing.expectEqual(@as(usize, 0), remove_feeds.len);
+        const items = try app.storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+        try std.testing.expectEqual(@as(usize, 0), items.len);
+        const updates = try app.storage.getFeedsToUpdate(arena.allocator(), input_url);
+        try std.testing.expectEqual(@as(usize, 0), updates.len);
     }
 }
