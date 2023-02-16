@@ -169,24 +169,6 @@ fn fetchFeedImpl(allocator: Allocator, url: []const u8, opts: FetchOptions) !Res
     @panic("TODO: implement fetchFeedImpl fn");
 }
 
-fn testFetch(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
-    _ = allocator;
-    _ = opts;
-    // const feeds = try self.storage.getFeedsWithUrl(allocator, url);
-    // var feed_id: ?usize = null;
-    var feed_id: ?usize = 1;
-    var feed_url = url;
-    // if (feeds.len > 0) {
-    //     feed_id = feeds[0].feed_id;
-    // }
-    return .{
-        .feed_update = FeedUpdate{ .feed_id = feed_id },
-        .content = @embedFile("rss2.xml"),
-        .content_type = .rss,
-        .location = feed_url,
-    };
-}
-
 test "Cli" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -195,12 +177,25 @@ test "Cli" {
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
     var fb_writer = fb.writer();
+    const Test = struct {
+        var feed_id: ?usize = null;
+        pub fn fetch(allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!Response {
+            _ = opts;
+            _ = allocator;
+            return .{
+                .feed_update = FeedUpdate{ .feed_id = feed_id },
+                .content = @embedFile("rss2.xml"),
+                .content_type = .rss,
+                .location = url,
+            };
+        }
+    };
     const CliTest = Cli(@TypeOf(fb_writer));
     var cli = CliTest{
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
-        .fetchFeedFn = testFetch,
+        .fetchFeedFn = Test.fetch,
     };
 
     const input_url: []const u8 = "http://localhost/valid_url";
@@ -217,6 +212,8 @@ test "Cli" {
         const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 3), items.len);
     }
+
+    Test.feed_id = feed_id;
 
     {
         // Show feeds and items
