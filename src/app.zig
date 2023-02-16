@@ -13,12 +13,25 @@ const FeedAndItems = parse.FeedAndItems;
 const ContentType = parse.ContentType;
 const builtin = @import("builtin");
 
+pub const Response = struct {
+    feed_update: FeedUpdate,
+    content: []const u8,
+    content_type: ContentType,
+    location: []const u8,
+};
+
+const FetchOptions = struct {
+    etag: ?[]const u8 = null,
+    last_modified_utc: ?i64 = null,
+};
+
 pub fn Cli(comptime Out: anytype) type {
     return struct {
         allocator: Allocator,
         storage: Storage,
         clean_opts: Storage.CleanOptions = .{},
         out: Out,
+        fetchFeedFn: *const fn (Allocator, []const u8, FetchOptions) anyerror!Response = fetchFeedImpl,
         const Self = @This();
 
         const UpdateOptions = struct {
@@ -37,7 +50,7 @@ pub fn Cli(comptime Out: anytype) type {
             defer arena.deinit();
 
             // fetch url content
-            var resp = try self.fetchFeed(arena.allocator(), url, .{});
+            var resp = try self.fetchFeedFn(arena.allocator(), url, .{});
             if (!mem.eql(u8, url, resp.location)) {
                 if (try self.storage.hasFeedWithFeedUrl(resp.location)) {
                     std.log.info("There already exists feed '{s}'", .{url});
@@ -78,7 +91,7 @@ pub fn Cli(comptime Out: anytype) type {
             };
 
             for (feed_updates) |f_update| {
-                var resp = try self.fetchFeed(arena.allocator(), f_update.feed_url, .{
+                var resp = try self.fetchFeedFn(arena.allocator(), f_update.feed_url, .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 });
@@ -100,44 +113,6 @@ pub fn Cli(comptime Out: anytype) type {
                 try self.storage.updateFeedUpdate(resp.feed_update);
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
-        }
-
-        pub const Response = struct {
-            feed_update: FeedUpdate,
-            content: []const u8,
-            content_type: ContentType,
-            location: []const u8,
-        };
-
-        const FetchOptions = struct {
-            etag: ?[]const u8 = null,
-            last_modified_utc: ?i64 = null,
-        };
-        fn fetchFeed(self: *Self, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
-            return if (!builtin.is_test) self.fetchFeedImpl(allocator, url, opts) else self.testFetch(allocator, url);
-        }
-
-        fn fetchFeedImpl(self: *Self, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
-            _ = opts;
-            _ = url;
-            _ = allocator;
-            _ = self;
-            @panic("TODO: implement fetchFeedImpl fn");
-        }
-
-        fn testFetch(self: *Self, allocator: Allocator, url: []const u8) !Response {
-            const feeds = try self.storage.getFeedsWithUrl(allocator, url);
-            var feed_id: ?usize = null;
-            var feed_url = url;
-            if (feeds.len > 0) {
-                feed_id = feeds[0].feed_id;
-            }
-            return .{
-                .feed_update = FeedUpdate{ .feed_id = feed_id },
-                .content = @embedFile("rss2.xml"),
-                .content_type = .rss,
-                .location = feed_url,
-            };
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {
@@ -187,6 +162,31 @@ pub fn Cli(comptime Out: anytype) type {
     };
 }
 
+fn fetchFeedImpl(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
+    _ = opts;
+    _ = url;
+    _ = allocator;
+    @panic("TODO: implement fetchFeedImpl fn");
+}
+
+fn testFetch(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
+    _ = allocator;
+    _ = opts;
+    // const feeds = try self.storage.getFeedsWithUrl(allocator, url);
+    // var feed_id: ?usize = null;
+    var feed_id: ?usize = 1;
+    var feed_url = url;
+    // if (feeds.len > 0) {
+    //     feed_id = feeds[0].feed_id;
+    // }
+    return .{
+        .feed_update = FeedUpdate{ .feed_id = feed_id },
+        .content = @embedFile("rss2.xml"),
+        .content_type = .rss,
+        .location = feed_url,
+    };
+}
+
 test "all" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -195,10 +195,12 @@ test "all" {
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
     var fb_writer = fb.writer();
-    var cli = Cli(@TypeOf(fb_writer)){
+    const CliTest = Cli(@TypeOf(fb_writer));
+    var cli = CliTest{
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
+        .fetchFeedFn = testFetch,
     };
 
     const input_url: []const u8 = "http://localhost/valid_url";
