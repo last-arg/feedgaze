@@ -81,16 +81,60 @@ const RssTimezone = enum {
         if (raw.len == 5 and first != '+' and first != '-') {
             return error.InvalidFormat;
         }
-        const hour = std.fmt.parseInt(i16, raw[1..3], 10) catch return error.InvalidUri;
-        const min = std.fmt.parseUnsigned(i16, raw[3..5], 10) catch return error.InvalidUri;
+        const hour = std.fmt.parseInt(i16, raw[1..3], 10) catch return error.InvalidFormat;
+        const min = std.fmt.parseUnsigned(i16, raw[3..5], 10) catch return error.InvalidFormat;
         // This is based on '+' and '-' ascii numeric values
         const sign = -1 * (@as(i16, first) - 44);
         return sign * ((hour * 60) + min);
     }
 };
 
+fn parseRssMonth(raw: []const u8) !u8 {
+    const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    for (months) |month, i| {
+        if (std.mem.eql(u8, raw, month)) {
+            return @intCast(u8, i) + 1;
+        }
+    }
+    return error.InvalidMonth;
+}
+
 fn parseRssDateTime(str: []const u8) !void {
-    _ = str;
+    var ctx = str;
+    if (ctx[3] == ',') {
+        // NOTE: Start day and comman (,) are optional
+        ctx = ctx[5..];
+    }
+    const day = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
+    const month = parseRssMonth(ctx[3..6]) catch return error.InvalidFormat;
+    ctx = ctx[7..];
+    var end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
+    var year = std.fmt.parseUnsigned(u16, ctx[0..end_index], 10) catch return error.InvalidFormat;
+    if (year < 100) {
+        // NOTE: Assuming two letter length year is a year after 2000
+        year += 2000;
+    }
+    ctx = ctx[end_index + 1 ..];
+    const hour = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
+    const minute = std.fmt.parseUnsigned(u8, ctx[3..5], 10) catch return error.InvalidFormat;
+    const second = blk: {
+        if (ctx[5] == ':') {
+            break :blk std.fmt.parseUnsigned(u8, ctx[6..8], 10) catch return error.InvalidFormat;
+        }
+        break :blk 0;
+    };
+    end_index = std.mem.lastIndexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
+    const tz = RssTimezone.toMinutes(ctx[end_index + 1 ..]) catch return error.InvalidUri;
+
+    std.debug.print("day: {d}\n", .{day});
+    std.debug.print("month: {d}\n", .{month});
+    std.debug.print("year: {d}\n", .{year});
+    std.debug.print("hour: {d}\n", .{hour});
+    std.debug.print("minute: {d}\n", .{minute});
+    std.debug.print("second: {d}\n", .{second});
+    std.debug.print("tz: {d}\n", .{tz});
+
+    // TODO: what to return?
 }
 
 test "parseRssDateTime" {
@@ -102,8 +146,8 @@ test "parseRssDateTime" {
         const v3 = try RssTimezone.toMinutes("-0730");
         std.debug.print("{d} {d} {d}\n", .{ v1, v2, v3 });
     }
-    _ = try parseRssDateTime("Sat, 07 Sep 2002 00:00:01 GMT");
-    _ = try parseRssDateTime("Sat, 07 Sep 02 00:00:01 GMT");
+    _ = try parseRssDateTime("Sat, 07 Sep 2002 08:37:01 GMT");
+    _ = try parseRssDateTime("07 Sep 02 18:02 -0130");
 }
 
 pub const FeedItem = struct {
