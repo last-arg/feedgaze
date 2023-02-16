@@ -31,7 +31,7 @@ pub fn Cli(comptime Out: anytype) type {
         storage: Storage,
         clean_opts: Storage.CleanOptions = .{},
         out: Out,
-        fetchFeedFn: *const fn (Allocator, []const u8, FetchOptions) anyerror!Response = fetchFeedImpl,
+        fetchFeedFn: *const fn (Allocator, []const u8, FetchOptions) anyerror!Response = fetchFeed,
         const Self = @This();
 
         const UpdateOptions = struct {
@@ -162,7 +162,7 @@ pub fn Cli(comptime Out: anytype) type {
     };
 }
 
-fn fetchFeedImpl(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
+fn fetchFeed(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
     _ = opts;
     _ = url;
     _ = allocator;
