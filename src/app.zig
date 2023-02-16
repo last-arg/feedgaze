@@ -187,7 +187,7 @@ fn testFetch(allocator: Allocator, url: []const u8, opts: FetchOptions) !Respons
     };
 }
 
-test "all" {
+test "Cli" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
