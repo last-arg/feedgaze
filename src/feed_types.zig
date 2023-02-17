@@ -40,6 +40,47 @@ pub const Feed = struct {
     }
 };
 
+const AtomDateTime = struct {
+    pub fn parse(raw: []const u8) !i64 {
+        const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
+        const month = std.fmt.parseUnsigned(u16, raw[5..7], 10) catch return error.InvalidFormat;
+        const day = std.fmt.parseUnsigned(u16, raw[8..10], 10) catch return error.InvalidFormat;
+        const hour = std.fmt.parseUnsigned(u16, raw[11..13], 10) catch return error.InvalidFormat;
+        const minute = std.fmt.parseUnsigned(u16, raw[14..16], 10) catch return error.InvalidFormat;
+        const second = std.fmt.parseUnsigned(u16, raw[17..19], 10) catch return error.InvalidFormat;
+        const tz = blk: {
+            if (raw[raw.len - 1] == 'Z') {
+                break :blk dt.Timezone.create("Z", 0);
+            } else {
+                const sign_index = raw.len - 6;
+                const sign_raw = raw[sign_index];
+                if (sign_raw != '+' and sign_raw != '-') {
+                    return error.InvalidError;
+                }
+
+                const tz_hour = std.fmt.parseInt(i16, raw[sign_index + 1 .. sign_index + 3], 10) catch return error.InvalidFormat;
+                const tz_min = std.fmt.parseUnsigned(i16, raw[sign_index + 4 .. sign_index + 6], 10) catch return error.InvalidFormat;
+                // This is based on '+' and '-' ascii numeric values
+                const sign = -1 * (@as(i16, sign_raw) - 44);
+                break :blk dt.Timezone.create(raw[sign_index..], sign * ((tz_hour * 60) + tz_min));
+            }
+            return error.InvalidFormat;
+        };
+
+        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
+        return @intCast(i64, @divTrunc(datetime.toTimestamp(), 1000));
+    }
+};
+
+test "AtomDateTime.parse" {
+    const d1 = try AtomDateTime.parse("2003-12-13T18:30:02Z");
+    try std.testing.expectEqual(@as(i64, 1071340202), d1);
+    const d2 = try AtomDateTime.parse("2003-12-13T18:30:02.25Z");
+    try std.testing.expectEqual(@as(i64, 1071340202), d2);
+    const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
+    try std.testing.expectEqual(@as(i64, 1071336602), d3);
+}
+
 const RssDateTime = struct {
     pub const Timezone = enum {
         UT,
@@ -135,7 +176,7 @@ const RssDateTime = struct {
     }
 };
 
-test "parseRssDateTime" {
+test "RssDateTime.parse" {
     const d1 = try RssDateTime.parse("Sat, 07 Sep 2002 07:37:01 A");
     try std.testing.expectEqual(@as(i64, 1031387821), d1);
     const d2 = try RssDateTime.parse("07 Sep 02 07:37:01 -0100");
