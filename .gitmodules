@@ -4,3 +4,6 @@
 [submodule "lib/zig-sqlite"]
 	path = lib/zig-sqlite
 	url = https://github.com/vrischmann/zig-sqlite/
+[submodule "lib/zig-datetime"]
+	path = lib/zig-datetime
+	url = https://github.com/frmdstryr/zig-datetime

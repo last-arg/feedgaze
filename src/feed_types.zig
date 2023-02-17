@@ -1,5 +1,6 @@
 const std = @import("std");
 const Uri = std.Uri;
+const dt = @import("zig-datetime").datetime;
 
 pub const Feed = struct {
     const Self = @This();
@@ -100,7 +101,7 @@ const RssDateTime = struct {
         return error.InvalidMonth;
     }
 
-    fn parse(str: []const u8) !void {
+    fn parse(str: []const u8) !i64 {
         var ctx = str;
         if (ctx[3] == ',') {
             // NOTE: Start day and comman (,) are optional
@@ -125,31 +126,22 @@ const RssDateTime = struct {
             break :blk 0;
         };
         end_index = std.mem.lastIndexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
-        const tz = Timezone.toMinutes(ctx[end_index + 1 ..]) catch return error.InvalidUri;
+        const tz_name = ctx[end_index + 1 ..];
+        const tz_min = Timezone.toMinutes(tz_name) catch return error.InvalidFormat;
+        const tz = dt.Timezone.create(tz_name, tz_min);
 
-        std.debug.print("day: {d}\n", .{day});
-        std.debug.print("month: {d}\n", .{month});
-        std.debug.print("year: {d}\n", .{year});
-        std.debug.print("hour: {d}\n", .{hour});
-        std.debug.print("minute: {d}\n", .{minute});
-        std.debug.print("second: {d}\n", .{second});
-        std.debug.print("tz: {d}\n", .{tz});
-
-        // TODO: what to return?
+        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
+        return @intCast(i64, @divTrunc(datetime.toTimestamp(), 1000));
     }
 };
 
 test "parseRssDateTime" {
-    std.debug.print("{d} {d}\n", .{ '+', '-' });
-    // Timezone
-    {
-        const v1 = try RssDateTime.Timezone.toMinutes("GMT");
-        const v2 = try RssDateTime.Timezone.toMinutes("+0300");
-        const v3 = try RssDateTime.Timezone.toMinutes("-0730");
-        std.debug.print("{d} {d} {d}\n", .{ v1, v2, v3 });
-    }
-    _ = try RssDateTime.parse("Sat, 07 Sep 2002 08:37:01 GMT");
-    _ = try RssDateTime.parse("07 Sep 02 18:02 -0130");
+    const d1 = try RssDateTime.parse("Sat, 07 Sep 2002 07:37:01 A");
+    try std.testing.expectEqual(@as(i64, 1031387821), d1);
+    const d2 = try RssDateTime.parse("07 Sep 02 07:37:01 -0100");
+    try std.testing.expectEqual(@as(i64, 1031387821), d2);
+    const d3 = try RssDateTime.parse("07 Sep 02 18:02 -0130");
+    try std.testing.expectEqual(@as(i64, 1031427120), d3);
 }
 
 pub const FeedItem = struct {

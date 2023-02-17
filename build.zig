@@ -99,4 +99,7 @@ fn commonModules(step: *CompileStep) void {
     step.addAnonymousModule("zig-xml", .{
         .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });
+    step.addAnonymousModule("zig-datetime", .{
+        .source_file = .{ .path = "./lib/zig-datetime/src/main.zig" },
+    });
 }
