@@ -24,22 +24,12 @@ pub const Feed = struct {
         }
         _ = Uri.parse(self.feed_url) catch return Error.InvalidUri;
         if (self.updated_raw) |date| {
-            // Can have two different date types
-            // Rss - Sat, 07 Sep 2002 00:00:01 GMT
-            //   len: 27 or 29
-            //   Year can be expressed with 2 or 4 characters
-            //   https://www.w3.org/Protocols/rfc822/#z28
-            // Atom - 2003-12-13T18:30:02Z
-            //   len: min - 20, max 28
-            //   https://www.rfc-editor.org/rfc/rfc4287#section-3.3
-            // TODO: validate date string
-            if (date.len > 0) {
-                self.updated_timestamp = @as(i64, 22);
-            }
+            self.updated_timestamp = AtomDateTime.parse(date) catch RssDateTime.parse(date) catch null;
         }
     }
 };
 
+// https://www.rfc-editor.org/rfc/rfc4287#section-3.3
 const AtomDateTime = struct {
     pub fn parse(raw: []const u8) !i64 {
         const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
@@ -81,6 +71,7 @@ test "AtomDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
 }
 
+// https://www.w3.org/Protocols/rfc822/#z28
 const RssDateTime = struct {
     pub const Timezone = enum {
         UT,
@@ -198,7 +189,9 @@ pub const FeedItem = struct {
 
     pub fn prepareAndValidate(self: *Self, feed_id: usize) !void {
         self.feed_id = feed_id;
-        // TODO: parse date
+        if (self.updated_raw) |date| {
+            self.updated_timestamp = AtomDateTime.parse(date) catch RssDateTime.parse(date) catch null;
+        }
     }
 
     pub fn prepareAndValidateAll(items: []Self, feed_id: usize) !void {
