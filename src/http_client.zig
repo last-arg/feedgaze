@@ -849,7 +849,7 @@ const HeaderValues = struct {
     status: http.Status,
     max_age: ?u64 = null,
 
-    pub fn fromResponse(allocator: Allocator, resp: Request.Response) !HeaderValues {
+    pub fn fromResponse(resp: Request.Response) HeaderValues {
         const etag_key = "etag:";
         const content_type_key = "content-type:";
         const last_modified_key = "last-modified:";
@@ -863,11 +863,11 @@ const HeaderValues = struct {
         while (iter.next()) |line| {
             std.debug.print("|{s}|\n", .{line});
             if (std.ascii.startsWithIgnoreCase(line, etag_key)) {
-                result.etag = try allocator.dupe(u8, std.mem.trim(u8, line[etag_key.len..], " "));
+                result.etag = std.mem.trim(u8, line[etag_key.len..], " ");
             } else if (std.ascii.startsWithIgnoreCase(line, content_type_key)) {
                 result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
             } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
-                result.last_modified = try allocator.dupe(u8, std.mem.trim(u8, line[last_modified_key.len..], " "));
+                result.last_modified = std.mem.trim(u8, line[last_modified_key.len..], " ");
             } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
                 var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
                 while (key_value_iter.next()) |key_value| {
@@ -988,25 +988,42 @@ const FeedLink = struct {
 
 const FeedLinkArray = std.ArrayList(FeedLink);
 
-const FeedResponse = struct {
-    content: []const u8,
-    headers: HeaderValues,
+const FeedRequest = struct {
+    client: Client,
+    allocator: Allocator,
 
-    pub fn fetch(allocator: Allocator, url: Uri) !@This() {
+    const Response = struct {
+        content: []const u8,
+        headers: HeaderValues,
+    };
+
+    const Self = @This();
+
+    pub fn init(allocator: Allocator) !Self {
         var client: Client = .{ .allocator = allocator };
-        defer client.deinit();
+        errdefer client.deinit();
         try client.ca_bundle.rescan(allocator);
+        return .{
+            .client = client,
+            .allocator = allocator,
+        };
+    }
 
-        var req = try client.request(url, .{}, .{});
-        defer req.deinit();
+    pub fn deinit(self: *Self) void {
+        self.client.deinit();
+    }
+
+    pub fn fetch(self: *Self, url: Uri) !Self.Response {
+        var req = try self.client.request(url, .{}, .{});
+        errdefer req.deinit();
 
         const buf_len = 8 * 1024;
         var buf: [buf_len]u8 = undefined;
         var amt = try req.readAll(&buf);
 
-        const header_value = try HeaderValues.fromResponse(allocator, req.response);
+        const header_value = HeaderValues.fromResponse(req.response);
         const capacity = req.response.headers.content_length orelse buf_len;
-        var content = try std.ArrayList(u8).initCapacity(allocator, capacity);
+        var content = try std.ArrayList(u8).initCapacity(self.allocator, capacity);
         defer content.deinit();
         content.appendSliceAssumeCapacity(buf[0..amt]);
 
@@ -1029,7 +1046,9 @@ test "http" {
     defer arena.deinit();
     const input = "http://localhost:8282/rss2.xml";
     const url = try std.Uri.parse(input);
-    const fr = try FeedResponse.fetch(arena.allocator(), url);
+    var fr = try FeedRequest.init(arena.allocator());
+    defer fr.deinit();
+    const resp = try fr.fetch(url);
     // print("{}\n", .{fr.content});
-    print("{?}\n", .{fr.headers});
+    print("{?}\n", .{resp.headers});
 }
