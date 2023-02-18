@@ -209,6 +209,23 @@ pub const FeedUpdate = struct {
     etag: ?[]const u8 = null,
 };
 
+pub const ContentType = enum {
+    rss,
+    atom,
+    xml,
+
+    pub fn fromString(input: []const u8) ?@This() {
+        if (std.ascii.eqlIgnoreCase(input, "application/rss+xml")) {
+            return .rss;
+        } else if (std.ascii.eqlIgnoreCase(input, "application/atom+xml")) {
+            return .atom;
+        } else if (std.ascii.eqlIgnoreCase(input, "application/xml") or std.ascii.eqlIgnoreCase(input, "text/xml")) {
+            return .xml;
+        }
+        return null;
+    }
+};
+
 pub const FeedToUpdate = struct {
     feed_id: usize,
     feed_url: []const u8,
