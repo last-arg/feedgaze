@@ -847,11 +847,13 @@ const HeaderValues = struct {
     etag: ?[]const u8 = null,
     last_modified: ?[]const u8 = null,
     status: http.Status,
+    max_age: ?u64 = null,
 
     pub fn fromResponse(allocator: Allocator, resp: Request.Response) !HeaderValues {
         const etag_key = "etag:";
         const content_type_key = "content-type:";
         const last_modified_key = "last-modified:";
+        const cache_control_key = "cache-control:";
 
         var result: HeaderValues = .{
             .status = resp.headers.status,
@@ -866,6 +868,19 @@ const HeaderValues = struct {
                 result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
             } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
                 result.last_modified = try allocator.dupe(u8, std.mem.trim(u8, line[last_modified_key.len..], " "));
+            } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
+                var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
+                while (key_value_iter.next()) |key_value| {
+                    var pair_iter = mem.split(u8, key_value, "=");
+                    const key = pair_iter.next() orelse continue;
+                    const value = pair_iter.next() orelse continue;
+                    if (mem.eql(u8, "max-age", key)) {
+                        result.max_age = std.fmt.parseUnsigned(u64, value, 10) catch continue;
+                        break;
+                    } else if (mem.eql(u8, "s-maxage", value)) {
+                        result.max_age = std.fmt.parseUnsigned(u64, value, 10) catch continue;
+                    }
+                }
             }
         }
         return result;
