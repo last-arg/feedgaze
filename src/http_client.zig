@@ -991,6 +991,7 @@ const FeedLinkArray = std.ArrayList(FeedLink);
 const FeedRequest = struct {
     client: Client,
     allocator: Allocator,
+    request: ?*Request = null,
 
     const Response = struct {
         content: []const u8,
@@ -1010,11 +1011,15 @@ const FeedRequest = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        if (self.request) |req| {
+            req.deinit();
+        }
         self.client.deinit();
     }
 
     pub fn fetch(self: *Self, url: Uri) !Self.Response {
         var req = try self.client.request(url, .{}, .{});
+        self.request = &req;
         errdefer req.deinit();
 
         const buf_len = 8 * 1024;
@@ -1042,13 +1047,15 @@ const FeedRequest = struct {
 
 test "http" {
     std.testing.log_level = .debug;
+    print("=> Start http client test\n", .{});
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const input = "http://localhost:8282/rss2.xml";
-    const url = try std.Uri.parse(input);
     var fr = try FeedRequest.init(arena.allocator());
     defer fr.deinit();
+    const input = "http://localhost:8282/rss2.xml";
+    const url = try std.Uri.parse(input);
     const resp = try fr.fetch(url);
     // print("{}\n", .{fr.content});
     print("{?}\n", .{resp.headers});
+    print("=> End http client test\n", .{});
 }
