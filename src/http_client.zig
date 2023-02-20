@@ -837,11 +837,6 @@ pub fn request(client: *Client, uri: Uri, headers: Request.Headers, options: Req
     return req;
 }
 
-// Last-Modified (If-Modified-Since)
-// length 29
-//
-// ETag (If-Match)
-// Has no set length. Set it to 128?
 const HeaderValues = struct {
     content_type: ?ContentType = null,
     etag: ?[]const u8 = null,
@@ -1017,6 +1012,13 @@ const FeedRequest = struct {
         self.client.deinit();
     }
 
+    // TODO: If-Modified-Since
+    // Last-Modified (If-Modified-Since)
+    // length 29
+    //
+    // TODO: ETag
+    // ETag (If-Match)
+    // Has no set length. Set it to 128?
     pub fn fetch(self: *Self, url: Uri) !Self.Response {
         var req = try self.client.request(url, .{}, .{});
         self.request = &req;

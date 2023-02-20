@@ -368,6 +368,9 @@ test "parseRss" {
         .id = "http://liftoff.msfc.nasa.gov/2003/06/03.html#item573",
     }, .{
         .title = "Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href=\"http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm\">partial eclipse of the Sun</a> on Saturday, May 31st.",
+    }, .{
+        .title = "Third title",
+        .id = "third_id",
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
