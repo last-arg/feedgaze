@@ -31,7 +31,7 @@ pub fn Cli(comptime Out: anytype) type {
         storage: Storage,
         clean_opts: Storage.CleanOptions = .{},
         out: Out,
-        fetchFeedFn: *const fn (Allocator, []const u8, FetchOptions) anyerror!Response = fetchFeed,
+        fetchFeedFn: *const fn (*FeedRequest, Allocator, []const u8, FetchOptions) anyerror!FeedRequest.Response = fetchFeed,
         const Self = @This();
 
         const UpdateOptions = struct {
@@ -50,24 +50,29 @@ pub fn Cli(comptime Out: anytype) type {
             defer arena.deinit();
 
             // fetch url content
-            var resp = try self.fetchFeedFn(arena.allocator(), url, .{});
-            if (!mem.eql(u8, url, resp.location)) {
-                if (try self.storage.hasFeedWithFeedUrl(resp.location)) {
-                    std.log.info("There already exists feed '{s}'", .{url});
-                    return;
-                }
-            }
+            var fr = try FeedRequest.init(arena.allocator());
+            defer fr.deinit();
+            var resp = try self.fetchFeedFn(&fr, arena.allocator(), url, .{});
 
-            var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
+            const content_type = resp.headers.content_type orelse return error.NoContentType;
+            var parsed = try parse.parse(arena.allocator(), resp.content, content_type);
             if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                 parsed.feed.updated_raw = parsed.items[0].updated_raw;
             }
-            try parsed.feed.prepareAndValidate(resp.location);
+            try parsed.feed.prepareAndValidate(url);
             const feed_id = try self.storage.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
             _ = try self.storage.insertFeedItems(parsed.items);
-            resp.feed_update.feed_id = feed_id;
-            try self.storage.updateFeedUpdate(resp.feed_update);
+            const feed_update = .{
+                .feed_id = feed_id,
+                .cache_control_max_age = resp.headers.max_age,
+                // TODO
+                .expires_utc = null,
+                // TODO
+                .last_modified_utc = null,
+                .etag = resp.headers.etag,
+            };
+            try self.storage.updateFeedUpdate(feed_update);
         }
 
         pub fn update(self: *Self, options: UpdateOptions) !void {
@@ -91,18 +96,23 @@ pub fn Cli(comptime Out: anytype) type {
             };
 
             for (feed_updates) |f_update| {
-                var resp = try self.fetchFeedFn(arena.allocator(), f_update.feed_url, .{
+                var fr = try FeedRequest.init(arena.allocator());
+                defer fr.deinit();
+
+                var resp = try self.fetchFeedFn(&fr, arena.allocator(), f_update.feed_url, .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 });
-                var parsed = try parse.parse(arena.allocator(), resp.content, resp.content_type);
+
+                const content_type = resp.headers.content_type orelse .xml;
+                var parsed = try parse.parse(arena.allocator(), resp.content, content_type);
 
                 if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                     parsed.feed.updated_raw = parsed.items[0].updated_raw;
                 }
 
                 parsed.feed.feed_id = f_update.feed_id;
-                try parsed.feed.prepareAndValidate(resp.location);
+                try parsed.feed.prepareAndValidate(f_update.feed_url);
                 try self.storage.updateFeed(parsed.feed);
 
                 // Update feed items
@@ -110,7 +120,16 @@ pub fn Cli(comptime Out: anytype) type {
                 try self.storage.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                try self.storage.updateFeedUpdate(resp.feed_update);
+                const feed_update = .{
+                    .feed_id = f_update.feed_id,
+                    .cache_control_max_age = resp.headers.max_age,
+                    // TODO
+                    .expires_utc = null,
+                    // TODO
+                    .last_modified_utc = null,
+                    .etag = resp.headers.etag,
+                };
+                try self.storage.updateFeedUpdate(feed_update);
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
@@ -162,11 +181,13 @@ pub fn Cli(comptime Out: anytype) type {
     };
 }
 
-fn fetchFeed(allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
-    _ = opts;
-    _ = url;
+const Uri = std.Uri;
+const FeedRequest = @import("./http_client.zig").FeedRequest;
+fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !FeedRequest.Response {
     _ = allocator;
-    @panic("TODO: implement fetchFeedImpl fn");
+    _ = opts;
+    const uri = try Uri.parse(url);
+    return try fr.fetch(uri);
 }
 
 test "Cli" {
@@ -179,7 +200,7 @@ test "Cli" {
     var fb_writer = fb.writer();
     const Test = struct {
         var feed_id: ?usize = null;
-        pub fn fetch(allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!Response {
+        pub fn fetch(allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
             _ = opts;
             _ = allocator;
             return .{
@@ -195,10 +216,10 @@ test "Cli" {
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
-        .fetchFeedFn = Test.fetch,
+        // .fetchFeedFn = Test.fetch,
     };
 
-    const input_url: []const u8 = "http://localhost/valid_url";
+    const input_url: []const u8 = "http://localhost:8282/rss2.xml";
     var feed_id: usize = 0;
     {
         // Add feed
