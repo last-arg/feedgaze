@@ -841,6 +841,7 @@ const HeaderValues = struct {
     content_type: ?ContentType = null,
     etag: ?[]const u8 = null,
     last_modified: ?[]const u8 = null,
+    expires: ?[]const u8 = null,
     max_age: ?u32 = null,
     status: http.Status,
 
@@ -848,6 +849,7 @@ const HeaderValues = struct {
         const etag_key = "etag:";
         const content_type_key = "content-type:";
         const last_modified_key = "last-modified:";
+        const expires_key = "expires:";
         const cache_control_key = "cache-control:";
 
         var result: HeaderValues = .{
@@ -863,6 +865,8 @@ const HeaderValues = struct {
                 result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
             } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
                 result.last_modified = std.mem.trim(u8, line[last_modified_key.len..], " ");
+            } else if (std.ascii.startsWithIgnoreCase(line, expires_key)) {
+                result.expires = std.mem.trim(u8, line[expires_key.len..], " ");
             } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
                 var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
                 while (key_value_iter.next()) |key_value| {
