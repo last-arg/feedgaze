@@ -841,8 +841,8 @@ const HeaderValues = struct {
     content_type: ?ContentType = null,
     etag: ?[]const u8 = null,
     last_modified: ?[]const u8 = null,
+    max_age: ?u32 = null,
     status: http.Status,
-    max_age: ?u64 = null,
 
     pub fn fromResponse(resp: Request.Response) HeaderValues {
         const etag_key = "etag:";
@@ -870,10 +870,10 @@ const HeaderValues = struct {
                     const key = pair_iter.next() orelse continue;
                     const value = pair_iter.next() orelse continue;
                     if (mem.eql(u8, "max-age", key)) {
-                        result.max_age = std.fmt.parseUnsigned(u64, value, 10) catch continue;
+                        result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
                         break;
                     } else if (mem.eql(u8, "s-maxage", value)) {
-                        result.max_age = std.fmt.parseUnsigned(u64, value, 10) catch continue;
+                        result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
                     }
                 }
             }
@@ -983,12 +983,12 @@ const FeedLink = struct {
 
 const FeedLinkArray = std.ArrayList(FeedLink);
 
-const FeedRequest = struct {
+pub const FeedRequest = struct {
     client: Client,
     allocator: Allocator,
     request: ?*Request = null,
 
-    const Response = struct {
+    pub const Response = struct {
         content: []const u8,
         headers: HeaderValues,
     };
