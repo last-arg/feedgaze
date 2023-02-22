@@ -200,14 +200,20 @@ test "Cli" {
     var fb_writer = fb.writer();
     const Test = struct {
         var feed_id: ?usize = null;
-        pub fn fetch(allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
+        pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
+            _ = fr;
             _ = opts;
             _ = allocator;
+            _ = url;
             return .{
-                .feed_update = FeedUpdate{ .feed_id = feed_id },
                 .content = @embedFile("rss2.xml"),
-                .content_type = .rss,
-                .location = url,
+                .headers = .{
+                    .content_type = .rss,
+                    .etag = null,
+                    .last_modified = null,
+                    .max_age = null,
+                    .status = .ok,
+                },
             };
         }
     };
@@ -216,7 +222,7 @@ test "Cli" {
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
-        // .fetchFeedFn = Test.fetch,
+        .fetchFeedFn = Test.fetch,
     };
 
     const input_url: []const u8 = "http://localhost:8282/rss2.xml";
