@@ -66,10 +66,8 @@ pub fn Cli(comptime Out: anytype) type {
             const feed_update = .{
                 .feed_id = feed_id,
                 .cache_control_max_age = resp.headers.max_age,
-                // TODO
-                .expires_utc = null,
-                // TODO
-                .last_modified_utc = null,
+                .expires_utc = resp.headers.expires,
+                .last_modified_utc = resp.headers.last_modified,
                 .etag = resp.headers.etag,
             };
             try self.storage.updateFeedUpdate(feed_update);
@@ -123,10 +121,8 @@ pub fn Cli(comptime Out: anytype) type {
                 const feed_update = .{
                     .feed_id = f_update.feed_id,
                     .cache_control_max_age = resp.headers.max_age,
-                    // TODO
-                    .expires_utc = null,
-                    // TODO
-                    .last_modified_utc = null,
+                    .expires_utc = resp.headers.expires,
+                    .last_modified_utc = resp.headers.last_modified,
                     .etag = resp.headers.etag,
                 };
                 try self.storage.updateFeedUpdate(feed_update);
@@ -222,7 +218,7 @@ test "Cli" {
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
-        .fetchFeedFn = Test.fetch,
+        // .fetchFeedFn = Test.fetch,
     };
 
     const input_url: []const u8 = "http://localhost:8282/rss2.xml";
@@ -266,6 +262,7 @@ test "Cli" {
         try std.testing.expectEqualStrings(expect, r);
     }
 
+    cli.fetchFeedFn = Test.fetch;
     {
         // Update feed
         // feedgaze update <url> [--force]

@@ -72,7 +72,7 @@ test "AtomDateTime.parse" {
 }
 
 // https://www.w3.org/Protocols/rfc822/#z28
-const RssDateTime = struct {
+pub const RssDateTime = struct {
     pub const Timezone = enum {
         UT,
         GMT,
@@ -133,10 +133,10 @@ const RssDateTime = struct {
         return error.InvalidMonth;
     }
 
-    fn parse(str: []const u8) !i64 {
+    pub fn parse(str: []const u8) !i64 {
         var ctx = str;
         if (ctx[3] == ',') {
-            // NOTE: Start day and comman (,) are optional
+            // NOTE: Start day and comma (,) are optional
             ctx = ctx[5..];
         }
         const day = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;

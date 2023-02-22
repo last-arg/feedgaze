@@ -18,6 +18,7 @@ const print = std.debug.print;
 const log = std.log;
 const feed_types = @import("./feed_types.zig");
 const ContentType = feed_types.ContentType;
+const RssDateTime = feed_types.RssDateTime;
 
 /// Used for tcpConnectToHost and storing HTTP headers when an externally
 /// managed buffer is not provided.
@@ -840,8 +841,8 @@ pub fn request(client: *Client, uri: Uri, headers: Request.Headers, options: Req
 const HeaderValues = struct {
     content_type: ?ContentType = null,
     etag: ?[]const u8 = null,
-    last_modified: ?[]const u8 = null,
-    expires: ?[]const u8 = null,
+    last_modified: ?i64 = null,
+    expires: ?i64 = null,
     max_age: ?u32 = null,
     status: http.Status,
 
@@ -864,9 +865,11 @@ const HeaderValues = struct {
             } else if (std.ascii.startsWithIgnoreCase(line, content_type_key)) {
                 result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
             } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
-                result.last_modified = std.mem.trim(u8, line[last_modified_key.len..], " ");
+                const raw = std.mem.trim(u8, line[last_modified_key.len..], " ");
+                result.last_modified = RssDateTime.parse(raw) catch null;
             } else if (std.ascii.startsWithIgnoreCase(line, expires_key)) {
-                result.expires = std.mem.trim(u8, line[expires_key.len..], " ");
+                const raw = std.mem.trim(u8, line[expires_key.len..], " ");
+                result.expires = RssDateTime.parse(raw) catch null;
             } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
                 var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
                 while (key_value_iter.next()) |key_value| {
