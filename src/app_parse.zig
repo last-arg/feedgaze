@@ -378,10 +378,7 @@ test "parseRss" {
     try std.testing.expectEqualDeep(expect_items[start..], result.items);
 }
 
-pub const ContentType = enum {
-    rss,
-    atom,
-};
+pub const ContentType = feed_types.ContentType;
 
 // TODO: also check html?
 pub fn getContentType(content: []const u8) ?ContentType {
@@ -440,9 +437,17 @@ test "getContentType" {
 }
 
 pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentType) !FeedAndItems {
-    const ct = content_type orelse getContentType(content) orelse return error.UnknownContentType;
+    const ct = blk: {
+        if (content_type) |ct| {
+            if (ct != .xml) {
+                break :blk ct;
+            }
+        }
+        break :blk getContentType(content) orelse return error.UnknownContentType;
+    };
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
+        .xml => error.NotAtomOrRss,
     };
 }
