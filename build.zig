@@ -56,10 +56,13 @@ pub fn build(b: *Builder) !void {
 
     var test_file: []const u8 = "src/main.zig";
     var filter: ?[]const u8 = null;
+    var arr = try std.BoundedArray(?[]const u8, 10).init(1);
+    arr.set(0, null);
     if (b.args) |args| {
         test_file = args[0];
         if (args.len >= 2) {
             filter = args[1];
+            try arr.appendSlice(@ptrCast([]const ?[]const u8, args[2..]));
         }
     }
     // Creates a step for unit testing.
@@ -68,7 +71,8 @@ pub fn build(b: *Builder) !void {
         .target = target,
         .optimize = optimize,
     });
-    test_cmd.filter = filter;
+    test_cmd.setFilter(filter);
+    test_cmd.setExecCmd(arr.constSlice());
 
     test_cmd.addAnonymousModule("atom.atom", .{
         .source_file = .{ .path = "./test/atom.atom" },
@@ -79,12 +83,6 @@ pub fn build(b: *Builder) !void {
     });
 
     commonModules(test_cmd);
-
-    if (b.args) |args| {
-        if (args.len >= 2) {
-            test_cmd.setFilter(args[1]);
-        }
-    }
 
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&test_cmd.step);
