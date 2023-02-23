@@ -838,7 +838,7 @@ pub fn request(client: *Client, uri: Uri, headers: Request.Headers, options: Req
     return req;
 }
 
-const HeaderValues = struct {
+pub const HeaderValues = struct {
     content_type: ?ContentType = null,
     etag: ?[]const u8 = null,
     last_modified: ?i64 = null,

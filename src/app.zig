@@ -63,14 +63,7 @@ pub fn Cli(comptime Out: anytype) type {
             const feed_id = try self.storage.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
             _ = try self.storage.insertFeedItems(parsed.items);
-            const feed_update = .{
-                .feed_id = feed_id,
-                .cache_control_max_age = resp.headers.max_age,
-                .expires_utc = resp.headers.expires,
-                .last_modified_utc = resp.headers.last_modified,
-                .etag = resp.headers.etag,
-            };
-            try self.storage.updateFeedUpdate(feed_update);
+            try self.storage.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, feed_id));
         }
 
         pub fn update(self: *Self, options: UpdateOptions) !void {
@@ -118,14 +111,7 @@ pub fn Cli(comptime Out: anytype) type {
                 try self.storage.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                const feed_update = .{
-                    .feed_id = f_update.feed_id,
-                    .cache_control_max_age = resp.headers.max_age,
-                    .expires_utc = resp.headers.expires,
-                    .last_modified_utc = resp.headers.last_modified,
-                    .etag = resp.headers.etag,
-                };
-                try self.storage.updateFeedUpdate(feed_update);
+                try self.storage.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, f_update.feed_id));
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }

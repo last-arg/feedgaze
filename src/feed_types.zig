@@ -1,6 +1,7 @@
 const std = @import("std");
 const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
+const HeaderValues = @import("./http_client.zig").HeaderValues;
 
 pub const Feed = struct {
     const Self = @This();
@@ -207,6 +208,16 @@ pub const FeedUpdate = struct {
     expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
+
+    pub fn fromHeaders(headers: HeaderValues, feed_id: ?usize) @This() {
+        return .{
+            .feed_id = feed_id,
+            .cache_control_max_age = headers.max_age,
+            .expires_utc = headers.expires,
+            .last_modified_utc = headers.last_modified,
+            .etag = headers.etag,
+        };
+    }
 };
 
 pub const ContentType = enum {
