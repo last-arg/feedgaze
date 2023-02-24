@@ -142,7 +142,7 @@ pub const Storage = struct {
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
-        for (feeds) |f, i| {
+        for (feeds, 0..) |f, i| {
             if (id == f.feed_id) {
                 return i;
             }
@@ -228,7 +228,7 @@ pub const Storage = struct {
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
-        for (items) |item, i| {
+        for (items, 0..) |item, i| {
             if (id == item.feed_id) {
                 return i;
             }

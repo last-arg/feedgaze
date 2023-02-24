@@ -126,7 +126,7 @@ pub const RssDateTime = struct {
 
     fn parseMonth(raw: []const u8) !u8 {
         const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
-        for (months) |month, i| {
+        for (months, 0..) |month, i| {
             if (std.mem.eql(u8, raw, month)) {
                 return @intCast(u8, i) + 1;
             }
