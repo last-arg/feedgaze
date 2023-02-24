@@ -12,6 +12,7 @@ const parse = @import("./app_parse.zig");
 const FeedAndItems = parse.FeedAndItems;
 const ContentType = parse.ContentType;
 const builtin = @import("builtin");
+const args_parser = @import("zig-args");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -23,6 +24,20 @@ pub const Response = struct {
 const FetchOptions = struct {
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
+};
+
+const CliVerb = union(enum) {
+    add: void,
+    // remove: RemoveOptions,
+
+    // const RemoveOptions = struct {
+    //     cocktail: bool = false,
+    //     longdrink: bool = false,
+
+    //     pub const shorthands = .{
+    //         .c = "cocktail",
+    //     };
+    // };
 };
 
 pub fn Cli(comptime Out: anytype) type {
@@ -39,6 +54,30 @@ pub fn Cli(comptime Out: anytype) type {
             force: bool = false,
             all: bool = false,
         };
+
+        pub fn run(self: *Self) !void {
+            // TODO?: use parseWithVerb?
+            // Is better for testing purposes
+            const options = try args_parser.parseWithVerbForCurrentProcess(struct {}, CliVerb, self.allocator, .print);
+            defer options.deinit();
+
+            const verb = options.verb orelse {
+                std.log.err("Use valid subcommand: add, remove, update, show", .{});
+                return;
+            };
+
+            switch (verb) {
+                .add => {
+                    if (options.positionals.len > 0) {
+                        for (options.positionals) |url| {
+                            try self.add(url);
+                        }
+                    } else {
+                        std.log.err("'add' subcommand requires feed url.\nExample: feedgaze add <url>", .{});
+                    }
+                },
+            }
+        }
 
         pub fn add(self: *Self, url: []const u8) !void {
             if (try self.storage.hasFeedWithFeedUrl(url)) {
@@ -200,7 +239,7 @@ test "Cli" {
         }
     };
     const CliTest = Cli(@TypeOf(fb_writer));
-    var cli = CliTest{
+    var app_cli = CliTest{
         .allocator = arena.allocator(),
         .storage = storage,
         .out = fb_writer,
@@ -214,7 +253,7 @@ test "Cli" {
         // feedgaze add <url>
         // Setup: add/insert feed and items
         // feedgaze add http://localhost:8282/rss2.xml
-        try cli.add(input_url);
+        try app_cli.add(input_url);
         const feeds = try storage.getFeedsWithUrl(arena.allocator(), input_url);
         feed_id = feeds[0].feed_id;
         try std.testing.expectEqual(feed_id, feeds[0].feed_id);
@@ -228,7 +267,7 @@ test "Cli" {
         // Show feeds and items
         // feedgaze show [<url>] [--limit]
         // - will show latest updated feeds first
-        try cli.show(input_url, .{});
+        try app_cli.show(input_url, .{});
         const r = fb.getWritten();
         // print("|{s}|\n", .{fb.getWritten()});
         const expect =
@@ -248,7 +287,7 @@ test "Cli" {
         try std.testing.expectEqualStrings(expect, r);
     }
 
-    cli.fetchFeedFn = Test.fetch;
+    app_cli.fetchFeedFn = Test.fetch;
     {
         // Update feed
         // feedgaze update <url> [--force]
@@ -256,20 +295,20 @@ test "Cli" {
         // - if not --force
         //   - see if feed needs updating
         // - update if needed
-        try cli.update(.{ .search_term = input_url });
+        try app_cli.update(.{ .search_term = input_url });
         var items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 3), items.len);
-        cli.clean_opts.max_item_count = 2;
-        try cli.update(.{ .search_term = input_url });
+        app_cli.clean_opts.max_item_count = 2;
+        try app_cli.update(.{ .search_term = input_url });
         items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
         try std.testing.expectEqual(@as(usize, 2), items.len);
     }
-    cli.clean_opts.max_item_count = 10;
+    app_cli.clean_opts.max_item_count = 10;
 
     {
         // Delete feed
         // feedgaze remove <url>
-        try cli.remove(input_url);
+        try app_cli.remove(input_url);
         const remove_feeds = try storage.getFeedsWithUrl(arena.allocator(), input_url);
         try std.testing.expectEqual(@as(usize, 0), remove_feeds.len);
         const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
@@ -277,4 +316,21 @@ test "Cli" {
         const updates = try storage.getFeedsToUpdate(arena.allocator(), input_url);
         try std.testing.expectEqual(@as(usize, 0), updates.len);
     }
+}
+
+test "run" {
+    std.testing.log_level = .debug;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var storage = try Storage.init();
+    var buf: [10 * 1024]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&buf);
+    var fb_writer = fb.writer();
+    const CliTest = Cli(@TypeOf(fb_writer));
+    var app_cli = CliTest{
+        .allocator = arena.allocator(),
+        .storage = storage,
+        .out = fb_writer,
+    };
+    try app_cli.run();
 }
