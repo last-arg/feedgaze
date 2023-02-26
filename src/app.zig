@@ -34,10 +34,16 @@ const ShowOptions = struct {
     };
 };
 
+const UpdateOptions = struct {
+    force: bool = false,
+    all: bool = false,
+};
+
 const CliVerb = union(enum) {
     add: void,
     remove: void,
     show: ShowOptions,
+    update: UpdateOptions,
 };
 
 pub fn Cli(comptime Out: anytype) type {
@@ -48,12 +54,6 @@ pub fn Cli(comptime Out: anytype) type {
         out: Out,
         fetchFeedFn: *const fn (*FeedRequest, Allocator, []const u8, FetchOptions) anyerror!FeedRequest.Response = fetchFeed,
         const Self = @This();
-
-        const UpdateOptions = struct {
-            search_term: ?[]const u8 = null,
-            force: bool = false,
-            all: bool = false,
-        };
 
         pub fn run(self: *Self) !void {
             // TODO?: use parseWithVerb?
@@ -89,6 +89,10 @@ pub fn Cli(comptime Out: anytype) type {
                     const url = if (options.positionals.len > 0) options.positionals[0] else null;
                     try self.show(url, opts);
                 },
+                .update => |opts| {
+                    const input = if (options.positionals.len > 0) options.positionals[0] else null;
+                    try self.update(input, opts);
+                },
             }
         }
 
@@ -118,8 +122,9 @@ pub fn Cli(comptime Out: anytype) type {
             try self.storage.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, feed_id));
         }
 
-        pub fn update(self: *Self, options: UpdateOptions) !void {
-            if (options.search_term == null and !options.all) {
+        pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
+            // TODO: use UpdateOptions
+            if (input == null and !options.all) {
                 std.log.info(
                     \\subcommand 'update' is missing one of required arguments: 
                     \\1) '<url>' search term. Example: 'feedgaze update duckduckgo.com'
@@ -130,13 +135,7 @@ pub fn Cli(comptime Out: anytype) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            const feed_updates = blk: {
-                if (options.search_term) |url| {
-                    break :blk try self.storage.getFeedsToUpdate(arena.allocator(), url);
-                }
-                // gets all feeds
-                break :blk try self.storage.getFeedsToUpdate(arena.allocator(), null);
-            };
+            const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input);
 
             for (feed_updates) |f_update| {
                 var fr = try FeedRequest.init(arena.allocator());
@@ -271,26 +270,23 @@ test "cli.run" {
         try std.testing.expectEqual(@as(usize, 3), items.len);
     }
 
-    // TODO: feedgaze update <term?>
-    // Test.feed_id = feed_id;
-    // app_cli.fetchFeedFn = Test.fetch;
-    // {
-    //     // Update feed
-    //     // feedgaze update <url> [--force]
-    //     // - check if feed with <url> exists
-    //     // - if not --force
-    //     //   - see if feed needs updating
-    //     // - update if needed
-    //     try app_cli.update(.{ .search_term = input_url });
-    //     var items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-    //     try std.testing.expectEqual(@as(usize, 3), items.len);
-    //     app_cli.clean_opts.max_item_count = 2;
-    //     try app_cli.update(.{ .search_term = input_url });
-    //     items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-    //     try std.testing.expectEqual(@as(usize, 2), items.len);
-    // }
+    {
+        // Update feed
+        // feedgaze update <url> [--force]
+        // - check if feed with <url> exists
+        // - if not --force
+        //   - see if feed needs updating
+        // - update if needed
+        try app_cli.update(&input, .{});
+        var items = try storage.getFeedItemsWithFeedId(arena.allocator(), @as(usize, 1));
+        try std.testing.expectEqual(@as(usize, 3), items.len);
+        // TODO: more update command testing
+        // app_cli.clean_opts.max_item_count = 2;
+        // try app_cli.update(&input, .{});
+        // items = try storage.getFeedItemsWithFeedId(arena.allocator(), @as(usize, 1));
+        // try std.testing.expectEqual(@as(usize, 2), items.len);
+    }
 
-    // TODO: feedgaze show <term?>
     {
         // Show feeds and items
         // feedgaze show [<url>] [--limit]

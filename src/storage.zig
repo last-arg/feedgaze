@@ -326,6 +326,8 @@ pub const Storage = struct {
             \\WHERE updated_timestamp != excluded.updated_timestamp;
         ;
 
+        // TODO: If no id and link remove all feed items. Then insert the new
+        // items.
         const query_no_id =
             \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, latest_count)
             \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @latest_count
@@ -367,6 +369,7 @@ pub const Storage = struct {
             return;
         }
         const feed_items = items.?;
+        // TODO: look into/improve ORDER BY
         const query =
             \\DELETE FROM item
             \\WHERE item_id IN
