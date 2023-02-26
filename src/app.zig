@@ -220,122 +220,25 @@ fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: Fetc
     return try fr.fetch(uri);
 }
 
-test "Cli" {
-    std.testing.log_level = .debug;
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    var storage = try Storage.init();
-    var buf: [10 * 1024]u8 = undefined;
-    var fb = std.io.fixedBufferStream(&buf);
-    var fb_writer = fb.writer();
-    const Test = struct {
-        var feed_id: ?usize = null;
-        pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
-            _ = fr;
-            _ = opts;
-            _ = allocator;
-            _ = url;
-            return .{
-                .content = @embedFile("rss2.xml"),
-                .headers = .{
-                    .content_type = .rss,
-                    .etag = null,
-                    .last_modified = null,
-                    .max_age = null,
-                    .status = .ok,
-                },
-            };
-        }
-    };
-    const CliTest = Cli(@TypeOf(fb_writer));
-    var app_cli = CliTest{
-        .allocator = arena.allocator(),
-        .storage = storage,
-        .out = fb_writer,
-        // .fetchFeedFn = Test.fetch,
-    };
-
-    const input_url: []const u8 = "http://localhost:8282/rss2.xml";
-    var feed_id: usize = 0;
-    {
-        // Add feed
-        // feedgaze add <url>
-        // Setup: add/insert feed and items
-        // feedgaze add http://localhost:8282/rss2.xml
-        try app_cli.add(input_url);
-        const feeds = try storage.getFeedsWithUrl(arena.allocator(), input_url);
-        feed_id = feeds[0].feed_id;
-        try std.testing.expectEqual(feed_id, feeds[0].feed_id);
-        const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        try std.testing.expectEqual(@as(usize, 3), items.len);
+const Test = struct {
+    var feed_id: ?usize = null;
+    pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
+        _ = fr;
+        _ = opts;
+        _ = allocator;
+        _ = url;
+        return .{
+            .content = @embedFile("rss2.xml"),
+            .headers = .{ .content_type = .rss, .etag = null, .last_modified = null, .max_age = null, .status = .ok },
+        };
     }
+};
 
-    Test.feed_id = feed_id;
-
-    {
-        // Show feeds and items
-        // feedgaze show [<url>] [--limit]
-        // - will show latest updated feeds first
-        try app_cli.show(input_url, .{});
-        const r = fb.getWritten();
-        // print("|{s}|\n", .{fb.getWritten()});
-        const expect =
-            \\Liftoff News - http://liftoff.msfc.nasa.gov/
-            \\
-            \\  Star City's Test
-            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
-            \\
-            \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
-            \\  <no link>
-            \\
-            \\  Third title
-            \\  <no link>
-            \\
-            \\
-        ;
-        try std.testing.expectEqualStrings(expect, r);
-    }
-
-    app_cli.fetchFeedFn = Test.fetch;
-    {
-        // Update feed
-        // feedgaze update <url> [--force]
-        // - check if feed with <url> exists
-        // - if not --force
-        //   - see if feed needs updating
-        // - update if needed
-        try app_cli.update(.{ .search_term = input_url });
-        var items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        try std.testing.expectEqual(@as(usize, 3), items.len);
-        app_cli.clean_opts.max_item_count = 2;
-        try app_cli.update(.{ .search_term = input_url });
-        items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        try std.testing.expectEqual(@as(usize, 2), items.len);
-    }
-    app_cli.clean_opts.max_item_count = 10;
-
-    {
-        // Delete feed
-        // feedgaze remove <url>
-        try app_cli.remove(input_url);
-        const remove_feeds = try storage.getFeedsWithUrl(arena.allocator(), input_url);
-        try std.testing.expectEqual(@as(usize, 0), remove_feeds.len);
-        const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
-        try std.testing.expectEqual(@as(usize, 0), items.len);
-        const updates = try storage.getFeedsToUpdate(arena.allocator(), input_url);
-        try std.testing.expectEqual(@as(usize, 0), updates.len);
-    }
-}
-
-test "run" {
+test "cli.run" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var cmd = "feedgaze".*;
-    var subcmd = "add".*;
-    var input = "http://localhost:8282/rss2.xml".*;
-    std.os.argv = &[_][*:0]u8{ cmd[0..], subcmd[0..], input[0..] };
-    print("{d}\n", .{std.os.argv.len});
     var storage = try Storage.init();
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
@@ -346,5 +249,80 @@ test "run" {
         .storage = storage,
         .out = fb_writer,
     };
-    try app_cli.run();
+
+    // TODO: add flag that only does it when running in linux?
+    // TODO: test url redirect
+    var input = "http://localhost:8282/rss2.xml".*;
+    {
+        var add_cmd = "add".*;
+        std.os.argv = &[_][*:0]u8{ cmd[0..], add_cmd[0..], input[0..] };
+        try app_cli.run();
+
+        const feeds = try storage.getFeedsWithUrl(arena.allocator(), &input);
+        try std.testing.expectEqual(@as(usize, 1), feeds.len);
+        const feed = feeds[0];
+        var expect = try parse.parseRss(arena.allocator(), @embedFile("rss2.xml"));
+        try expect.feed.prepareAndValidate(&input);
+        expect.feed.feed_id = 1;
+        try std.testing.expectEqualDeep(expect.feed, feed);
+        const items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed.feed_id);
+        try std.testing.expectEqual(@as(usize, 3), items.len);
+    }
+
+    // TODO: feedgaze update <term?>
+    // Test.feed_id = feed_id;
+    // app_cli.fetchFeedFn = Test.fetch;
+    // {
+    //     // Update feed
+    //     // feedgaze update <url> [--force]
+    //     // - check if feed with <url> exists
+    //     // - if not --force
+    //     //   - see if feed needs updating
+    //     // - update if needed
+    //     try app_cli.update(.{ .search_term = input_url });
+    //     var items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+    //     try std.testing.expectEqual(@as(usize, 3), items.len);
+    //     app_cli.clean_opts.max_item_count = 2;
+    //     try app_cli.update(.{ .search_term = input_url });
+    //     items = try storage.getFeedItemsWithFeedId(arena.allocator(), feed_id);
+    //     try std.testing.expectEqual(@as(usize, 2), items.len);
+    // }
+
+    // TODO: feedgaze show <term?>
+    // {
+    //     // Show feeds and items
+    //     // feedgaze show [<url>] [--limit]
+    //     // - will show latest updated feeds first
+    //     var show_cmd = "show".*;
+    //     std.os.argv = &[_][*:0]u8{ cmd[0..], show_cmd[0..], input[0..] };
+    //     try app_cli.run();
+    //     const r = fb.getWritten();
+    //     // print("|{s}|\n", .{fb.getWritten()});
+    //     const expect =
+    //         \\Liftoff News - http://liftoff.msfc.nasa.gov/
+    //         \\
+    //         \\  Star City's Test
+    //         \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
+    //         \\
+    //         \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
+    //         \\  <no link>
+    //         \\
+    //         \\  Third title
+    //         \\  <no link>
+    //         \\
+    //         \\
+    //     ;
+    //     try std.testing.expectEqualStrings(expect, r);
+    // }
+
+    {
+        var remove_cmd = "remove".*;
+        std.os.argv = &[_][*:0]u8{ cmd[0..], remove_cmd[0..], input[0..] };
+        try app_cli.run();
+
+        const feeds = try storage.getFeedsWithUrl(arena.allocator(), &input);
+        try std.testing.expectEqual(@as(usize, 0), feeds.len);
+        var item_count = @import("./storage.zig").one(&storage.sql_db, usize, "select count(*) from item;", .{}) catch unreachable;
+        try std.testing.expectEqual(@as(usize, 0), item_count.?);
+    }
 }

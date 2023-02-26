@@ -425,7 +425,7 @@ const tables = &[_][]const u8{
     , .{ .update_interval = update_interval }),
 };
 
-fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
+pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
     return db.one(T, query, .{}, args) catch |err| {
         std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
         return err;
