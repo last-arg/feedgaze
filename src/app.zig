@@ -26,18 +26,18 @@ const FetchOptions = struct {
     last_modified_utc: ?i64 = null,
 };
 
+const ShowOptions = struct {
+    limit: usize = 10,
+
+    pub const shorthands = .{
+        .l = "limit",
+    };
+};
+
 const CliVerb = union(enum) {
     add: void,
     remove: void,
-
-    // const RemoveOptions = struct {
-    //     cocktail: bool = false,
-    //     longdrink: bool = false,
-
-    //     pub const shorthands = .{
-    //         .c = "cocktail",
-    //     };
-    // };
+    show: ShowOptions,
 };
 
 pub fn Cli(comptime Out: anytype) type {
@@ -84,6 +84,10 @@ pub fn Cli(comptime Out: anytype) type {
                     } else {
                         std.log.err("'remove' subcommand requires search term (feed url).\nExample: feedgaze remove <url>", .{});
                     }
+                },
+                .show => |opts| {
+                    const url = if (options.positionals.len > 0) options.positionals[0] else null;
+                    try self.show(url, opts);
                 },
             }
         }
@@ -179,10 +183,8 @@ pub fn Cli(comptime Out: anytype) type {
             }
         }
 
-        pub const ShowOption = struct {
-            limit: usize = 10,
-        };
-        pub fn show(self: *Self, url: ?[]const u8, opts: ShowOption) !void {
+        pub fn show(self: *Self, url: ?[]const u8, opts: ShowOptions) !void {
+            // TODO: use ShowOptions
             _ = opts;
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
@@ -289,31 +291,31 @@ test "cli.run" {
     // }
 
     // TODO: feedgaze show <term?>
-    // {
-    //     // Show feeds and items
-    //     // feedgaze show [<url>] [--limit]
-    //     // - will show latest updated feeds first
-    //     var show_cmd = "show".*;
-    //     std.os.argv = &[_][*:0]u8{ cmd[0..], show_cmd[0..], input[0..] };
-    //     try app_cli.run();
-    //     const r = fb.getWritten();
-    //     // print("|{s}|\n", .{fb.getWritten()});
-    //     const expect =
-    //         \\Liftoff News - http://liftoff.msfc.nasa.gov/
-    //         \\
-    //         \\  Star City's Test
-    //         \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
-    //         \\
-    //         \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
-    //         \\  <no link>
-    //         \\
-    //         \\  Third title
-    //         \\  <no link>
-    //         \\
-    //         \\
-    //     ;
-    //     try std.testing.expectEqualStrings(expect, r);
-    // }
+    {
+        // Show feeds and items
+        // feedgaze show [<url>] [--limit]
+        // - will show latest updated feeds first
+        var show_cmd = "show".*;
+        std.os.argv = &[_][*:0]u8{ cmd[0..], show_cmd[0..], input[0..] };
+        try app_cli.run();
+        const r = fb.getWritten();
+        // print("|{s}|\n", .{fb.getWritten()});
+        const expect =
+            \\Liftoff News - http://liftoff.msfc.nasa.gov/
+            \\
+            \\  Star City's Test
+            \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
+            \\
+            \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
+            \\  <no link>
+            \\
+            \\  Third title
+            \\  <no link>
+            \\
+            \\
+        ;
+        try std.testing.expectEqualStrings(expect, r);
+    }
 
     {
         var remove_cmd = "remove".*;
