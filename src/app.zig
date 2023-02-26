@@ -28,7 +28,7 @@ const FetchOptions = struct {
 
 const CliVerb = union(enum) {
     add: void,
-    // remove: RemoveOptions,
+    remove: void,
 
     // const RemoveOptions = struct {
     //     cocktail: bool = false,
@@ -74,6 +74,15 @@ pub fn Cli(comptime Out: anytype) type {
                         }
                     } else {
                         std.log.err("'add' subcommand requires feed url.\nExample: feedgaze add <url>", .{});
+                    }
+                },
+                .remove => {
+                    if (options.positionals.len > 0) {
+                        for (options.positionals) |url| {
+                            try self.remove(url);
+                        }
+                    } else {
+                        std.log.err("'remove' subcommand requires search term (feed url).\nExample: feedgaze remove <url>", .{});
                     }
                 },
             }
@@ -322,6 +331,11 @@ test "run" {
     std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
+    var cmd = "feedgaze".*;
+    var subcmd = "add".*;
+    var input = "http://localhost:8282/rss2.xml".*;
+    std.os.argv = &[_][*:0]u8{ cmd[0..], subcmd[0..], input[0..] };
+    print("{d}\n", .{std.os.argv.len});
     var storage = try Storage.init();
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
