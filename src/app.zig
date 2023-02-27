@@ -36,7 +36,6 @@ const ShowOptions = struct {
 
 const UpdateOptions = struct {
     force: bool = false,
-    all: bool = false,
 };
 
 const CliVerb = union(enum) {
@@ -124,13 +123,9 @@ pub fn Cli(comptime Out: anytype) type {
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
             // TODO: use UpdateOptions
-            if (input == null and !options.all) {
-                std.log.info(
-                    \\subcommand 'update' is missing one of required arguments: 
-                    \\1) '<url>' search term. Example: 'feedgaze update duckduckgo.com'
-                    \\2) flag '--all'. Example: 'feedgaze update --all'
-                , .{});
-                return error.MissingArgument;
+            _ = options;
+            if (input == null) {
+                std.log.info("Updating all feeds", .{});
             }
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
