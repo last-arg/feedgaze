@@ -859,7 +859,6 @@ pub const HeaderValues = struct {
         var iter = std.mem.split(u8, resp.header_bytes.items, "\r\n");
         _ = iter.first();
         while (iter.next()) |line| {
-            std.debug.print("|{s}|\n", .{line});
             if (std.ascii.startsWithIgnoreCase(line, etag_key)) {
                 result.etag = std.mem.trim(u8, line[etag_key.len..], " ");
             } else if (std.ascii.startsWithIgnoreCase(line, content_type_key)) {
