@@ -188,16 +188,15 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        var latest_count = try one(&self.sql_db, usize, "select max(latest_count) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
-        latest_count += 1;
+        var pos = inserts.len - 1;
 
         const query =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, latest_count)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @latest_count)
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
             \\RETURNING item_id;
         ;
 
-        for (inserts) |*item| {
+        for (inserts, 0..) |*item, i| {
             const item_id = try one(&self.sql_db, usize, query, .{
                 .feed_id = item.feed_id,
                 .title = item.title,
@@ -205,7 +204,7 @@ pub const Storage = struct {
                 .id = item.id,
                 .updated_raw = item.updated_raw,
                 .updated_timestamp = item.updated_timestamp,
-                .latest_count = latest_count,
+                .position = pos - i,
             });
             item.item_id = item_id;
         }
@@ -222,7 +221,7 @@ pub const Storage = struct {
             \\SELECT feed_id, item_id, title, id, link, updated_raw, updated_timestamp
             \\FROM item 
             \\WHERE feed_id = ?
-            \\ORDER BY updated_timestamp DESC, latest_count DESC, item_id ASC;
+            \\ORDER BY position DESC;
         ;
         return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
     }
@@ -299,6 +298,13 @@ pub const Storage = struct {
         try self.cleanFeedItems(items, clean_opts);
     }
 
+    // Initial item table state
+    // 1 | Title 1 | 2
+    // 2 | Title 2 | 1
+    // Update item table
+    // ...
+    // 3 | Title 3 | 4
+    // 4 | Title 4 | 3
     pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
         if (inserts.len == 0) {
             return error.NothingToInsert;
@@ -307,12 +313,12 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        var latest_count = try one(&self.sql_db, usize, "select max(latest_count) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
-        latest_count += 1;
+        var position = try one(&self.sql_db, usize, "select max(position) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
+        position += inserts.len;
 
         const query =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, latest_count)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @latest_count)
+            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
             \\ON CONFLICT(feed_id, id) DO UPDATE SET
             \\  title = excluded.title,
             \\  link = excluded.link,
@@ -326,22 +332,23 @@ pub const Storage = struct {
             \\WHERE updated_timestamp != excluded.updated_timestamp;
         ;
 
-        // TODO: If no id and link remove all feed items. Then insert the new
+        // TODO?: If no id and link remove all feed items. Then insert the new
         // items.
         const query_no_id =
-            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, latest_count)
-            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @latest_count
+            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, position)
+            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @position
             \\  where not exists (select * from item where feed_id == @w_feed_id and title == @w_title);
         ;
 
-        for (inserts) |item| {
+        for (inserts, 0..) |item, i| {
+            const item_pos = position - i;
             if (item.link == null and item.id == null) {
                 try self.sql_db.exec(query_no_id, .{}, .{
                     .feed_id = item.feed_id,
                     .title = item.title,
                     .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
-                    .latest_count = latest_count,
+                    .position = item_pos,
                     .w_feed_id = item.feed_id,
                     .w_title = item.title,
                 });
@@ -353,7 +360,7 @@ pub const Storage = struct {
                     .id = item.id,
                     .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
-                    .latest_count = latest_count,
+                    .position = item_pos,
                 });
             }
         }
@@ -370,12 +377,13 @@ pub const Storage = struct {
         }
         const feed_items = items.?;
         // TODO: look into/improve ORDER BY
+        // Use somehow updated_timestamp, position
         const query =
             \\DELETE FROM item
             \\WHERE item_id IN
             \\  (SELECT item_id FROM item
             \\    WHERE feed_id = ?
-            \\    ORDER BY id ASC
+            \\    ORDER BY position DESC
             \\    LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
             \\  );
         ;
@@ -405,9 +413,7 @@ const tables = &[_][]const u8{
     \\  id TEXT DEFAULT NULL,
     \\  updated_raw TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
-    // TODO: go back to added_at from latest_count.
-    // With added added_at it would easier to get latest items
-    \\  latest_count INTEGER DEFAULT 0,
+    \\  position INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
