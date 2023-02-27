@@ -3,6 +3,15 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const HeaderValues = @import("./http_client.zig").HeaderValues;
 
+pub const ShowOptions = struct {
+    limit: usize = 10,
+    @"item-limit": usize = 10,
+
+    pub const shorthands = .{
+        .l = "limit",
+    };
+};
+
 pub const Feed = struct {
     const Self = @This();
     feed_id: usize = 0,

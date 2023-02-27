@@ -11,6 +11,7 @@ const FeedToUpdate = feed_types.FeedToUpdate;
 const sql = @import("sqlite");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
+const ShowOptions = feed_types.ShowOptions;
 
 pub const Storage = struct {
     const Self = @This();
@@ -93,13 +94,13 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
     }
 
-    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
+    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8, opts: ShowOptions) ![]Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%'
-            \\ORDER BY updated_timestamp DESC;
+            \\ORDER BY updated_timestamp DESC LIMIT ?;
         ;
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, opts.limit });
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -216,14 +217,14 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
     }
 
-    pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
+    pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize, opts: ShowOptions) ![]FeedItem {
         const query =
             \\SELECT feed_id, item_id, title, id, link, updated_raw, updated_timestamp
             \\FROM item 
             \\WHERE feed_id = ?
-            \\ORDER BY position DESC;
+            \\ORDER BY position DESC LIMIT ?;
         ;
-        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
+        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{ feed_id, opts.@"item-limit" });
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {

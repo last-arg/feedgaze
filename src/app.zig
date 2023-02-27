@@ -13,6 +13,7 @@ const FeedAndItems = parse.FeedAndItems;
 const ContentType = parse.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
+const ShowOptions = feed_types.ShowOptions;
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -24,14 +25,6 @@ pub const Response = struct {
 const FetchOptions = struct {
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
-};
-
-const ShowOptions = struct {
-    limit: usize = 10,
-
-    pub const shorthands = .{
-        .l = "limit",
-    };
 };
 
 const UpdateOptions = struct {
@@ -178,19 +171,15 @@ pub fn Cli(comptime Out: anytype) type {
         }
 
         pub fn show(self: *Self, url: ?[]const u8, opts: ShowOptions) !void {
-            // TODO: use ShowOptions
-            _ = opts;
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            // TODO: use --limit flag
-            const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), url orelse "");
+            const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), url orelse "", .{});
 
             for (feeds) |feed| {
                 const title = feed.title orelse "<no title>";
                 const url_out = feed.page_url orelse feed.feed_url;
                 _ = try self.out.print("{s} - {s}\n", .{ title, url_out });
-                // TODO: use --limit flag? Or some other limit flag
-                const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id);
+                const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
                 if (items.len == 0) {
                     _ = try self.out.write("  ");
                     _ = try self.out.write("Feed has no items.");
@@ -301,13 +290,13 @@ test "cli.run" {
         var subcmd = "update".*;
         std.os.argv = &[_][*:0]u8{ cmd[0..], subcmd[0..], input[0..] };
         try app_cli.run();
-        var items = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1));
+        var items = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
         try std.testing.expectEqual(@as(usize, 3), items.len);
 
         app_cli.clean_opts.max_item_count = 2;
         try app_cli.run();
         app_cli.clean_opts.max_item_count = 10;
-        const items1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1));
+        const items1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
         try std.testing.expectEqual(@as(usize, 2), items1.len);
         try std.testing.expectEqual(@as(usize, 2), items1[0].item_id.?);
         try std.testing.expectEqual(@as(usize, 3), items1[1].item_id.?);
@@ -316,7 +305,7 @@ test "cli.run" {
         try storage.sql_db.exec("DELETE FROM item WHERE item_id = 1", .{}, .{});
 
         try app_cli.run();
-        var items2 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1));
+        var items2 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
         try std.testing.expectEqual(@as(usize, 3), items2.len);
         // Set same item_id for equality check. New id because item was added.
         items2[0].item_id = items[0].item_id;
