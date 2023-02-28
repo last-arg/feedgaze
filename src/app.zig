@@ -216,6 +216,10 @@ const Test = struct {
 
 test "cli.run" {
     std.testing.log_level = .debug;
+    if (@import("builtin").target.os.tag != .linux) {
+        std.log.info("Need to run tests in Linux", .{});
+        return;
+    }
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var cmd = "feedgaze".*;
@@ -230,7 +234,6 @@ test "cli.run" {
         .out = fb_writer,
     };
 
-    // TODO: add flag that only does it when running in linux?
     // TODO: test url redirect
     var input = "http://localhost:8282/rss2.xml".*;
     {
