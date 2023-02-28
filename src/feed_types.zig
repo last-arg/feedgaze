@@ -3,6 +3,11 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const HeaderValues = @import("./http_client.zig").HeaderValues;
 
+pub const FetchOptions = struct {
+    etag: ?[]const u8 = null,
+    last_modified_utc: ?i64 = null,
+};
+
 pub const ShowOptions = struct {
     limit: usize = 10,
     @"item-limit": usize = 10,

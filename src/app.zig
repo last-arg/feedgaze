@@ -14,17 +14,13 @@ const ContentType = parse.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
+const FetchOptions = feed_types.FetchOptions;
 
 pub const Response = struct {
     feed_update: FeedUpdate,
     content: []const u8,
     content_type: ContentType,
     location: []const u8,
-};
-
-const FetchOptions = struct {
-    etag: ?[]const u8 = null,
-    last_modified_utc: ?i64 = null,
 };
 
 const UpdateOptions = struct {
@@ -200,9 +196,8 @@ const Uri = std.Uri;
 const FeedRequest = @import("./http_client.zig").FeedRequest;
 fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !FeedRequest.Response {
     _ = allocator;
-    _ = opts;
     const uri = try Uri.parse(url);
-    return try fr.fetch(uri);
+    return try fr.fetch(uri, opts);
 }
 
 const Test = struct {

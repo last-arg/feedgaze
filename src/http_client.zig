@@ -19,6 +19,8 @@ const log = std.log;
 const feed_types = @import("./feed_types.zig");
 const ContentType = feed_types.ContentType;
 const RssDateTime = feed_types.RssDateTime;
+const FetchOptions = feed_types.FetchOptions;
+const datetime = @import("zig-datetime").datetime;
 
 /// Used for tcpConnectToHost and storing HTTP headers when an externally
 /// managed buffer is not provided.
@@ -421,6 +423,8 @@ pub const Request = struct {
     pub const Headers = struct {
         version: http.Version = .@"HTTP/1.1",
         method: http.Method = .GET,
+        if_match: ?[]const u8 = null,
+        if_modified: ?i64 = null,
     };
 
     pub const Options = struct {
@@ -829,6 +833,16 @@ pub fn request(client: *Client, uri: Uri, headers: Request.Headers, options: Req
         try h.appendSlice("\r\nHost: ");
         try h.appendSlice(host);
         try h.appendSlice("\r\nAccept: application/atom+xml, application/rss+xml, text/xml, application/xml");
+        if (headers.if_match) |etag| {
+            try h.appendSlice("\r\nIf-Match: ");
+            try h.appendSlice(etag);
+        }
+        if (headers.if_modified) |utc| {
+            try h.appendSlice("\r\nIf-Modified-Since: ");
+            var buf: [29]u8 = undefined;
+            const dt_str = try datetime.Datetime.formatHttpFromTimestamp(&buf, utc);
+            try h.appendSlice(dt_str);
+        }
         try h.appendSlice("\r\nConnection: close\r\n\r\n");
 
         const header_bytes = h.slice();
@@ -1018,15 +1032,12 @@ pub const FeedRequest = struct {
         self.client.deinit();
     }
 
-    // TODO: If-Modified-Since
-    // Last-Modified (If-Modified-Since)
-    // length 29
-    //
-    // TODO: ETag
-    // ETag (If-Match)
-    // Has no set length. Set it to 128?
-    pub fn fetch(self: *Self, url: Uri) !Self.Response {
-        var req = try self.client.request(url, .{}, .{});
+    pub fn fetch(self: *Self, url: Uri, opts: FetchOptions) !Self.Response {
+        const headers = Request.Headers{
+            .if_match = opts.etag,
+            .if_modified = opts.last_modified_utc,
+        };
+        var req = try self.client.request(url, headers, .{});
         self.request = &req;
         errdefer req.deinit();
 
