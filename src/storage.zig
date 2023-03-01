@@ -314,9 +314,9 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        var position = try one(&self.sql_db, usize, "select max(position) from item where feed_id = ?", .{inserts[0].feed_id}) orelse 0;
-        position += inserts.len;
-
+        // TODO: There might be problem when there are more items in db than
+        // are being inserted.
+        // TODO: Add position contraint and replace?
         const query =
             \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
@@ -324,13 +324,17 @@ pub const Storage = struct {
             \\  title = excluded.title,
             \\  link = excluded.link,
             \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp
+            \\  updated_timestamp = excluded.updated_timestamp,
+            \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
+            \\  id = excluded.id,
             \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp
-            \\WHERE updated_timestamp != excluded.updated_timestamp;
+            \\  updated_timestamp = excluded.updated_timestamp,
+            \\  position = excluded.position
+            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\;
         ;
 
         // TODO?: If no id and link remove all feed items. Then insert the new
@@ -341,8 +345,9 @@ pub const Storage = struct {
             \\  where not exists (select * from item where feed_id == @w_feed_id and title == @w_title);
         ;
 
+        var pos = inserts.len - 1;
         for (inserts, 0..) |item, i| {
-            const item_pos = position - i;
+            const item_pos = pos - i;
             if (item.link == null and item.id == null) {
                 try self.sql_db.exec(query_no_id, .{}, .{
                     .feed_id = item.feed_id,

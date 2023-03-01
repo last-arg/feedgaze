@@ -288,25 +288,28 @@ test "cli.run" {
         var subcmd = "update".*;
         std.os.argv = &[_][*:0]u8{ cmd[0..], subcmd[0..], input[0..] };
         try app_cli.run();
-        var items = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
+        var items = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), 1, .{});
         try std.testing.expectEqual(@as(usize, 3), items.len);
 
         app_cli.clean_opts.max_item_count = 2;
         try app_cli.run();
         app_cli.clean_opts.max_item_count = 10;
-        const items1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
+        const items1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), 1, .{});
         try std.testing.expectEqual(@as(usize, 2), items1.len);
-        try std.testing.expectEqual(@as(usize, 2), items1[0].item_id.?);
-        try std.testing.expectEqual(@as(usize, 3), items1[1].item_id.?);
+        try std.testing.expectEqual(@as(usize, 1), items1[0].item_id.?);
+        try std.testing.expectEqual(@as(usize, 2), items1[1].item_id.?);
 
         // Delete first item (newest/latest)
         try storage.sql_db.exec("DELETE FROM item WHERE item_id = 1", .{}, .{});
 
         try app_cli.run();
-        var items2 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), @as(usize, 1), .{});
+        var items2 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), 1, .{});
         try std.testing.expectEqual(@as(usize, 3), items2.len);
-        // Set same item_id for equality check. New id because item was added.
-        items2[0].item_id = items[0].item_id;
+        // NOTE: can use 'expectEqualDeep' to compare slices.
+        for (items, items2) |*item, *item2| {
+            item.item_id = null;
+            item2.item_id = null;
+        }
         try std.testing.expectEqualDeep(items2, items);
     }
 
