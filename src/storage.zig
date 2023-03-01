@@ -377,14 +377,12 @@ pub const Storage = struct {
             return;
         }
         const feed_items = items.?;
-        // TODO: look into/improve ORDER BY
-        // Use somehow updated_timestamp, position
         const query =
             \\DELETE FROM item
             \\WHERE item_id IN
             \\  (SELECT item_id FROM item
             \\    WHERE feed_id = ?
-            \\    ORDER BY position DESC
+            \\    ORDER BY position ASC
             \\    LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
             \\  );
         ;
