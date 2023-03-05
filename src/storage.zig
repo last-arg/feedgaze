@@ -189,8 +189,6 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        var pos = inserts.len - 1;
-
         const query =
             \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
@@ -205,7 +203,7 @@ pub const Storage = struct {
                 .id = item.id,
                 .updated_raw = item.updated_raw,
                 .updated_timestamp = item.updated_timestamp,
-                .position = pos - i,
+                .position = i,
             });
             item.item_id = item_id;
         }
@@ -222,7 +220,7 @@ pub const Storage = struct {
             \\SELECT feed_id, item_id, title, id, link, updated_raw, updated_timestamp
             \\FROM item 
             \\WHERE feed_id = ?
-            \\ORDER BY position DESC LIMIT ?;
+            \\ORDER BY position ASC LIMIT ?;
         ;
         return try selectAll(&self.sql_db, allocator, FeedItem, query, .{ feed_id, opts.@"item-limit" });
     }
@@ -314,9 +312,12 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        // TODO: There might be problem when there are more items in db than
+        // Consider when inserting new items:
+        // - There might be problem when there are more items in db than
         // are being inserted.
-        // TODO: Add position contraint and replace?
+        // - there might be duplicate position values in the same feed_id
+        // Can't use conflict(feed_id, position) because the item_id doesn't
+        // change.
         const query =
             \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
@@ -326,14 +327,14 @@ pub const Storage = struct {
             \\  updated_raw = excluded.updated_raw,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  updated_raw = excluded.updated_raw,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE updated_timestamp != excluded.updated_timestamp
+            \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
             \\;
         ;
 
@@ -345,16 +346,14 @@ pub const Storage = struct {
             \\  where not exists (select * from item where feed_id == @w_feed_id and title == @w_title);
         ;
 
-        var pos = inserts.len - 1;
         for (inserts, 0..) |item, i| {
-            const item_pos = pos - i;
             if (item.link == null and item.id == null) {
                 try self.sql_db.exec(query_no_id, .{}, .{
                     .feed_id = item.feed_id,
                     .title = item.title,
                     .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
-                    .position = item_pos,
+                    .position = i,
                     .w_feed_id = item.feed_id,
                     .w_title = item.title,
                 });
@@ -366,7 +365,7 @@ pub const Storage = struct {
                     .id = item.id,
                     .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
-                    .position = item_pos,
+                    .position = i,
                 });
             }
         }
@@ -381,20 +380,23 @@ pub const Storage = struct {
             // TODO: clean all items
             return;
         }
-        const feed_items = items.?;
-        const query =
-            \\DELETE FROM item
-            \\WHERE item_id IN
-            \\  (SELECT item_id FROM item
-            \\    WHERE feed_id = ?
-            \\    ORDER BY position ASC
-            \\    LIMIT (SELECT MAX(count(feed_id) - ?, 0) FROM item WHERE feed_id = ?)
-            \\  );
-        ;
 
-        for (feed_items) |item| {
-            try self.sql_db.exec(query, .{}, .{ item.feed_id, opts.max_item_count, item.feed_id });
-        }
+        const feed_items = items.?;
+        // Want to delete items:
+        // - items that have same position
+        // - items that are over max count
+        const del_query =
+            \\DELETE FROM item
+            \\WHERE EXISTS (
+            \\  SELECT 1 FROM item as inner
+            \\  WHERE item.rowid = inner.rowid AND inner.feed_id = ? AND
+            \\  (inner.position >= ? OR
+            \\  item.position = inner.position AND item.item_id < inner.item_id)
+            \\);
+        ;
+        const max_pos = std.math.min(feed_items.len, opts.max_item_count);
+        const feed_id = feed_items[0].feed_id;
+        try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
     }
 };
 

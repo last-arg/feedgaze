@@ -34,6 +34,16 @@ const CliVerb = union(enum) {
     update: UpdateOptions,
 };
 
+const CliGlobal = struct {
+    database: ?[]const u8 = null,
+    help: bool = false,
+
+    pub const shorthands = .{
+        .h = "help",
+        .d = "database",
+    };
+};
+
 pub fn Cli(comptime Out: anytype) type {
     return struct {
         allocator: Allocator,
@@ -50,9 +60,14 @@ pub fn Cli(comptime Out: anytype) type {
             defer options.deinit();
 
             const verb = options.verb orelse {
+                // TODO: print help instead
                 std.log.err("Use valid subcommand: add, remove, update, show", .{});
                 return;
             };
+
+            // TODO: Setup db file
+            // - Create sqlite file if not exist
+            // - Storage.init
 
             switch (verb) {
                 .add => {
@@ -295,6 +310,7 @@ test "cli.run" {
         try app_cli.run();
         app_cli.clean_opts.max_item_count = 10;
         const items1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), 1, .{});
+
         try std.testing.expectEqual(@as(usize, 2), items1.len);
         try std.testing.expectEqual(@as(usize, 1), items1[0].item_id.?);
         try std.testing.expectEqual(@as(usize, 2), items1[1].item_id.?);
