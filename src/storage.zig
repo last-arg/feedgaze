@@ -24,9 +24,10 @@ pub const Storage = struct {
         FeedExists,
     };
 
-    pub fn init() !Self {
+    pub fn init(path: ?[:0]const u8) !Self {
+        const mode = if (path) |p| sql.Db.Mode{ .File = p } else sql.Db.Mode{ .Memory = {} };
         var db = try sql.Db.init(.{
-            .mode = .{ .Memory = {} },
+            .mode = mode,
             .open_flags = .{ .write = true, .create = true },
         });
 

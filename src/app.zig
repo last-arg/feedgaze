@@ -15,6 +15,7 @@ const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
 const FetchOptions = feed_types.FetchOptions;
+const fs = std.fs;
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -35,7 +36,7 @@ const CliVerb = union(enum) {
 };
 
 const CliGlobal = struct {
-    database: ?[]const u8 = null,
+    database: ?[:0]const u8 = null,
     help: bool = false,
 
     pub const shorthands = .{
@@ -44,10 +45,11 @@ const CliGlobal = struct {
     };
 };
 
+const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
 pub fn Cli(comptime Out: anytype) type {
     return struct {
         allocator: Allocator,
-        storage: Storage,
+        storage: ?Storage = null,
         clean_opts: Storage.CleanOptions = .{},
         out: Out,
         fetchFeedFn: *const fn (*FeedRequest, Allocator, []const u8, FetchOptions) anyerror!FeedRequest.Response = fetchFeed,
@@ -56,8 +58,13 @@ pub fn Cli(comptime Out: anytype) type {
         pub fn run(self: *Self) !void {
             // TODO?: use parseWithVerb?
             // Is better for testing purposes
-            const options = try args_parser.parseWithVerbForCurrentProcess(struct {}, CliVerb, self.allocator, .print);
+            var options = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, self.allocator, .print);
             defer options.deinit();
+
+            if (options.options.help) {
+                // TODO: print help
+                return;
+            }
 
             const verb = options.verb orelse {
                 // TODO: print help instead
@@ -65,9 +72,9 @@ pub fn Cli(comptime Out: anytype) type {
                 return;
             };
 
-            // TODO: Setup db file
-            // - Create sqlite file if not exist
-            // - Storage.init
+            if (self.storage == null) {
+                try self.connectDatabase(options.options.database);
+            }
 
             switch (verb) {
                 .add => {
@@ -99,8 +106,46 @@ pub fn Cli(comptime Out: anytype) type {
             }
         }
 
+        pub fn connectDatabase(self: *Self, path: ?[:0]const u8) !void {
+            const db_path = blk: {
+                const db_path = path orelse default_db_path;
+                if (db_path.len == 0) {
+                    std.log.err("'--database' requires filepath input.", .{});
+                }
+                if (std.mem.eql(u8, ":memory:", db_path)) {
+                    break :blk null;
+                }
+                if (std.mem.endsWith(u8, db_path, std.fs.path.sep_str)) {
+                    std.log.err("'--database' requires filepath, diretory path was provided.", .{});
+                    return;
+                }
+
+                var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+                const db_dir = fs.path.dirname(db_path) orelse {
+                    std.log.err("Invalid '--database' directory input", .{});
+                    return;
+                };
+                _ = fs.cwd().realpath(db_dir, &path_buf) catch |err| switch (err) {
+                    error.FileNotFound => {
+                        try fs.cwd().makePath(db_dir);
+                    },
+                    else => return error.NODS,
+                };
+                break :blk db_path;
+            };
+
+            self.storage = Storage.init(db_path) catch |err| {
+                if (db_path) |p| {
+                    std.log.err("Failed to open database file '{s}'.", .{p});
+                } else {
+                    std.log.err("Failed to open database in memory.", .{});
+                }
+                return err;
+            };
+        }
+
         pub fn add(self: *Self, url: []const u8) !void {
-            if (try self.storage.hasFeedWithFeedUrl(url)) {
+            if (try self.storage.?.hasFeedWithFeedUrl(url)) {
                 std.log.info("There already exists feed '{s}'", .{url});
                 return;
             }
@@ -119,10 +164,10 @@ pub fn Cli(comptime Out: anytype) type {
                 parsed.feed.updated_raw = parsed.items[0].updated_raw;
             }
             try parsed.feed.prepareAndValidate(url);
-            const feed_id = try self.storage.insertFeed(parsed.feed);
+            const feed_id = try self.storage.?.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
-            _ = try self.storage.insertFeedItems(parsed.items);
-            try self.storage.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, feed_id));
+            _ = try self.storage.?.insertFeedItems(parsed.items);
+            try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, feed_id));
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
@@ -134,7 +179,7 @@ pub fn Cli(comptime Out: anytype) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input);
+            const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input);
 
             for (feed_updates) |f_update| {
                 var fr = try FeedRequest.init(arena.allocator());
@@ -154,14 +199,14 @@ pub fn Cli(comptime Out: anytype) type {
 
                 parsed.feed.feed_id = f_update.feed_id;
                 try parsed.feed.prepareAndValidate(f_update.feed_url);
-                try self.storage.updateFeed(parsed.feed);
+                try self.storage.?.updateFeed(parsed.feed);
 
                 // Update feed items
                 try FeedItem.prepareAndValidateAll(parsed.items, f_update.feed_id);
-                try self.storage.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
+                try self.storage.?.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                try self.storage.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, f_update.feed_id));
+                try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, f_update.feed_id));
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
@@ -169,14 +214,14 @@ pub fn Cli(comptime Out: anytype) type {
         pub fn remove(self: *Self, url: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url);
+            const feeds = try self.storage.?.getFeedsWithUrl(arena.allocator(), url);
             if (feeds.len == 0) {
                 std.log.info("Found no feeds for <url> input '{s}'", .{url});
                 return;
             }
 
             for (feeds) |feed| {
-                try self.storage.deleteFeed(feed.feed_id);
+                try self.storage.?.deleteFeed(feed.feed_id);
                 std.log.info("Removed feed '{s}'", .{feed.feed_url});
             }
         }
@@ -184,13 +229,13 @@ pub fn Cli(comptime Out: anytype) type {
         pub fn show(self: *Self, url: ?[]const u8, opts: ShowOptions) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), url orelse "", .{});
+            const feeds = try self.storage.?.getLatestFeedsWithUrl(arena.allocator(), url orelse "", .{});
 
             for (feeds) |feed| {
                 const title = feed.title orelse "<no title>";
                 const url_out = feed.page_url orelse feed.feed_url;
                 _ = try self.out.print("{s} - {s}\n", .{ title, url_out });
-                const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
+                const items = try self.storage.?.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
                 if (items.len == 0) {
                     _ = try self.out.write("  ");
                     _ = try self.out.write("Feed has no items.");
@@ -238,23 +283,27 @@ test "cli.run" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     var cmd = "feedgaze".*;
-    var storage = try Storage.init();
+    // var storage = try Storage.init("/media/hdd/code/feedgaze/tmp/db/fg.sqlite");
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
     var fb_writer = fb.writer();
     const CliTest = Cli(@TypeOf(fb_writer));
     var app_cli = CliTest{
         .allocator = arena.allocator(),
-        .storage = storage,
         .out = fb_writer,
     };
+    var storage: Storage = undefined;
 
     // TODO: test url redirect
+    var db_flag = "--database".*;
+    var db_input = ":memory:".*;
+    // var db_input = "tmp/h/hello.db".*;
     var input = "http://localhost:8282/rss2.xml".*;
     {
         var add_cmd = "add".*;
-        std.os.argv = &[_][*:0]u8{ cmd[0..], add_cmd[0..], input[0..] };
+        std.os.argv = &[_][*:0]u8{ cmd[0..], db_flag[0..], db_input[0..], add_cmd[0..], input[0..] };
         try app_cli.run();
+        storage = app_cli.storage.?;
 
         const feeds = try storage.getFeedsWithUrl(arena.allocator(), &input);
         try std.testing.expectEqual(@as(usize, 1), feeds.len);
