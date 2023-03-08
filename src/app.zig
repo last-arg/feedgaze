@@ -62,13 +62,12 @@ pub fn Cli(comptime Out: anytype) type {
             defer options.deinit();
 
             if (options.options.help) {
-                // TODO: print help
+                try self.printHelp();
                 return;
             }
 
             const verb = options.verb orelse {
-                // TODO: print help instead
-                std.log.err("Use valid subcommand: add, remove, update, show", .{});
+                try self.printHelp();
                 return;
             };
 
@@ -104,6 +103,28 @@ pub fn Cli(comptime Out: anytype) type {
                     try self.update(input, opts);
                 },
             }
+        }
+
+        fn printHelp(self: Self) !void {
+            // TODO: use stderr instead?
+            const output =
+                \\Usage: feedgaze [command] [options]
+                \\
+                \\Commands
+                \\
+                \\  add       Add feed
+                \\  remove    Remove feed(s)
+                \\  update    Update feed(s)
+                \\  help      Print this help and exit
+                \\
+                \\General options:
+                \\
+                \\  -h, --help        Print command-specific usage
+                \\  -d, --database    Set database to use 
+                \\
+                \\
+            ;
+            _ = try self.out.write(output);
         }
 
         pub fn connectDatabase(self: *Self, path: ?[:0]const u8) !void {
@@ -257,7 +278,8 @@ const FeedRequest = @import("./http_client.zig").FeedRequest;
 fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !FeedRequest.Response {
     _ = allocator;
     const uri = try Uri.parse(url);
-    return try fr.fetch(uri, opts);
+    const resp = try fr.fetch(uri, opts);
+    return resp;
 }
 
 const Test = struct {
@@ -299,6 +321,7 @@ test "cli.run" {
     var db_input = ":memory:".*;
     // var db_input = "tmp/h/hello.db".*;
     var input = "http://localhost:8282/rss2.xml".*;
+    // var input = "http://localhost:8282/rss2".*;
     {
         var add_cmd = "add".*;
         std.os.argv = &[_][*:0]u8{ cmd[0..], db_flag[0..], db_input[0..], add_cmd[0..], input[0..] };
