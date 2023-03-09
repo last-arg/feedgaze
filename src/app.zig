@@ -317,6 +317,7 @@ test "cli.run" {
     var storage: Storage = undefined;
 
     // TODO: test url redirect
+    // Wait for this pull request: https://github.com/ziglang/zig/pull/14762
     var db_flag = "--database".*;
     var db_input = ":memory:".*;
     // var db_input = "tmp/h/hello.db".*;
