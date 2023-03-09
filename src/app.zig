@@ -43,12 +43,12 @@ const CliGlobal = struct {
 };
 
 const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
-pub fn Cli(comptime Out: anytype) type {
+pub fn Cli(comptime Writer: type) type {
     return struct {
         allocator: Allocator,
         storage: ?Storage = null,
         clean_opts: Storage.CleanOptions = .{},
-        out: Out,
+        out: Writer,
         fetchFeedFn: *const fn (*FeedRequest, Allocator, []const u8, FetchOptions) anyerror!FeedRequest.Response = fetchFeed,
         const Self = @This();
 
