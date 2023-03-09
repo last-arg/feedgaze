@@ -25,6 +25,7 @@ pub const Response = struct {
 };
 
 const UpdateOptions = struct {
+    // Will ignore 'feed_update.update_countdown'
     force: bool = false,
 };
 
@@ -193,13 +194,15 @@ pub fn Cli(comptime Out: anytype) type {
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
             // TODO: use UpdateOptions
-            _ = options;
             if (input == null) {
                 std.log.info("Updating all feeds", .{});
             }
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
+            if (!options.force) {
+                try self.storage.?.updateCountdowns();
+            }
             const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input);
 
             for (feed_updates) |f_update| {

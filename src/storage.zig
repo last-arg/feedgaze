@@ -277,6 +277,20 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, feed_update);
     }
 
+    pub fn updateCountdowns(self: *Self) !void {
+        // Update every update_countdown value
+        // (expires_utc / 1000) - convert into seconds
+        const query =
+            \\WITH const AS (SELECT strftime('%s', 'now') as current_utc)
+            \\UPDATE feed_update SET update_countdown = COALESCE(
+            \\  (last_update + cache_control_max_age) - const.current_utc,
+            \\  (expires_utc / 1000) - const.current_utc,
+            \\  (last_update + (update_interval * 60)) - const.current_utc
+            \\) from const;
+        ;
+        try self.sql_db.exec(query, .{}, .{});
+    }
+
     pub fn updateFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
         if (feed_update.feed_id == null) {
             return error.FeedIdIsNull;
