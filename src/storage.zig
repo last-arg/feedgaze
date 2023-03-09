@@ -294,8 +294,11 @@ pub const Storage = struct {
     }
 
     pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem, clean_opts: CleanOptions) !void {
+        if (items.len == 0) {
+            return;
+        }
         try self.upsertFeedItems(items);
-        try self.cleanFeedItems(items, clean_opts);
+        try self.cleanFeedItems(items[0].feed_id, items.len, clean_opts);
     }
 
     // Initial item table state
@@ -336,39 +339,29 @@ pub const Storage = struct {
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
+            \\ON CONFLICT(feed_id, position) DO UPDATE SET
+            \\  item_id = (select max(item_id) + 1 from item),
+            \\  title = excluded.title,
+            \\  id = excluded.id,
+            \\  link = excluded.link,
+            \\  updated_raw = excluded.updated_raw,
+            \\  updated_timestamp = excluded.updated_timestamp,
+            \\  position = excluded.position
+            \\WHERE (id != excluded.id OR link != excluded.link OR title != excluded.title) 
+            \\AND updated_timestamp != excluded.updated_timestamp
             \\;
         ;
 
-        // TODO?: If no id and link remove all feed items. Then insert the new
-        // items.
-        const query_no_id =
-            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, position)
-            \\  select @feed_id, @title, @updated_raw, @updated_timestamp, @position
-            \\  where not exists (select * from item where feed_id == @w_feed_id and title == @w_title);
-        ;
-
         for (inserts, 0..) |item, i| {
-            if (item.link == null and item.id == null) {
-                try self.sql_db.exec(query_no_id, .{}, .{
-                    .feed_id = item.feed_id,
-                    .title = item.title,
-                    .updated_raw = item.updated_raw,
-                    .updated_timestamp = item.updated_timestamp,
-                    .position = i,
-                    .w_feed_id = item.feed_id,
-                    .w_title = item.title,
-                });
-            } else {
-                try self.sql_db.exec(query, .{}, .{
-                    .feed_id = item.feed_id,
-                    .title = item.title,
-                    .link = item.link,
-                    .id = item.id,
-                    .updated_raw = item.updated_raw,
-                    .updated_timestamp = item.updated_timestamp,
-                    .position = i,
-                });
-            }
+            try self.sql_db.exec(query, .{}, .{
+                .feed_id = item.feed_id,
+                .title = item.title,
+                .link = item.link,
+                .id = item.id,
+                .updated_raw = item.updated_raw,
+                .updated_timestamp = item.updated_timestamp,
+                .position = i,
+            });
         }
     }
 
@@ -376,27 +369,14 @@ pub const Storage = struct {
         max_item_count: usize = 10,
     };
 
-    pub fn cleanFeedItems(self: *Self, items: ?[]FeedItem, opts: CleanOptions) !void {
-        if (items == null) {
-            // TODO: clean all items
-            return;
-        }
-
-        const feed_items = items.?;
+    pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize, opts: CleanOptions) !void {
         // Want to delete items:
         // - items that have same position
         // - items that are over max count
         const del_query =
-            \\DELETE FROM item
-            \\WHERE EXISTS (
-            \\  SELECT 1 FROM item as inner
-            \\  WHERE item.rowid = inner.rowid AND inner.feed_id = ? AND
-            \\  (inner.position >= ? OR
-            \\  item.position = inner.position AND item.item_id < inner.item_id)
-            \\);
+            \\DELETE FROM item WHERE feed_id = ? AND position >= ?;
         ;
-        const max_pos = std.math.min(feed_items.len, opts.max_item_count);
-        const feed_id = feed_items[0].feed_id;
+        const max_pos = std.math.min(items_len, opts.max_item_count);
         try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
     }
 };
@@ -423,7 +403,8 @@ const tables = &[_][]const u8{
     \\  position INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
-    \\  UNIQUE(feed_id, link)
+    \\  UNIQUE(feed_id, link),
+    \\  UNIQUE(feed_id, position)
     \\);
     ,
     comptimePrint(
