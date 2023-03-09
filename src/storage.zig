@@ -99,10 +99,10 @@ pub const Storage = struct {
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8, opts: ShowOptions) ![]Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
-            \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%'
+            \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'
             \\ORDER BY updated_timestamp DESC LIMIT ?;
         ;
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, opts.limit });
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url, opts.limit });
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
