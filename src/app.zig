@@ -53,26 +53,26 @@ pub fn Cli(comptime Out: anytype) type {
         const Self = @This();
 
         pub fn run(self: *Self) !void {
-            var options = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, self.allocator, .print);
-            defer options.deinit();
+            var args = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, self.allocator, .print);
+            defer args.deinit();
 
-            if (options.options.help) {
-                try self.printHelp(options.verb);
+            if (args.options.help) {
+                try self.printHelp(args.verb);
                 return;
             }
 
-            const verb = options.verb orelse {
+            const verb = args.verb orelse {
                 return;
             };
 
             if (self.storage == null) {
-                try self.connectDatabase(options.options.database);
+                try self.connectDatabase(args.options.database);
             }
 
             switch (verb) {
                 .add => {
-                    if (options.positionals.len > 0) {
-                        for (options.positionals) |url| {
+                    if (args.positionals.len > 0) {
+                        for (args.positionals) |url| {
                             try self.add(url);
                         }
                     } else {
@@ -80,8 +80,8 @@ pub fn Cli(comptime Out: anytype) type {
                     }
                 },
                 .remove => {
-                    if (options.positionals.len > 0) {
-                        for (options.positionals) |url| {
+                    if (args.positionals.len > 0) {
+                        for (args.positionals) |url| {
                             try self.remove(url);
                         }
                     } else {
@@ -89,11 +89,11 @@ pub fn Cli(comptime Out: anytype) type {
                     }
                 },
                 .show => |opts| {
-                    const url = if (options.positionals.len > 0) options.positionals[0] else null;
+                    const url = if (args.positionals.len > 0) args.positionals[0] else null;
                     try self.show(url, opts);
                 },
                 .update => |opts| {
-                    const input = if (options.positionals.len > 0) options.positionals[0] else null;
+                    const input = if (args.positionals.len > 0) args.positionals[0] else null;
                     try self.update(input, opts);
                 },
             }
