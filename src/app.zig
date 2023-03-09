@@ -122,7 +122,7 @@ pub fn Cli(comptime Out: anytype) type {
             if (verb) |v| {
                 output = switch (v) {
                     .add =>
-                    \\Usage: feedgaze add <url>
+                    \\Usage: feedgaze add <url> [options]
                     \\
                     \\  Add feed. Requires url to feed.
                     \\
@@ -131,7 +131,7 @@ pub fn Cli(comptime Out: anytype) type {
                     \\
                     ,
                     .remove =>
-                    \\Usage: feedgaze remove <search_term>
+                    \\Usage: feedgaze remove <search_term> [options]
                     \\
                     \\  Remove feed. Requires search term. Search term will match page or feed url. 
                     \\
@@ -140,7 +140,7 @@ pub fn Cli(comptime Out: anytype) type {
                     \\
                     ,
                     .show =>
-                    \\Usage: feedgaze show [search_term]
+                    \\Usage: feedgaze show [search_term] [options]
                     \\
                     \\  Show feed(s). Optional search term. Search term will match page or feed url. 
                     \\  Orders feeds by latest updated.
@@ -151,7 +151,7 @@ pub fn Cli(comptime Out: anytype) type {
                     \\  --item-limit    Set limit how many feed items to show
                     ,
                     .update =>
-                    \\Usage: feedgaze update [search_term]
+                    \\Usage: feedgaze update [search_term] [options]
                     \\
                     \\  Update feed(s). Optional search term. Search term will match page or feed url. 
                     \\
