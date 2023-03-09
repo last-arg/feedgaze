@@ -40,19 +40,19 @@ pub const Storage = struct {
     }
 
     fn setupDb(db: *sql.Db) !void {
+        errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null);
         if (user_version == null or user_version.? == 0) {
-            errdefer std.log.err("Failed to create new database", .{});
             _ = try db.pragma(usize, .{}, "user_version", "1");
             _ = try db.pragma(usize, .{}, "foreign_keys", "1");
             _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
             _ = try db.pragma(usize, .{}, "synchronous", "normal");
             _ = try db.pragma(usize, .{}, "temp_store", "2");
             _ = try db.pragma(usize, .{}, "cache_size", "-32000");
-            std.log.info("New database created", .{});
         }
 
         try setupTables(db);
+        std.log.info("New database created", .{});
     }
 
     fn setupTables(db: *sql.Db) !void {
@@ -63,7 +63,6 @@ pub const Storage = struct {
                 return err;
             };
         }
-        std.log.info("Created database tables", .{});
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
