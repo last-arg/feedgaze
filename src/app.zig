@@ -14,6 +14,7 @@ const ContentType = parse.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
+const UpdateOptions = feed_types.UpdateOptions;
 const FetchOptions = feed_types.FetchOptions;
 const fs = std.fs;
 
@@ -22,11 +23,6 @@ pub const Response = struct {
     content: []const u8,
     content_type: ContentType,
     location: []const u8,
-};
-
-const UpdateOptions = struct {
-    // Will ignore 'feed_update.update_countdown'
-    force: bool = false,
 };
 
 const CliVerb = union(enum) {
@@ -193,7 +189,6 @@ pub fn Cli(comptime Out: anytype) type {
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
-            // TODO: use UpdateOptions
             if (input == null) {
                 std.log.info("Updating all feeds", .{});
             }
@@ -203,7 +198,7 @@ pub fn Cli(comptime Out: anytype) type {
             if (!options.force) {
                 try self.storage.?.updateCountdowns();
             }
-            const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input);
+            const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input, options);
 
             for (feed_updates) |f_update| {
                 var fr = try FeedRequest.init(arena.allocator());

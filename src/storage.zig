@@ -12,6 +12,7 @@ const sql = @import("sqlite");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
 const ShowOptions = feed_types.ShowOptions;
+const UpdateOptions = feed_types.UpdateOptions;
 
 pub const Storage = struct {
     const Self = @This();
@@ -123,7 +124,7 @@ pub const Storage = struct {
         return (try one(&self.sql_db, bool, query, .{url})) orelse false;
     }
 
-    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8) ![]FeedToUpdate {
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
         const query =
             \\SELECT 
             \\  feed.feed_id,
@@ -133,14 +134,32 @@ pub const Storage = struct {
             \\  feed_update.etag 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
+            \\
         ;
+        var arr = try std.BoundedArray(u8, 1024).fromSlice(query);
+        var prefix: []const u8 = "WHERE";
+
+        if (options.force) {
+            arr.appendAssumeCapacity(' ');
+            arr.appendSliceAssumeCapacity(prefix);
+            arr.appendAssumeCapacity(' ');
+            arr.appendSliceAssumeCapacity("update_countdown < 0");
+            prefix = "AND";
+        }
 
         if (search_term) |term| {
-            const query_term = query ++
-                " WHERE feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';";
-            return try selectAll(&self.sql_db, allocator, FeedToUpdate, query_term, .{ term, term });
+            arr.appendAssumeCapacity(' ');
+            arr.appendSliceAssumeCapacity(prefix);
+            arr.appendAssumeCapacity(' ');
+            arr.appendSliceAssumeCapacity("feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';");
+            var stmt = try self.sql_db.prepareDynamic(arr.slice());
+            defer stmt.deinit();
+            return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
         }
-        return try selectAll(&self.sql_db, allocator, FeedToUpdate, query, .{});
+
+        var stmt = try self.sql_db.prepareDynamic(arr.slice());
+        defer stmt.deinit();
+        return try stmt.all(FeedToUpdate, allocator, .{}, .{});
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {

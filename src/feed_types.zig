@@ -17,6 +17,11 @@ pub const ShowOptions = struct {
     };
 };
 
+pub const UpdateOptions = struct {
+    // Will ignore 'feed_update.update_countdown'
+    force: bool = false,
+};
+
 pub const Feed = struct {
     const Self = @This();
     feed_id: usize = 0,
