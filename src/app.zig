@@ -89,8 +89,7 @@ pub fn Cli(comptime Writer: type) type {
                     }
                 },
                 .show => |opts| {
-                    const url = if (args.positionals.len > 0) args.positionals[0] else null;
-                    try self.show(url, opts);
+                    try self.show(args.positionals, opts);
                 },
                 .update => |opts| {
                     const input = if (args.positionals.len > 0) args.positionals[0] else null;
@@ -287,10 +286,10 @@ pub fn Cli(comptime Writer: type) type {
             }
         }
 
-        pub fn show(self: *Self, url: ?[]const u8, opts: ShowOptions) !void {
+        pub fn show(self: *Self, inputs: [][]const u8, opts: ShowOptions) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const feeds = try self.storage.?.getLatestFeedsWithUrl(arena.allocator(), url orelse "", opts);
+            const feeds = try self.storage.?.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
 
             for (feeds) |feed| {
                 const title = feed.title orelse "<no title>";
@@ -358,6 +357,7 @@ test "cli.run" {
 
     // TODO: test url redirect
     // Wait for this pull request: https://github.com/ziglang/zig/pull/14762
+    // PR has been merge, have to wait until new version of zig is available
     var db_flag = "--database".*;
     var db_input = ":memory:".*;
     // var db_input = "tmp/h/hello.db".*;

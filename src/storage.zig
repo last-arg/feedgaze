@@ -18,6 +18,8 @@ pub const Storage = struct {
     const Self = @This();
     sql_db: sql.Db,
 
+    var storage_arr = std.BoundedArray(u8, 4096).init(0) catch unreachable;
+
     pub const Error = error{
         FeedNotFound,
         FeedItemNotFound,
@@ -95,12 +97,18 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
     }
 
-    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8, opts: ShowOptions) ![]Feed {
+    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
+        const url = if (inputs.len > 0) inputs[0] else "";
         const query =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'
             \\ORDER BY updated_timestamp DESC LIMIT ?;
         ;
+
+        // var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+        // defer stmt.deinit();
+        // return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
+
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url, opts.limit });
     }
 
@@ -135,28 +143,30 @@ pub const Storage = struct {
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
             \\
         ;
-        var arr = try std.BoundedArray(u8, 1024).fromSlice(query);
+
         var prefix: []const u8 = "WHERE";
+        storage_arr.resize(0) catch unreachable;
+        storage_arr.appendSliceAssumeCapacity(query);
 
         if (options.force) {
-            arr.appendAssumeCapacity(' ');
-            arr.appendSliceAssumeCapacity(prefix);
-            arr.appendAssumeCapacity(' ');
-            arr.appendSliceAssumeCapacity("update_countdown < 0");
+            storage_arr.appendAssumeCapacity(' ');
+            storage_arr.appendSliceAssumeCapacity(prefix);
+            storage_arr.appendAssumeCapacity(' ');
+            storage_arr.appendSliceAssumeCapacity("update_countdown < 0");
             prefix = "AND";
         }
 
         if (search_term) |term| {
-            arr.appendAssumeCapacity(' ');
-            arr.appendSliceAssumeCapacity(prefix);
-            arr.appendAssumeCapacity(' ');
-            arr.appendSliceAssumeCapacity("feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';");
-            var stmt = try self.sql_db.prepareDynamic(arr.slice());
+            storage_arr.appendAssumeCapacity(' ');
+            storage_arr.appendSliceAssumeCapacity(prefix);
+            storage_arr.appendAssumeCapacity(' ');
+            storage_arr.appendSliceAssumeCapacity("feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';");
+            var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
             defer stmt.deinit();
             return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
         }
 
-        var stmt = try self.sql_db.prepareDynamic(arr.slice());
+        var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
         defer stmt.deinit();
         return try stmt.all(FeedToUpdate, allocator, .{}, .{});
     }
