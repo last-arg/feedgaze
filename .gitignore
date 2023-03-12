@@ -3,3 +3,4 @@ zig-out/
 zig-cache/
 *.wip
 deps.zig
+test-server/.init.lua
