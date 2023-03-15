@@ -184,8 +184,7 @@ pub const FeedRequest = struct {
     pub fn fetch(allocator: Allocator, url: Uri, opts: FetchOptions) !void {
         var date_buf: [29]u8 = undefined;
         var bounded = try std.BoundedArray(http.CustomHeader, 3).init(1);
-        bounded.buffer[0] = .{ .name = "Accept", .value = "*" };
-        // bounded.buffer[0] = .{ .name = "Accept-Encoding", .value = "identity" };
+        bounded.buffer[0] = .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" };
         if (opts.etag) |etag| {
             bounded.appendAssumeCapacity(.{ .name = "If-Match", .value = etag });
         }
