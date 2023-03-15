@@ -165,29 +165,19 @@ const FeedLink = struct {
 const FeedLinkArray = std.ArrayList(FeedLink);
 
 pub const FeedRequest = struct {
-    client: Client,
-    allocator: Allocator,
+    request: *Request,
     const Self = @This();
 
-    // pub fn init(allocator: Allocator) Self {
-    //     var client = Client{ .allocator = allocator };
-    //     return .{
-    //         .client = client,
-    //         .allocator= allocator,
-    //     };
-    // }
-
-    // pub fn deinit(self: Self) void {
-    //     self.client.d
-    // }
-
-    pub fn fetch(allocator: Allocator, url: Uri, opts: FetchOptions) !void {
-        var date_buf: [29]u8 = undefined;
+    pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
         var bounded = try std.BoundedArray(http.CustomHeader, 3).init(1);
-        bounded.buffer[0] = .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" };
+        bounded.buffer[0] = .{
+            .name = "Accept",
+            .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html",
+        };
         if (opts.etag) |etag| {
             bounded.appendAssumeCapacity(.{ .name = "If-Match", .value = etag });
         }
+        var date_buf: [29]u8 = undefined;
         if (opts.last_modified_utc) |utc| {
             const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc);
             bounded.appendAssumeCapacity(.{ .name = "If-Modified-Since", .value = date_slice });
@@ -198,37 +188,33 @@ pub const FeedRequest = struct {
             .connection = .close,
             .custom = bounded.slice(),
         };
-        var client = Client{ .allocator = allocator };
-        defer client.deinit();
-        var req = try client.request(url, headers, .{ .handle_redirects = false });
-        defer req.deinit();
 
-        const buf_len = 4 * 1024;
-        var buf: [buf_len]u8 = undefined;
+        var req = try client.request(url, headers, .{ .handle_redirects = false });
         try req.waitForCompleteHead();
 
-        // const header_value = HeaderValues.fromResponse(req.response);
-        // const capacity = req.response.headers.content_length orelse buf_len;
-        // var content = try std.ArrayList(u8).initCapacity(self.allocator, capacity);
-        // defer content.deinit();
-        // content.appendSliceAssumeCapacity(buf[0..amt]);
+        return .{ .request = &req };
+    }
 
-        // The whole buffer hasn't been read
-        req.response.done = req.read_buffer_start == req.read_buffer_len;
+    pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
+        const buf_len = 1 * 1024;
+        var buf: [buf_len]u8 = undefined;
+        const capacity = self.request.response.headers.content_length orelse buf_len;
+        _ = capacity;
+        var content = std.ArrayList(u8).init(allocator);
+        defer content.deinit();
 
+        self.request.response.done = self.request.read_buffer_start == self.request.read_buffer_len;
         while (true) {
-            const amt = try req.read(buf[0..]);
-            print("\nAMT: {d}\n", .{amt});
+            const amt = try self.request.read(buf[0..]);
             if (amt == 0) break;
-            print("|{s}|", .{buf[0..amt]});
-            // try content.appendSlice(buf[0..amt]);
+            try content.appendSlice(buf[0..amt]);
         }
 
-        // return .{
-        //     .content = try content.toOwnedSlice(),
-        //     .headers = header_value,
-        // };
-        print("END\n", .{});
+        return try content.toOwnedSlice();
+    }
+
+    pub fn deinit(self: *Self) void {
+        self.request.deinit();
     }
 };
 
@@ -237,13 +223,20 @@ test "http" {
     print("=> Start http client test\n", .{});
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
+
     // const input = "http://localhost:8282/json_feed.json";
     // const input = "http://localhost:8282/many-links.html";
     // const input = "http://github.com/helix-editor/helix/commits/master.atom";
     const input = "http://localhost:8282/rss2.xml";
     // const input = "http://localhost:8282/atom.atom";
     // const input = "http://news.ycombinator.com/";
+
     const url = try std.Uri.parse(input);
-    try FeedRequest.fetch(arena.allocator(), url, .{});
+    var client = Client{ .allocator = arena.allocator() };
+    defer client.deinit();
+    var req = try FeedRequest.init(&client, url, .{});
+    defer req.deinit();
+    const body = try req.getBody(arena.allocator());
+    defer arena.allocator().free(body);
     print("=> End http client test\n", .{});
 }
