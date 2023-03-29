@@ -1,7 +1,6 @@
 const std = @import("std");
 const datetime = @import("zig-datetime").datetime;
 const feed_types = @import("./feed_types.zig");
-const fix = @import("./fix.zig");
 const ContentType = feed_types.ContentType;
 const RssDateTime = feed_types.RssDateTime;
 const FetchOptions = feed_types.FetchOptions;
@@ -191,7 +190,7 @@ pub const FeedRequest = struct {
         };
 
         var req = try client.request(url, headers, .{ .handle_redirects = true });
-        try fix.waitForCompleteHead(&req);
+        try req.waitForCompleteHead();
         return .{ .request = req };
     }
 
@@ -205,7 +204,7 @@ pub const FeedRequest = struct {
         // self.request.response.done = self.request.read_buffer_start == self.request.read_buffer_len;
         print("|{s}|\n", .{self.request.response.header_bytes.items});
         while (true) {
-            const amt = try fix.read(&self.request, buf[0..]);
+            const amt = try self.request.read(buf[0..]);
             // print("amt: {d}\n", .{amt});
             if (amt == 0) break;
             try content.appendSlice(buf[0..amt]);
@@ -220,8 +219,8 @@ pub const FeedRequest = struct {
 };
 
 test "http" {
-    std.testing.log_level = .debug;
-    print("=> Start http client test\n", .{});
+    // std.testing.log_level = .debug;
+    // print("=> Start http client test\n", .{});
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
@@ -241,5 +240,5 @@ test "http" {
     const body = try req.getBody(arena.allocator());
     defer arena.allocator().free(body);
     print("|{s}|\n", .{body[0..128]});
-    print("=> End http client test\n", .{});
+    // print("=> End http client test\n", .{});
 }
