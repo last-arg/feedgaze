@@ -85,7 +85,7 @@ pub fn build(b: *Builder) !void {
     commonModules(test_cmd);
 
     const test_step = b.step("test", "Run file tests");
-    test_step.dependOn(&test_cmd.step);
+    test_step.dependOn(&test_cmd.run().step);
 }
 
 fn commonModules(step: *CompileStep) void {
