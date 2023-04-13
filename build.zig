@@ -27,14 +27,14 @@ pub fn build(b: *Builder) !void {
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
-    exe.install();
+    b.installArtifact(exe);
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
-    const run_cmd = exe.run();
+    const run_cmd = b.addRunArtifact(exe);
 
-    commonModules(exe);
+    // commonModules(exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -71,7 +71,7 @@ pub fn build(b: *Builder) !void {
         .target = target,
         .optimize = optimize,
     });
-    test_cmd.setFilter(filter);
+    test_cmd.filter = filter;
     test_cmd.setExecCmd(arr.constSlice());
 
     test_cmd.addAnonymousModule("atom.atom", .{
@@ -82,10 +82,11 @@ pub fn build(b: *Builder) !void {
         .source_file = .{ .path = "./test/rss2.xml" },
     });
 
-    commonModules(test_cmd);
+    // commonModules(test_cmd);
 
+    const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");
-    test_step.dependOn(&test_cmd.run().step);
+    test_step.dependOn(&run_unit_tests.step);
 }
 
 fn commonModules(step: *CompileStep) void {
