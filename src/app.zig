@@ -43,13 +43,12 @@ const CliGlobal = struct {
 };
 
 const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
-pub fn Cli(comptime Writer: type) type {
+pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
     return struct {
         allocator: Allocator,
         storage: ?Storage = null,
         clean_opts: Storage.CleanOptions = .{},
         out: Writer,
-        fetchFeedFn: *const fn (*FeedRequest, Allocator, []const u8, FetchOptions) anyerror!FeedRequest.Response = fetchFeed,
         const Self = @This();
 
         pub fn run(self: *Self) !void {
@@ -212,12 +211,15 @@ pub fn Cli(comptime Writer: type) type {
             defer arena.deinit();
 
             // fetch url content
-            var fr = try FeedRequest.init(arena.allocator());
+            const parsed_url = try std.Uri.parse(url);
+            var client = std.http.Client{ .allocator = arena.allocator() };
+            defer client.deinit();
+            var fr = try HttpRequest.init(&client, parsed_url, .{});
             defer fr.deinit();
-            var resp = try self.fetchFeedFn(&fr, arena.allocator(), url, .{});
 
-            const content_type = resp.headers.content_type orelse return error.NoContentType;
-            var parsed = try parse.parse(arena.allocator(), resp.content, content_type);
+            const headers = http_client.HeaderValues.fromRawHeader(fr.getHeaderRaw());
+            const content = try fr.getBody(arena.allocator());
+            var parsed = try parse.parse(arena.allocator(), content, headers.content_type);
             if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                 parsed.feed.updated_raw = parsed.items[0].updated_raw;
             }
@@ -225,7 +227,7 @@ pub fn Cli(comptime Writer: type) type {
             const feed_id = try self.storage.?.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
             _ = try self.storage.?.insertFeedItems(parsed.items);
-            try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, feed_id));
+            try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(headers, feed_id));
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
@@ -240,17 +242,19 @@ pub fn Cli(comptime Writer: type) type {
             }
             const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input, options);
 
-            for (feed_updates) |f_update| {
-                var fr = try FeedRequest.init(arena.allocator());
-                defer fr.deinit();
+            var client = std.http.Client{ .allocator = arena.allocator() };
+            defer client.deinit();
 
-                var resp = try self.fetchFeedFn(&fr, arena.allocator(), f_update.feed_url, .{
+            for (feed_updates) |f_update| {
+                const parsed_url = try std.Uri.parse(f_update.feed_url);
+                var fr = try HttpRequest.init(&client, parsed_url, .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 });
 
-                const content_type = resp.headers.content_type orelse .xml;
-                var parsed = try parse.parse(arena.allocator(), resp.content, content_type);
+                const headers = http_client.HeaderValues.fromRawHeader(fr.getHeaderRaw());
+                const content = try fr.getBody(arena.allocator());
+                var parsed = try parse.parse(arena.allocator(), content, headers.content_type);
 
                 if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                     parsed.feed.updated_raw = parsed.items[0].updated_raw;
@@ -265,7 +269,7 @@ pub fn Cli(comptime Writer: type) type {
                 try self.storage.?.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(resp.headers, f_update.feed_id));
+                try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(headers, f_update.feed_id));
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
@@ -313,8 +317,9 @@ pub fn Cli(comptime Writer: type) type {
 }
 
 const Uri = std.Uri;
-const FeedRequest = @import("./http_client.zig").FeedRequest;
-fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !FeedRequest.Response {
+const http_client = @import("./http_client.zig");
+const FeedRequest = http_client.FeedRequest;
+fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
     _ = allocator;
     const uri = try Uri.parse(url);
     const resp = try fr.fetch(uri, opts);
@@ -323,7 +328,7 @@ fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: Fetc
 
 const Test = struct {
     var feed_id: ?usize = null;
-    pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!FeedRequest.Response {
+    pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!Response {
         _ = fr;
         _ = opts;
         _ = allocator;
@@ -338,7 +343,7 @@ const Test = struct {
 test "cli.run" {
     std.testing.log_level = .debug;
     if (@import("builtin").target.os.tag != .linux) {
-        std.log.info("Need to run tests in Linux", .{});
+        std.log.info("Need to run tests on Linux", .{});
         return;
     }
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -348,7 +353,8 @@ test "cli.run" {
     var buf: [10 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
     var fb_writer = fb.writer();
-    const CliTest = Cli(@TypeOf(fb_writer));
+    // const CliTest = Cli(@TypeOf(fb_writer), FeedRequest);
+    const CliTest = Cli(@TypeOf(fb_writer), http_client.TestRequest);
     var app_cli = CliTest{
         .allocator = arena.allocator(),
         .out = fb_writer,
@@ -365,6 +371,7 @@ test "cli.run" {
     // var input = "http://localhost:8282/rss2".*;
     {
         var add_cmd = "add".*;
+        http_client.TestRequest.text = @embedFile("rss2.xml");
         std.os.argv = &[_][*:0]u8{ cmd[0..], db_flag[0..], db_input[0..], add_cmd[0..], input[0..] };
         try app_cli.run();
         storage = app_cli.storage.?;

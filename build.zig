@@ -34,7 +34,7 @@ pub fn build(b: *Builder) !void {
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
 
-    // commonModules(exe);
+    commonModules(exe);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -82,7 +82,10 @@ pub fn build(b: *Builder) !void {
         .source_file = .{ .path = "./test/rss2.xml" },
     });
 
-    // commonModules(test_cmd);
+    commonModules(test_cmd);
+    test_cmd.addAnonymousModule("rss2.xml", .{
+        .source_file = .{ .path = "./test/rss2.xml" },
+    });
 
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");

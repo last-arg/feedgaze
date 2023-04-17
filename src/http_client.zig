@@ -12,56 +12,54 @@ const Allocator = mem.Allocator;
 const Request = http.Client.Request;
 const Response = http.Client.Response;
 const Uri = std.Uri;
+const assert = std.debug.assert;
 
-// pub const HeaderValues = struct {
-//     content_type: ?ContentType = null,
-//     etag: ?[]const u8 = null,
-//     last_modified: ?i64 = null,
-//     expires: ?i64 = null,
-//     max_age: ?u32 = null,
-//     status: http.Status,
+pub const HeaderValues = struct {
+    content_type: ?ContentType = null,
+    etag: ?[]const u8 = null,
+    last_modified: ?i64 = null,
+    expires: ?i64 = null,
+    max_age: ?u32 = null,
 
-//     pub fn fromResponse(resp: Response) HeaderValues {
-//         const etag_key = "etag:";
-//         const content_type_key = "content-type:";
-//         const last_modified_key = "last-modified:";
-//         const expires_key = "expires:";
-//         const cache_control_key = "cache-control:";
+    pub fn fromRawHeader(input: []const u8) HeaderValues {
+        const etag_key = "etag:";
+        const content_type_key = "content-type:";
+        const last_modified_key = "last-modified:";
+        const expires_key = "expires:";
+        const cache_control_key = "cache-control:";
 
-//         var result: HeaderValues = .{
-//             .status = resp.headers.status,
-//         };
-//         var iter = std.mem.split(u8, resp.header_bytes.items, "\r\n");
-//         _ = iter.first();
-//         while (iter.next()) |line| {
-//             if (std.ascii.startsWithIgnoreCase(line, etag_key)) {
-//                 result.etag = std.mem.trim(u8, line[etag_key.len..], " ");
-//             } else if (std.ascii.startsWithIgnoreCase(line, content_type_key)) {
-//                 result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
-//             } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
-//                 const raw = std.mem.trim(u8, line[last_modified_key.len..], " ");
-//                 result.last_modified = RssDateTime.parse(raw) catch null;
-//             } else if (std.ascii.startsWithIgnoreCase(line, expires_key)) {
-//                 const raw = std.mem.trim(u8, line[expires_key.len..], " ");
-//                 result.expires = RssDateTime.parse(raw) catch null;
-//             } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
-//                 var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
-//                 while (key_value_iter.next()) |key_value| {
-//                     var pair_iter = mem.split(u8, key_value, "=");
-//                     const key = pair_iter.next() orelse continue;
-//                     const value = pair_iter.next() orelse continue;
-//                     if (mem.eql(u8, "max-age", key)) {
-//                         result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
-//                         break;
-//                     } else if (mem.eql(u8, "s-maxage", value)) {
-//                         result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
-//                     }
-//                 }
-//             }
-//         }
-//         return result;
-//     }
-// };
+        var result: HeaderValues = .{};
+        var iter = std.mem.split(u8, input, "\r\n");
+        _ = iter.first();
+        while (iter.next()) |line| {
+            if (std.ascii.startsWithIgnoreCase(line, etag_key)) {
+                result.etag = std.mem.trim(u8, line[etag_key.len..], " ");
+            } else if (std.ascii.startsWithIgnoreCase(line, content_type_key)) {
+                result.content_type = ContentType.fromString(std.mem.trim(u8, line[content_type_key.len..], " "));
+            } else if (std.ascii.startsWithIgnoreCase(line, last_modified_key)) {
+                const raw = std.mem.trim(u8, line[last_modified_key.len..], " ");
+                result.last_modified = RssDateTime.parse(raw) catch null;
+            } else if (std.ascii.startsWithIgnoreCase(line, expires_key)) {
+                const raw = std.mem.trim(u8, line[expires_key.len..], " ");
+                result.expires = RssDateTime.parse(raw) catch null;
+            } else if (std.ascii.startsWithIgnoreCase(line, cache_control_key)) {
+                var key_value_iter = std.mem.split(u8, line[cache_control_key.len..], ",");
+                while (key_value_iter.next()) |key_value| {
+                    var pair_iter = mem.split(u8, key_value, "=");
+                    const key = pair_iter.next() orelse continue;
+                    const value = pair_iter.next() orelse continue;
+                    if (mem.eql(u8, "max-age", key)) {
+                        result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
+                        break;
+                    } else if (mem.eql(u8, "s-maxage", value)) {
+                        result.max_age = std.fmt.parseUnsigned(u32, value, 10) catch continue;
+                    }
+                }
+            }
+        }
+        return result;
+    }
+};
 
 // Resources:
 // https://jackevansevo.github.io/the-struggles-of-building-a-feed-reader.html
@@ -185,12 +183,14 @@ pub const FeedRequest = struct {
 
         const headers = Request.Headers{
             // .version = .@"HTTP/1.0",
-            // .connection = .close,
+            .connection = .close,
+            .user_agent = "feedgaze",
             .custom = bounded.slice(),
         };
 
-        var req = try client.request(url, headers, .{ .handle_redirects = true });
-        try req.waitForCompleteHead();
+        var req = try client.request(url, headers, .{});
+        try req.do();
+        print("header: |{s}|\n", .{req.response.parser.header_bytes.items});
         return .{ .request = req };
     }
 
@@ -198,14 +198,17 @@ pub const FeedRequest = struct {
         const buf_len = 8 * 1024;
         var buf: [buf_len]u8 = undefined;
         const capacity = self.request.response.headers.content_length orelse buf_len;
+        // const capacity = buf_len;
+        print("cap: {d}\n", .{capacity});
         var content = try std.ArrayList(u8).initCapacity(allocator, capacity);
         defer content.deinit();
 
         // self.request.response.done = self.request.read_buffer_start == self.request.read_buffer_len;
-        print("|{s}|\n", .{self.request.response.header_bytes.items});
+        // print("|{s}|\n", .{self.request.response.parser.header_bytes.items});
         while (true) {
-            const amt = try self.request.read(buf[0..]);
-            // print("amt: {d}\n", .{amt});
+            // const amt = try read(&self.request, &buf);
+            const amt = try self.request.read(&buf);
+            print("amt: {d}\n", .{amt});
             if (amt == 0) break;
             try content.appendSlice(buf[0..amt]);
         }
@@ -213,24 +216,70 @@ pub const FeedRequest = struct {
         return try content.toOwnedSlice();
     }
 
+    pub fn getHeaderRaw(self: Self) []const u8 {
+        return self.request.response.parser.header_bytes.items;
+    }
+
     pub fn deinit(self: *Self) void {
         self.request.deinit();
     }
 };
 
+pub const TestRequest = struct {
+    const Self = @This();
+    body: []const u8 = "self.body",
+    pub var text: []const u8 = "TestRequest.text";
+
+    pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
+        _ = client;
+        _ = url;
+        _ = opts;
+        return .{};
+    }
+
+    pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
+        _ = self;
+        _ = allocator;
+        return TestRequest.text;
+    }
+
+    pub fn getHeaderRaw(self: Self) []const u8 {
+        _ = self;
+        const r =
+            \\HTTP/1.1 200 OK
+            \\Content-Encoding: gzip
+            \\Content-Type: application/xml
+            \\Vary: Accept-Encoding
+            \\Last-Modified: Sat, 11 Mar 2023 11:22:28 GMT
+            \\Accept-Ranges: bytes
+            \\X-Content-Type-Options: nosniff
+            \\Date: Mon, 17 Apr 2023 15:23:58 GMT
+            \\Server: redbean/2.2.0
+            \\Connection: close
+            \\Transfer-Encoding: chunked
+            \\
+        ;
+        return r;
+    }
+
+    pub fn deinit(self: *Self) void {
+        _ = self;
+    }
+};
+
 test "http" {
-    // std.testing.log_level = .debug;
-    // print("=> Start http client test\n", .{});
+    std.testing.log_level = .debug;
+    std.log.info("=> Start http client test\n", .{});
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
     // const input = "http://localhost:8282/json_feed.json";
     // const input = "http://localhost:8282/many-links.html";
     // const input = "http://github.com/helix-editor/helix/commits/master.atom";
-    // const input = "http://localhost:8282/rss2.xml";
-    const input = "http://localhost:8282/rss2";
+    const input = "http://localhost:8282/rss2.xml";
+    // const input = "http://localhost:8282/rss2";
     // const input = "http://localhost:8282/atom.atom";
-    // const input = "http://news.ycombinator.com/";
+    // const input = "https://www.google.com/";
 
     const url = try std.Uri.parse(input);
     var client = Client{ .allocator = arena.allocator() };
