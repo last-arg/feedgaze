@@ -50,6 +50,7 @@ pub const Storage = struct {
             _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
             _ = try db.pragma(usize, .{}, "synchronous", "normal");
             _ = try db.pragma(usize, .{}, "temp_store", "2");
+            _ = try db.pragma(usize, .{}, "mmap_size", "30000000000");
             _ = try db.pragma(usize, .{}, "cache_size", "-32000");
         }
 
