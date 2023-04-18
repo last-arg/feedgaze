@@ -92,24 +92,45 @@ pub const Storage = struct {
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
-            \\FROM feed WHERE feed_url LIKE '%' || 'localhost' || '%' OR page_url LIKE '%' || ? || '%';
+            \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{url});
+        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
     }
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
-        const url = if (inputs.len > 0) inputs[0] else "";
-        const query =
+        const query_start =
             \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
-            \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'
-            \\ORDER BY updated_timestamp DESC LIMIT ?;
+            \\FROM feed 
         ;
 
-        // var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
-        // defer stmt.deinit();
-        // return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
+        const query_like = "feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'";
+        const query_order = "ORDER BY updated_timestamp DESC LIMIT {d};";
 
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url, opts.limit });
+        try storage_arr.resize(0);
+        try storage_arr.appendSlice(query_start);
+        var values = try ArrayList([]const u8).initCapacity(allocator, inputs.len * 2);
+        defer values.deinit();
+        if (inputs.len >= 0) {
+            try storage_arr.append(' ');
+            try storage_arr.appendSlice("WHERE");
+            for (inputs, 0..) |term, i| {
+                if (i != 0) {
+                    try storage_arr.append(' ');
+                    try storage_arr.appendSlice("AND");
+                }
+                try storage_arr.append(' ');
+                try storage_arr.appendSlice(query_like);
+                values.appendAssumeCapacity(term);
+                values.appendAssumeCapacity(term);
+            }
+        }
+
+        try storage_arr.append(' ');
+        try storage_arr.writer().print(query_order, .{opts.limit});
+
+        var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+        defer stmt.deinit();
+        return try stmt.all(Feed, allocator, .{}, values.items);
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
