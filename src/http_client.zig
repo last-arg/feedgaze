@@ -183,37 +183,20 @@ pub const FeedRequest = struct {
 
         const headers = Request.Headers{
             // .version = .@"HTTP/1.0",
-            .connection = .close,
+            // .connection = .close,
             .user_agent = "feedgaze",
             .custom = bounded.slice(),
         };
 
         var req = try client.request(url, headers, .{});
+        // try req.start();
         try req.do();
         print("header: |{s}|\n", .{req.response.parser.header_bytes.items});
         return .{ .request = req };
     }
 
     pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
-        const buf_len = 8 * 1024;
-        var buf: [buf_len]u8 = undefined;
-        const capacity = self.request.response.headers.content_length orelse buf_len;
-        // const capacity = buf_len;
-        print("cap: {d}\n", .{capacity});
-        var content = try std.ArrayList(u8).initCapacity(allocator, capacity);
-        defer content.deinit();
-
-        // self.request.response.done = self.request.read_buffer_start == self.request.read_buffer_len;
-        // print("|{s}|\n", .{self.request.response.parser.header_bytes.items});
-        while (true) {
-            // const amt = try read(&self.request, &buf);
-            const amt = try self.request.read(&buf);
-            print("amt: {d}\n", .{amt});
-            if (amt == 0) break;
-            try content.appendSlice(buf[0..amt]);
-        }
-
-        return try content.toOwnedSlice();
+        return try self.request.reader().readAllAlloc(allocator, std.math.maxInt(u32));
     }
 
     pub fn getHeaderRaw(self: Self) []const u8 {
