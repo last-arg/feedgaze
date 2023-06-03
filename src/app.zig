@@ -361,7 +361,7 @@ test "cli.run" {
     };
     var storage: Storage = undefined;
 
-    // TODO: test url redirect
+    // TODO: test url redirect if FeedRequest used
     // Wait for this pull request: https://github.com/ziglang/zig/pull/14762
     // PR has been merge, have to wait until new version of zig is available
     var db_flag = "--database".*;
@@ -370,9 +370,10 @@ test "cli.run" {
     var input = "http://localhost:8282/rss2.xml".*;
     // var input = "http://localhost:8282/rss2".*;
     {
-        var add_cmd = "add".*;
         http_client.TestRequest.text = @embedFile("rss2.xml");
-        std.os.argv = &[_][*:0]u8{ cmd[0..], db_flag[0..], db_input[0..], add_cmd[0..], input[0..] };
+        var add_cmd = "add".*;
+        var argv = [_][*:0]u8{ &cmd, &db_flag, &db_input, &add_cmd, &input };
+        std.os.argv = &argv;
         try app_cli.run();
         storage = app_cli.storage.?;
 
@@ -392,7 +393,8 @@ test "cli.run" {
         // feedgaze show [<url>] [--limit]
         // - will show latest updated feeds first
         var show_cmd = "show".*;
-        std.os.argv = &[_][*:0]u8{ cmd[0..], show_cmd[0..], input[0..] };
+        var argv = [_][*:0]u8{ &cmd, &show_cmd, &input };
+        std.os.argv = &argv;
         try app_cli.run();
         const r = fb.getWritten();
         // print("|{s}|\n", .{fb.getWritten()});
@@ -421,7 +423,8 @@ test "cli.run" {
         //   - see if feed needs updating
         // - update if needed
         var subcmd = "update".*;
-        std.os.argv = &[_][*:0]u8{ cmd[0..], subcmd[0..], input[0..] };
+        var argv = [_][*:0]u8{ &cmd, &subcmd, &input };
+        std.os.argv = &argv;
         try app_cli.run();
         var items = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), 1, .{});
         try std.testing.expectEqual(@as(usize, 3), items.len);
@@ -451,7 +454,8 @@ test "cli.run" {
 
     {
         var remove_cmd = "remove".*;
-        std.os.argv = &[_][*:0]u8{ cmd[0..], remove_cmd[0..], input[0..] };
+        var argv = [_][*:0]u8{ &cmd, &remove_cmd, &input };
+        std.os.argv = &argv;
         try app_cli.run();
 
         const feeds = try storage.getFeedsWithUrl(arena.allocator(), &input);
