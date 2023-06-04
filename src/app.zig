@@ -361,14 +361,11 @@ test "cli.run" {
     };
     var storage: Storage = undefined;
 
-    // TODO: test url redirect if FeedRequest used
-    // Wait for this pull request: https://github.com/ziglang/zig/pull/14762
-    // PR has been merge, have to wait until new version of zig is available
     var db_flag = "--database".*;
     var db_input = ":memory:".*;
     // var db_input = "tmp/h/hello.db".*;
-    var input = "http://localhost:8282/rss2.xml".*;
-    // var input = "http://localhost:8282/rss2".*;
+    // var input = "http://localhost:8282/rss2.xml".*;
+    var input = "http://localhost:8282/rss2".*;
     {
         http_client.TestRequest.text = @embedFile("rss2.xml");
         var add_cmd = "add".*;
