@@ -217,9 +217,9 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
             var fr = try HttpRequest.init(&client, parsed_url, .{});
             defer fr.deinit();
 
-            const headers = http_client.HeaderValues.fromRawHeader(fr.getHeaderRaw());
             const content = try fr.getBody(arena.allocator());
-            var parsed = try parse.parse(arena.allocator(), content, headers.content_type);
+            const content_type = ContentType.fromString(fr.request.response.headers.getFirstValue("content-type") orelse "");
+            var parsed = try parse.parse(arena.allocator(), content, content_type);
             if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                 parsed.feed.updated_raw = parsed.items[0].updated_raw;
             }
@@ -227,7 +227,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
             const feed_id = try self.storage.?.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
             _ = try self.storage.?.insertFeedItems(parsed.items);
-            try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(headers, feed_id));
+            try self.storage.?.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(fr.request.response.headers));
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
@@ -252,9 +252,9 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                     .last_modified_utc = f_update.last_modified_utc,
                 });
 
-                const headers = http_client.HeaderValues.fromRawHeader(fr.getHeaderRaw());
                 const content = try fr.getBody(arena.allocator());
-                var parsed = try parse.parse(arena.allocator(), content, headers.content_type);
+                const content_type = ContentType.fromString(fr.request.response.headers.getFirstValue("content-type") orelse "");
+                var parsed = try parse.parse(arena.allocator(), content, content_type);
 
                 if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                     parsed.feed.updated_raw = parsed.items[0].updated_raw;
@@ -269,7 +269,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                 try self.storage.?.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                try self.storage.?.updateFeedUpdate(FeedUpdate.fromHeaders(headers, f_update.feed_id));
+                try self.storage.?.updateFeedUpdate(f_update.feed_id, FeedUpdate.fromHeaders(fr.request.response.headers));
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }

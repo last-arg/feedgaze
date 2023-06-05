@@ -341,10 +341,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{});
     }
 
-    pub fn updateFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
-        if (feed_update.feed_id == null) {
-            return error.FeedIdIsNull;
-        }
+    pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
             \\UPDATE feed_update SET
             \\  cache_control_max_age = @cache_control_max_age,
@@ -354,7 +351,13 @@ pub const Storage = struct {
             \\  last_update = (strftime('%s', 'now'))
             \\WHERE feed_id = @feed_id;
         ;
-        try self.sql_db.exec(query, .{}, feed_update);
+        try self.sql_db.exec(query, .{}, .{
+            .feed_id = feed_id,
+            .cache_control_max_age = feed_update.cache_control_max_age,
+            .expires_utc = feed_update.expires_utc,
+            .last_modified_utc = feed_update.last_modified_utc,
+            .etag = feed_update.etag,
+        });
     }
 
     pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem, clean_opts: CleanOptions) !void {

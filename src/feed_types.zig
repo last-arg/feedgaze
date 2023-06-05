@@ -222,19 +222,53 @@ pub const FeedItem = struct {
 };
 
 pub const FeedUpdate = struct {
-    feed_id: ?usize = null,
     cache_control_max_age: ?u32 = null,
     expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
 
-    pub fn fromHeaders(headers: HeaderValues, feed_id: ?usize) @This() {
+    pub fn fromHeaders(headers: std.http.Headers) @This() {
+        const last_modified = blk: {
+            if (headers.getFirstValue("last-modified")) |value| {
+                break :blk RssDateTime.parse(value) catch null;
+            }
+
+            break :blk null;
+        };
+
+        const expires = blk: {
+            if (headers.getFirstValue("expires")) |value| {
+                break :blk RssDateTime.parse(value) catch null;
+            }
+
+            break :blk null;
+        };
+
+        const cache_control = blk: {
+            var result: ?u32 = null;
+            if (headers.getFirstValue("cache-control")) |value| {
+                var iter = std.mem.split(u8, value, ",");
+                while (iter.next()) |key_value| {
+                    var pair_iter = std.mem.split(u8, key_value, "=");
+                    const key = pair_iter.next() orelse continue;
+                    const iter_value = pair_iter.next() orelse continue;
+                    if (std.mem.eql(u8, "max-age", key)) {
+                        result = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                        break;
+                    } else if (std.mem.eql(u8, "s-maxage", value)) {
+                        result = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                    }
+                }
+            }
+
+            break :blk result;
+        };
+
         return .{
-            .feed_id = feed_id,
-            .cache_control_max_age = headers.max_age,
-            .expires_utc = headers.expires,
-            .last_modified_utc = headers.last_modified,
-            .etag = headers.etag,
+            .cache_control_max_age = cache_control,
+            .expires_utc = expires,
+            .last_modified_utc = last_modified,
+            .etag = headers.getFirstValue("etag"),
         };
     }
 };
