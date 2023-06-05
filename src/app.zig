@@ -350,7 +350,7 @@ test "cli.run" {
     defer arena.deinit();
     var cmd = "feedgaze".*;
     // var storage = try Storage.init("/media/hdd/code/feedgaze/tmp/db/fg.sqlite");
-    var buf: [10 * 1024]u8 = undefined;
+    var buf: [4 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
     var fb_writer = fb.writer();
     // const CliTest = Cli(@TypeOf(fb_writer), FeedRequest);
