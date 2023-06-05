@@ -166,32 +166,23 @@ pub const FeedRequest = struct {
     request: Request,
     const Self = @This();
 
+    var buf: [1024]u8 = undefined;
     pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
-        var bounded = try std.BoundedArray(http.CustomHeader, 3).init(1);
-        bounded.buffer[0] = .{
-            .name = "Accept",
-            .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html",
-        };
+        var fb = std.heap.FixedBufferAllocator.init(&buf);
+        var headers = http.Headers.init(fb.allocator());
+        try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
         if (opts.etag) |etag| {
-            bounded.appendAssumeCapacity(.{ .name = "If-Match", .value = etag });
+            try headers.append("If-Match", etag);
         }
         var date_buf: [29]u8 = undefined;
         if (opts.last_modified_utc) |utc| {
             const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc);
-            bounded.appendAssumeCapacity(.{ .name = "If-Modified-Since", .value = date_slice });
+            try headers.append("If-Modified-Since", date_slice);
         }
 
-        const headers = Request.Headers{
-            // .version = .@"HTTP/1.0",
-            // .connection = .close,
-            .user_agent = "feedgaze",
-            .custom = bounded.slice(),
-        };
-
-        var req = try client.request(url, headers, .{});
-        // try req.start();
-        try req.do();
-        print("header: |{s}|\n", .{req.response.parser.header_bytes.items});
+        var req = try client.request(.GET, url, headers, .{});
+        try req.start();
+        try req.wait();
         return .{ .request = req };
     }
 
