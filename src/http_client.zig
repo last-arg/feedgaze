@@ -166,8 +166,8 @@ pub const FeedRequest = struct {
     request: Request,
     const Self = @This();
 
-    var buf: [1024]u8 = undefined;
     pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
+        var buf: [1024]u8 = undefined;
         var fb = std.heap.FixedBufferAllocator.init(&buf);
         var headers = http.Headers.init(fb.allocator());
         try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
@@ -202,13 +202,18 @@ pub const FeedRequest = struct {
 pub const TestRequest = struct {
     const Self = @This();
     body: []const u8 = "self.body",
+    request: http.Client.Request,
+
     pub var text: []const u8 = "TestRequest.text";
+    var buf: [1024]u8 = undefined;
 
     pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
-        _ = client;
-        _ = url;
         _ = opts;
-        return .{};
+        var fb = std.heap.FixedBufferAllocator.init(&buf);
+        var headers = http.Headers.init(fb.allocator());
+        return .{
+            .request = try client.request(.GET, url, headers, .{}),
+        };
     }
 
     pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
@@ -237,7 +242,7 @@ pub const TestRequest = struct {
     }
 
     pub fn deinit(self: *Self) void {
-        _ = self;
+        self.request.deinit();
     }
 };
 
