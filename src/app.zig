@@ -316,30 +316,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
     };
 }
 
-const Uri = std.Uri;
 const http_client = @import("./http_client.zig");
-const FeedRequest = http_client.FeedRequest;
-fn fetchFeed(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) !Response {
-    _ = allocator;
-    const uri = try Uri.parse(url);
-    const resp = try fr.fetch(uri, opts);
-    return resp;
-}
-
-const Test = struct {
-    var feed_id: ?usize = null;
-    pub fn fetch(fr: *FeedRequest, allocator: Allocator, url: []const u8, opts: FetchOptions) anyerror!Response {
-        _ = fr;
-        _ = opts;
-        _ = allocator;
-        _ = url;
-        return .{
-            .content = @embedFile("rss2.xml"),
-            .headers = .{ .content_type = .rss, .etag = null, .last_modified = null, .max_age = null, .status = .ok },
-        };
-    }
-};
-
 test "cli.run" {
     std.testing.log_level = .debug;
     if (@import("builtin").target.os.tag != .linux) {
