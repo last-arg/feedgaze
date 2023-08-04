@@ -443,7 +443,7 @@ pub const Storage = struct {
         const del_query =
             \\DELETE FROM item WHERE feed_id = ? AND position >= ?;
         ;
-        const max_pos = std.math.min(items_len, opts.max_item_count);
+        const max_pos = @min(items_len, opts.max_item_count);
         try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
     }
 };

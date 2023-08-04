@@ -834,7 +834,7 @@ pub const Rss = struct {
                                 },
                                 .description => {
                                     item_description = try xmlCharacterData(&xml_parser, arena.allocator(), value, "description");
-                                    const len = std.math.min(item_description.?.len, max_title_len);
+                                    const len = @min(item_description.?.len, max_title_len);
                                     item_description = item_description.?[0..len];
                                 },
                                 ._ignore => {},
@@ -1138,7 +1138,7 @@ pub const Json = struct {
             };
             const title = item.title orelse blk: {
                 const text = (item.content_text orelse item.content_html).?;
-                const len = std.math.min(text.len, max_title_len);
+                const len = @min(text.len, max_title_len);
                 break :blk text[0..len];
             };
             const new_item = Feed.Item{

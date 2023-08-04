@@ -134,7 +134,7 @@ pub const Storage = struct {
     }
 
     pub fn addItems(self: *Self, feed_id: u64, feed_items: []Feed.Item) !void {
-        const items = feed_items[0..std.math.min(feed_items.len, g.max_items_per_feed)];
+        const items = feed_items[0..@min(feed_items.len, g.max_items_per_feed)];
         // Modifies item order in memory. Don't use after this if order is important.
         std.mem.reverse(Feed.Item, items);
         const hasGuidOrLink = blk: {
