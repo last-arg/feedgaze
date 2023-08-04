@@ -353,11 +353,11 @@ pub const Atom = struct {
                                 const published_timestamp = blk: {
                                     if (published_raw) |date| {
                                         const date_utc = try parseDateToUtc(date);
-                                        break :blk @floatToInt(i64, date_utc.toSeconds());
+                                        break :blk @as(i64, @intFromFloat(date_utc.toSeconds()));
                                     }
                                     if (updated_raw) |date| {
                                         const date_utc = try parseDateToUtc(date);
-                                        break :blk @floatToInt(i64, date_utc.toSeconds());
+                                        break :blk @as(i64, @intFromFloat(date_utc.toSeconds()));
                                     }
                                     break :blk null;
                                 };
@@ -442,7 +442,7 @@ pub const Atom = struct {
         var updated_timestamp: ?i64 = null;
         if (feed_date_raw) |date| {
             const date_utc = try parseDateToUtc(date);
-            updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
+            updated_timestamp = @as(i64, @intFromFloat(date_utc.toSeconds()));
         } else if (entries.items.len > 0 and entries.items[0].updated_raw != null) {
             var tmp_timestamp: i64 = entries.items[0].updated_timestamp.?;
             for (entries.items[1..]) |item| {
@@ -758,7 +758,7 @@ pub const Rss = struct {
                         const updated_timestamp = blk: {
                             if (item_pub_date) |date| {
                                 const date_utc = try parseDateToUtc(date);
-                                break :blk @floatToInt(i64, date_utc.toSeconds());
+                                break :blk @as(i64, @intFromFloat(date_utc.toSeconds()));
                             }
                             break :blk null;
                         };
@@ -849,7 +849,7 @@ pub const Rss = struct {
         var updated_timestamp: ?i64 = null;
         if (date_raw) |date| {
             const date_utc = try parseDateToUtc(date);
-            updated_timestamp = @floatToInt(i64, date_utc.toSeconds());
+            updated_timestamp = @as(i64, @intFromFloat(date_utc.toSeconds()));
         } else if (items.items.len > 0 and items.items[0].updated_raw != null) {
             var tmp_timestamp: i64 = items.items[0].updated_timestamp.?;
             for (items.items[1..]) |item| {
@@ -929,7 +929,7 @@ pub const Rss = struct {
     pub fn pubDateToTimestamp(str: []const u8) !i64 {
         const dt = try Rss.parseDateToUtc(str);
         const date_time_gmt = dt.shiftTimezone(&timezones.GMT);
-        return @intCast(i64, date_time_gmt.toTimestamp());
+        return @as(i64, @intCast(date_time_gmt.toTimestamp()));
     }
 
     // Isn't the same as Datetime.parseModifiedSince(). In HTTP header timezone is always GMT.
@@ -946,7 +946,7 @@ pub const Rss = struct {
 
         // month
         const month_str = iter.next() orelse return error.InvalidPubDate;
-        const month = @enumToInt(try datetime.Month.parseAbbr(month_str));
+        const month = @intFromEnum(try datetime.Month.parseAbbr(month_str));
 
         // year
         // year can also be 2 digits
@@ -1132,7 +1132,7 @@ pub const Json = struct {
             const date_utc = blk: {
                 if (date_str) |date| {
                     const date_utc = try parseDateToUtc(date);
-                    break :blk @floatToInt(i64, date_utc.toSeconds());
+                    break :blk @as(i64, @intFromFloat(date_utc.toSeconds()));
                 }
                 break :blk null;
             };

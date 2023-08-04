@@ -258,7 +258,7 @@ pub const Storage = struct {
         const fields = comptime meta.fields(T);
         const len = comptime deallocFieldsLen(T);
         comptime var result: [len]DeAllocField = undefined;
-        inline for (fields) |field, i| {
+        inline for (fields, 0..) |field, i| {
             const is_slice = field.field_type == []const u8 or field.field_type == ?[]const u8 or
                 field.field_type == []u8 or field.field_type == ?[]u8;
 
@@ -494,7 +494,7 @@ pub const Storage = struct {
             const file = try std.fs.openFileAbsolute(row.location, .{});
             defer file.close();
             var file_stat = try file.stat();
-            const mtime_sec = @intCast(i64, @divFloor(file_stat.mtime, time.ns_per_s));
+            const mtime_sec = @as(i64, @intCast(@divFloor(file_stat.mtime, time.ns_per_s)));
             if (!opts.force) {
                 if (row.last_modified_timestamp) |last_modified| {
                     if (last_modified == mtime_sec) {
@@ -853,7 +853,7 @@ test "add, delete feed" {
     {
         const items = try feed_db.db.selectAll(ItemsResult, all_items_query, .{});
         try expectEqual(items.len, items_src.len);
-        for (items) |item, i| {
+        for (items, 0..) |item, i| {
             try std.testing.expectEqualStrings(items_src[i].title, item.title);
         }
     }
@@ -887,7 +887,7 @@ test "Storage local" {
     const file = try fs.openFileAbsolute(abs_path, .{});
     defer file.close();
     const stat = try file.stat();
-    const mtime_sec = @intCast(i64, @divFloor(stat.mtime, time.ns_per_s));
+    const mtime_sec = @as(i64, @intCast(@divFloor(stat.mtime, time.ns_per_s)));
 
     var feed = try parse.parse(&arena, contents);
 
@@ -909,7 +909,7 @@ test "Storage local" {
     {
         const items = try feed_db.db.selectAll(LocalItem, all_items_query, .{});
         try expectEqual(items.len, last_items.len);
-        for (items) |item, i| {
+        for (items, 0..) |item, i| {
             try expectEqualStrings(item.title, last_items[i].title);
         }
 
@@ -951,7 +951,7 @@ test "Storage local" {
     {
         const items = try feed_db.db.selectAll(LocalItem, all_items_query, .{});
         try expect(items.len == feed.items.len);
-        for (items) |item, i| {
+        for (items, 0..) |item, i| {
             const f_item = feed.items[i];
             try expectEqualStrings(item.title, f_item.title);
         }

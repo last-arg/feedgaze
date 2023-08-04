@@ -104,7 +104,7 @@ pub const Sessions = struct {
     }
 
     pub fn getIndex(self: *Self, token: u64) ?u64 {
-        for (self.list.items) |s, i| {
+        for (self.list.items, 0..) |s, i| {
             if (s.id == token) return i;
         }
         return null;
@@ -198,7 +198,7 @@ pub const Server = struct {
                 url = value;
             } else if (mem.eql(u8, "tags", key)) {
                 var tmp_tags = value;
-                mem.replaceScalar(u8, @ptrCast(*[]u8, &tmp_tags).*, '+', ' ');
+                mem.replaceScalar(u8, @as(*[]u8, @ptrCast(&tmp_tags)).*, '+', ' ');
                 tags = tmp_tags;
             } else if (mem.eql(u8, "submit_feed_links", key)) {
                 is_submit_feed_links = true;
@@ -441,12 +441,12 @@ pub const Server = struct {
 
         var active_tags = try ArrayList([]const u8).initCapacity(arena.allocator(), 3);
         defer active_tags.deinit();
-        const tags_raw = @ptrCast(
+        const tags_raw = @as(
             *const []const u8,
-            @alignCast(
+            @ptrCast(@alignCast(
                 @alignOf(*const []const u8),
                 captures,
-            ),
+            )),
         );
         const tags = (try zuri.Uri.decode(arena.allocator(), tags_raw.*)) orelse tags_raw.*;
         var it = mem.split(u8, tags, "+");
@@ -539,7 +539,7 @@ pub const Server = struct {
             }
             if (feed.updated_timestamp) |timestamp| {
                 try w.writeAll(" | ");
-                const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
+                const dt = Datetime.fromSeconds(@as(f64, @floatFromInt(timestamp)));
                 var buf: [32]u8 = undefined;
                 const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
                     dt.date.year, dt.date.month,  dt.date.day,
@@ -562,7 +562,7 @@ pub const Server = struct {
                 }
                 if (item.pub_date_utc) |timestamp| {
                     try w.writeAll(" | ");
-                    const dt = Datetime.fromSeconds(@intToFloat(f64, timestamp));
+                    const dt = Datetime.fromSeconds(@as(f64, @floatFromInt(timestamp)));
                     var buf: [32]u8 = undefined;
                     const timestamp_str = fmt.bufPrint(&buf, timestamp_fmt, .{
                         dt.date.year, dt.date.month,  dt.date.day,
@@ -712,7 +712,7 @@ test "@active post, get" {
 
     const new_len = http.general_request_headers_curl.len + 1;
     var new_headers: [new_len][]const u8 = undefined;
-    for (http.general_request_headers_curl) |header, i| new_headers[i] = header;
+    for (http.general_request_headers_curl, 0..) |header, i| new_headers[i] = header;
 
     try curl.globalInit();
     defer curl.globalCleanup();

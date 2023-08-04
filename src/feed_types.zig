@@ -78,7 +78,7 @@ const AtomDateTime = struct {
         };
 
         const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
-        return @intCast(i64, @divTrunc(datetime.toTimestamp(), 1000));
+        return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
     }
 };
 
@@ -147,7 +147,7 @@ pub const RssDateTime = struct {
         const months = [_][]const u8{ "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
         for (months, 0..) |month, i| {
             if (std.mem.eql(u8, raw, month)) {
-                return @intCast(u8, i) + 1;
+                return @as(u8, @intCast(i)) + 1;
             }
         }
         return error.InvalidMonth;
@@ -183,7 +183,7 @@ pub const RssDateTime = struct {
         const tz = dt.Timezone.create(tz_name, tz_min);
 
         const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
-        return @intCast(i64, @divTrunc(datetime.toTimestamp(), 1000));
+        return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
     }
 };
 

@@ -118,7 +118,7 @@ pub fn fetchFeedItems(arena: *ArenaAllocator, headers: [][]const u8, user: User)
                 .id = video.Object.get("id").?.String,
                 .link = video.Object.get("url").?.String,
                 .updated_raw = updated_raw,
-                .updated_timestamp = @floatToInt(i64, timestamp.toSeconds()),
+                .updated_timestamp = @as(i64, @intFromFloat(timestamp.toSeconds())),
             });
         }
     } else {
