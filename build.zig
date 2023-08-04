@@ -62,7 +62,7 @@ pub fn build(b: *Builder) !void {
         test_file = args[0];
         if (args.len >= 2) {
             filter = args[1];
-            try arr.appendSlice(@ptrCast([]const ?[]const u8, args[2..]));
+            try arr.appendSlice(@ptrCast(args[2..]));
         }
     }
     // Creates a step for unit testing.
