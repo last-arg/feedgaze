@@ -15,8 +15,9 @@ const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
-const FetchOptions = feed_types.FetchOptions;
+const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
+const http_client = @import("./http_client.zig");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -44,7 +45,7 @@ const CliGlobal = struct {
 };
 
 const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
-pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
+pub fn Cli(comptime Writer: type) type {
     return struct {
         allocator: Allocator,
         storage: ?Storage = null,
@@ -224,14 +225,16 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
             defer arena.deinit();
 
             // fetch url content
-            const parsed_url = try std.Uri.parse(url);
-            var client = std.http.Client{ .allocator = arena.allocator() };
-            defer client.deinit();
-            var fr = try HttpRequest.init(&client, parsed_url, .{});
-            defer fr.deinit();
+            var req = try http_client.init(arena.allocator(), .{});
+            defer req.deinit();
+            var resp = try req.fetch(url);
+            defer resp.deinit();
 
-            const content = try fr.getBody(arena.allocator());
-            const content_type = ContentType.fromString(fr.request.response.headers.getFirstValue("content-type") orelse "");
+            const content = resp.body orelse {
+                std.log.err("HTTP response body is empty. Request url: {s}", .{url});
+                return;
+            };
+            const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
             var parsed = try parse.parse(arena.allocator(), content, content_type);
             if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
                 parsed.feed.updated_raw = parsed.items[0].updated_raw;
@@ -240,7 +243,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
             const feed_id = try self.storage.?.insertFeed(parsed.feed);
             try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
             _ = try self.storage.?.insertFeedItems(parsed.items);
-            try self.storage.?.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(fr.request.response.headers));
+            try self.storage.?.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(resp.headers));
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
@@ -259,14 +262,16 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
             defer client.deinit();
 
             for (feed_updates) |f_update| {
-                const parsed_url = try std.Uri.parse(f_update.feed_url);
-                var fr = try HttpRequest.init(&client, parsed_url, .{
-                    .etag = f_update.etag,
-                    .last_modified_utc = f_update.last_modified_utc,
-                });
+                var req = try http_client.init(arena.allocator(), .{});
+                defer req.deinit();
+                var resp = try req.fetch(f_update.feed_url);
+                defer resp.deinit();
 
-                const content = try fr.getBody(arena.allocator());
-                const content_type = ContentType.fromString(fr.request.response.headers.getFirstValue("content-type") orelse "");
+                const content = resp.body orelse {
+                    std.log.err("HTTP response body is empty. Request url: {s}", .{f_update.feed_url});
+                    return;
+                };
+                const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
                 var parsed = try parse.parse(arena.allocator(), content, content_type);
 
                 if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
@@ -282,7 +287,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                 try self.storage.?.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
 
                 // Update feed_update
-                try self.storage.?.updateFeedUpdate(f_update.feed_id, FeedUpdate.fromHeaders(fr.request.response.headers));
+                try self.storage.?.updateFeedUpdate(f_update.feed_id, FeedUpdate.fromHeaders(resp.headers));
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
@@ -329,7 +334,6 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
     };
 }
 
-const http_client = @import("./http_client.zig");
 test "cli.run" {
     std.testing.log_level = .debug;
 

@@ -1,14 +1,9 @@
 const std = @import("std");
-// const log = std.log;
-// const mem = std.mem;
 const print = std.debug.print;
-// const process = std.process;
-// const Allocator = std.mem.Allocator;
-const http = std.http;
 const Cli = @import("app.zig").Cli;
-const FeedRequest = @import("./http_client.zig").FeedRequest;
 
 pub const std_options = struct {
+    // For me this reduces build time from 10 seconds down to 3.5 seconds.
     pub const http_disable_tls = true;
     // pub const log_level = .debug;
 };
@@ -19,7 +14,7 @@ pub fn main() !void {
     defer arena.deinit();
 
     const writer = std.io.getStdOut().writer();
-    const CliApp = Cli(@TypeOf(writer), FeedRequest);
+    const CliApp = Cli(@TypeOf(writer));
     var app_cli = CliApp{
         .allocator = arena.allocator(),
         .out = writer,
@@ -40,7 +35,7 @@ pub fn main() !void {
 //     //     defer arena.deinit();
 //     //     const input = "http://github.com";
 //     //     const url = try std.Uri.parse(input);
-//     //     var client = http.Client{ .allocator = arena.allocator() };
+//     //     var client = std.http.Client{ .allocator = arena.allocator() };
 //     //     defer client.deinit();
 //     //     var req = try client.request(.GET, url, .{ .allocator = arena.allocator() }, .{});
 //     //     print("host:  {?s}\n", .{req.uri.host});

@@ -3,7 +3,7 @@ const datetime = @import("zig-datetime").datetime;
 const feed_types = @import("./feed_types.zig");
 const ContentType = feed_types.ContentType;
 const RssDateTime = feed_types.RssDateTime;
-const FetchOptions = feed_types.FetchOptions;
+const FetchHeaderOptions = feed_types.FetchHeaderOptions;
 const http = std.http;
 const mem = std.mem;
 const print = std.debug.print;
@@ -61,6 +61,13 @@ pub const HeaderValues = struct {
     }
 };
 
+const FeedLink = struct {
+    link: []const u8,
+    type: ContentType,
+    title: ?[]const u8 = null,
+};
+
+const FeedLinkArray = std.ArrayList(FeedLink);
 // Resources:
 // https://jackevansevo.github.io/the-struggles-of-building-a-feed-reader.html
 // https://kevincox.ca/2022/05/06/rss-feed-best-practices/
@@ -154,41 +161,7 @@ fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
     }
 }
 
-const FeedLink = struct {
-    link: []const u8,
-    type: ContentType,
-    title: ?[]const u8 = null,
-};
-
-const FeedLinkArray = std.ArrayList(FeedLink);
-
-pub const FeedRequest = struct {
-    request: Request,
-    const Self = @This();
-
-    pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
-        _ = opts;
-        _ = url;
-        _ = client;
-
-        return .{ .request = undefined };
-    }
-
-    pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
-        return try self.request.reader().readAllAlloc(allocator, std.math.maxInt(u32));
-    }
-
-    pub fn getHeaderRaw(self: Self) []const u8 {
-        return self.request.response.parser.header_bytes.items;
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.request.deinit();
-    }
-};
-
-
-pub fn createHeaders(allocator: Allocator, opts: FetchOptions) !http.Headers {
+pub fn createHeaders(allocator: Allocator, opts: FetchHeaderOptions) !http.Headers {
     var headers = http.Headers.init(allocator);
     try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
     if (opts.etag) |etag| {
@@ -206,7 +179,7 @@ allocator: Allocator,
 headers: http.Headers,
 client: http.Client,
 
-fn init(allocator: Allocator, headers_opts: FetchOptions) !@This() {
+pub fn init(allocator: Allocator, headers_opts: FetchHeaderOptions) !@This() {
     return .{
         .allocator = allocator,
         .headers = try createHeaders(allocator, headers_opts),
@@ -214,12 +187,12 @@ fn init(allocator: Allocator, headers_opts: FetchOptions) !@This() {
     };
 }
 
-fn deinit(self: *@This()) void {
+pub fn deinit(self: *@This()) void {
     defer self.headers.deinit();
     defer self.client.deinit();
 }
 
-fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
+pub fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
     const options = .{
         .location = .{.url = url},
         .headers = self.headers,
@@ -231,22 +204,22 @@ fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
 test "http" {
     std.testing.log_level = .debug;
     std.log.info("=> Start http client test\n", .{});
-    var allocator = std.testing.allocator;
+    // var allocator = std.testing.allocator;
 
     // const input = "http://localhost:8282/json_feed.json";
     // const input = "http://localhost:8282/many-links.html";
     // const input = "http://github.com/helix-editor/helix/commits/master.atom";
-    const input = "http://localhost:8282/rss2.xml";
+    // const input = "http://localhost:8282/rss2.xml";
     // const input = "http://localhost:8282/rss2";
     // const input = "http://localhost:8282/atom.atom";
     // const input = "https://www.google.com/";
 
-    var req = try init(allocator, .{});
-    defer req.deinit();
-    var result = try req.fetch(input);
-    defer result.deinit();
-    print("|{any}|\n", .{result});
-    print("|{s}|\n", .{result.body.?});
+    // var req = try init(allocator, .{});
+    // defer req.deinit();
+    // var result = try req.fetch(input);
+    // defer result.deinit();
+    // print("|{any}|\n", .{result});
+    // print("body: |{s}|\n", .{result.body.?});
 
     // var req = try FeedRequest.init(&client, url, .{});
     // defer req.deinit();
