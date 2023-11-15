@@ -114,6 +114,7 @@ pub fn Cli(comptime Writer: type) type {
                 \\  update    Update feed(s)
                 \\  help      Print this help and exit
                 \\  run       Run update in foreground
+                \\  show      Print feeds' items
                 \\
                 \\General options:
                 \\
