@@ -167,23 +167,11 @@ pub const FeedRequest = struct {
     const Self = @This();
 
     pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
-        var buf: [1024]u8 = undefined;
-        var fb = std.heap.FixedBufferAllocator.init(&buf);
-        var headers = http.Headers.init(fb.allocator());
-        try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
-        if (opts.etag) |etag| {
-            try headers.append("If-Match", etag);
-        }
-        var date_buf: [29]u8 = undefined;
-        if (opts.last_modified_utc) |utc| {
-            const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc);
-            try headers.append("If-Modified-Since", date_slice);
-        }
+        _ = opts;
+        _ = url;
+        _ = client;
 
-        var req = try client.request(.GET, url, headers, .{});
-        try req.start();
-        try req.wait();
-        return .{ .request = req };
+        return .{ .request = undefined };
     }
 
     pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
@@ -199,58 +187,51 @@ pub const FeedRequest = struct {
     }
 };
 
-pub const TestRequest = struct {
-    const Self = @This();
-    body: []const u8 = "self.body",
-    request: http.Client.Request,
 
-    pub var text: []const u8 = "TestRequest.text";
-    var buf: [1024]u8 = undefined;
-
-    pub fn init(client: *Client, url: Uri, opts: FetchOptions) !Self {
-        _ = opts;
-        var fb = std.heap.FixedBufferAllocator.init(&buf);
-        var headers = http.Headers.init(fb.allocator());
-        return .{
-            .request = try client.request(.GET, url, headers, .{}),
-        };
+pub fn createHeaders(allocator: Allocator, opts: FetchOptions) !http.Headers {
+    var headers = http.Headers.init(allocator);
+    try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
+    if (opts.etag) |etag| {
+        try headers.append("If-Match", etag);
     }
-
-    pub fn getBody(self: *Self, allocator: Allocator) ![]const u8 {
-        _ = self;
-        _ = allocator;
-        return TestRequest.text;
+    var date_buf: [29]u8 = undefined;
+    if (opts.last_modified_utc) |utc| {
+        const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc);
+        try headers.append("If-Modified-Since", date_slice);
     }
+    return headers;
+}
 
-    pub fn getHeaderRaw(self: Self) []const u8 {
-        _ = self;
-        const r =
-            \\HTTP/1.1 200 OK
-            \\Content-Encoding: gzip
-            \\Content-Type: application/xml
-            \\Vary: Accept-Encoding
-            \\Last-Modified: Sat, 11 Mar 2023 11:22:28 GMT
-            \\Accept-Ranges: bytes
-            \\X-Content-Type-Options: nosniff
-            \\Date: Mon, 17 Apr 2023 15:23:58 GMT
-            \\Server: redbean/2.2.0
-            \\Connection: close
-            \\Transfer-Encoding: chunked
-            \\
-        ;
-        return r;
-    }
+allocator: Allocator,
+headers: http.Headers,
+client: http.Client,
 
-    pub fn deinit(self: *Self) void {
-        self.request.deinit();
-    }
-};
+fn init(allocator: Allocator, headers_opts: FetchOptions) !@This() {
+    return .{
+        .allocator = allocator,
+        .headers = try createHeaders(allocator, headers_opts),
+        .client = Client{ .allocator = allocator },
+    };
+}
+
+fn deinit(self: *@This()) void {
+    defer self.headers.deinit();
+    defer self.client.deinit();
+}
+
+fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
+    const options = .{
+        .location = .{.url = url},
+        .headers = self.headers,
+    };
+    return try http.Client.fetch(&self.client, self.allocator, options);
+}
+
 
 test "http" {
     std.testing.log_level = .debug;
     std.log.info("=> Start http client test\n", .{});
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
+    var allocator = std.testing.allocator;
 
     // const input = "http://localhost:8282/json_feed.json";
     // const input = "http://localhost:8282/many-links.html";
@@ -260,13 +241,17 @@ test "http" {
     // const input = "http://localhost:8282/atom.atom";
     // const input = "https://www.google.com/";
 
-    const url = try std.Uri.parse(input);
-    var client = Client{ .allocator = arena.allocator() };
-    defer client.deinit();
-    var req = try FeedRequest.init(&client, url, .{});
+    var req = try init(allocator, .{});
     defer req.deinit();
-    const body = try req.getBody(arena.allocator());
-    defer arena.allocator().free(body);
-    print("|{s}|\n", .{body[0..128]});
+    var result = try req.fetch(input);
+    defer result.deinit();
+    print("|{any}|\n", .{result});
+    print("|{s}|\n", .{result.body.?});
+
+    // var req = try FeedRequest.init(&client, url, .{});
+    // defer req.deinit();
+    // const body = try req.getBody(arena.allocator());
+    // defer arena.allocator().free(body);
+    // print("|{s}|\n", .{body[0..128]});
     // print("=> End http client test\n", .{});
 }

@@ -30,6 +30,7 @@ const CliVerb = union(enum) {
     remove: void,
     show: ShowOptions,
     update: UpdateOptions,
+    run: void,
 };
 
 const CliGlobal = struct {
@@ -94,6 +95,9 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                     const input = if (args.positionals.len > 0) args.positionals[0] else null;
                     try self.update(input, opts);
                 },
+                .run => {
+                    std.debug.print("TODO: run foreground", .{});
+                },
             }
         }
 
@@ -108,6 +112,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                 \\  remove    Remove feed(s)
                 \\  update    Update feed(s)
                 \\  help      Print this help and exit
+                \\  run       Run update in foreground
                 \\
                 \\General options:
                 \\
@@ -156,6 +161,14 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
                     \\Options:
                     \\  -h, --help    Print this help and exit
                     \\  --force       Will force update all matched feeds
+                    ,
+                    .run =>
+                    \\Usage: feedgaze run [options]
+                    \\
+                    \\  Auto update feeds in the foreground. 
+                    \\
+                    \\Options:
+                    \\  -h, --help    Print this help and exit
                     ,
                 };
             }
@@ -319,6 +332,7 @@ pub fn Cli(comptime Writer: type, comptime HttpRequest: type) type {
 const http_client = @import("./http_client.zig");
 test "cli.run" {
     std.testing.log_level = .debug;
+
     if (@import("builtin").target.os.tag != .linux) {
         std.log.info("Need to run tests on Linux", .{});
         return;
@@ -436,5 +450,29 @@ test "cli.run" {
         try std.testing.expectEqual(@as(usize, 0), feeds.len);
         var item_count = @import("./storage.zig").one(&storage.sql_db, usize, "select count(*) from item;", .{}) catch unreachable;
         try std.testing.expectEqual(@as(usize, 0), item_count.?);
+    }
+}
+
+test "feedgaze.run" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var cmd = "feedgaze".*;
+    // var storage = try Storage.init("/media/hdd/code/feedgaze/tmp/db/fg.sqlite");
+    var buf: [4 * 1024]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&buf);
+    var fb_writer = fb.writer();
+    // const CliTest = Cli(@TypeOf(fb_writer), FeedRequest);
+
+    const CliTest = Cli(@TypeOf(fb_writer), http_client.TestRequest);
+    var app_cli = CliTest{
+        .allocator = arena.allocator(),
+        .out = fb_writer,
+    };
+
+    {
+        var run_cmd = "run".*;
+        var argv = [_][*:0]u8{ &cmd, &run_cmd };
+        std.os.argv = &argv;
+        try app_cli.run();
     }
 }
