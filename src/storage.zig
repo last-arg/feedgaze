@@ -111,7 +111,7 @@ pub const Storage = struct {
         try storage_arr.appendSlice(query_start);
         var values = try ArrayList([]const u8).initCapacity(allocator, inputs.len * 2);
         defer values.deinit();
-        if (inputs.len >= 0) {
+        if (inputs.len > 0) {
             try storage_arr.append(' ');
             try storage_arr.appendSlice("WHERE");
             for (inputs, 0..) |term, i| {
