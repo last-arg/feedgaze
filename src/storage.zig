@@ -13,6 +13,7 @@ const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
+const parse = @import("./app_parse.zig");
 
 pub const Storage = struct {
     const Self = @This();
@@ -55,7 +56,6 @@ pub const Storage = struct {
         }
 
         try setupTables(db);
-        std.log.info("New database created", .{});
     }
 
     fn setupTables(db: *sql.Db) !void {
@@ -66,6 +66,18 @@ pub const Storage = struct {
                 return err;
             };
         }
+    }
+
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: feed_types.ContentType, fallback_url: []const u8, headers: std.http.Headers) !void {
+        var parsed = try parse.parse(arena.allocator(), content, content_type);
+        if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
+            parsed.feed.updated_raw = parsed.items[0].updated_raw;
+        }
+        try parsed.feed.prepareAndValidate(fallback_url);
+        const feed_id = try self.insertFeed(parsed.feed);
+        try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
+        _ = try self.insertFeedItems(parsed.items);
+        try self.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(headers));
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -521,3 +533,33 @@ pub fn selectAll(
     };
     return result;
 }
+
+test "Storage.addFeed" {
+    std.testing.log_level = .debug;
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    std.debug.print("Test: Storage.addFeed\n", .{});
+    var storage = try Storage.init(null);
+
+    const content = @embedFile("rss2.xml");
+    const content_type = feed_types.ContentType.rss;
+    const url = "http://localhost:8282/rss2.xml";
+    var headers = try std.http.Headers.initList(allocator, &.{});
+    defer headers.deinit();
+
+    try storage.addFeed(&arena, content, content_type, url, headers);
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 1), count.?);
+    }
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 3), count.?);
+    }
+}
+
+

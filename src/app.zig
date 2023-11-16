@@ -236,15 +236,8 @@ pub fn Cli(comptime Writer: type) type {
                 return;
             };
             const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
-            var parsed = try parse.parse(arena.allocator(), content, content_type);
-            if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
-                parsed.feed.updated_raw = parsed.items[0].updated_raw;
-            }
-            try parsed.feed.prepareAndValidate(url);
-            const feed_id = try self.storage.?.insertFeed(parsed.feed);
-            try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
-            _ = try self.storage.?.insertFeedItems(parsed.items);
-            try self.storage.?.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(resp.headers));
+
+            try self.storage.?.addFeed(&arena, content, content_type, url, resp.headers);
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
