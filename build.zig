@@ -74,18 +74,21 @@ pub fn build(b: *Builder) !void {
     test_cmd.filter = filter;
     test_cmd.setExecCmd(arr.constSlice());
 
-    test_cmd.addAnonymousModule("atom.atom", .{
-        .source_file = .{ .path = "./test/atom.atom" },
-    });
+    const anon_modules = .{
+        .{.name = "atom.atom", .path="./test/atom.atom"},
+        .{.name = "atom.xml", .path="./test/atom.xml"},
+        .{.name = "rss2.xml", .path="./test/rss2.xml"},
+        .{.name = "json_feed.json", .path="./test/json_feed.json"},
+        .{.name = "many-links.html", .path="./test/many-links.html"},
+    };
 
-    test_cmd.addAnonymousModule("rss2.xml", .{
-        .source_file = .{ .path = "./test/rss2.xml" },
-    });
+    inline for (anon_modules) |file| {
+        test_cmd.addAnonymousModule(file.name, .{
+            .source_file = .{ .path = file.path },
+        });
+    }
 
     commonModules(test_cmd);
-    test_cmd.addAnonymousModule("rss2.xml", .{
-        .source_file = .{ .path = "./test/rss2.xml" },
-    });
 
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");

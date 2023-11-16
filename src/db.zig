@@ -20,7 +20,7 @@ pub const Db = struct {
                 std.debug.assert(std.fs.path.isAbsoluteZ(path));
                 break :blk .{ .File = path };
             }
-            break :blk .{ .Memory = .{} };
+            break :blk .{ .Memory = {} };
         };
         var sql_db = try sql.Db.init(.{
             .mode = mode,

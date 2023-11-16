@@ -248,7 +248,7 @@ test "Html.parse" {
     const allocator = arena.allocator();
     {
         // Test duplicate link
-        const html = @embedFile("../test/many-links.html");
+        const html = @embedFile("many-links.html");
         const page = try Html.parseLinks(allocator, html);
         try expectEqualStrings(page.title.?, "Parse Feed Links");
         try expectEqual(@as(usize, 5), page.links.len);
@@ -460,7 +460,7 @@ pub const Atom = struct {
             .link = feed_link,
             .updated_raw = feed_date_raw,
             .updated_timestamp = updated_timestamp,
-            .items = entries.toOwnedSlice(),
+            .items = try entries.toOwnedSlice(),
         };
 
         return result;
@@ -479,7 +479,7 @@ pub const Atom = struct {
             const first = iter.next() orelse unreachable;
             values.appendSliceAssumeCapacity(first);
             while (iter.next()) |value| {
-                const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                 if (trimmed.len == 0) continue;
                 values.appendAssumeCapacity(' ');
                 values.appendSliceAssumeCapacity(trimmed);
@@ -495,7 +495,7 @@ pub const Atom = struct {
                     const first = iter.next() orelse unreachable;
                     values.appendSliceAssumeCapacity(first);
                     while (iter.next()) |value| {
-                        const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                        const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                         if (trimmed.len == 0) continue;
                         values.appendAssumeCapacity(' ');
                         values.appendSliceAssumeCapacity(trimmed);
@@ -555,7 +555,7 @@ test "Atom.parse" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
 
-    const contents = @embedFile("../test/atom.xml");
+    const contents = @embedFile("atom.xml");
     const result = try Atom.parse(&arena, contents);
     try testing.expectEqualStrings("Example Feed", result.title);
     try testing.expectEqualStrings("http://example.org/feed/", result.link.?);
@@ -591,7 +591,7 @@ test "Atom.parseDateToUtc" {
         try expect(13 == dt.date.day);
         try expect(18 == dt.time.hour);
         try expect(30 == dt.time.minute);
-        try expect(02 == dt.time.second);
+        try expect(2 == dt.time.second);
         try expect(0 == dt.time.nanosecond);
         try expect(0 == dt.zone.offset);
     }
@@ -603,7 +603,7 @@ test "Atom.parseDateToUtc" {
         try expect(13 == dt.date.day);
         try expect(18 == dt.time.hour);
         try expect(30 == dt.time.minute);
-        try expect(02 == dt.time.second);
+        try expect(2 == dt.time.second);
         try expect(250000000 == dt.time.nanosecond);
         try expect(0 == dt.zone.offset);
     }
@@ -615,7 +615,7 @@ test "Atom.parseDateToUtc" {
         try expect(13 == dt.date.day);
         try expect(17 == dt.time.hour);
         try expect(30 == dt.time.minute);
-        try expect(02 == dt.time.second);
+        try expect(2 == dt.time.second);
         try expect(0 == dt.time.nanosecond);
         try expect(0 == dt.zone.offset);
     }
@@ -627,7 +627,7 @@ test "Atom.parseDateToUtc" {
         try expect(13 == dt.date.day);
         try expect(17 == dt.time.hour);
         try expect(30 == dt.time.minute);
-        try expect(02 == dt.time.second);
+        try expect(2 == dt.time.second);
         try expect(250000000 == dt.time.nanosecond);
         try expect(0 == dt.zone.offset);
     }
@@ -812,7 +812,7 @@ pub const Rss = struct {
                                     }
                                 },
                                 .sy_update_frequency => {
-                                    sy_update_frequency = try std.fmt.parseInt(u32, mem.trim(u8, value, &ascii.spaces), 10);
+                                    sy_update_frequency = try std.fmt.parseInt(u32, mem.trim(u8, value, &ascii.whitespace), 10);
                                 },
                                 ._ignore => {},
                             }
@@ -876,7 +876,7 @@ pub const Rss = struct {
             .title = feed_title orelse return error.InvalidRssFeed,
             .link = feed_link,
             .updated_raw = date_raw,
-            .items = items.toOwnedSlice(),
+            .items = try items.toOwnedSlice(),
             .updated_timestamp = updated_timestamp,
             .interval_sec = interval,
         };
@@ -897,7 +897,7 @@ pub const Rss = struct {
             const first = iter.next() orelse unreachable;
             values.appendSliceAssumeCapacity(first);
             while (iter.next()) |value| {
-                const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                 if (trimmed.len == 0) continue;
                 values.appendAssumeCapacity(' ');
                 values.appendSliceAssumeCapacity(trimmed);
@@ -913,7 +913,7 @@ pub const Rss = struct {
                     const first = iter.next() orelse unreachable;
                     values.appendSliceAssumeCapacity(first);
                     while (iter.next()) |value| {
-                        const trimmed = mem.trim(u8, value, &std.ascii.spaces);
+                        const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                         if (trimmed.len == 0) continue;
                         values.appendAssumeCapacity(' ');
                         values.appendSliceAssumeCapacity(trimmed);
@@ -1166,7 +1166,7 @@ pub const Json = struct {
 test "Json.parse()" {
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
-    const contents = @embedFile("../test/json_feed.json");
+    const contents = @embedFile("json_feed.json");
     var feed = try Json.parse(&arena, contents);
 
     try expectEqualStrings("My Example Feed", feed.title);
@@ -1217,6 +1217,6 @@ pub fn isAtom(body: []const u8) bool {
 }
 
 test "isRss(), isAtom()" {
-    try expect(isRss(@embedFile("../test/rss2.xml")));
-    try expect(isAtom(@embedFile("../test/atom.xml")));
+    try expect(isRss(@embedFile("rss2.xml")));
+    try expect(isAtom(@embedFile("atom.xml")));
 }

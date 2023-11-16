@@ -827,7 +827,7 @@ test "add, delete feed" {
     const allocator = arena.allocator();
 
     const location = "https://lobste.rs/";
-    const contents = @embedFile("../test/rss2.xml");
+    const contents = @embedFile("rss2.xml");
     var feed_db = try Storage.init(allocator, null);
     var feed = try parse.parse(&arena, contents);
 
@@ -899,7 +899,7 @@ test "Storage local" {
     var tmp_items = try allocator.alloc(Feed.Item, last_items.len);
     std.mem.copy(Feed.Item, tmp_items, last_items);
     try feed_db.addItems(id, tmp_items);
-    var local_tags = .{ "local", "local", "not-net" };
+    var local_tags = [_][]const u8{ "local", "local", "not-net" };
     try feed_db.addTags(id, &local_tags);
 
     const LocalItem = struct { title: []const u8 };
@@ -922,8 +922,8 @@ test "Storage local" {
     // Remove one tag
     {
         var tag_local = "local";
-        var rm_tags = &[_][]const u8{tag_local};
-        try feed_db.removeTags(rm_tags);
+        var rm_tags = [_][]const u8{tag_local};
+        try feed_db.removeTags(&rm_tags);
         const tags = try feed_db.db.selectAll(struct { tag: []const u8 }, "select tag from feed_tag", .{});
         try expectEqual(@as(usize, 1), tags.len);
         try expectEqualStrings(tags[0].tag, "not-net");
