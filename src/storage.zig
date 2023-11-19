@@ -15,11 +15,14 @@ const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 
-const max_item_count = 10;
-
 pub const Storage = struct {
     const Self = @This();
     sql_db: sql.Db,
+    options: Options = .{},
+
+    const Options = struct {
+        max_item_count: usize = 10,
+    };
 
     var storage_arr = std.BoundedArray(u8, 4096).init(0) catch unreachable;
 
@@ -94,9 +97,7 @@ pub const Storage = struct {
 
         // Update feed items
         try FeedItem.prepareAndValidateAll(parsed.items, feed_info.feed_id);
-        // TODO: what to do with opts (CleanOptions)?
-        const opts = .{};
-        try self.updateAndRemoveFeedItems(parsed.items, opts);
+        try self.updateAndRemoveFeedItems(parsed.items);
 
         // Update feed_update
         try self.updateFeedUpdate(feed_info.feed_id, FeedUpdate.fromHeaders(headers));
@@ -384,12 +385,12 @@ pub const Storage = struct {
         });
     }
 
-    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem, clean_opts: CleanOptions) !void {
+    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
         if (items.len == 0) {
             return;
         }
         try self.upsertFeedItems(items);
-        try self.cleanFeedItems(items[0].feed_id, items.len, clean_opts);
+        try self.cleanFeedItems(items[0].feed_id, items.len);
     }
 
     // Initial item table state
@@ -456,18 +457,14 @@ pub const Storage = struct {
         }
     }
 
-    pub const CleanOptions = struct {
-        max_item_count: usize = max_item_count,
-    };
-
-    pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize, opts: CleanOptions) !void {
+    pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize) !void {
         // Want to delete items:
         // - items that have same position
         // - items that are over max count
         const del_query =
             \\DELETE FROM item WHERE feed_id = ? AND position >= ?;
         ;
-        const max_pos = @min(items_len, opts.max_item_count);
+        const max_pos = @min(items_len, self.options.max_item_count);
         try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
     }
 };
