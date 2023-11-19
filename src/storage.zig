@@ -53,6 +53,7 @@ pub const Storage = struct {
         if (user_version == null or user_version.? == 0) {
             _ = try db.pragma(usize, .{}, "user_version", "1");
             _ = try db.pragma(usize, .{}, "foreign_keys", "1");
+            // TODO: For some tests disable 'journal_mode=delete'?
             _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
             _ = try db.pragma(usize, .{}, "synchronous", "normal");
             _ = try db.pragma(usize, .{}, "temp_store", "2");

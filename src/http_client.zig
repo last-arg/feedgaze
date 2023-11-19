@@ -201,30 +201,30 @@ pub fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
 }
 
 
-test "http" {
-    std.testing.log_level = .debug;
-    std.log.info("=> Start http client test\n", .{});
-    // var allocator = std.testing.allocator;
+// test "http" {
+//     std.testing.log_level = .debug;
+//     std.log.info("=> Start http client test\n", .{});
+//     // var allocator = std.testing.allocator;
 
-    // const input = "http://localhost:8282/json_feed.json";
-    // const input = "http://localhost:8282/many-links.html";
-    // const input = "http://github.com/helix-editor/helix/commits/master.atom";
-    // const input = "http://localhost:8282/rss2.xml";
-    // const input = "http://localhost:8282/rss2";
-    // const input = "http://localhost:8282/atom.atom";
-    // const input = "https://www.google.com/";
+//     // const input = "http://localhost:8282/json_feed.json";
+//     // const input = "http://localhost:8282/many-links.html";
+//     // const input = "http://github.com/helix-editor/helix/commits/master.atom";
+//     // const input = "http://localhost:8282/rss2.xml";
+//     // const input = "http://localhost:8282/rss2";
+//     // const input = "http://localhost:8282/atom.atom";
+//     // const input = "https://www.google.com/";
 
-    // var req = try init(allocator, .{});
-    // defer req.deinit();
-    // var result = try req.fetch(input);
-    // defer result.deinit();
-    // print("|{any}|\n", .{result});
-    // print("body: |{s}|\n", .{result.body.?});
+//     // var req = try init(allocator, .{});
+//     // defer req.deinit();
+//     // var result = try req.fetch(input);
+//     // defer result.deinit();
+//     // print("|{any}|\n", .{result});
+//     // print("body: |{s}|\n", .{result.body.?});
 
-    // var req = try FeedRequest.init(&client, url, .{});
-    // defer req.deinit();
-    // const body = try req.getBody(arena.allocator());
-    // defer arena.allocator().free(body);
-    // print("|{s}|\n", .{body[0..128]});
-    // print("=> End http client test\n", .{});
-}
+//     // var req = try FeedRequest.init(&client, url, .{});
+//     // defer req.deinit();
+//     // const body = try req.getBody(arena.allocator());
+//     // defer arena.allocator().free(body);
+//     // print("|{s}|\n", .{body[0..128]});
+//     // print("=> End http client test\n", .{});
+// }
