@@ -35,7 +35,7 @@ pub fn build(b: *Builder) !void {
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
 
-    commonModules(b, exe, target, optimize);
+    commonModules(b, exe, .{.target = target, .optimize = optimize});
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -89,19 +89,16 @@ pub fn build(b: *Builder) !void {
         });
     }
 
-    commonModules(b, test_cmd, target, optimize);
+    commonModules(b, test_cmd, .{.target = target, .optimize = optimize});
 
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&run_unit_tests.step);
 }
 
-fn commonModules(b: *Builder, step: *CompileStep, target: CrossTarget, optimize: OptimizeMode) void {
+fn commonModules(b: *Builder, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
-    const sqlite = b.dependency("sqlite", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    const sqlite = b.dependency("sqlite", dep_args);
     step.linkSystemLibrary("sqlite3");
     step.installLibraryHeaders(sqlite.artifact("sqlite"));
     step.addModule("sqlite", sqlite.module("sqlite"));
@@ -111,13 +108,9 @@ fn commonModules(b: *Builder, step: *CompileStep, target: CrossTarget, optimize:
         .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });
 
-    const args = b.dependency("args", .{
-        .target = target,
-        .optimize = optimize,
-    });
+    const args = b.dependency("args", dep_args);
     step.addModule("zig-args", args.module("args"));
 
-    step.addAnonymousModule("zig-datetime", .{
-        .source_file = .{ .path = "./lib/zig-datetime/src/main.zig" },
-    });
+    const datetime = b.dependency("zig-datetime", dep_args);
+    step.addModule("zig-datetime", datetime.module("zig-datetime"));
 }
