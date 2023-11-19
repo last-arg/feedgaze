@@ -252,9 +252,6 @@ pub fn Cli(comptime Writer: type) type {
             }
             const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input, options);
 
-            var client = std.http.Client{ .allocator = arena.allocator() };
-            defer client.deinit();
-
             for (feed_updates) |f_update| {
                 var req = try http_client.init(arena.allocator(), .{});
                 defer req.deinit();
@@ -266,22 +263,8 @@ pub fn Cli(comptime Writer: type) type {
                     return;
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
-                var parsed = try parse.parse(arena.allocator(), content, content_type);
 
-                if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
-                    parsed.feed.updated_raw = parsed.items[0].updated_raw;
-                }
-
-                parsed.feed.feed_id = f_update.feed_id;
-                try parsed.feed.prepareAndValidate(f_update.feed_url);
-                try self.storage.?.updateFeed(parsed.feed);
-
-                // Update feed items
-                try FeedItem.prepareAndValidateAll(parsed.items, f_update.feed_id);
-                try self.storage.?.updateAndRemoveFeedItems(parsed.items, self.clean_opts);
-
-                // Update feed_update
-                try self.storage.?.updateFeedUpdate(f_update.feed_id, FeedUpdate.fromHeaders(resp.headers));
+                try self.storage.?.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers);
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }

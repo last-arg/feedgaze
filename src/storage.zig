@@ -15,6 +15,8 @@ const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 
+const max_item_count = 10;
+
 pub const Storage = struct {
     const Self = @This();
     sql_db: sql.Db,
@@ -68,7 +70,7 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: feed_types.ContentType, fallback_url: []const u8, headers: std.http.Headers) !void {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, fallback_url: []const u8, headers: std.http.Headers) !void {
         var parsed = try parse.parse(arena.allocator(), content, content_type);
         if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
             parsed.feed.updated_raw = parsed.items[0].updated_raw;
@@ -78,6 +80,26 @@ pub const Storage = struct {
         try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
         _ = try self.insertFeedItems(parsed.items);
         try self.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(headers));
+    }
+
+    pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, feed_info: FeedToUpdate, headers: std.http.Headers) !void {
+        var parsed = try parse.parse(arena.allocator(), content, content_type);
+        if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
+            parsed.feed.updated_raw = parsed.items[0].updated_raw;
+        }
+
+        parsed.feed.feed_id = feed_info.feed_id;
+        try parsed.feed.prepareAndValidate(feed_info.feed_url);
+        try self.updateFeed(parsed.feed);
+
+        // Update feed items
+        try FeedItem.prepareAndValidateAll(parsed.items, feed_info.feed_id);
+        // TODO: what to do with opts (CleanOptions)?
+        const opts = .{};
+        try self.updateAndRemoveFeedItems(parsed.items, opts);
+
+        // Update feed_update
+        try self.updateFeedUpdate(feed_info.feed_id, FeedUpdate.fromHeaders(headers));
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -155,11 +177,6 @@ pub const Storage = struct {
         return false;
     }
 
-    pub fn getFeed(self: Self, id: usize) ?Feed {
-        const index = findFeedIndex(id, self.feeds.items) orelse return null;
-        return self.feeds.items[index];
-    }
-
     pub fn hasFeedWithFeedUrl(self: *Self, url: []const u8) !bool {
         const query = "SELECT 1 from feed where feed_url = ?";
         return (try one(&self.sql_db, bool, query, .{url})) orelse false;
@@ -232,11 +249,6 @@ pub const Storage = struct {
             \\WHERE feed_id = @feed_id;
         ;
         try self.sql_db.exec(query, .{}, feed);
-    }
-
-    pub fn deinit(self: *Self) void {
-        self.feeds.deinit();
-        self.feed_items.deinit();
     }
 
     pub fn hasFeedWithId(self: *Self, feed_id: usize) !bool {
@@ -445,7 +457,7 @@ pub const Storage = struct {
     }
 
     pub const CleanOptions = struct {
-        max_item_count: usize = 10,
+        max_item_count: usize = max_item_count,
     };
 
     pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize, opts: CleanOptions) !void {
@@ -534,14 +546,10 @@ pub fn selectAll(
     return result;
 }
 
-test "Storage.addFeed" {
-    std.testing.log_level = .debug;
+fn testAddFeed(storage: *Storage) !void {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
-
-    std.debug.print("Test: Storage.addFeed\n", .{});
-    var storage = try Storage.init(null);
 
     const content = @embedFile("rss2.xml");
     const content_type = feed_types.ContentType.rss;
@@ -562,4 +570,48 @@ test "Storage.addFeed" {
     }
 }
 
+test "Storage.addFeed" {
+    std.testing.log_level = .debug;
+    var storage = try Storage.init(null);
+    try testAddFeed(&storage);
+}
 
+test "Storage.updateFeedAndItems" {
+    const allocator = std.testing.allocator;
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var storage = try Storage.init(null);
+    try testAddFeed(&storage);
+
+    const content = @embedFile("rss2.xml");
+    const content_type = feed_types.ContentType.rss;
+    const url = "http://localhost:8282/rss2.xml";
+    var headers = try std.http.Headers.initList(allocator, &.{});
+    defer headers.deinit();
+
+    const query = "DELETE FROM item WHERE feed_id = 1;";
+    try storage.sql_db.exec(query, .{}, .{});
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 0), count.?);
+    }
+
+    const feed_info = .{
+        .feed_id = 1,
+        .feed_url = url,
+    };
+
+    try storage.updateFeedAndItems(&arena, content, content_type, feed_info, headers);
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 1), count.?);
+    }
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 3), count.?);
+    }
+}
