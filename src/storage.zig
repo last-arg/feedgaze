@@ -576,6 +576,23 @@ test "Storage.addFeed" {
     try testAddFeed(&storage);
 }
 
+test "Storage.deleteFeed" {
+    std.testing.log_level = .debug;
+    var storage = try Storage.init(null);
+    try testAddFeed(&storage);
+    try storage.deleteFeed(1);
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 0), count.?);
+    }
+
+    {
+        const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 0), count.?);
+    }
+}
+
 test "Storage.updateFeedAndItems" {
     const allocator = std.testing.allocator;
     var arena = std.heap.ArenaAllocator.init(allocator);
