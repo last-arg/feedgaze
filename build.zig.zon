@@ -1,0 +1,16 @@
+.{
+    .name = "feedgaze",
+    .version = "0.0.0",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "readme.md",
+    },
+    .dependencies = .{
+		.sqlite = .{
+            .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
+            .hash = "1220512303adab108ca999bf60b40bf2e981eb5fdc4b30523e601c650f7fb97e3a15",
+		},
+	},
+}

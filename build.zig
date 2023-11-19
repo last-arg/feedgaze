@@ -4,6 +4,7 @@ const Builder = std_build.Builder;
 const CompileStep = std_build.CompileStep;
 const LibExeObjStep = std_build.LibExeObjStep;
 pub const CrossTarget = std.zig.CrossTarget;
+pub const OptimizeMode = std.builtin.OptimizeMode;
 
 pub fn build(b: *Builder) !void {
     // Standard target options allows the person running `zig build` to choose
@@ -34,7 +35,7 @@ pub fn build(b: *Builder) !void {
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
 
-    commonModules(exe);
+    commonModules(b, exe, target, optimize);
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -88,19 +89,29 @@ pub fn build(b: *Builder) !void {
         });
     }
 
-    commonModules(test_cmd);
+    commonModules(b, test_cmd, target, optimize);
 
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&run_unit_tests.step);
 }
 
-fn commonModules(step: *CompileStep) void {
+fn commonModules(b: *Builder, step: *CompileStep, target: CrossTarget, optimize: OptimizeMode) void {
     step.linkLibC();
-    step.linkSystemLibrary("sqlite3");
-    step.addAnonymousModule("sqlite", .{
-        .source_file = .{ .path = "./lib/zig-sqlite/sqlite.zig" },
+    const sqlite = b.dependency("sqlite", .{
+        .target = target,
+        .optimize = optimize,
     });
+    step.linkSystemLibrary("sqlite3");
+    step.installLibraryHeaders(sqlite.artifact("sqlite"));
+    step.addModule("sqlite", sqlite.module("sqlite"));
+    step.linkLibrary(sqlite.artifact("sqlite"));
+
+
+    // step.linkSystemLibrary("sqlite3");
+    // step.addAnonymousModule("sqlite", .{
+    //     .source_file = .{ .path = "./lib/zig-sqlite/sqlite.zig" },
+    // });
     step.addAnonymousModule("zig-xml", .{
         .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });
