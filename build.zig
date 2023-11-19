@@ -107,17 +107,16 @@ fn commonModules(b: *Builder, step: *CompileStep, target: CrossTarget, optimize:
     step.addModule("sqlite", sqlite.module("sqlite"));
     step.linkLibrary(sqlite.artifact("sqlite"));
 
-
-    // step.linkSystemLibrary("sqlite3");
-    // step.addAnonymousModule("sqlite", .{
-    //     .source_file = .{ .path = "./lib/zig-sqlite/sqlite.zig" },
-    // });
     step.addAnonymousModule("zig-xml", .{
         .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
     });
-    step.addAnonymousModule("zig-args", .{
-        .source_file = .{ .path = "./lib/zig-args/args.zig" },
+
+    const args = b.dependency("args", .{
+        .target = target,
+        .optimize = optimize,
     });
+    step.addModule("zig-args", args.module("args"));
+
     step.addAnonymousModule("zig-datetime", .{
         .source_file = .{ .path = "./lib/zig-datetime/src/main.zig" },
     });

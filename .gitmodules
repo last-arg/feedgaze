@@ -4,6 +4,3 @@
 [submodule "lib/zig-datetime"]
 	path = lib/zig-datetime
 	url = https://github.com/frmdstryr/zig-datetime
-[submodule "lib/zig-args"]
-	path = lib/zig-args
-	url = https://github.com/MasterQ32/zig-args
