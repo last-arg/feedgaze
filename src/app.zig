@@ -48,6 +48,7 @@ const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
 pub fn Cli(comptime Writer: type) type {
     return struct {
         allocator: Allocator,
+        // TODO: can make storage field probably not optional (remove null)
         storage: ?Storage = null,
         out: Writer,
         const Self = @This();
@@ -311,5 +312,40 @@ pub fn Cli(comptime Writer: type) type {
 }
 
 // TODO?: test things that don't require http request here?
-// - show
 // - remove
+test "feedgaze.show" {
+    var buf: [4 * 1024]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&buf);
+    var fb_writer = fb.writer();
+    const CliTest = Cli(@TypeOf(fb_writer));
+    var app_cli = CliTest{
+        .allocator = std.testing.allocator,
+        .out = fb_writer,
+    };
+
+    var cmd = "feedgaze".*;
+    var sub_cmd = "show".*;
+    var db_key = "--database".*;
+    // Filled with data from ./test/rss2.xml
+    var db_value = "./test/feedgaze_show.db".*;
+    var argv = [_][*:0]u8{ &cmd, &sub_cmd, &db_key, &db_value };
+    std.os.argv = &argv;
+    try app_cli.run();
+
+    const output = fb.getWritten();
+    const expect =                                                                                           
+        \\Liftoff News - http://liftoff.msfc.nasa.gov/
+        \\
+        \\  Star City's Test
+        \\  http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp
+        \\
+        \\  Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm">partial eclipse of the Sun</a> on Saturday, May 31st.
+        \\  <no link>
+        \\
+        \\  Third title
+        \\  <no link>
+        \\
+        \\
+    ;                                                                                                        
+    try std.testing.expectEqualStrings(expect, output);  
+}
