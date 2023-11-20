@@ -311,8 +311,48 @@ pub fn Cli(comptime Writer: type) type {
     };
 }
 
-// TODO?: test things that don't require http request here?
-// - remove
+test "feedgaze.remove" {
+    var buf: [4 * 1024]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&buf);
+    var fb_writer = fb.writer();
+    const CliTest = Cli(@TypeOf(fb_writer));
+    var app_cli = CliTest{
+        .allocator = std.testing.allocator,
+        .out = fb_writer,
+    };
+
+    var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+    var test_dir_path = "./test/";
+    var test_filename = "feedgaze_show.db";
+    var abs_path = try fs.cwd().realpath(test_dir_path, &path_buf);
+    const test_dir = try fs.openDirAbsolute(abs_path, .{});
+
+    const tmp_dir_path = "./tmp/";
+    abs_path = try fs.cwd().realpath(tmp_dir_path, &path_buf);
+    const tmp_dir = try fs.openDirAbsolute(abs_path, .{});
+    try test_dir.copyFile(test_filename, tmp_dir, test_filename, .{});
+    var cmd = "feedgaze".*;
+    var sub_cmd = "remove".*;
+    var value = "localhost".*;
+    // Filled with data from ./test/rss2.xml
+    var db_key = "--database".*;
+    const db_path = tmp_dir_path ++ test_filename;
+    // var db_path = "./tmp/feedgaze_show.db".*;
+    var argv = [_][*:0]u8{ &cmd, &sub_cmd, &value, &db_key, db_path };
+
+    std.os.argv = &argv;
+    try app_cli.run();
+    {
+        const count = try app_cli.storage.?.sql_db.one(usize, "select count(*) from feed", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 0), count.?);
+    }
+
+    {
+        const count = try app_cli.storage.?.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        try std.testing.expectEqual(@as(usize, 0), count.?);
+    }
+}
+
 test "feedgaze.show" {
     var buf: [4 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
