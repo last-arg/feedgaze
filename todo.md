@@ -13,11 +13,12 @@
   [x] Web browser (http server)
 [ ] Zig
   [ ] XML parsing
-    - Depends on C: https://github.com/wooky/zig-xml/tree/master
+    - https://github.com/nektro/zig-xml
+    - https://github.com/ianprime0509/zig-xml
     - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
-  [ ] Async
-    - https://github.com/kprotty/zap
-    - https://github.com/lithdew/pike
+  [ ] Redirect from http to https produces 'TlsCertificateNotVerified' error.
+  For example requesting 'http://github.com' produces the error. But 
+  'https://github.com' works just fine.
 [ ] HTTP ranges: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
  
 

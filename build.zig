@@ -23,6 +23,8 @@ pub fn build(b: *Builder) !void {
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
+        // .use_llvm = false,
+        // .use_lld = false,
     });
 
     // This declares intent for the executable to be installed into the
