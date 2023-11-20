@@ -49,17 +49,23 @@ pub const Storage = struct {
 
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
-        const user_version = try db.pragma(usize, .{}, "user_version", null);
-        if (user_version == null or user_version.? == 0) {
-            _ = try db.pragma(usize, .{}, "user_version", "1");
-            _ = try db.pragma(usize, .{}, "foreign_keys", "1");
-            // TODO: For some tests disable 'journal_mode=delete'?
-            _ = try db.pragma(usize, .{}, "journal_mode", "WAL");
-            _ = try db.pragma(usize, .{}, "synchronous", "normal");
-            _ = try db.pragma(usize, .{}, "temp_store", "2");
-            _ = try db.pragma(usize, .{}, "mmap_size", "30000000000");
-            _ = try db.pragma(usize, .{}, "cache_size", "-32000");
+        const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
+        if (user_version == 0) {
+            // NOTE: permanent pragmas:
+            // - application_id
+            // - journal_mode (when enabling or disabling WAL mode)
+            // - schema_version
+            // - user_version
+            // - wal_checkpoint
+            _ = try db.pragma(void, .{}, "user_version", "1");
         }
+        _ = try db.pragma(void, .{}, "foreign_keys", "1");
+        // TODO: For some tests disable 'journal_mode=delete'?
+        _ = try db.pragma(void, .{}, "journal_mode", "WAL");
+        _ = try db.pragma(void, .{}, "synchronous", "normal");
+        _ = try db.pragma(void, .{}, "temp_store", "2");
+        _ = try db.pragma(void, .{}, "mmap_size", "30000000000");
+        _ = try db.pragma(void, .{}, "cache_size", "-32000");
 
         try setupTables(db);
     }
