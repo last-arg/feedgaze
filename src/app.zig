@@ -49,7 +49,7 @@ pub fn Cli(comptime Writer: type) type {
     return struct {
         allocator: Allocator,
         // TODO: can make storage field probably not optional (remove null)
-        storage: ?Storage = null,
+        storage: Storage = undefined,
         out: Writer,
         const Self = @This();
 
@@ -66,9 +66,7 @@ pub fn Cli(comptime Writer: type) type {
                 return;
             };
 
-            if (self.storage == null) {
-                try self.connectDatabase(args.options.database);
-            }
+            self.storage = try connectDatabase(args.options.database);
 
             switch (verb) {
                 .add => {
@@ -178,46 +176,8 @@ pub fn Cli(comptime Writer: type) type {
             _ = try self.out.write(output);
         }
 
-        pub fn connectDatabase(self: *Self, path: ?[:0]const u8) !void {
-            const db_path = blk: {
-                const db_path = path orelse default_db_path;
-                if (db_path.len == 0) {
-                    std.log.err("'--database' requires filepath input.", .{});
-                }
-                if (std.mem.eql(u8, ":memory:", db_path)) {
-                    break :blk null;
-                }
-                if (std.mem.endsWith(u8, db_path, std.fs.path.sep_str)) {
-                    std.log.err("'--database' requires filepath, diretory path was provided.", .{});
-                    return;
-                }
-
-                var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-                const db_dir = fs.path.dirname(db_path) orelse {
-                    std.log.err("Invalid '--database' directory input", .{});
-                    return;
-                };
-                _ = fs.cwd().realpath(db_dir, &path_buf) catch |err| switch (err) {
-                    error.FileNotFound => {
-                        try fs.cwd().makePath(db_dir);
-                    },
-                    else => return error.NODS,
-                };
-                break :blk db_path;
-            };
-
-            self.storage = Storage.init(db_path) catch |err| {
-                if (db_path) |p| {
-                    std.log.err("Failed to open database file '{s}'.", .{p});
-                } else {
-                    std.log.err("Failed to open database in memory.", .{});
-                }
-                return err;
-            };
-        }
-
         pub fn add(self: *Self, url: []const u8) !void {
-            if (try self.storage.?.hasFeedWithFeedUrl(url)) {
+            if (try self.storage.hasFeedWithFeedUrl(url)) {
                 std.log.info("There already exists feed '{s}'", .{url});
                 return;
             }
@@ -237,7 +197,7 @@ pub fn Cli(comptime Writer: type) type {
             };
             const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
-            try self.storage.?.addFeed(&arena, content, content_type, url, resp.headers);
+            try self.storage.addFeed(&arena, content, content_type, url, resp.headers);
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
@@ -248,9 +208,9 @@ pub fn Cli(comptime Writer: type) type {
             defer arena.deinit();
 
             if (!options.force) {
-                try self.storage.?.updateCountdowns();
+                try self.storage.updateCountdowns();
             }
-            const feed_updates = try self.storage.?.getFeedsToUpdate(arena.allocator(), input, options);
+            const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
 
             for (feed_updates) |f_update| {
                 var req = try http_client.init(arena.allocator(), .{});
@@ -264,7 +224,7 @@ pub fn Cli(comptime Writer: type) type {
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
-                try self.storage.?.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers);
+                try self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers);
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
@@ -272,7 +232,7 @@ pub fn Cli(comptime Writer: type) type {
         pub fn remove(self: *Self, url: []const u8) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const feeds = try self.storage.?.getFeedsWithUrl(arena.allocator(), url);
+            const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url);
             if (feeds.len == 0) {
                 std.log.info("Found no feeds for <url> input '{s}'", .{url});
                 return;
@@ -280,7 +240,7 @@ pub fn Cli(comptime Writer: type) type {
 
             for (feeds) |feed| {
                 // TODO?: prompt user for to confirm deletion
-                try self.storage.?.deleteFeed(feed.feed_id);
+                try self.storage.deleteFeed(feed.feed_id);
                 std.log.info("Removed feed '{s}'", .{feed.feed_url});
             }
         }
@@ -288,13 +248,13 @@ pub fn Cli(comptime Writer: type) type {
         pub fn show(self: *Self, inputs: [][]const u8, opts: ShowOptions) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
-            const feeds = try self.storage.?.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
+            const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
 
             for (feeds) |feed| {
                 const title = feed.title orelse "<no title>";
                 const url_out = feed.page_url orelse feed.feed_url;
                 _ = try self.out.print("{s} - {s}\n", .{ title, url_out });
-                const items = try self.storage.?.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
+                const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
                 if (items.len == 0) {
                     _ = try self.out.write("  ");
                     _ = try self.out.write("Feed has no items.");
@@ -309,6 +269,34 @@ pub fn Cli(comptime Writer: type) type {
             }
         }
     };
+}
+
+pub fn connectDatabase(path: ?[:0]const u8) !Storage {
+    const db_path = blk: {
+        const db_path = path orelse default_db_path;
+        if (db_path.len == 0) {
+            std.log.err("'--database' requires filepath input.", .{});
+        }
+        if (std.mem.eql(u8, ":memory:", db_path)) {
+            break :blk null;
+        }
+        if (std.mem.endsWith(u8, db_path, std.fs.path.sep_str)) {
+            return error.DirectoryPath;
+        }
+
+        if (fs.path.dirname(db_path)) |db_dir| {
+            var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+            _ = fs.cwd().realpath(db_dir, &path_buf) catch |err| switch (err) {
+                error.FileNotFound => {
+                    try fs.cwd().makePath(db_dir);
+                },
+                else => return err,
+            };
+        }
+        break :blk db_path;
+    };
+
+    return try Storage.init(db_path);
 }
 
 test "feedgaze.remove" {
@@ -343,12 +331,12 @@ test "feedgaze.remove" {
     std.os.argv = &argv;
     try app_cli.run();
     {
-        const count = try app_cli.storage.?.sql_db.one(usize, "select count(*) from feed", .{}, .{});
+        const count = try app_cli.storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
         try std.testing.expectEqual(@as(usize, 0), count.?);
     }
 
     {
-        const count = try app_cli.storage.?.sql_db.one(usize, "select count(*) from item", .{}, .{});
+        const count = try app_cli.storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
         try std.testing.expectEqual(@as(usize, 0), count.?);
     }
 }
