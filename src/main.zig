@@ -3,7 +3,7 @@ const print = std.debug.print;
 const Cli = @import("app.zig").Cli;
 
 pub const std_options = struct {
-    // For me this reduces build time from 10 seconds down to 3.5 seconds.
+    // Disable TSL for faster compiles
     pub const http_disable_tls = true;
     // pub const log_level = .debug;
 };

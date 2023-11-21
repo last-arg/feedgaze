@@ -17,9 +17,15 @@
     - https://github.com/ianprime0509/zig-xml
     - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
   [ ] Redirect from http to https produces 'TlsCertificateNotVerified' error.
-  For example requesting 'http://github.com' produces the error. But 
-  'https://github.com' works just fine.
+      For example requesting 'http://github.com' produces the error. But 
+      'https://github.com' works just fine.
+  [ ] Some sites might have and url to rss feed, but page's HTML doesn't contain
+      any rss url. Create somekind of rule?
+  [ ] Change HTML page into feed (for sites that don't have rss feed). Use CSS 
+      selector to find page 'titles'? Or something like that.
 [ ] HTTP ranges: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
+    The RSS url is usually in <head>, but also and be anywhere in the <body>.
+    Not sure if it is worth using http ranges.
  
 
 # Future (Maybe)
