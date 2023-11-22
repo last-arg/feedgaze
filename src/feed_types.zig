@@ -277,6 +277,7 @@ pub const ContentType = enum {
     rss,
     atom,
     xml,
+    html,
 
     pub fn fromString(input: []const u8) ?@This() {
         if (std.ascii.eqlIgnoreCase(input, "application/rss+xml")) {
@@ -285,6 +286,8 @@ pub const ContentType = enum {
             return .atom;
         } else if (std.ascii.eqlIgnoreCase(input, "application/xml") or std.ascii.eqlIgnoreCase(input, "text/xml")) {
             return .xml;
+        } else if (std.ascii.eqlIgnoreCase(input, "text/html")) {
+            return .html;
         }
         return null;
     }

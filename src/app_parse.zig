@@ -380,7 +380,6 @@ test "parseRss" {
 
 pub const ContentType = feed_types.ContentType;
 
-// TODO: also check html?
 pub fn getContentType(content: []const u8) ?ContentType {
     var parser = xml.Parser.init(content);
     var depth: usize = 0;
@@ -405,6 +404,10 @@ pub fn getContentType(content: []const u8) ?ContentType {
             depth += 1;
         }
     }
+    const trimmed = std.mem.trimLeft(u8, content, &std.ascii.whitespace);
+    if (std.ascii.startsWithIgnoreCase(trimmed, "<!doctype html")) {
+        return .html;
+    }
     return null;
 }
 
@@ -427,13 +430,11 @@ test "getContentType" {
     const atom_type = getContentType(atom);
     try std.testing.expectEqual(ContentType.atom, atom_type.?);
 
-    // const html =
-    //     \\<!DOCTYPE html>
-    //     \\<html>
-    //     \\</html>
-    // ;
-    // const html_type = getContentType(html);
-    // print("html_type: {?}\n", .{html_type});
+    const html =
+        \\<!DOCTYPE html>
+    ;
+    const html_type = getContentType(html);
+    try std.testing.expectEqual(ContentType.html, html_type.?);
 }
 
 pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentType) !FeedAndItems {
@@ -448,6 +449,7 @@ pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentTy
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
+        .html => @panic("TODO: parse html for feed links"),
         .xml => error.NotAtomOrRss,
     };
 }
