@@ -209,13 +209,19 @@ pub fn Cli(comptime Writer: type) type {
                     return;
                 }
 
-                for (links) |link| {
-                    print("{s} | {s}\n", .{link.title orelse "<no-title>", link.link});
-                }
+                const link = blk: {
+                    if (links.len > 1) {
+                        for (links, 1..) |link, i| {
+                            print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
+                        }
+                        // TODO: ask user input when there is more than one 
+                        // possible feeds to add
+                    }
+                    
+                    break :blk links[0];
+                };
 
-                // TODO: ask user input which feed link to add
 
-                const link = links[0];
                 fallback_title = link.title;
                 fetch_url = link.link;
                 var resp_2 = try req.fetch(fetch_url);
