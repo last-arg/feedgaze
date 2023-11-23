@@ -53,6 +53,7 @@ pub fn Cli(comptime Writer: type) type {
         out: Writer,
         const Self = @This();
 
+        // TODO: pass 'args' as parameter to function? Makes testing also easier.
         pub fn run(self: *Self) !void {
             var args = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, self.allocator, .print);
             defer args.deinit();
@@ -178,6 +179,7 @@ pub fn Cli(comptime Writer: type) type {
 
         pub fn add(self: *Self, url: []const u8) !void {
             if (try self.storage.hasFeedWithFeedUrl(url)) {
+                // TODO?: ask user if they want re-add feed?
                 std.log.info("There already exists feed '{s}'", .{url});
                 return;
             }
@@ -188,16 +190,54 @@ pub fn Cli(comptime Writer: type) type {
             // fetch url content
             var req = try http_client.init(arena.allocator(), .{});
             defer req.deinit();
-            var resp = try req.fetch(url);
+            var fetch_url = url;
+            var resp = try req.fetch(fetch_url);
             defer resp.deinit();
 
-            const content = resp.body orelse {
-                std.log.err("HTTP response body is empty. Request url: {s}", .{url});
+            var fallback_title: ?[]const u8 = null;
+            if (resp.body == null or resp.body.?.len == 0) {
+                std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
                 return;
-            };
-            const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
+            }
+            var content = resp.body.?;
+            var headers  = resp.headers;
+            var content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
+            if (content_type == .html) {
+                const links = try http_client.parseHtmlForFeedLinks(arena.allocator(), content);
+                if (links.len == 0) {
+                    std.log.info("Found no feed links", .{});
+                    return;
+                }
 
-            try self.storage.addFeed(&arena, content, content_type, url, resp.headers);
+                for (links) |link| {
+                    print("{s} | {s}\n", .{link.title orelse "<no-title>", link.link});
+                }
+
+                // TODO: ask user input which feed link to add
+
+                const link = links[0];
+                fallback_title = link.title;
+                fetch_url = link.link;
+                var resp_2 = try req.fetch(fetch_url);
+                defer resp_2.deinit();
+
+                if (resp_2.body == null or resp_2.body.?.len == 0) {
+                    std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
+                    return;
+                }
+                content = resp_2.body.?;
+                headers = resp_2.headers;
+
+                content_type = ContentType.fromString(resp_2.headers.getFirstValue("content-type") orelse "");
+                if (content_type == .html) {
+                    // NOTE: should not happen
+                    std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
+                    return;
+                }
+                try self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title);
+            } else {
+                try self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title);
+            }
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {

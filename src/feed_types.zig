@@ -280,13 +280,13 @@ pub const ContentType = enum {
     html,
 
     pub fn fromString(input: []const u8) ?@This() {
-        if (std.ascii.eqlIgnoreCase(input, "application/rss+xml")) {
+        if (std.ascii.startsWithIgnoreCase(input, "application/rss+xml")) {
             return .rss;
-        } else if (std.ascii.eqlIgnoreCase(input, "application/atom+xml")) {
+        } else if (std.ascii.startsWithIgnoreCase(input, "application/atom+xml")) {
             return .atom;
-        } else if (std.ascii.eqlIgnoreCase(input, "application/xml") or std.ascii.eqlIgnoreCase(input, "text/xml")) {
+        } else if (std.ascii.startsWithIgnoreCase(input, "application/xml") or std.ascii.startsWithIgnoreCase(input, "text/xml")) {
             return .xml;
-        } else if (std.ascii.eqlIgnoreCase(input, "text/html")) {
+        } else if (std.ascii.startsWithIgnoreCase(input, "text/html")) {
             return .html;
         }
         return null;

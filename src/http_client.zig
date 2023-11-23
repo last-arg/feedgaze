@@ -89,8 +89,8 @@ const FeedLinkArray = std.ArrayList(FeedLink);
 // '/feed.xml'
 // '/feed'
 // '/rss'
-fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
-    // print("|{s}|\n", .{input});
+pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLink {
+    var feed_arr = FeedLinkArray.init(allocator);
     var content = input;
     while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
         content = content[start_index + 1 ..];
@@ -101,13 +101,12 @@ fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
                 // Is a comment. Skip comment.
                 content = content[4..];
                 if (std.mem.indexOf(u8, content, "-->")) |end| {
-                    print("comment\n", .{});
                     content = content[end + 1 ..];
                 }
             }
             continue;
         }
-        var end_index = std.mem.indexOfScalar(u8, content, '>') orelse return;
+        var end_index = std.mem.indexOfScalar(u8, content, '>') orelse break;
         if (is_link and content[end_index - 1] == '/') {
             end_index -= 1;
         }
@@ -149,8 +148,7 @@ fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
         if (rel != null and link != null and link_type != null and
             std.ascii.eqlIgnoreCase(rel.?, "alternate"))
         {
-            if (FeedLink.Type.fromString(link_type.?)) |valid_type| {
-                const allocator = feed_arr.allocator;
+            if (ContentType.fromString(link_type.?)) |valid_type| {
                 try feed_arr.append(.{
                     .title = if (title) |t| try allocator.dupe(u8, t) else null,
                     .link = try allocator.dupe(u8, link.?),
@@ -159,6 +157,7 @@ fn parseHtmlForFeedLinks(input: []const u8, feed_arr: *FeedLinkArray) !void {
             }
         }
     }
+    return feed_arr.items;
 }
 
 pub fn createHeaders(allocator: Allocator, opts: FetchHeaderOptions) !http.Headers {
