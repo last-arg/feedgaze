@@ -83,6 +83,7 @@ pub fn build(b: *Builder) !void {
         .{.name = "rss2.xml", .path="./test/rss2.xml"},
         .{.name = "json_feed.json", .path="./test/json_feed.json"},
         .{.name = "many-links.html", .path="./test/many-links.html"},
+        .{.name = "baldurbjarnason.com.html", .path="./tmp/baldurbjarnason.com.html"},
     };
 
     inline for (anon_modules) |file| {
