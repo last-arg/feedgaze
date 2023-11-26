@@ -210,38 +210,12 @@ pub fn Cli(comptime Writer: type) type {
                     return;
                 }
 
-                const link = blk: {
-                    if (links.len > 1) {
-                        for (links, 1..) |link, i| {
-                            print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
-                        }
-                        var buf: [64]u8 = undefined;
-                        var fix_buf = std.io.fixedBufferStream(&buf);
-                        var index: usize = 0;
-
-                        while (index == 0 or index > links.len) {
-                            fix_buf.reset();
-                            try std.io.getStdOut().writeAll("Enter number: ");
-                            try std.io.getStdIn().reader().streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
-                            const value = fix_buf.getWritten();
-                            index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
-                                std.log.err("Provide input is not a number. Enter number between 1 - {d}", .{links.len});
-                                continue;
-                            };
-                            if (index == 0 or index > links.len) {
-                                std.log.err("Invalid number input. Have to enter number between 1 - {d}", .{links.len});
-                                continue;
-                            }
-                        }
-                        break :blk links[index-1];
-                    }
-                    
-                    break :blk links[0];
-                };
-
+                const index = if (links.len > 1) try getUserInput(links) else 0;
+                const link = links[index];
 
                 fallback_title = link.title;
                 // TODO: link might only contain path
+                // TODO?: Get Uri instead. Could just swap Uri's path then
                 fetch_url = link.link;
                 var resp_2 = try req.fetch(fetch_url);
                 defer resp_2.deinit();
@@ -263,6 +237,31 @@ pub fn Cli(comptime Writer: type) type {
             } else {
                 try self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title);
             }
+        }
+
+        fn getUserInput(links: []html.FeedLink) !usize {
+            for (links, 1..) |link, i| {
+                print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
+            }
+            var buf: [32]u8 = undefined;
+            var fix_buf = std.io.fixedBufferStream(&buf);
+            var index: usize = 0;
+
+            while (index == 0 or index > links.len) {
+                fix_buf.reset();
+                try std.io.getStdOut().writeAll("Enter number: ");
+                try std.io.getStdIn().reader().streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+                const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
+                index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
+                    std.log.err("Provide input is not a number. Enter number between 1 - {d}", .{links.len});
+                    continue;
+                };
+                if (index == 0 or index > links.len) {
+                    std.log.err("Invalid number input. Have to enter number between 1 - {d}", .{links.len});
+                    continue;
+                }
+            }
+            return index - 1;
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {

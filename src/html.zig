@@ -5,7 +5,7 @@ const print = std.debug.print;
 const mem = std.mem;
 const Allocator = mem.Allocator;
 
-const FeedLink = struct {
+pub const FeedLink = struct {
     link: []const u8,
     type: ContentType,
     title: ?[]const u8 = null,
