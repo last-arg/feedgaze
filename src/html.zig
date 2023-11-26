@@ -108,7 +108,8 @@ pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLin
         }
 
         if (rel != null and link != null and link_type != null and
-            std.ascii.eqlIgnoreCase(rel.?, "alternate"))
+            std.ascii.eqlIgnoreCase(rel.?, "alternate") and
+            !isDuplicate(feed_arr.items, link.?))
         {
             if (ContentType.fromString(link_type.?)) |valid_type| {
                 try feed_arr.append(.{
@@ -120,6 +121,15 @@ pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLin
         }
     }
     return feed_arr.items;
+}
+
+fn isDuplicate(items: []FeedLink, link: []const u8) bool {
+    for (items) |item| {
+        if (mem.eql(u8, item.link, link)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 test "source: https://www.baldurbjarnason.com/" {
