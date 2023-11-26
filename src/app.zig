@@ -18,6 +18,7 @@ const UpdateOptions = feed_types.UpdateOptions;
 const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
+const html = @import("./html.zig");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -203,7 +204,7 @@ pub fn Cli(comptime Writer: type) type {
             var headers  = resp.headers;
             var content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
             if (content_type == .html) {
-                const links = try http_client.parseHtmlForFeedLinks(arena.allocator(), content);
+                const links = try html.parseHtmlForFeedLinks(arena.allocator(), content);
                 if (links.len == 0) {
                     std.log.info("Found no feed links", .{});
                     return;
@@ -214,8 +215,25 @@ pub fn Cli(comptime Writer: type) type {
                         for (links, 1..) |link, i| {
                             print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
                         }
-                        // TODO: ask user input when there is more than one 
-                        // possible feeds to add
+                        var buf: [64]u8 = undefined;
+                        var fix_buf = std.io.fixedBufferStream(&buf);
+                        var index: usize = 0;
+
+                        while (index == 0 or index > links.len) {
+                            fix_buf.reset();
+                            try std.io.getStdOut().writeAll("Enter number: ");
+                            try std.io.getStdIn().reader().streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+                            const value = fix_buf.getWritten();
+                            index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
+                                std.log.err("Provide input is not a number. Enter number between 1 - {d}", .{links.len});
+                                continue;
+                            };
+                            if (index == 0 or index > links.len) {
+                                std.log.err("Invalid number input. Have to enter number between 1 - {d}", .{links.len});
+                                continue;
+                            }
+                        }
+                        break :blk links[index-1];
                     }
                     
                     break :blk links[0];
@@ -223,6 +241,7 @@ pub fn Cli(comptime Writer: type) type {
 
 
                 fallback_title = link.title;
+                // TODO: link might only contain path
                 fetch_url = link.link;
                 var resp_2 = try req.fetch(fetch_url);
                 defer resp_2.deinit();
