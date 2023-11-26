@@ -214,9 +214,16 @@ pub fn Cli(comptime Writer: type) type {
                 const link = links[index];
 
                 fallback_title = link.title;
-                // TODO: link might only contain path
-                // TODO?: Get Uri instead. Could just swap Uri's path then
-                fetch_url = link.link;
+                var buf: [128]u8 = undefined;
+                var fixed_buf = std.io.fixedBufferStream(&buf);
+                if (link.link[0] == '/') {
+                    var uri = try std.Uri.parse(url);
+                    uri.path = link.link;
+                    try uri.format("", .{}, fixed_buf.writer());
+                    fetch_url = fixed_buf.getWritten();
+                } else {
+                    fetch_url = link.link;
+                }
                 var resp_2 = try req.fetch(fetch_url);
                 defer resp_2.deinit();
 
