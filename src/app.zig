@@ -255,6 +255,7 @@ pub fn Cli(comptime Writer: type) type {
 
             while (index == 0 or index > links.len) {
                 fix_buf.reset();
+                // TODO: use field 'out'
                 try std.io.getStdOut().writeAll("Enter number: ");
                 try std.io.getStdIn().reader().streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
                 const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
@@ -311,11 +312,10 @@ pub fn Cli(comptime Writer: type) type {
             var buf: [16]u8 = undefined;
             var fix_buf = std.io.fixedBufferStream(&buf);
 
-            const stdin_writer = std.io.getStdOut().writer();
             for (feeds) |feed| {
                 while (true) {
                     fix_buf.reset();
-                    try stdin_writer.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
+                    try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
                     std.io.getStdIn().reader()
                         .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
                             error.StreamTooLong => {},
@@ -332,13 +332,13 @@ pub fn Cli(comptime Writer: type) type {
                     if (value.len == 1) {
                         if (value[0] == 'y' or value[0] == 'Y') {
                             try self.storage.deleteFeed(feed.feed_id);
-                            try stdin_writer.print("Removed feed '{s}'\n", .{feed.feed_url});
+                            try self.out.print("Removed feed '{s}'\n", .{feed.feed_url});
                             break;
                         } else if (value[0] == 'n' or value[0] == 'N') {
                             break;
                         }
                     }
-                    try stdin_writer.print("Invalid user input. Retry\n", .{});
+                    try self.out.print("Invalid user input. Retry\n", .{});
                 }
             }
         }
