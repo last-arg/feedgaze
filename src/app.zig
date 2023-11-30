@@ -49,7 +49,6 @@ const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
 pub fn Cli(comptime Writer: type) type {
     return struct {
         allocator: Allocator,
-        // TODO: can make storage field probably not optional (remove null)
         storage: Storage = undefined,
         out: Writer,
         const Self = @This();
@@ -309,10 +308,38 @@ pub fn Cli(comptime Writer: type) type {
                 return;
             }
 
+            var buf: [16]u8 = undefined;
+            var fix_buf = std.io.fixedBufferStream(&buf);
+
+            const stdin_writer = std.io.getStdOut().writer();
             for (feeds) |feed| {
-                // TODO?: prompt user for to confirm deletion
-                try self.storage.deleteFeed(feed.feed_id);
-                std.log.info("Removed feed '{s}'", .{feed.feed_url});
+                while (true) {
+                    fix_buf.reset();
+                    try stdin_writer.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
+                    std.io.getStdIn().reader()
+                        .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
+                            error.StreamTooLong => {},
+                            else => return err,
+                        };
+                    const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
+
+                    // Empty stdin
+                    var len = fix_buf.getWritten().len;
+                    while (len == buf.len and buf[len-1] != '\n') {
+                        len = try std.io.getStdIn().reader().read(&buf);
+                    }
+                
+                    if (value.len == 1) {
+                        if (value[0] == 'y' or value[0] == 'Y') {
+                            try self.storage.deleteFeed(feed.feed_id);
+                            try stdin_writer.print("Removed feed '{s}'\n", .{feed.feed_url});
+                            break;
+                        } else if (value[0] == 'n' or value[0] == 'N') {
+                            break;
+                        }
+                    }
+                    try stdin_writer.print("Invalid user input. Retry\n", .{});
+                }
             }
         }
 
