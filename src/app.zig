@@ -104,7 +104,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         fn printHelp(self: Self, verb: ?CliVerb) !void {
-            // TODO: use stderr instead?
             var output: []const u8 =
                 \\Usage: feedgaze [command] [options]
                 \\
@@ -401,7 +400,7 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
 test "feedgaze.remove" {
     var buf: [4 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
-    var fb_writer = fb.writer();
+    const fb_writer = fb.writer();
     const CliTest = Cli(@TypeOf(fb_writer));
     var app_cli = CliTest{
         .allocator = std.testing.allocator,
@@ -409,8 +408,8 @@ test "feedgaze.remove" {
     };
 
     var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
-    var test_dir_path = "./test/";
-    var test_filename = "feedgaze_show.db";
+    const test_dir_path = "./test/";
+    const test_filename = "feedgaze_show.db";
     var abs_path = try fs.cwd().realpath(test_dir_path, &path_buf);
     const test_dir = try fs.openDirAbsolute(abs_path, .{});
 
@@ -443,7 +442,7 @@ test "feedgaze.remove" {
 test "feedgaze.show" {
     var buf: [4 * 1024]u8 = undefined;
     var fb = std.io.fixedBufferStream(&buf);
-    var fb_writer = fb.writer();
+    const fb_writer = fb.writer();
     const CliTest = Cli(@TypeOf(fb_writer));
     var app_cli = CliTest{
         .allocator = std.testing.allocator,

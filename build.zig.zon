@@ -10,15 +10,15 @@
     .dependencies = .{
 		.sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "1220512303adab108ca999bf60b40bf2e981eb5fdc4b30523e601c650f7fb97e3a15",
+            .hash = "12207893f40908b3caa732b21014bca33a76ece80ac57389c03e5d8270f568712698",
 		},
 		.args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "12207752d975a7f5d7cc65662ed1c6b117da8dec6d1bd7af9a39e1b65d90bf86e833",
+            .hash = "122012fa395ee8ac94592f3a535ed3899a4485e96ee3d4ec8f82c761bf304b34b870",
 		},
 		.@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
-            .hash = "1220209352d22a38b0ec94f5bc1ab95dce7d77be65ed3f1d31b9cc58292e6279406b",
+            .hash = "12206379a2526c6a70a6501b33a06ad2d63794f55b4a1beaf2dec3f4d0a24b815341",
 		},
 	},
 }

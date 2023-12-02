@@ -217,7 +217,7 @@ test "parseAtom" {
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
-    var start: usize = 0;
+    const start: usize = 0;
     try std.testing.expectEqualDeep(expect_items[start..], result.items);
 }
 
@@ -374,7 +374,7 @@ test "parseRss" {
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
-    var start: usize = 0;
+    const start: usize = 0;
     try std.testing.expectEqualDeep(expect_items[start..], result.items);
 }
 
