@@ -46,11 +46,13 @@ const CliGlobal = struct {
 };
 
 const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
-pub fn Cli(comptime Writer: type) type {
+// const default_db_path: [:0]const u8 = "~/.config/feedgaze/database.sqlite";
+pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         allocator: Allocator,
         storage: Storage = undefined,
         out: Writer,
+        in: Reader,
         const Self = @This();
 
         // TODO: pass 'args' as parameter to function? Makes testing also easier.
@@ -209,7 +211,7 @@ pub fn Cli(comptime Writer: type) type {
                     return;
                 }
 
-                const index = if (links.len > 1) try getUserInput(links) else 0;
+                const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
                 const link = links[index];
 
                 fallback_title = link.title;
@@ -245,9 +247,9 @@ pub fn Cli(comptime Writer: type) type {
             }
         }
 
-        fn getUserInput(links: []html.FeedLink) !usize {
+        fn getUserInput(links: []html.FeedLink, writer: Writer, reader: Reader) !usize {
             for (links, 1..) |link, i| {
-                print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
+                try writer.print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
             }
             var buf: [32]u8 = undefined;
             var fix_buf = std.io.fixedBufferStream(&buf);
@@ -255,9 +257,8 @@ pub fn Cli(comptime Writer: type) type {
 
             while (index == 0 or index > links.len) {
                 fix_buf.reset();
-                // TODO: use field 'out'
-                try std.io.getStdOut().writeAll("Enter number: ");
-                try std.io.getStdIn().reader().streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+                try writer.writeAll("Enter number: ");
+                try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
                 const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
                 index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
                     std.log.err("Provide input is not a number. Enter number between 1 - {d}", .{links.len});
@@ -316,7 +317,7 @@ pub fn Cli(comptime Writer: type) type {
                 while (true) {
                     fix_buf.reset();
                     try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
-                    std.io.getStdIn().reader()
+                    self.in
                         .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
                             error.StreamTooLong => {},
                             else => return err,
@@ -326,7 +327,7 @@ pub fn Cli(comptime Writer: type) type {
                     // Empty stdin
                     var len = fix_buf.getWritten().len;
                     while (len == buf.len and buf[len-1] != '\n') {
-                        len = try std.io.getStdIn().reader().read(&buf);
+                        len = try self.in.read(&buf);
                     }
                 
                     if (value.len == 1) {

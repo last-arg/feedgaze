@@ -4,7 +4,7 @@ const Cli = @import("app.zig").Cli;
 
 pub const std_options = struct {
     // Disable TSL for faster compiles
-    pub const http_disable_tls = true;
+    // pub const http_disable_tls = true;
     // pub const log_level = .debug;
 };
 
@@ -14,10 +14,12 @@ pub fn main() !void {
     defer arena.deinit();
 
     const writer = std.io.getStdOut().writer();
-    const CliApp = Cli(@TypeOf(writer));
+    const reader = std.io.getStdIn().reader();
+    const CliApp = Cli(@TypeOf(writer), @TypeOf(reader));
     var app_cli = CliApp{
         .allocator = arena.allocator(),
         .out = writer,
+        .in = reader,
     };
     try app_cli.run();
 }
