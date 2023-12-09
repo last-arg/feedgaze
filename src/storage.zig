@@ -477,6 +477,11 @@ pub const Storage = struct {
         const max_pos = @min(items_len, self.options.max_item_count);
         try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
     }
+
+    pub fn getSmallestCountdown(self: *Self) !?i64 {
+        const query = "SELECT update_countdown FROM feed_update ORDER BY update_countdown ASC LIMIT 1;";
+        return try one(&self.sql_db, i64, query, .{});
+    }
 };
 
 pub const update_interval = 480; // in minutes

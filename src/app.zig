@@ -98,7 +98,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try self.update(input, opts);
                 },
                 .run => {
-                    std.debug.print("TODO: run foreground", .{});
+                    try self.out.print("Running in foreground\n", .{});
+                    while (true) {
+                        const smallest = (try self.storage.getSmallestCountdown()) orelse 1;
+                        if (smallest > 0) {
+                            std.time.sleep(@intCast(smallest * std.time.ns_per_s));
+                            continue;
+                        }
+                        try self.update(null, .{});
+                    }
                 },
             }
         }
