@@ -217,8 +217,10 @@ test "parseAtom" {
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
-    const start: usize = 0;
-    try std.testing.expectEqualDeep(expect_items[start..], result.items);
+    var start: usize = 0;
+    start = 0;
+    const slice = expect_items[start..expect_items.len];
+    try std.testing.expectEqualDeep(slice, result.items);
 }
 
 const RssParseState = enum {
@@ -374,8 +376,9 @@ test "parseRss" {
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
-    const start: usize = 0;
-    try std.testing.expectEqualDeep(expect_items[start..], result.items);
+    var start: usize = 0;
+    start = 0;
+    try std.testing.expectEqualDeep(expect_items[start..expect_items.len], result.items);
 }
 
 pub const ContentType = feed_types.ContentType;
