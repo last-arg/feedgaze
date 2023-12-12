@@ -281,7 +281,8 @@ pub const Storage = struct {
             \\RETURNING item_id;
         ;
 
-        for (inserts, 0..) |*item, i| {
+        const len = @min(inserts.len, @import("app_config.zig").max_items);
+        for (inserts[0..len], 0..) |*item, i| {
             const item_id = try one(&self.sql_db, usize, query, .{
                 .feed_id = item.feed_id,
                 .title = item.title,
