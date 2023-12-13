@@ -116,4 +116,8 @@ fn commonModules(b: *Builder, step: *CompileStep, dep_args: anytype) void {
 
     const datetime = b.dependency("zig-datetime", dep_args);
     step.addModule("zig-datetime", datetime.module("zig-datetime"));
+
+    const xml = b.dependency("xml", dep_args);
+    step.addModule("xml", xml.module("xml"));
+    
 }

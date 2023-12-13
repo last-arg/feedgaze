@@ -20,5 +20,9 @@
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
             .hash = "12206379a2526c6a70a6501b33a06ad2d63794f55b4a1beaf2dec3f4d0a24b815341",
 		},
+        .xml = .{
+            .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
+            .hash = "12205ac50d9832719d62c4cbe3ad59ca3c73469078f4f8ade371bb166f1690163eee",
+        },
 	},
 }

@@ -40,7 +40,11 @@ const AtomParseState = enum {
     const Self = @This();
 
     pub fn fromString(str: []const u8) ?Self {
-        return std.meta.stringToEnum(Self, str);
+        var iter = std.mem.splitAny(u8, str, &std.ascii.whitespace);
+        if (iter.next()) |value| {
+            return std.meta.stringToEnum(Self, value);
+        }
+        return null;
     }
 };
 
@@ -57,21 +61,34 @@ const AtomParseTag = enum {
     }
 };
 
+const AtomLinkAttr = enum {
+    href,
+    rel, 
+};
+
 pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_str = TmpStr.init(0) catch unreachable;
     var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
-    var parser = xml.Parser.init(content);
     var feed = Feed{ .feed_url = "" };
     var state: AtomParseState = .feed;
     var current_tag: ?AtomParseTag = null;
     var current_entry: ?*FeedItem = null;
     var link_href: ?[]const u8 = null;
     var link_rel: []const u8 = "alternate";
-    while (parser.next()) |event| {
-        switch (event) {
-            .open_tag => |tag| {
+    var attr_key: ?AtomLinkAttr = null;
+
+    var stream = std.io.fixedBufferStream(content);
+    var input_buffered_reader = std.io.bufferedReader(stream.reader());
+    var token_reader = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+
+    var token = try token_reader.next();
+    while (token != .eof) : (token = try token_reader.next()) {
+        switch (token) {
+            .eof => break,
+            .element_start => {
+                const tag = token_reader.fullToken(token).element_start.name;
                 current_tag = AtomParseTag.fromString(tag);
                 if (AtomParseState.fromString(tag)) |new_state| {
                     state = new_state;
@@ -84,17 +101,61 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         current_entry.?.* = .{ .title = undefined };
                     }
                 }
+                
             },
-            .close_tag => |tag| {
-                if (AtomParseState.fromString(tag)) |end_tag| {
-                    if (end_tag == .entry) {
-                        state = .feed;
-                    }
-                }
-
+            .element_content => {
                 if (current_tag == null) {
                     continue;
                 }
+                const elem_content = token_reader.fullToken(token).element_content.content;
+                switch (state) {
+                    .feed => switch (current_tag.?) {
+                        .title => switch (elem_content) {
+                            .text => |text| try tmp_str.appendSlice(text),
+                            .codepoint => |cp| {
+                                var buf: [3]u8 = undefined;
+                                const len = try std.unicode.utf8Encode(cp, &buf);
+                                try tmp_str.appendSlice(buf[0..len]);
+                            },
+                            .entity => |ent| {
+                                try tmp_str.append('&');
+                                try tmp_str.appendSlice(ent);
+                                try tmp_str.append(';');
+                            },
+                        },
+                        // <link /> is void element
+                        .link => {},
+                        // Can be site url. Don't need it because already
+                        // have fallback url from fn arg 'url'.
+                        .id => {},
+                        .updated => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
+                    },
+                    .entry => switch (current_tag.?) {
+                        .title => switch (elem_content) {
+                            .text => |text| try tmp_str.appendSlice(text),
+                            .codepoint => |cp| {
+                                var buf: [3]u8 = undefined;
+                                const len = try std.unicode.utf8Encode(cp, &buf);
+                                try tmp_str.appendSlice(buf[0..len]);
+                            },
+                            .entity => |ent| {
+                                try tmp_str.append('&');
+                                try tmp_str.appendSlice(ent);
+                                try tmp_str.append(';');
+                            },
+                        },
+                        // <link /> is void element
+                        .link => {},
+                        .id => current_entry.?.id = try allocator.dupe(u8, elem_content.text),
+                        .updated => current_entry.?.updated_raw = try allocator.dupe(u8, elem_content.text),
+                    },
+                }
+            },
+            .element_end => {
+                if (current_tag == null) {
+                    continue;
+                }
+                const tag = token_reader.fullToken(token).element_end.name;
 
                 switch (state) {
                     .feed => switch (current_tag.?) {
@@ -102,6 +163,31 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.resize(0) catch unreachable;
                         },
+                        .id, .updated, .link => {},
+                    },
+                    .entry => {
+                        switch (current_tag.?) {
+                            .title => {
+                                current_entry.?.title = try allocator.dupe(u8, tmp_str.slice());
+                                tmp_str.resize(0) catch unreachable;
+                            },
+                            .id, .updated, .link => {},
+                        }
+                        if (mem.eql(u8, "entry", tag)) {
+                            current_entry = null;
+                        }
+                    },
+                }
+                current_tag = null;
+                attr_key = null;
+            },
+            .element_end_empty => {
+                if (current_tag == null) {
+                    continue;
+                }
+
+                switch (state) {
+                    .feed => switch (current_tag.?) {
                         .link => {
                             if (link_href) |href| {
                                 if (mem.eql(u8, "alternate", link_rel)) {
@@ -113,14 +199,10 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             link_href = null;
                             link_rel = "alternate";
                         },
-                        .id, .updated => {},
+                        .title, .id, .updated => {},
                     },
                     .entry => {
                         switch (current_tag.?) {
-                            .title => {
-                                current_entry.?.title = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.resize(0) catch unreachable;
-                            },
                             .link => {
                                 if (link_href) |href| {
                                     if (mem.eql(u8, "alternate", link_rel)) {
@@ -130,55 +212,51 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 link_href = null;
                                 link_rel = "alternate";
                             },
-                            .id, .updated => {},
-                        }
-                        if (mem.eql(u8, "entry", tag)) {
-                            current_entry = null;
+                            .title, .id, .updated => {},
                         }
                     },
                 }
                 current_tag = null;
+                attr_key = null;
             },
-            .attribute => |attr| {
+            .attribute_start => {
                 if (current_tag == null) {
                     continue;
                 }
+
+                const key = token_reader.fullToken(token).attribute_start.name;
+                if (mem.eql(u8, "href", key)) {
+                    attr_key = .href;
+                } else if (mem.eql(u8, "rel", key)) {
+                    attr_key = .rel;
+                } else {
+                    attr_key = null;
+                }
+            },
+            .attribute_content => {
+                if (current_tag == null or attr_key == null) {
+                    continue;
+                }
+
                 switch (current_tag.?) {
                     .link => {
-                        if (mem.eql(u8, "href", attr.name)) {
-                            link_href = attr.raw_value;
-                        } else if (mem.eql(u8, "rel", attr.name)) {
-                            link_rel = attr.raw_value;
+                        const attr_content = token_reader.fullToken(token).attribute_content.content;
+                        if (attr_content != .text) {
+                            continue;
+                        }
+                        const attr_value = attr_content.text;
+                        switch (attr_key.?) {
+                            .href => link_href = try allocator.dupe(u8, attr_value),
+                            .rel => link_rel = try allocator.dupe(u8, attr_value),
                         }
                     },
                     .title, .id, .updated => {},
                 }
+
             },
-            .comment => {},
-            .processing_instruction => {},
-            .character_data => |data| {
-                if (current_tag == null) {
-                    continue;
-                }
-                switch (state) {
-                    .feed => switch (current_tag.?) {
-                        .title => constructTmpStr(&tmp_str, data),
-                        // <link /> is void element
-                        .link => {},
-                        // Can be site url. Don't need it because already
-                        // have fallback url from fn arg 'url'.
-                        .id => {},
-                        .updated => feed.updated_raw = data,
-                    },
-                    .entry => switch (current_tag.?) {
-                        .title => constructTmpStr(&tmp_str, data),
-                        // <link /> is void element
-                        .link => {},
-                        .id => current_entry.?.id = data,
-                        .updated => current_entry.?.updated_raw = data,
-                    },
-                }
-            },
+            .xml_declaration,
+            .pi_start, .pi_content,
+            .comment_start, .comment_content => {},
         }
     }
     if (tmp_entries.len > 0) {
@@ -384,11 +462,16 @@ test "parseRss" {
 pub const ContentType = feed_types.ContentType;
 
 pub fn getContentType(content: []const u8) ?ContentType {
-    var parser = xml.Parser.init(content);
+    var stream = std.io.fixedBufferStream(content);
+    var buf_reader = std.io.bufferedReader(stream.reader());
+    var r = zig_xml.tokenReader(buf_reader.reader(), .{});
     var depth: usize = 0;
-    while (parser.next()) |event| {
-        if (event == .open_tag) {
-            const tag = event.open_tag;
+    while (depth < 2) {
+        const token = r.next() catch break;
+        if (token == .element_start) {
+            const full = r.fullToken(token);
+            const tag = full.element_start.name;
+
             if (depth == 0) {
                 if (mem.eql(u8, "feed", tag)) {
                     return .atom;
@@ -401,12 +484,15 @@ pub fn getContentType(content: []const u8) ?ContentType {
                 if (mem.eql(u8, "channel", tag)) {
                     return .rss;
                 }
-            } else {
-                break;
             }
+                        
             depth += 1;
+        } else if (token == .eof) {
+            break;
         }
     }
+    
+    // TODO: see what new zig xml parser does?
     const trimmed = std.mem.trimLeft(u8, content, &std.ascii.whitespace);
     if (std.ascii.startsWithIgnoreCase(trimmed, "<!doctype html")) {
         return .html;
@@ -441,14 +527,15 @@ test "getContentType" {
 }
 
 pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentType) !FeedAndItems {
-    const ct = blk: {
-        if (content_type) |ct| {
-            if (ct != .xml) {
-                break :blk ct;
-            }
-        }
-        break :blk getContentType(content) orelse return error.UnknownContentType;
-    };
+    _ = content_type;
+
+    // Figure out content type based on file content
+    // Server might return wrong content type. Like 'https://jakearchibald.com/'
+    // TODO?: Could run parse with provided content type and then if there
+    // is no feed.items (or some other condition) check content type based on
+    // file content. If new content type is different from initial content
+    // type re-run parse.
+    const ct = getContentType(content) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
