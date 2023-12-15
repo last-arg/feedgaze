@@ -101,7 +101,6 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         current_entry.?.* = .{ .title = undefined };
                     }
                 }
-                
             },
             .element_content => {
                 if (current_tag == null) {
@@ -331,14 +330,21 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
-    var parser = xml.Parser.init(content);
     var feed = Feed{ .feed_url = "" };
     var state: RssParseState = .channel;
     var current_tag: ?RssParseTag = null;
     var current_item: ?*FeedItem = null;
-    while (parser.next()) |event| {
-        switch (event) {
-            .open_tag => |tag| {
+
+    var stream = std.io.fixedBufferStream(content);
+    var input_buffered_reader = std.io.bufferedReader(stream.reader());
+    var token_reader = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+
+    var token = try token_reader.next();
+    while (token != .eof) : (token = try token_reader.next()) {
+        switch (token) {
+            .eof => break,
+            .element_start => {
+                const tag = token_reader.fullToken(token).element_start.name;
                 current_tag = RssParseTag.fromString(tag);
                 if (RssParseState.fromString(tag)) |new_state| {
                     state = new_state;
@@ -352,7 +358,68 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                     }
                 }
             },
-            .close_tag => |tag| {
+            .element_content => {
+                if (current_tag == null) {
+                    continue;
+                }
+                const elem_content = token_reader.fullToken(token).element_content.content;
+
+                switch (state) {
+                    .channel => switch (current_tag.?) {
+                        .title => switch (elem_content) {
+                            .text => |text| try tmp_str.appendSlice(text),
+                            .codepoint => |cp| {
+                                var buf: [3]u8 = undefined;
+                                const len = try std.unicode.utf8Encode(cp, &buf);
+                                try tmp_str.appendSlice(buf[0..len]);
+                            },
+                            .entity => |ent| {
+                                try tmp_str.append('&');
+                                try tmp_str.appendSlice(ent);
+                                try tmp_str.append(';');
+                            },
+                        },
+                        .link => feed.page_url = try allocator.dupe(u8, elem_content.text),
+                        .pubDate => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .guid, .description => {},
+                    },
+                    .item => switch (current_tag.?) {
+                        .title => switch (elem_content) {
+                            .text => |text| try tmp_str.appendSlice(text),
+                            .codepoint => |cp| {
+                                var buf: [3]u8 = undefined;
+                                const len = try std.unicode.utf8Encode(cp, &buf);
+                                try tmp_str.appendSlice(buf[0..len]);
+                            },
+                            .entity => |ent| {
+                                try tmp_str.append('&');
+                                try tmp_str.appendSlice(ent);
+                                try tmp_str.append(';');
+                            },
+                        },
+                        .description => if (current_item.?.title.len == 0) {
+                            switch (elem_content) {
+                                .text => |text| try tmp_str.appendSlice(text),
+                                .codepoint => |cp| {
+                                    var buf: [3]u8 = undefined;
+                                    const len = try std.unicode.utf8Encode(cp, &buf);
+                                    try tmp_str.appendSlice(buf[0..len]);
+                                },
+                                .entity => |ent| {
+                                    try tmp_str.append('&');
+                                    try tmp_str.appendSlice(ent);
+                                    try tmp_str.append(';');
+                                },
+                            }
+                        },
+                        .link => current_item.?.link = try allocator.dupe(u8, elem_content.text),
+                        .guid => current_item.?.id = try allocator.dupe(u8, elem_content.text),
+                        .pubDate => current_item.?.updated_raw = try allocator.dupe(u8, elem_content.text),
+                    },
+                }
+            },
+            .element_end => {
+                const tag = token_reader.fullToken(token).element_end.name;
                 if (RssParseState.fromString(tag)) |end_tag| {
                     if (end_tag == .item) {
                         state = .channel;
@@ -392,31 +459,18 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                 }
                 current_tag = null;
             },
-            .attribute => {},
-            .comment => {},
-            .processing_instruction => {},
-            .character_data => |data| {
-                if (current_tag == null) {
-                    continue;
-                }
-                switch (state) {
-                    .channel => switch (current_tag.?) {
-                        .title => constructTmpStr(&tmp_str, data),
-                        .link => feed.page_url = data,
-                        .pubDate => feed.updated_raw = data,
-                        .guid, .description => {},
-                    },
-                    .item => switch (current_tag.?) {
-                        .title => constructTmpStr(&tmp_str, data),
-                        .description => if (current_item.?.title.len == 0) constructTmpStr(&tmp_str, data),
-                        .link => current_item.?.link = data,
-                        .guid => current_item.?.id = data,
-                        .pubDate => current_item.?.updated_raw = data,
-                    },
-                }
+            .element_end_empty => {
+                current_item = null;
+                current_tag = null;
             },
+            .attribute_start => {},
+            .attribute_content => {},
+            .xml_declaration,
+            .pi_start, .pi_content,
+            .comment_start, .comment_content => {},
         }
     }
+
     if (tmp_entries.len > 0) {
         try entries.appendSlice(tmp_entries.slice());
     }
@@ -441,13 +495,13 @@ test "parseRss" {
     };
 
     try std.testing.expectEqualDeep(expect_feed, result.feed);
-    var expect_items = [_]FeedItem{ .{
+    const expect_items = [_]FeedItem{ .{
         .title = "Star City's Test",
         .link = "http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp",
         .updated_raw = "Tue, 03 Jun 2003 09:39:21 GMT",
         .id = "http://liftoff.msfc.nasa.gov/2003/06/03.html#item573",
     }, .{
-        .title = "Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a <a href=\"http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm\">partial eclipse of the Sun</a> on Saturday, May 31st.",
+        .title = "Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a &lt;a href=\"http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm\"&gt;partial eclipse of the Sun&lt;/a&gt; on Saturday, May 31st.",
     }, .{
         .title = "Third title",
         .id = "third_id",
