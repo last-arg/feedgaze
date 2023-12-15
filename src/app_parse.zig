@@ -4,7 +4,6 @@ const Allocator = mem.Allocator;
 const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
-const xml = @import("zig-xml");
 const print = std.debug.print;
 
 const max_title_len = 512;
@@ -596,4 +595,53 @@ pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentTy
         .html => @panic("TODO: parse html for feed links"),
         .xml => error.NotAtomOrRss,
     };
+}
+
+const zig_xml = @import("xml");
+test "tmp" {
+    print("parse tmp.xml\n", .{});
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // {
+    //     const content = @embedFile("tmp.xml");
+    //     var stream = std.io.fixedBufferStream(content);
+    //     var input_buffered_reader = std.io.bufferedReader(stream.reader());
+    //     var r = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+    //     while (true) {
+    //         const token = try r.next();
+    //         const full = r.fullToken(token);
+    //         print("token: {any}\n", .{full});
+    //         if (token == .eof) {
+    //             return;
+    //         }
+    //     }
+    // }
+    // {
+    //     const input_file = try std.fs.cwd().openFile("/media/hdd/code/feedgaze/tmp/tmp.xml", .{});
+    //     defer input_file.close();
+    //     var input_buffered_reader = std.io.bufferedReader(input_file.reader());
+    //     var r = zig_xml.reader(arena.allocator(), input_buffered_reader.reader(), .{});
+    //     defer r.deinit();
+    //     while (try r.next()) |event| {
+    //         try printEvent(event);
+    //     }
+    // }
+    const feed = try parse(arena.allocator(), @embedFile("tmp.xml"), null);
+    print("len: {d}\n", .{feed.items.len});
+}
+
+fn printEvent(event: zig_xml.Event) !void {
+    switch (event) {
+        .xml_declaration => |xml_declaration| print("<!xml {s} {?s} {?}\n", .{ xml_declaration.version, xml_declaration.encoding, xml_declaration.standalone }),
+        .element_start => |element_start| {
+            print("<{?s}({?s}):{s}\n", .{ element_start.name.prefix, element_start.name.ns, element_start.name.local });
+            for (element_start.attributes) |attr| {
+                print("  @{?s}({?s}):{s}={s}\n", .{ attr.name.prefix, attr.name.ns, attr.name.local, attr.value });
+            }
+        },
+        .element_content => |element_content| print("  {s}\n", .{element_content.content}),
+        .element_end => |element_end| print("/{?s}({?s}):{s}\n", .{ element_end.name.prefix, element_end.name.ns, element_end.name.local }),
+        .comment => |comment| print("<!--{s}\n", .{comment.content}),
+        .pi => |pi| print("<?{s} {s}\n", .{ pi.target, pi.content }),
+    }
 }

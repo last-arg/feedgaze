@@ -107,10 +107,6 @@ fn commonModules(b: *Builder, step: *CompileStep, dep_args: anytype) void {
     step.addModule("sqlite", sqlite.module("sqlite"));
     step.linkLibrary(sqlite.artifact("sqlite"));
 
-    step.addAnonymousModule("zig-xml", .{
-        .source_file = .{ .path = "./lib/zig-xml/xml.zig" },
-    });
-
     const args = b.dependency("args", dep_args);
     step.addModule("zig-args", args.module("args"));
 
