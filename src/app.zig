@@ -187,11 +187,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn add(self: *Self, url: []const u8) !void {
-            if (try self.storage.hasFeedWithFeedUrl(url)) {
-                // TODO?: ask user if they want re-add feed?
-                std.log.info("There already exists feed '{s}'", .{url});
-                return;
-            }
+            // if (try self.storage.hasFeedWithFeedUrl(url)) {
+            //     // TODO?: ask user if they want re-add feed?
+            //     std.log.info("There already exists feed '{s}'", .{url});
+            //     return;
+            // }
 
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
@@ -248,9 +248,20 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                     return;
                 }
-                try self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title);
+                self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title) catch |err| switch (err) {
+                    error.NothingToInsert => {
+                        std.log.info("No items added to feed '{s}'", .{fetch_url});
+                    },
+                    else => return err,
+                };
+
             } else {
-                try self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title);
+                self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title) catch |err| switch (err) {
+                    error.NothingToInsert => {
+                        std.log.info("No items added to feed '{s}'", .{fetch_url});
+                    },
+                    else => return err,
+                };
             }
         }
 
@@ -303,7 +314,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
-                try self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers);
+                self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
+                    error.NothingToInsert => {
+                        std.log.info("No items added to feed '{s}'", .{f_update.feed_url});
+                    },
+                    else => return err,
+                };
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
         }
