@@ -280,15 +280,46 @@ pub const ContentType = enum {
     html,
 
     pub fn fromString(input: []const u8) ?@This() {
-        if (std.ascii.startsWithIgnoreCase(input, "application/rss+xml")) {
-            return .rss;
-        } else if (std.ascii.startsWithIgnoreCase(input, "application/atom+xml")) {
-            return .atom;
-        } else if (std.ascii.startsWithIgnoreCase(input, "application/xml") or std.ascii.startsWithIgnoreCase(input, "text/xml")) {
+        if (mightBeEncodedContentType(input)) |ct| {
+            return ct;
+        }
+        if (std.ascii.startsWithIgnoreCase(input, "application/xml") or std.ascii.startsWithIgnoreCase(input, "text/xml")) {
             return .xml;
         } else if (std.ascii.startsWithIgnoreCase(input, "text/html")) {
             return .html;
         }
+        return null;
+    }
+
+    fn mightBeEncodedContentType(str: []const u8) ?ContentType {
+        const encoded_plus = "&#43;";
+        const start_rss = "application/rss";
+        const start_atom = "application/atom";
+        var result: ContentType = undefined;
+        const rest = blk: {
+            if (std.ascii.startsWithIgnoreCase(str, start_rss)) {
+                result = .xml;
+                break :blk str[start_rss.len..];
+            } else if (std.ascii.startsWithIgnoreCase(str, start_atom)) {
+                result = .atom;
+                break :blk str[start_atom.len..];
+            }
+            break :blk "";
+        };
+        if (rest.len == 0) {
+            return null;
+        }
+        var rest_start: usize = 0;
+
+        if (rest[0] == '\'') {
+            rest_start = 1;
+        } else if (rest.len >= 5 and std.mem.startsWith(u8, rest, encoded_plus)) {
+            rest_start = encoded_plus.len;
+        }
+        if (rest_start != 0 and std.ascii.startsWithIgnoreCase("xml", rest[rest_start..])) {
+            return result;
+        }
+
         return null;
     }
 };
