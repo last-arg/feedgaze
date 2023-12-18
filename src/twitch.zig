@@ -92,7 +92,7 @@ pub fn fetchFeedItems(arena: *ArenaAllocator, headers: [][]const u8, user: User)
 
     if (resp.status_code == 200) {
         const is_content_type_json = blk: {
-            var last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+            const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
             if (curl.getHeaderValue(last_header, "content-type:")) |value| {
                 break :blk std.ascii.indexOfIgnoreCase(value, "application/json") != null;
             }
@@ -106,7 +106,7 @@ pub fn fetchFeedItems(arena: *ArenaAllocator, headers: [][]const u8, user: User)
         var tree = try p.parse(body);
         defer tree.deinit();
 
-        var data = tree.root.Object.get("data").?;
+        const data = tree.root.Object.get("data").?;
         var items = try ArrayList(Feed.Item).initCapacity(arena.allocator(), data.Array.items.len);
         defer items.deinit();
 
@@ -149,7 +149,7 @@ pub fn fetchUserByLogin(arena: *ArenaAllocator, headers: [][]const u8, login_nam
 
     if (resp.status_code == 200) {
         const is_content_type_json = blk: {
-            var last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
+            const last_header = curl.getLastHeader(resp.headers_fifo.readableSlice(0));
             if (curl.getHeaderValue(last_header, "content-type:")) |value| {
                 break :blk std.ascii.indexOfIgnoreCase(value, "application/json") != null;
             }
