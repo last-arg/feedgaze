@@ -131,11 +131,3 @@ fn isDuplicate(items: []FeedLink, link: []const u8) bool {
     }
     return false;
 }
-
-test "source: https://www.baldurbjarnason.com/" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const content = @embedFile("baldurbjarnason.com.html");
-    const links = try parseHtmlForFeedLinks(arena.allocator(), content);
-    print("links.len: {d}\n", .{links.len});
-}
