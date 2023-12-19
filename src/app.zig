@@ -252,6 +252,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'", .{fetch_url});
                     },
+                    error.FeedExists => {
+                        std.log.info("Feed '{s}' already exists", .{fetch_url});
+                    },
                     else => return err,
                 };
 
@@ -259,6 +262,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 self.storage.addFeed(&arena, content, content_type, url, headers, fallback_title) catch |err| switch (err) {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'", .{fetch_url});
+                    },
+                    error.FeedExists => {
+                        std.log.info("Feed '{s}' already exists", .{fetch_url});
                     },
                     else => return err,
                 };
