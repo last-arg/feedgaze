@@ -311,7 +311,7 @@ pub const ContentType = enum {
         }
         var rest_start: usize = 0;
 
-        if (rest[0] == '\'') {
+        if (rest[0] == '+') {
             rest_start = 1;
         } else if (rest.len >= 5 and std.mem.startsWith(u8, rest, encoded_plus)) {
             rest_start = encoded_plus.len;
