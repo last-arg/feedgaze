@@ -591,7 +591,7 @@ pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentTy
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
-        .html => @panic("TODO: parse html for feed links"),
+        .html => error.NoHtmlParse,
         .xml => error.NotAtomOrRss,
     };
 }

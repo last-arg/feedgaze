@@ -311,20 +311,31 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             for (feed_updates) |f_update| {
                 var req = try http_client.init(arena.allocator(), .{});
                 defer req.deinit();
-                var resp = try req.fetch(f_update.feed_url);
+                var resp = req.fetch(f_update.feed_url) catch |err| {
+                    std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                    continue;
+                };
                 defer resp.deinit();
 
                 const content = resp.body orelse {
                     std.log.err("HTTP response body is empty. Request url: {s}", .{f_update.feed_url});
-                    return;
+                    continue;
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
                 self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'", .{f_update.feed_url});
+                        continue;
                     },
-                    else => return err,
+                    error.NoHtmlParse => {
+                        std.log.err("Failed to update feed '{s}'. Update should not return html file.", .{f_update.feed_url});
+                        continue;
+                    },
+                    else => {
+                        std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                        return err;
+                    }
                 };
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
             }
