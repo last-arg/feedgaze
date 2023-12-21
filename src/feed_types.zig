@@ -35,14 +35,21 @@ pub const Feed = struct {
         InvalidUri,
     };
 
-    pub fn prepareAndValidate(self: *Self, fallback_url: ?[]const u8) !void {
+    pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: ?[]const u8) !void {
         if (self.feed_url.len == 0 and fallback_url == null) {
             return error.NoFeedUrl;
         }
         if (self.feed_url.len == 0) {
             self.feed_url = fallback_url.?;
         }
-        _ = Uri.parse(self.feed_url) catch return Error.InvalidUri;
+        const feed_uri = Uri.parse(self.feed_url) catch return Error.InvalidUri;
+        if (self.page_url) |page_url| {
+            if (page_url[0] == '/' or page_url[0] == '.') {
+                const path = try std.Uri.parseWithoutScheme(page_url);
+                const result = try std.Uri.resolve(feed_uri, path, true, arena.allocator());
+                self.page_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
+            }
+        }
         if (self.updated_raw) |date| {
             self.updated_timestamp = AtomDateTime.parse(date) catch RssDateTime.parse(date) catch null;
         }

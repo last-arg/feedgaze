@@ -85,7 +85,7 @@ pub const Storage = struct {
         if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
             parsed.feed.updated_raw = parsed.items[0].updated_raw;
         }
-        try parsed.feed.prepareAndValidate(fallback_url);
+        try parsed.feed.prepareAndValidate(arena, fallback_url);
         if (parsed.feed.title == null) {
             parsed.feed.title = fallback_title;
         }
@@ -102,7 +102,7 @@ pub const Storage = struct {
         }
 
         parsed.feed.feed_id = feed_info.feed_id;
-        try parsed.feed.prepareAndValidate(feed_info.feed_url);
+        try parsed.feed.prepareAndValidate(arena, feed_info.feed_url);
         try self.updateFeed(parsed.feed);
 
         // Update feed items
