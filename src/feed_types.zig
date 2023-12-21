@@ -35,14 +35,17 @@ pub const Feed = struct {
         InvalidUri,
     };
 
-    pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: ?[]const u8) !void {
-        if (self.feed_url.len == 0 and fallback_url == null) {
-            return error.NoFeedUrl;
-        }
+    pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: []const u8) !void {
         if (self.feed_url.len == 0) {
-            self.feed_url = fallback_url.?;
+            self.feed_url = fallback_url;
         }
-        const feed_uri = Uri.parse(self.feed_url) catch return Error.InvalidUri;
+        const feed_uri = Uri.parse(self.feed_url) catch blk: {
+            const base = try std.Uri.parse(fallback_url);
+            const path = try std.Uri.parseWithoutScheme(self.feed_url);
+            const result = try std.Uri.resolve(base, path, true, arena.allocator());
+            self.feed_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
+            break :blk result;
+        };
         if (self.page_url) |page_url| {
             if (page_url[0] == '/' or page_url[0] == '.') {
                 const path = try std.Uri.parseWithoutScheme(page_url);
