@@ -88,8 +88,8 @@ pub fn init(allocator: Allocator, headers_opts: FetchHeaderOptions) !@This() {
 }
 
 pub fn deinit(self: *@This()) void {
-    defer self.headers.deinit();
-    defer self.client.deinit();
+    self.headers.deinit();
+    self.client.deinit();
 }
 
 pub fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {

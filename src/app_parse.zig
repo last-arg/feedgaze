@@ -545,7 +545,6 @@ pub fn getContentType(content: []const u8) ?ContentType {
         }
     }
     
-    // TODO: see what new zig xml parser does?
     const trimmed = std.mem.trimLeft(u8, content, &std.ascii.whitespace);
     if (std.ascii.startsWithIgnoreCase(trimmed, "<!doctype html")) {
         return .html;
