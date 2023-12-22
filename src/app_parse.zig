@@ -451,15 +451,11 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             },
                             .link, .guid, .pubDate => {},
                         }
-                        if (mem.eql(u8, "entry", tag)) {
-                            current_item = null;
-                        }
                     },
                 }
                 current_tag = null;
             },
             .element_end_empty => {
-                current_item = null;
                 current_tag = null;
             },
             .attribute_start => {},
