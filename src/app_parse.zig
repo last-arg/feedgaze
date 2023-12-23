@@ -386,7 +386,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .title => switch (elem_content) {
                             .text => |text| try tmp_str.appendSlice(text),
                             .codepoint => |cp| {
-                                var buf: [3]u8 = undefined;
+                                var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
                                 try tmp_str.appendSlice(buf[0..len]);
                             },
