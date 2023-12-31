@@ -210,22 +210,23 @@ pub const Storage = struct {
         storage_arr.resize(0) catch unreachable;
         storage_arr.appendSliceAssumeCapacity(query);
 
-        if (options.force) {
+        if (!options.force) {
             storage_arr.appendAssumeCapacity(' ');
             storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendAssumeCapacity(' ');
-            storage_arr.appendSliceAssumeCapacity("feed_update.update_countdown < 0");
+            storage_arr.appendSliceAssumeCapacity(" feed_update.update_countdown < 0");
             prefix = "AND";
         }
 
         if (search_term) |term| {
-            storage_arr.appendAssumeCapacity(' ');
-            storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendAssumeCapacity(' ');
-            storage_arr.appendSliceAssumeCapacity("feed.feed_url LIKE '%' || ? || '%' or feed.page_url LIKE '%' || ? || '%';");
-            var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
-            defer stmt.deinit();
-            return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
+            if (term.len > 0) {
+                storage_arr.appendAssumeCapacity(' ');
+                storage_arr.appendSliceAssumeCapacity(prefix);
+                storage_arr.appendAssumeCapacity(' ');
+                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
+                var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+                defer stmt.deinit();
+                return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
+            }
         }
 
         var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
