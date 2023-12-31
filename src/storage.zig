@@ -214,7 +214,7 @@ pub const Storage = struct {
             storage_arr.appendAssumeCapacity(' ');
             storage_arr.appendSliceAssumeCapacity(prefix);
             storage_arr.appendAssumeCapacity(' ');
-            storage_arr.appendSliceAssumeCapacity("update_countdown < 0");
+            storage_arr.appendSliceAssumeCapacity("feed_update.update_countdown < 0");
             prefix = "AND";
         }
 
@@ -379,13 +379,16 @@ pub const Storage = struct {
 
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
-            \\UPDATE feed_update SET
-            \\  cache_control_max_age = @cache_control_max_age,
-            \\  expires_utc = @expires_utc,
-            \\  last_modified_utc = @last_modified_utc,
-            \\  etag = @etag,
-            \\  last_update = (strftime('%s', 'now'))
-            \\WHERE feed_id = @feed_id;
+            \\INSERT INTO feed_update 
+            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
+            \\VALUES 
+            \\  (@feed_id, @cache_control_max_age, @expires_utc, @last_modified_utc, @etag)
+            \\ ON CONFLICT(feed_id) DO UPDATE SET
+            \\  cache_control_max_age = @u_cache_control_max_age,
+            \\  expires_utc = @u_expires_utc,
+            \\  last_modified_utc = @u_last_modified_utc,
+            \\  etag = @u_etag,
+            \\  last_update = (strftime('%s', 'now'));
         ;
         try self.sql_db.exec(query, .{}, .{
             .feed_id = feed_id,
@@ -393,6 +396,10 @@ pub const Storage = struct {
             .expires_utc = feed_update.expires_utc,
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
+            .u_cache_control_max_age = feed_update.cache_control_max_age,
+            .u_expires_utc = feed_update.expires_utc,
+            .u_last_modified_utc = feed_update.last_modified_utc,
+            .u_etag = feed_update.etag,
         });
     }
 
