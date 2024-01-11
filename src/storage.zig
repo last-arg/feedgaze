@@ -451,13 +451,11 @@ pub const Storage = struct {
             \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
             \\ON CONFLICT(feed_id, position) DO UPDATE SET
-            \\  item_id = (select max(item_id) + 1 from item),
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  link = excluded.link,
             \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp,
-            \\  position = excluded.position
+            \\  updated_timestamp = excluded.updated_timestamp
             \\WHERE (id != excluded.id OR link != excluded.link OR title != excluded.title) 
             \\AND updated_timestamp != excluded.updated_timestamp
             \\;
