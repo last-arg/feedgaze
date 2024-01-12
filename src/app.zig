@@ -334,7 +334,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     },
                     else => {
                         std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
-                        return err;
+                        continue;
                     }
                 };
                 std.log.info("Updated feed '{s}'", .{f_update.feed_url});
