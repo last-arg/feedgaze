@@ -213,7 +213,7 @@ pub const Storage = struct {
         if (!options.force) {
             storage_arr.appendAssumeCapacity(' ');
             storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendSliceAssumeCapacity(" feed_update.update_countdown < 0");
+            storage_arr.appendSliceAssumeCapacity(" (update_countdown < 0 OR update_countdown IS NULL)");
             prefix = "AND";
         }
 
