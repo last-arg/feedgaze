@@ -33,6 +33,8 @@ const CliVerb = union(enum) {
     show: ShowOptions,
     update: UpdateOptions,
     run: void,
+    // TODO: generate html file
+    // html: void,
 };
 
 const CliGlobal = struct {
@@ -304,40 +306,43 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer arena.deinit();
 
             if (!options.force) {
+                // TODO: only update feeds that were updated in for loop?
                 try self.storage.updateCountdowns();
             }
             const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
+            std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             for (feed_updates) |f_update| {
                 var req = try http_client.init(arena.allocator(), .{});
                 defer req.deinit();
+                std.log.info("Updating feed '{s}'", .{f_update.feed_url});
                 var resp = req.fetch(f_update.feed_url) catch |err| {
-                    std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                    std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
                     continue;
                 };
                 defer resp.deinit();
 
                 const content = resp.body orelse {
-                    std.log.err("HTTP response body is empty. Request url: {s}", .{f_update.feed_url});
+                    std.log.err("HTTP response body is empty. Request url: {s}\n", .{f_update.feed_url});
                     continue;
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
                 self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
                     error.NothingToInsert => {
-                        std.log.info("No items added to feed '{s}'", .{f_update.feed_url});
+                        std.log.info("No items added to feed '{s}'\n", .{f_update.feed_url});
                         continue;
                     },
                     error.NoHtmlParse => {
-                        std.log.err("Failed to update feed '{s}'. Update should not return html file.", .{f_update.feed_url});
+                        std.log.err("Failed to update feed '{s}'. Update should not return html file.\n", .{f_update.feed_url});
                         continue;
                     },
                     else => {
-                        std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                        std.log.err("Failed to update feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
                         continue;
                     }
                 };
-                std.log.info("Updated feed '{s}'", .{f_update.feed_url});
+                std.log.info("Updated feed '{s}'\n", .{f_update.feed_url});
             }
         }
 
