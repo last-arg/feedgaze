@@ -411,8 +411,19 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 },
                             }
                         },
-                        .link => current_item.?.link = try allocator.dupe(u8, elem_content.text),
-                        .guid => current_item.?.id = try allocator.dupe(u8, elem_content.text),
+                        .link, .guid => switch (elem_content) {
+                            .text => |text| try tmp_str.appendSlice(text),
+                            .codepoint => |cp| {
+                                var buf: [3]u8 = undefined;
+                                const len = try std.unicode.utf8Encode(cp, &buf);
+                                try tmp_str.appendSlice(buf[0..len]);
+                            },
+                            .entity => |ent| {
+                                try tmp_str.append('&');
+                                try tmp_str.appendSlice(ent);
+                                try tmp_str.append(';');
+                            },
+                        },
                         .pubDate => current_item.?.updated_raw = try allocator.dupe(u8, elem_content.text),
                     },
                 }
@@ -449,7 +460,15 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                     tmp_str.resize(0) catch unreachable;
                                 }
                             },
-                            .link, .guid, .pubDate => {},
+                            .link => {
+                                current_item.?.link = try allocator.dupe(u8, tmp_str.slice());
+                                tmp_str.resize(0) catch unreachable;
+                            }, 
+                            .guid => {
+                                current_item.?.id = try allocator.dupe(u8, tmp_str.slice());
+                                tmp_str.resize(0) catch unreachable;
+                            }, 
+                            .pubDate => {},
                         }
                     },
                 }
