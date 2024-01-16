@@ -35,11 +35,13 @@ const TmpStr = struct {
         };
     }
 
+    // TODO: When duping slice() can also remove whitespace from end
     fn appendSlice(self: *Self, items: []const u8) void {
         if (self.is_full) {
             return;
         }
-        self.arr.appendSlice(items) catch {
+        const tmp_items = if (self.arr.len == 0) mem.trimLeft(u8, items, &std.ascii.whitespace) else items;
+        self.arr.appendSlice(tmp_items) catch {
             self.is_full = true;
         };
     }
