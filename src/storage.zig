@@ -80,12 +80,12 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, fallback_url: []const u8, headers: std.http.Headers, fallback_title: ?[]const u8) !void {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, fetch_url: []const u8, headers: std.http.Headers, fallback_title: ?[]const u8) !void {
         var parsed = try parse.parse(arena.allocator(), content, content_type);
         if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
             parsed.feed.updated_raw = parsed.items[0].updated_raw;
         }
-        try parsed.feed.prepareAndValidate(arena, fallback_url);
+        try parsed.feed.prepareAndValidate(arena, fetch_url);
         if (parsed.feed.title == null) {
             parsed.feed.title = fallback_title;
         }

@@ -36,9 +36,7 @@ pub const Feed = struct {
     };
 
     pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: []const u8) !void {
-        if (self.feed_url.len == 0) {
-            self.feed_url = fallback_url;
-        }
+        self.feed_url = fallback_url;
         const feed_uri = Uri.parse(self.feed_url) catch blk: {
             const base = try std.Uri.parse(fallback_url);
             const path = try std.Uri.parseWithoutScheme(self.feed_url);
