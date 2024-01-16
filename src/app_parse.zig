@@ -7,6 +7,7 @@ const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
 
 const max_title_len = 512;
+// TODO: add max_items
 const default_item_count = @import("./app_config.zig").max_items;
 
 pub const FeedAndItems = struct {
@@ -14,23 +15,44 @@ pub const FeedAndItems = struct {
     items: []FeedItem,
 };
 
-const TmpStr = std.BoundedArray(u8, max_title_len);
 
-fn constructTmpStr(tmp_str: *TmpStr, data: []const u8) void {
-    if (tmp_str.capacity() == tmp_str.len) {
-        return;
+const TmpStr = struct {
+    const Self = @This();
+    const Str = std.BoundedArray(u8, max_title_len);
+    arr: Str,
+    is_full: bool = false,
+
+    fn init() Self {
+        return .{ .arr = Str.init(0) catch unreachable };
     }
-    const end = blk: {
-        const new_len = tmp_str.len + data.len;
-        if (new_len > tmp_str.capacity()) {
-            break :blk tmp_str.capacity() - tmp_str.len;
+
+    fn append(self: *Self, item: u8) void {
+        if (self.is_full) {
+            return;
         }
-        break :blk data.len;
-    };
-    if (end > 0) {
-        tmp_str.appendSliceAssumeCapacity(data[0..end]);
+        self.arr.append(item) catch {
+            self.is_full = true;
+        };
     }
-}
+
+    fn appendSlice(self: *Self, items: []const u8) void {
+        if (self.is_full) {
+            return;
+        }
+        self.arr.appendSlice(items) catch {
+            self.is_full = true;
+        };
+    }
+    
+    fn reset(self: *Self) void {
+        self.is_full = false;
+        self.arr.resize(0) catch unreachable;
+    }
+
+    fn slice(self: *Self) []const u8 {
+        return self.arr.slice();
+    }
+};
 
 const AtomParseState = enum {
     feed,
@@ -66,7 +88,7 @@ const AtomLinkAttr = enum {
 };
 
 pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
-    var tmp_str = TmpStr.init(0) catch unreachable;
+    var tmp_str = TmpStr.init();
     var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
@@ -109,16 +131,16 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                 switch (state) {
                     .feed => switch (current_tag.?) {
                         .title => switch (elem_content) {
-                            .text => |text| try tmp_str.appendSlice(text),
+                            .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
-                                var buf: [3]u8 = undefined;
+                                var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
-                                try tmp_str.appendSlice(buf[0..len]);
+                                tmp_str.appendSlice(buf[0..len]);
                             },
                             .entity => |ent| {
-                                try tmp_str.append('&');
-                                try tmp_str.appendSlice(ent);
-                                try tmp_str.append(';');
+                                tmp_str.append('&');
+                                tmp_str.appendSlice(ent);
+                                tmp_str.append(';');
                             },
                         },
                         // <link /> is void element
@@ -130,16 +152,16 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                     },
                     .entry => switch (current_tag.?) {
                         .title => switch (elem_content) {
-                            .text => |text| try tmp_str.appendSlice(text),
+                            .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
                                 var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
-                                try tmp_str.appendSlice(buf[0..len]);
+                                tmp_str.appendSlice(buf[0..len]);
                             },
                             .entity => |ent| {
-                                try tmp_str.append('&');
-                                try tmp_str.appendSlice(ent);
-                                try tmp_str.append(';');
+                                tmp_str.append('&');
+                                tmp_str.appendSlice(ent);
+                                tmp_str.append(';');
                             },
                         },
                         // <link /> is void element
@@ -159,7 +181,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                     .feed => switch (current_tag.?) {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
-                            tmp_str.resize(0) catch unreachable;
+                            tmp_str.reset();
                         },
                         .id, .updated, .link => {},
                     },
@@ -167,7 +189,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         switch (current_tag.?) {
                             .title => {
                                 current_entry.?.title = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.resize(0) catch unreachable;
+                                tmp_str.reset();
                             },
                             .id, .updated, .link => {},
                         }
@@ -325,7 +347,7 @@ const RssParseTag = enum {
 };
 
 pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
-    var tmp_str = TmpStr.init(0) catch unreachable;
+    var tmp_str = TmpStr.init();
     var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
@@ -366,16 +388,16 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                 switch (state) {
                     .channel => switch (current_tag.?) {
                         .title => switch (elem_content) {
-                            .text => |text| try tmp_str.appendSlice(text),
+                            .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
-                                var buf: [3]u8 = undefined;
+                                var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
-                                try tmp_str.appendSlice(buf[0..len]);
+                                tmp_str.appendSlice(buf[0..len]);
                             },
                             .entity => |ent| {
-                                try tmp_str.append('&');
-                                try tmp_str.appendSlice(ent);
-                                try tmp_str.append(';');
+                                tmp_str.append('&');
+                                tmp_str.appendSlice(ent);
+                                tmp_str.append(';');
                             },
                         },
                         .link => feed.page_url = try allocator.dupe(u8, elem_content.text),
@@ -384,44 +406,44 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                     },
                     .item => switch (current_tag.?) {
                         .title => switch (elem_content) {
-                            .text => |text| try tmp_str.appendSlice(text),
+                            .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
                                 var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
-                                try tmp_str.appendSlice(buf[0..len]);
+                                tmp_str.appendSlice(buf[0..len]);
                             },
                             .entity => |ent| {
-                                try tmp_str.append('&');
-                                try tmp_str.appendSlice(ent);
-                                try tmp_str.append(';');
+                                tmp_str.append('&');
+                                tmp_str.appendSlice(ent);
+                                tmp_str.append(';');
                             },
                         },
                         .description => if (current_item.?.title.len == 0) {
                             switch (elem_content) {
-                                .text => |text| try tmp_str.appendSlice(text),
+                                .text => |text| tmp_str.appendSlice(text),
                                 .codepoint => |cp| {
-                                    var buf: [3]u8 = undefined;
+                                    var buf: [4]u8 = undefined;
                                     const len = try std.unicode.utf8Encode(cp, &buf);
-                                    try tmp_str.appendSlice(buf[0..len]);
+                                    tmp_str.appendSlice(buf[0..len]);
                                 },
                                 .entity => |ent| {
-                                    try tmp_str.append('&');
-                                    try tmp_str.appendSlice(ent);
-                                    try tmp_str.append(';');
+                                    tmp_str.append('&');
+                                    tmp_str.appendSlice(ent);
+                                    tmp_str.append(';');
                                 },
                             }
                         },
                         .link, .guid => switch (elem_content) {
-                            .text => |text| try tmp_str.appendSlice(text),
+                            .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
-                                var buf: [3]u8 = undefined;
+                                var buf: [4]u8 = undefined;
                                 const len = try std.unicode.utf8Encode(cp, &buf);
-                                try tmp_str.appendSlice(buf[0..len]);
+                                tmp_str.appendSlice(buf[0..len]);
                             },
                             .entity => |ent| {
-                                try tmp_str.append('&');
-                                try tmp_str.appendSlice(ent);
-                                try tmp_str.append(';');
+                                tmp_str.append('&');
+                                tmp_str.appendSlice(ent);
+                                tmp_str.append(';');
                             },
                         },
                         .pubDate => current_item.?.updated_raw = try allocator.dupe(u8, elem_content.text),
@@ -444,7 +466,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                     .channel => switch (current_tag.?) {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
-                            tmp_str.resize(0) catch unreachable;
+                            tmp_str.reset();
                         },
                         .link, .guid, .pubDate, .description => {},
                     },
@@ -452,21 +474,21 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         switch (current_tag.?) {
                             .title => {
                                 current_item.?.title = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.resize(0) catch unreachable;
+                                tmp_str.reset();
                             },
                             .description => {
                                 if (current_item.?.title.len == 0) {
                                     current_item.?.title = try allocator.dupe(u8, tmp_str.slice());
-                                    tmp_str.resize(0) catch unreachable;
+                                    tmp_str.reset();
                                 }
                             },
                             .link => {
                                 current_item.?.link = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.resize(0) catch unreachable;
+                                tmp_str.reset();
                             }, 
                             .guid => {
                                 current_item.?.id = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.resize(0) catch unreachable;
+                                tmp_str.reset();
                             }, 
                             .pubDate => {},
                         }
