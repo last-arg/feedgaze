@@ -388,8 +388,7 @@ pub const Storage = struct {
             \\  cache_control_max_age = @u_cache_control_max_age,
             \\  expires_utc = @u_expires_utc,
             \\  last_modified_utc = @u_last_modified_utc,
-            \\  etag = @u_etag,
-            \\  last_update = (strftime('%s', 'now'));
+            \\  etag = @u_etag;
         ;
         try self.sql_db.exec(query, .{}, .{
             .feed_id = feed_id,
@@ -427,12 +426,6 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        // Consider when inserting new items:
-        // - There might be problem when there are more items in db than
-        // are being inserted.
-        // - there might be duplicate position values in the same feed_id
-        // Can't use conflict(feed_id, position) because the item_id doesn't
-        // change.
         const query =
             \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
@@ -456,8 +449,7 @@ pub const Storage = struct {
             \\  link = excluded.link,
             \\  updated_raw = excluded.updated_raw,
             \\  updated_timestamp = excluded.updated_timestamp
-            \\WHERE (id != excluded.id OR link != excluded.link OR title != excluded.title) 
-            \\AND updated_timestamp != excluded.updated_timestamp
+            \\WHERE title != excluded.title AND updated_timestamp != excluded.updated_timestamp
             \\;
         ;
 
