@@ -336,13 +336,12 @@ const RssParseTag = enum {
 
 pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_str = TmpStr.init();
-    var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
     var state: RssParseState = .channel;
     var current_tag: ?RssParseTag = null;
-    var current_item: ?*FeedItem = null;
+    var current_item: FeedItem = .{.title = ""};
 
     var stream = std.io.fixedBufferStream(content);
     var input_buffered_reader = std.io.bufferedReader(stream.reader());
@@ -357,24 +356,14 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                 current_tag = RssParseTag.fromString(tag);
                 if (RssParseState.fromString(tag)) |new_state| {
                     state = new_state;
-                    if (state == .item) {
-                        current_item = tmp_entries.addOne() catch blk: {
-                            try entries.appendSlice(tmp_entries.slice());
-                            tmp_entries.resize(0) catch unreachable;
-                            break :blk tmp_entries.addOne() catch unreachable;
-                        };
-                        current_item.?.* = .{ .title = "" };
-                    }
                 }
             },
             .element_content => {
-                if (current_tag == null) {
-                    continue;
-                }
+                const tag = current_tag orelse continue;
                 const elem_content = token_reader.fullToken(token).element_content.content;
 
                 switch (state) {
-                    .channel => switch (current_tag.?) {
+                    .channel => switch (tag) {
                         .title => switch (elem_content) {
                             .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
@@ -392,7 +381,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .pubDate => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
                         .guid, .description => {},
                     },
-                    .item => switch (current_tag.?) {
+                    .item => switch (tag) {
                         .title => switch (elem_content) {
                             .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
@@ -406,7 +395,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 tmp_str.append(';');
                             },
                         },
-                        .description => if (current_item.?.title.len == 0) {
+                        .description => if (current_item.title.len == 0) {
                             switch (elem_content) {
                                 .text => |text| tmp_str.appendSlice(text),
                                 .codepoint => |cp| {
@@ -434,24 +423,26 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 tmp_str.append(';');
                             },
                         },
-                        .pubDate => current_item.?.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .pubDate => current_item.updated_raw = try allocator.dupe(u8, elem_content.text),
                     },
                 }
             },
             .element_end => {
-                const tag = token_reader.fullToken(token).element_end.name;
-                if (RssParseState.fromString(tag)) |end_tag| {
-                    if (end_tag == .item) {
-                        state = .channel;
+                const tag_str = token_reader.fullToken(token).element_end.name;
+                if (mem.eql(u8, "item", tag_str)) {
+                    entries.append(current_item) catch break;
+                    if (entries.items.len == default_item_count) {
+                        break;
                     }
-                }
-
-                if (current_tag == null) {
+                    current_item = .{ .title = "" };
+                    state = .channel;
                     continue;
                 }
 
+                const tag = current_tag orelse continue;
+
                 switch (state) {
-                    .channel => switch (current_tag.?) {
+                    .channel => switch (tag) {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
@@ -459,23 +450,23 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .link, .guid, .pubDate, .description => {},
                     },
                     .item => {
-                        switch (current_tag.?) {
+                        switch (tag) {
                             .title => {
-                                current_item.?.title = try allocator.dupe(u8, tmp_str.slice());
+                                current_item.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             },
                             .description => {
-                                if (current_item.?.title.len == 0) {
-                                    current_item.?.title = try allocator.dupe(u8, tmp_str.slice());
+                                if (current_item.title.len == 0) {
+                                    current_item.title = try allocator.dupe(u8, tmp_str.slice());
                                     tmp_str.reset();
                                 }
                             },
                             .link => {
-                                current_item.?.link = try allocator.dupe(u8, tmp_str.slice());
+                                current_item.link = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             }, 
                             .guid => {
-                                current_item.?.id = try allocator.dupe(u8, tmp_str.slice());
+                                current_item.id = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             }, 
                             .pubDate => {},
@@ -493,10 +484,6 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .pi_start, .pi_content,
             .comment_start, .comment_content => {},
         }
-    }
-
-    if (tmp_entries.len > 0) {
-        try entries.appendSlice(tmp_entries.slice());
     }
 
     return .{
@@ -608,10 +595,6 @@ pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentTy
 
     // Figure out content type based on file content
     // Server might return wrong content type. Like 'https://jakearchibald.com/'
-    // TODO?: Could run parse with provided content type and then if there
-    // is no feed.items (or some other condition) check content type based on
-    // file content. If new content type is different from initial content
-    // type re-run parse.
     const ct = getContentType(content) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
