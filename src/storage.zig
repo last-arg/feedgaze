@@ -388,7 +388,9 @@ pub const Storage = struct {
             \\  cache_control_max_age = @u_cache_control_max_age,
             \\  expires_utc = @u_expires_utc,
             \\  last_modified_utc = @u_last_modified_utc,
-            \\  etag = @u_etag;
+            \\  etag = @u_etag,
+            \\  last_update = strftime('%s', 'now')
+            \\;
         ;
         try self.sql_db.exec(query, .{}, .{
             .feed_id = feed_id,
@@ -401,6 +403,11 @@ pub const Storage = struct {
             .u_last_modified_utc = feed_update.last_modified_utc,
             .u_etag = feed_update.etag,
         });
+    }
+
+    pub fn updateLastUpdate(self: *Self, feed_id: usize) !void {
+        const query = "update feed_update set last_update = strftime('%s', 'now') where feed_id = @feed_id;";
+        try self.sql_db.exec(query, .{}, .{.feed_id = feed_id});
     }
 
     pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {

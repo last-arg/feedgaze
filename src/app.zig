@@ -320,7 +320,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 defer req.deinit();
                 std.log.info("Updating feed '{s}'", .{f_update.feed_url});
                 var resp = req.fetch(f_update.feed_url) catch |err| {
-                    std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
+                    switch (err) {
+                        error.HttpRedirectMissingLocation => {
+                            std.log.info("Nothing to update in '{s}'\n", .{f_update.feed_url});
+                            try self.storage.updateLastUpdate(f_update.feed_id);
+                        },
+                        else => {
+                            std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
+                        }
+                    }
                     continue;
                 };
                 defer resp.deinit();
@@ -329,7 +337,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("HTTP response body is empty. Request url: {s}\n", .{f_update.feed_url});
                     continue;
                 };
-                std.log.info("status: {any}", .{resp.status});
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
                 self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
