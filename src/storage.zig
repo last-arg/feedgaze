@@ -426,7 +426,7 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        const query =
+        const query_with_id =
             \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
             \\ON CONFLICT(feed_id, id) DO UPDATE SET
@@ -443,26 +443,46 @@ pub const Storage = struct {
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
-            \\ON CONFLICT(feed_id, position) DO UPDATE SET
-            \\  title = excluded.title,
-            \\  id = excluded.id,
-            \\  link = excluded.link,
-            \\  updated_raw = excluded.updated_raw,
-            \\  updated_timestamp = excluded.updated_timestamp
-            \\WHERE title != excluded.title AND updated_timestamp != excluded.updated_timestamp
             \\;
         ;
 
+        const query_without_id =
+            \\update item set 
+            \\  title = @u_title,
+            \\  updated_raw = @u_raw,
+            \\  updated_timestamp = @u_timestamp
+            \\where feed_id = @u_feed_id and position = @u_position;
+            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, position)
+            \\select @feed_id, @title, @updated_raw, @updated_timestamp, @position where (select changes() = 0)
+            \\;
+        ;
+        
         for (inserts, 0..) |item, i| {
-            try self.sql_db.exec(query, .{}, .{
-                .feed_id = item.feed_id,
-                .title = item.title,
-                .link = item.link,
-                .id = item.id,
-                .updated_raw = item.updated_raw,
-                .updated_timestamp = item.updated_timestamp,
-                .position = i,
-            });
+            if (item.id != null or item.link != null) {
+                try self.sql_db.exec(query_with_id, .{}, .{
+                    .feed_id = item.feed_id,
+                    .title = item.title,
+                    .link = item.link,
+                    .id = item.id,
+                    .updated_raw = item.updated_raw,
+                    .updated_timestamp = item.updated_timestamp,
+                    .position = i,
+                });
+            } else {
+                try self.sql_db.exec(query_without_id, .{}, .{
+                    .u_title = item.title,
+                    .u_raw = item.updated_raw,
+                    .u_timestamp = item.updated_timestamp,
+                    .u_feed_id = item.feed_id,
+                    .u_position = i,
+
+                    .feed_id = item.feed_id,
+                    .title = item.title,
+                    .updated_raw = item.updated_raw,
+                    .updated_timestamp = item.updated_timestamp,
+                    .position = i,
+                });
+            }
         }
     }
 
@@ -505,8 +525,7 @@ const tables = &[_][]const u8{
     \\  position INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
-    \\  UNIQUE(feed_id, link),
-    \\  UNIQUE(feed_id, position)
+    \\  UNIQUE(feed_id, link)
     \\);
     ,
     comptimePrint(
