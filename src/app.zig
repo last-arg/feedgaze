@@ -122,9 +122,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  add       Add feed
                 \\  remove    Remove feed(s)
                 \\  update    Update feed(s)
-                \\  help      Print this help and exit
                 \\  run       Run update in foreground
                 \\  show      Print feeds' items
+                \\  help      Print this help and exit
                 \\
                 \\General options:
                 \\
@@ -313,7 +313,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             for (feed_updates) |f_update| {
-                var req = try http_client.init(arena.allocator(), .{});
+                var req = try http_client.init(arena.allocator(), .{
+                    .etag = f_update.etag,
+                    .last_modified_utc = f_update.last_modified_utc,
+                });
                 defer req.deinit();
                 std.log.info("Updating feed '{s}'", .{f_update.feed_url});
                 var resp = req.fetch(f_update.feed_url) catch |err| {
@@ -326,6 +329,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("HTTP response body is empty. Request url: {s}\n", .{f_update.feed_url});
                     continue;
                 };
+                std.log.info("status: {any}", .{resp.status});
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
                 self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {

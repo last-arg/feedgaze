@@ -65,12 +65,13 @@ pub fn createHeaders(allocator: Allocator, opts: FetchHeaderOptions) !http.Heade
     var headers = http.Headers.init(allocator);
     try headers.append("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
     if (opts.etag) |etag| {
-        try headers.append("If-Match", etag);
-    }
-    var date_buf: [29]u8 = undefined;
-    if (opts.last_modified_utc) |utc| {
-        const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc);
-        try headers.append("If-Modified-Since", date_slice);
+        try headers.append("If-None-Match", etag);
+    } else {
+        var date_buf: [29]u8 = undefined;
+        if (opts.last_modified_utc) |utc| {
+            const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc * 1000);
+            try headers.append("If-Modified-Since", try allocator.dupe(u8, date_slice));
+        }
     }
     return headers;
 }
