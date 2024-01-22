@@ -90,13 +90,12 @@ const AtomLinkAttr = enum {
 
 pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_str = TmpStr.init();
-    var tmp_entries = std.BoundedArray(FeedItem, 10).init(0) catch unreachable;
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
     var state: AtomParseState = .feed;
     var current_tag: ?AtomParseTag = null;
-    var current_entry: ?*FeedItem = null;
+    var current_entry: FeedItem = .{ .title = "" };
     var link_href: ?[]const u8 = null;
     var link_rel: []const u8 = "alternate";
     var attr_key: ?AtomLinkAttr = null;
@@ -114,23 +113,13 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                 current_tag = AtomParseTag.fromString(tag);
                 if (AtomParseState.fromString(tag)) |new_state| {
                     state = new_state;
-                    if (state == .entry) {
-                        current_entry = tmp_entries.addOne() catch blk: {
-                            try entries.appendSlice(tmp_entries.slice());
-                            tmp_entries.resize(0) catch unreachable;
-                            break :blk tmp_entries.addOne() catch unreachable;
-                        };
-                        current_entry.?.* = .{ .title = undefined };
-                    }
                 }
             },
             .element_content => {
-                if (current_tag == null) {
-                    continue;
-                }
+                const tag = current_tag orelse continue;
                 const elem_content = token_reader.fullToken(token).element_content.content;
                 switch (state) {
-                    .feed => switch (current_tag.?) {
+                    .feed => switch (tag) {
                         .title => switch (elem_content) {
                             .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
@@ -151,7 +140,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .id => {},
                         .updated => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
                     },
-                    .entry => switch (current_tag.?) {
+                    .entry => switch (tag) {
                         .title => switch (elem_content) {
                             .text => |text| tmp_str.appendSlice(text),
                             .codepoint => |cp| {
@@ -167,19 +156,25 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         },
                         // <link /> is void element
                         .link => {},
-                        .id => current_entry.?.id = try allocator.dupe(u8, elem_content.text),
-                        .updated => current_entry.?.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .id => current_entry.id = try allocator.dupe(u8, elem_content.text),
+                        .updated => current_entry.updated_raw = try allocator.dupe(u8, elem_content.text),
                     },
                 }
             },
             .element_end => {
-                if (current_tag == null) {
+                const tag_str = token_reader.fullToken(token).element_end.name;
+                if (mem.eql(u8, "entry", tag_str)) {
+                    entries.append(current_entry) catch break;
+                    if (entries.items.len == default_item_count) {
+                        break;
+                    }
+                    current_entry = .{ .title = "" };
+                    state = .feed;
                     continue;
                 }
-                const tag = token_reader.fullToken(token).element_end.name;
-
+                const tag = current_tag orelse continue;
                 switch (state) {
-                    .feed => switch (current_tag.?) {
+                    .feed => switch (tag) {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
@@ -187,15 +182,12 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .id, .updated, .link => {},
                     },
                     .entry => {
-                        switch (current_tag.?) {
+                        switch (tag) {
                             .title => {
-                                current_entry.?.title = try allocator.dupe(u8, tmp_str.slice());
+                                current_entry.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             },
                             .id, .updated, .link => {},
-                        }
-                        if (mem.eql(u8, "entry", tag)) {
-                            current_entry = null;
                         }
                     },
                 }
@@ -203,12 +195,10 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                 attr_key = null;
             },
             .element_end_empty => {
-                if (current_tag == null) {
-                    continue;
-                }
+                const tag = current_tag orelse continue;
 
                 switch (state) {
-                    .feed => switch (current_tag.?) {
+                    .feed => switch (tag) {
                         .link => {
                             if (link_href) |href| {
                                 if (mem.eql(u8, "alternate", link_rel)) {
@@ -223,11 +213,11 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .title, .id, .updated => {},
                     },
                     .entry => {
-                        switch (current_tag.?) {
+                        switch (tag) {
                             .link => {
                                 if (link_href) |href| {
                                     if (mem.eql(u8, "alternate", link_rel)) {
-                                        current_entry.?.link = href;
+                                        current_entry.link = href;
                                     }
                                 }
                                 link_href = null;
@@ -279,9 +269,6 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
             .pi_start, .pi_content,
             .comment_start, .comment_content => {},
         }
-    }
-    if (tmp_entries.len > 0) {
-        try entries.appendSlice(tmp_entries.slice());
     }
 
     return .{
