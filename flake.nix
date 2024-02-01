@@ -11,9 +11,8 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          # TODO: need to wait till zig-sqlite is updated to new build system
-          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2024-01-03"; };
-          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
+          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2024-01-03"; };
+          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
         in
         {
           devShell = import ./shell.nix { inherit pkgs; };

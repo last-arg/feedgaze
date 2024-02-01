@@ -8,21 +8,21 @@
         "readme.md",
     },
     .dependencies = .{
-		.sqlite = .{
+        .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "12207893f40908b3caa732b21014bca33a76ece80ac57389c03e5d8270f568712698",
-		},
-		.args = .{
+            .hash = "122007f33ec840d1693ff065bcdc93cca64c1e75a80cab7d7a53260273a8d5a9e036",
+        },
+        .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "122012fa395ee8ac94592f3a535ed3899a4485e96ee3d4ec8f82c761bf304b34b870",
-		},
-		.@"zig-datetime" = .{
+            .hash = "12203ded54c85878eea7f12744066dcb4397177395ac49a7b2aa365bf6047b623829",
+        },
+        .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
-            .hash = "12206379a2526c6a70a6501b33a06ad2d63794f55b4a1beaf2dec3f4d0a24b815341",
-		},
+            .hash = "122038b4b5df08d2af6daf81e5f18d4c244d807c9323224db826cc107ce3894f6fa9",
+        },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
-            .hash = "12205ac50d9832719d62c4cbe3ad59ca3c73469078f4f8ade371bb166f1690163eee",
+            .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
         },
-	},
+    },
 }

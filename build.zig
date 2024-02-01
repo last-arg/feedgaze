@@ -1,12 +1,11 @@
 const std = @import("std");
-const std_build = @import("std").build;
-const Builder = std_build.Builder;
-const CompileStep = std_build.CompileStep;
-const LibExeObjStep = std_build.LibExeObjStep;
+const std_build = std.Build;
+const Build = std.Build;
+const CompileStep = Build.Step.Compile;
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
-pub fn build(b: *Builder) !void {
+pub fn build(b: *Build) !void {
     // Standard target options allows the person running `zig build` to choose
     // what target to build for. Here we do not override the defaults, which
     // means any target is allowed, and the default is native. Other options
@@ -99,7 +98,7 @@ pub fn build(b: *Builder) !void {
     test_step.dependOn(&run_unit_tests.step);
 }
 
-fn commonModules(b: *Builder, step: *CompileStep, dep_args: anytype) void {
+fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
     const sqlite = b.dependency("sqlite", dep_args);
     step.linkSystemLibrary("sqlite3");

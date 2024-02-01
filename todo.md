@@ -26,6 +26,8 @@
   [ ] Redirect from http to https produces 'TlsCertificateNotVerified' error.
       For example requesting 'http://github.com' produces the error. But 
       'https://github.com' works just fine.
+  [ ] Using older zig which seems to have problem with 'https://drewdevault.com/blog/index.xml'.
+      Newer zig did seem to work, have to wait till zig-sqlite updates.
 
 
 # Future (Maybe)
