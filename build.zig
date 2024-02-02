@@ -86,8 +86,8 @@ pub fn build(b: *Build) !void {
     };
 
     inline for (anon_modules) |file| {
-        test_cmd.addAnonymousModule(file.name, .{
-            .source_file = .{ .path = file.path },
+        test_cmd.root_module.addAnonymousImport(file.name, .{
+            .root_source_file = .{ .path = file.path },
         });
     }
 
@@ -100,19 +100,18 @@ pub fn build(b: *Build) !void {
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
-    const sqlite = b.dependency("sqlite", dep_args);
+    const sqlite_dep = b.dependency("sqlite", dep_args);
     step.linkSystemLibrary("sqlite3");
-    step.installLibraryHeaders(sqlite.artifact("sqlite"));
-    step.addModule("sqlite", sqlite.module("sqlite"));
-    step.linkLibrary(sqlite.artifact("sqlite"));
+    // step.installLibraryHeaders(sqlite_dep.artifact("sqlite"));
+    step.root_module.addImport("sqlite", sqlite_dep.module("sqlite"));
 
     const args = b.dependency("args", dep_args);
-    step.addModule("zig-args", args.module("args"));
+    step.root_module.addImport("zig-args", args.module("args"));
 
     const datetime = b.dependency("zig-datetime", dep_args);
-    step.addModule("zig-datetime", datetime.module("zig-datetime"));
+    step.root_module.addImport("zig-datetime", datetime.module("zig-datetime"));
 
     const xml = b.dependency("xml", dep_args);
-    step.addModule("xml", xml.module("xml"));
+    step.root_module.addImport("xml", xml.module("xml"));
     
 }
