@@ -371,7 +371,7 @@ pub const Storage = struct {
         const query =
             \\WITH const AS (SELECT strftime('%s', 'now') as current_utc)
             \\UPDATE feed_update SET update_countdown = COALESCE(
-            \\  (last_update + cache_control_max_age) - const.current_utc,
+            \\  (last_update + iif(cache_control_max_age <= 0, update_interval * 60, cache_control_max_age)) - const.current_utc,
             \\  expires_utc - const.current_utc,
             \\  (last_update + (update_interval * 60)) - const.current_utc
             \\) from const;
