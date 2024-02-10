@@ -312,8 +312,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
+            var item_arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer item_arena.deinit();
+
             for (feed_updates) |f_update| {
-                var req = try http_client.init(arena.allocator(), .{
+                _ = item_arena.reset(.retain_capacity);
+                var req = try http_client.init(item_arena.allocator(), .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 });
@@ -344,7 +348,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
                 const content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
 
-                self.storage.updateFeedAndItems(&arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
+                self.storage.updateFeedAndItems(&item_arena, content, content_type, f_update, resp.headers) catch |err| switch (err) {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'\n", .{f_update.feed_url});
                         continue;
