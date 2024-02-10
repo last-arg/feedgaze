@@ -313,6 +313,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             for (feed_updates) |f_update| {
+                defer _ = arena.reset(.retain_capacity);
                 var req = try http_client.init(arena.allocator(), .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
