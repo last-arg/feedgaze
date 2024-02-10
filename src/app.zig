@@ -313,7 +313,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             for (feed_updates) |f_update| {
-                defer _ = arena.reset(.retain_capacity);
                 var req = try http_client.init(arena.allocator(), .{
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
@@ -323,8 +322,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 var resp = req.fetch(f_update.feed_url) catch |err| {
                     switch (err) {
                         error.HttpRedirectMissingLocation => {
-                            std.log.info("Nothing to update in '{s}'\n", .{f_update.feed_url});
                             try self.storage.updateLastUpdate(f_update.feed_id);
+                            std.log.info("Feed '{s}' has been redirected\n", .{f_update.feed_url});
                         },
                         else => {
                             std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
@@ -333,6 +332,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     continue;
                 };
                 defer resp.deinit();
+                if (resp.status == .not_modified) {
+                    try self.storage.updateLastUpdate(f_update.feed_id);
+                    std.log.info("Nothing to update in '{s}'\n", .{f_update.feed_url});
+                    continue;
+                }
 
                 const content = resp.body orelse {
                     std.log.err("HTTP response body is empty. Request url: {s}\n", .{f_update.feed_url});
