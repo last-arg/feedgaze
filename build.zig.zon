@@ -24,5 +24,9 @@
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
             .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
         },
+        .curl = .{
+            .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
+            .hash = "1220eefa74530c43e38f7e90dae8055af4f5964a9daf7b38618962e79f39c30079d3",
+        },
     },
 }
