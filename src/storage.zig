@@ -95,7 +95,19 @@ pub const Storage = struct {
         try self.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(headers));
     }
 
-    pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, feed_info: FeedToUpdate, headers: std.http.Headers) !void {
+    const curl = @import("curl");
+    const ContentType = parse.ContentType;
+    pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, resp: curl.Easy.Response, feed_info: FeedToUpdate) !void {
+        const content = resp.body.items;
+        const content_type = blk: {
+            const value = resp.get_header("content-type") catch null;
+            if (value) |v| {
+                break :blk ContentType.fromString(v.get());
+            }
+            break :blk null;
+        };
+
+
         var parsed = try parse.parse(arena.allocator(), content, content_type);
         if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
             parsed.feed.updated_raw = parsed.items[0].updated_raw;
@@ -110,7 +122,7 @@ pub const Storage = struct {
         try self.updateAndRemoveFeedItems(parsed.items);
 
         // Update feed_update
-        try self.updateFeedUpdate(feed_info.feed_id, FeedUpdate.fromHeaders(headers));
+        try self.updateFeedUpdate(feed_info.feed_id, FeedUpdate.fromCurlHeaders(resp));
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -380,6 +392,7 @@ pub const Storage = struct {
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
+        print("{}\n", .{feed_update});
         const query =
             \\INSERT INTO feed_update 
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)

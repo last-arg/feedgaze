@@ -235,6 +235,52 @@ pub const FeedUpdate = struct {
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
 
+    const curl = @import("curl");
+    pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
+        var feed_update = FeedUpdate{};
+
+        if (easy.get_header("last-modified")) |header| {
+            if (header) |h| {
+                feed_update.last_modified_utc = RssDateTime.parse(h.get()) catch null;
+            }
+        } else |_| {}
+
+        if (easy.get_header("expires")) |header| {
+            if (header) |h| {
+                feed_update.expires_utc = RssDateTime.parse(h.get()) catch null;
+            }
+        } else |_| {}
+
+        if (easy.get_header("etag")) |header| {
+            if (header) |h| {
+                feed_update.etag = h.get();
+            }
+        } else |err| {
+            std.debug.print("{?}", .{err});
+            
+        }
+                
+        if (easy.get_header("cache-control")) |header| {
+            if (header) |h| {
+                const value = h.get();
+                var iter = std.mem.split(u8, value, ",");
+                while (iter.next()) |key_value| {
+                    var pair_iter = std.mem.split(u8, key_value, "=");
+                    const key = pair_iter.next() orelse continue;
+                    const iter_value = pair_iter.next() orelse continue;
+                    if (std.mem.eql(u8, "max-age", key)) {
+                        feed_update.cache_control_max_age = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                        break;
+                    } else if (std.mem.eql(u8, "s-maxage", value)) {
+                        feed_update.cache_control_max_age = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                    }
+                }
+            }
+        } else |_| {}
+
+        return feed_update;
+    }
+
     pub fn fromHeaders(headers: std.http.Headers) @This() {
         const last_modified = blk: {
             if (headers.getFirstValue("last-modified")) |value| {

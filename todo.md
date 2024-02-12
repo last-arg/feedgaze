@@ -11,6 +11,10 @@
         any rss url. Create somekind of rule?
   [ ] Turn HTML page into feed (for sites that don't have rss feed). Use CSS 
       selector to find page 'titles'? Or something like that.
+  [ ] Feed ordering
+      [ ] Get feeds based on newest first. This is not case for all feeds.
+      For example 'https://ishadeed.com/feed.xml', no idea how it is ordered.
+      [?] Disable ordering based on newest for some feeds?
 
 [ ] UI
   [x] CLI - initial

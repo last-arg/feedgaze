@@ -76,15 +76,26 @@ pub fn createHeaders(allocator: Allocator, opts: FetchHeaderOptions) !http.Heade
     return headers;
 }
 
+const curl = @import("curl");
 allocator: Allocator,
-headers: http.Headers,
-client: http.Client,
+headers: curl.Easy.Headers,
+client: curl.Easy,
 
-pub fn init(allocator: Allocator, headers_opts: FetchHeaderOptions) !@This() {
+pub fn init(allocator: Allocator) !@This() {
+    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 5000});
+    errdefer easy.deinit();
+
+    var headers = try easy.create_headers();
+    errdefer headers.deinit();
+    try headers.add("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
+    // Some sites require User-Agent, otherwise will be blocked.
+    // TODO: make version into variable and use it here
+    try headers.add("User-Agent", "feedgaze 0.1.0");
+    
     return .{
         .allocator = allocator,
-        .headers = try createHeaders(allocator, headers_opts),
-        .client = Client{ .allocator = allocator },
+        .headers = headers,
+        .client = easy,
     };
 }
 
@@ -93,10 +104,44 @@ pub fn deinit(self: *@This()) void {
     self.client.deinit();
 }
 
-pub fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
-    const options = .{
-        .location = .{.url = url},
-        .headers = self.headers,
-    };
-    return try http.Client.fetch(&self.client, self.allocator, options);
+// pub fn fetch(self: *@This(), url: []const u8) !http.Client.FetchResult {
+//     const options = .{
+//         .location = .{.url = url},
+//         .headers = self.headers,
+//     };
+//     return try http.Client.fetch(&self.client, self.allocator, options);
+// }
+
+
+pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Easy.Response {
+    const url_null = try self.allocator.dupeZ(u8, url);
+
+    if (opts.etag) |etag| {
+        try self.headers.add("If-None-Match", etag);
+    } else {
+        var date_buf: [29]u8 = undefined;
+        if (opts.last_modified_utc) |utc| {
+            const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc * 1000);
+            try self.headers.add("If-Modified-Since", try self.allocator.dupe(u8, date_slice));
+        }
+    }
+
+    try self.client.set_url(url_null);
+    try self.client.set_headers(self.headers);
+    try self.client.set_max_redirects(5);
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
+    // try self.client.set_verbose(true);
+
+    return try self.client.perform();
+}
+
+pub fn checkCode(code: curl.libcurl.CURLcode) !void {
+    if (code == curl.libcurl.CURLE_OK) {
+        return;
+    }
+
+    // https://curl.se/libcurl/c/libcurl-errors.html
+    std.log.debug("curl err code:{d}, msg:{s}\n", .{ code, curl.libcurl.curl_easy_strerror(code) });
+
+    return error.Unexpected;
 }
