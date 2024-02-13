@@ -4,6 +4,7 @@ const feed_types = @import("./feed_types.zig");
 const ContentType = feed_types.ContentType;
 const RssDateTime = feed_types.RssDateTime;
 const FetchHeaderOptions = feed_types.FetchHeaderOptions;
+const FeedUpdate = feed_types.FeedUpdate;
 const http = std.http;
 const mem = std.mem;
 const print = std.debug.print;

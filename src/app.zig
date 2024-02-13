@@ -4,6 +4,7 @@ const Allocator = mem.Allocator;
 const Storage = @import("./storage.zig").Storage;
 const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
+const FeedOptions = feed_types.FeedOptions;
 const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
@@ -190,93 +191,90 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         // TODO: redo with curl
         pub fn add(self: *Self, url: []const u8) !void {
-            _ = self; // autofix
-            _ = url; // autofix
+            // if (try self.storage.hasFeedWithFeedUrl(url)) {
+            //     // TODO?: ask user if they want re-add feed?
+            //     std.log.info("There already exists feed '{s}'", .{url});
+            //     return;
+            // }
+
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+
+            // fetch url content
+            var req = try http_client.init(arena.allocator());
+            defer req.deinit();
+            var fetch_url = url;
+            var resp = try req.fetch(fetch_url, .{});
+            defer resp.deinit();
+
+            var fallback_title: ?[]const u8 = null;
+            if (resp.body.items.len == 0) {
+                std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
+                return;
+            }
+
+            var feed_options = FeedOptions.fromResponse(resp);
+            var content = feed_options.body;
+            var content_type = feed_options.content_type;
+            if (content_type == .html) {
+                const links = try html.parseHtmlForFeedLinks(arena.allocator(), content);
+                if (links.len == 0) {
+                    std.log.info("Found no feed links", .{});
+                    return;
+                }
+
+                const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
+                const link = links[index];
+
+                fallback_title = link.title;
+                var buf: [128]u8 = undefined;
+                var fixed_buf = std.io.fixedBufferStream(&buf);
+                if (link.link[0] == '/') {
+                    var uri = try std.Uri.parse(url);
+                    uri.path = link.link;
+                    try uri.format("", .{}, fixed_buf.writer());
+                    fetch_url = fixed_buf.getWritten();
+                } else {
+                    fetch_url = link.link;
+                }
+                var resp_2 = try req.fetch(fetch_url, .{});
+                defer resp_2.deinit();
+
+                if (resp_2.body.items.len == 0) {
+                    std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
+                    return;
+                }
+
+                feed_options = FeedOptions.fromResponse(resp_2);
+                content = feed_options.body;
+                content_type = feed_options.content_type;
+                if (content_type == .html) {
+                    // NOTE: should not happen
+                    std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
+                    return;
+                }
+                self.storage.addFeed(&arena, feed_options, fetch_url, fallback_title) catch |err| switch (err) {
+                    error.NothingToInsert => {
+                        std.log.info("No items added to feed '{s}'", .{fetch_url});
+                    },
+                    error.FeedExists => {
+                        std.log.info("Feed '{s}' already exists", .{fetch_url});
+                    },
+                    else => return err,
+                };
+
+            } else {
+                self.storage.addFeed(&arena, feed_options, fetch_url, fallback_title) catch |err| switch (err) {
+                    error.NothingToInsert => {
+                        std.log.info("No items added to feed '{s}'", .{fetch_url});
+                    },
+                    error.FeedExists => {
+                        std.log.info("Feed '{s}' already exists", .{fetch_url});
+                    },
+                    else => return err,
+                };
+            }
         }
-        // pub fn add(self: *Self, url: []const u8) !void {
-        //     // if (try self.storage.hasFeedWithFeedUrl(url)) {
-        //     //     // TODO?: ask user if they want re-add feed?
-        //     //     std.log.info("There already exists feed '{s}'", .{url});
-        //     //     return;
-        //     // }
-
-        //     var arena = std.heap.ArenaAllocator.init(self.allocator);
-        //     defer arena.deinit();
-
-        //     // fetch url content
-        //     var req = try http_client.init(arena.allocator(), .{});
-        //     defer req.deinit();
-        //     var fetch_url = url;
-        //     var resp = try req.fetch(fetch_url);
-        //     defer resp.deinit();
-
-        //     var fallback_title: ?[]const u8 = null;
-        //     if (resp.body == null or resp.body.?.len == 0) {
-        //         std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-        //         return;
-        //     }
-        //     var content = resp.body.?;
-        //     var headers  = resp.headers;
-        //     var content_type = ContentType.fromString(resp.headers.getFirstValue("content-type") orelse "");
-        //     if (content_type == .html) {
-        //         const links = try html.parseHtmlForFeedLinks(arena.allocator(), content);
-        //         if (links.len == 0) {
-        //             std.log.info("Found no feed links", .{});
-        //             return;
-        //         }
-
-        //         const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
-        //         const link = links[index];
-
-        //         fallback_title = link.title;
-        //         var buf: [128]u8 = undefined;
-        //         var fixed_buf = std.io.fixedBufferStream(&buf);
-        //         if (link.link[0] == '/') {
-        //             var uri = try std.Uri.parse(url);
-        //             uri.path = link.link;
-        //             try uri.format("", .{}, fixed_buf.writer());
-        //             fetch_url = fixed_buf.getWritten();
-        //         } else {
-        //             fetch_url = link.link;
-        //         }
-        //         var resp_2 = try req.fetch(fetch_url);
-        //         defer resp_2.deinit();
-
-        //         if (resp_2.body == null or resp_2.body.?.len == 0) {
-        //             std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-        //             return;
-        //         }
-        //         content = resp_2.body.?;
-        //         headers = resp_2.headers;
-
-        //         content_type = ContentType.fromString(resp_2.headers.getFirstValue("content-type") orelse "");
-        //         if (content_type == .html) {
-        //             // NOTE: should not happen
-        //             std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
-        //             return;
-        //         }
-        //         self.storage.addFeed(&arena, content, content_type, fetch_url, headers, fallback_title) catch |err| switch (err) {
-        //             error.NothingToInsert => {
-        //                 std.log.info("No items added to feed '{s}'", .{fetch_url});
-        //             },
-        //             error.FeedExists => {
-        //                 std.log.info("Feed '{s}' already exists", .{fetch_url});
-        //             },
-        //             else => return err,
-        //         };
-
-        //     } else {
-        //         self.storage.addFeed(&arena, content, content_type, fetch_url, headers, fallback_title) catch |err| switch (err) {
-        //             error.NothingToInsert => {
-        //                 std.log.info("No items added to feed '{s}'", .{fetch_url});
-        //             },
-        //             error.FeedExists => {
-        //                 std.log.info("Feed '{s}' already exists", .{fetch_url});
-        //             },
-        //             else => return err,
-        //         };
-        //     }
-        // }
 
         fn getUserInput(links: []html.FeedLink, writer: Writer, reader: Reader) !usize {
             for (links, 1..) |link, i| {

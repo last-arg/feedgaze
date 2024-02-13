@@ -2,6 +2,7 @@ const std = @import("std");
 const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const HeaderValues = @import("./http_client.zig").HeaderValues;
+const curl = @import("curl");
 
 pub const FetchHeaderOptions = struct {
     etag: ?[]const u8 = null,
@@ -235,7 +236,6 @@ pub const FeedUpdate = struct {
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
 
-    const curl = @import("curl");
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
 
@@ -384,4 +384,20 @@ pub const FeedToUpdate = struct {
     expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
+};
+
+pub const FeedOptions = struct {
+    body: []const u8 = "",
+    content_type: ?ContentType = null,
+    feed_updates: FeedUpdate = .{},
+
+    pub fn fromResponse(resp: curl.Easy.Response) @This() {
+        const header_value = resp.get_header("content-type") catch null;
+        const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
+        return .{
+            .body = resp.body.items,
+            .content_type = content_type,
+            .feed_updates = FeedUpdate.fromCurlHeaders(resp),
+        };
+    }
 };

@@ -8,6 +8,7 @@ const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
+const FeedOptions = feed_types.FeedOptions;
 const sql = @import("sqlite");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
@@ -80,8 +81,8 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, content: []const u8, content_type: ?feed_types.ContentType, fetch_url: []const u8, headers: std.http.Headers, fallback_title: ?[]const u8) !void {
-        var parsed = try parse.parse(arena.allocator(), content, content_type);
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fetch_url: []const u8, fallback_title: ?[]const u8) !void {
+        var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
             parsed.feed.updated_raw = parsed.items[0].updated_raw;
         }
@@ -92,7 +93,7 @@ pub const Storage = struct {
         const feed_id = try self.insertFeed(parsed.feed);
         try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
         _ = try self.insertFeedItems(parsed.items);
-        try self.updateFeedUpdate(feed_id, FeedUpdate.fromHeaders(headers));
+        try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
     }
 
     const curl = @import("curl");
