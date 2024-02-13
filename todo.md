@@ -15,23 +15,23 @@
       [ ] Get feeds based on newest first. This is not case for all feeds.
       For example 'https://ishadeed.com/feed.xml', no idea how it is ordered.
       [?] Disable ordering based on newest for some feeds?
-
-[ ] UI
-  [x] CLI - initial
-  [x] Web browser (http server)
-    [ ] Initially just generate html file?
-
-[ ] Zig
-  [ ] XML parsing
-    - https://github.com/nektro/zig-xml
-    - https://github.com/ianprime0509/zig-xml
-    - https://github.com/tadeokondrak/zig-wayland/blob/4a1657a02e8f46776e8c811b73240144ec07e57c/src/xml.zig
-  [ ] Decode/encode HTML characters
-  [ ] Redirect from http to https produces 'TlsCertificateNotVerified' error.
-      For example requesting 'http://github.com' produces the error. But 
-      'https://github.com' works just fine.
-  [ ] Using older zig which seems to have problem with 'https://drewdevault.com/blog/index.xml'.
-      Newer zig did seem to work, have to wait till zig-sqlite updates.
+      [ ] Fill max amount items up. In case of new item compare oldest date
+      with new item's and if necessary swap. After all items have been processed
+      sort items in list. If no dates don't swap, take top most items. 
+      If there is a mix of dates and not dates: 
+      1) swap last null date with date one
+      2) When sorting put null dates to end? Or keep them was the were found and
+      sort only dates?
+[ ] DB: consolidate cache_control_max_age and expires_utc. Also update_interval?
+  [ ] HTTP: Convert expires into seconds
+  Final number has to be bigger than 0.
+  How to pick number:
+  1) smaller or larger? 
+  2) max_age or expires?
+[ ] Decode/encode HTML characters
+[ ] Add http server
+  - https://github.com/zigzap/zap
+  - https://github.com/cztomsik/tokamak
 
 
 # Future (Maybe)

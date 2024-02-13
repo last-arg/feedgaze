@@ -393,7 +393,6 @@ pub const Storage = struct {
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
-        print("{}\n", .{feed_update});
         const query =
             \\INSERT INTO feed_update 
             \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
