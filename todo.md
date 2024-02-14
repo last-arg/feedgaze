@@ -22,12 +22,6 @@
       1) swap last null date with date one
       2) When sorting put null dates to end? Or keep them was the were found and
       sort only dates?
-[ ] DB: consolidate cache_control_max_age and expires_utc. Also update_interval?
-  [ ] HTTP: Convert expires into seconds
-  Final number has to be bigger than 0.
-  How to pick number:
-  1) smaller or larger? 
-  2) max_age or expires?
 [ ] Decode/encode HTML characters
 [ ] Add http server
   - https://github.com/zigzap/zap

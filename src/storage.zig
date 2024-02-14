@@ -377,17 +377,11 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, feed_update);
     }
 
-    // TODO: what to do about cache_control_max_age 0?
-    // Probably best to use default update_interval
     // Update every update_countdown value
     pub fn updateCountdowns(self: *Self) !void {
         const query =
-            \\WITH const AS (SELECT strftime('%s', 'now') as current_utc)
-            \\UPDATE feed_update SET update_countdown = COALESCE(
-            \\  (last_update + iif(cache_control_max_age <= 0, update_interval * 60, cache_control_max_age)) - const.current_utc,
-            \\  expires_utc - const.current_utc,
-            \\  (last_update + (update_interval * 60)) - const.current_utc
-            \\) from const;
+            \\UPDATE feed_update SET 
+            \\  update_countdown = (last_update + update_interval) - strftime('%s', 'now')
         ;
         try self.sql_db.exec(query, .{}, .{});
     }
