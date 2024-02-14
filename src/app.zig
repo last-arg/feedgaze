@@ -189,7 +189,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
-        // TODO: redo with curl
         pub fn add(self: *Self, url: []const u8) !void {
             // if (try self.storage.hasFeedWithFeedUrl(url)) {
             //     // TODO?: ask user if they want re-add feed?

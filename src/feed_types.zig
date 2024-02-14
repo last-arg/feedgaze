@@ -231,10 +231,9 @@ pub const FeedItem = struct {
 };
 
 pub const FeedUpdate = struct {
-    cache_control_max_age: ?u32 = null,
-    expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
+    update_interval: i64 = @import("./app_config.zig").update_interval,
 
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
@@ -245,38 +244,54 @@ pub const FeedUpdate = struct {
             }
         } else |_| {}
 
-        if (easy.get_header("expires")) |header| {
-            if (header) |h| {
-                feed_update.expires_utc = RssDateTime.parse(h.get()) catch null;
-            }
-        } else |_| {}
-
         if (easy.get_header("etag")) |header| {
             if (header) |h| {
                 feed_update.etag = h.get();
             }
-        } else |err| {
-            std.debug.print("{?}", .{err});
-            
-        }
+        } else |_| {}
                 
+        var update_interval: ?i64 = null;
         if (easy.get_header("cache-control")) |header| {
             if (header) |h| {
                 const value = h.get();
                 var iter = std.mem.split(u8, value, ",");
                 while (iter.next()) |key_value| {
                     var pair_iter = std.mem.split(u8, key_value, "=");
-                    const key = pair_iter.next() orelse continue;
-                    const iter_value = pair_iter.next() orelse continue;
+                    var key = pair_iter.next() orelse continue;
+                    key = std.mem.trim(u8, key, &std.ascii.whitespace);
+                    var iter_value = pair_iter.next() orelse continue;
+                    iter_value = std.mem.trim(u8, iter_value, &std.ascii.whitespace);
+                    // TODO: look more into how 'cache-control' works
                     if (std.mem.eql(u8, "max-age", key)) {
-                        feed_update.cache_control_max_age = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
-                        break;
+                        update_interval = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
                     } else if (std.mem.eql(u8, "s-maxage", value)) {
-                        feed_update.cache_control_max_age = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                        update_interval = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
+                        break;
                     }
                 }
             }
         } else |_| {}
+        
+        if (update_interval == 0) {
+            update_interval = null;
+        }
+
+        if (easy.get_header("expires")) |header| {
+            if (header) |h| {
+                const value = RssDateTime.parse(h.get()) catch null;
+                if (value) |v| {
+                    const interval = std.time.timestamp() - v;
+                    // Favour cache-control value over expires
+                    if (interval > 0 and update_interval == null) {
+                        update_interval = v;
+                    }
+                }
+            }
+        } else |_| {}
+
+        if (update_interval) |value| {
+            feed_update.update_interval = value;
+        }
 
         return feed_update;
     }
@@ -381,7 +396,6 @@ pub const ContentType = enum {
 pub const FeedToUpdate = struct {
     feed_id: usize,
     feed_url: []const u8,
-    expires_utc: ?i64 = null,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
 };

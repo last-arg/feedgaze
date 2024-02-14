@@ -15,6 +15,7 @@ const comptimePrint = std.fmt.comptimePrint;
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
 const parse = @import("./app_parse.zig");
+const app_config = @import("app_config.zig");
 
 pub const Storage = struct {
     const Self = @This();
@@ -211,7 +212,6 @@ pub const Storage = struct {
             \\SELECT 
             \\  feed.feed_id,
             \\  feed.feed_url,
-            \\  feed_update.expires_utc,
             \\  feed_update.last_modified_utc,
             \\  feed_update.etag 
             \\FROM feed 
@@ -295,7 +295,7 @@ pub const Storage = struct {
             \\RETURNING item_id;
         ;
 
-        const len = @min(inserts.len, @import("app_config.zig").max_items);
+        const len = @min(inserts.len, app_config.max_items);
         for (inserts[0..len], 0..) |*item, i| {
             const item_id = try one(&self.sql_db, usize, query, .{
                 .feed_id = item.feed_id,
@@ -395,12 +395,11 @@ pub const Storage = struct {
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
             \\INSERT INTO feed_update 
-            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
+            \\  (feed_id, update_interval, last_modified_utc, etag)
             \\VALUES 
-            \\  (@feed_id, @cache_control_max_age, @expires_utc, @last_modified_utc, @etag)
+            \\  (@feed_id, @update_interval, @last_modified_utc, @etag)
             \\ ON CONFLICT(feed_id) DO UPDATE SET
-            \\  cache_control_max_age = @u_cache_control_max_age,
-            \\  expires_utc = @u_expires_utc,
+            \\  update_interval = @u_update_interval,
             \\  last_modified_utc = @u_last_modified_utc,
             \\  etag = @u_etag,
             \\  last_update = strftime('%s', 'now')
@@ -408,12 +407,10 @@ pub const Storage = struct {
         ;
         try self.sql_db.exec(query, .{}, .{
             .feed_id = feed_id,
-            .cache_control_max_age = feed_update.cache_control_max_age,
-            .expires_utc = feed_update.expires_utc,
+            .update_interval = feed_update.update_interval,
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
-            .u_cache_control_max_age = feed_update.cache_control_max_age,
-            .u_expires_utc = feed_update.expires_utc,
+            .u_update_interval = feed_update.update_interval,
             .u_last_modified_utc = feed_update.last_modified_utc,
             .u_etag = feed_update.etag,
         });
@@ -524,7 +521,6 @@ pub const Storage = struct {
     }
 };
 
-pub const update_interval = 480; // in minutes
 const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed(
     \\  feed_id INTEGER PRIMARY KEY,
@@ -555,13 +551,11 @@ const tables = &[_][]const u8{
         \\  update_countdown INTEGER DEFAULT 0,
         \\  update_interval INTEGER DEFAULT {d},
         \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
-        \\  cache_control_max_age INTEGER DEFAULT NULL,
-        \\  expires_utc INTEGER DEFAULT NULL,
         \\  last_modified_utc INTEGER DEFAULT NULL,
         \\  etag TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
         \\);
-    , .{ .update_interval = update_interval }),
+    , .{ .update_interval = app_config.update_interval }),
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
