@@ -1,7 +1,6 @@
 const std = @import("std");
 const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
-const HeaderValues = @import("./http_client.zig").HeaderValues;
 const curl = @import("curl");
 
 pub const FetchHeaderOptions = struct {
