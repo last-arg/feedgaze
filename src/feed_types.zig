@@ -279,10 +279,10 @@ pub const FeedUpdate = struct {
             if (header) |h| {
                 const value = RssDateTime.parse(h.get()) catch null;
                 if (value) |v| {
-                    const interval = std.time.timestamp() - v;
+                    const interval = v - std.time.timestamp();
                     // Favour cache-control value over expires
                     if (interval > 0 and update_interval == null) {
-                        update_interval = v;
+                        update_interval = interval;
                     }
                 }
             }
