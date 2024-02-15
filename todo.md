@@ -26,7 +26,11 @@
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak
-
+[ ] UI
+  [ ] Explore https://github.com/webui-dev/zig-webui
+[ ] HTML templating
+  - https://github.com/nektro/zig-pek
+  - https://github.com/jacksonsalopek/ztl
 
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)

@@ -2,6 +2,7 @@ const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
 const feed_types = @import("./feed_types.zig");
+const RssDateTime = feed_types.RssDateTime;
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
@@ -423,16 +424,48 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 tmp_str.append(';');
                             },
                         },
-                        .pubDate => current_item.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .pubDate => {
+                            if (RssDateTime.parse(elem_content.text) catch null) |ts| {
+                                current_item.updated_timestamp = ts;
+                                current_item.updated_raw = try allocator.dupe(u8, elem_content.text);
+                            }
+                        }
                     },
                 }
             },
             .element_end => {
                 const tag_str = token_reader.fullToken(token).element_end.name;
                 if (mem.eql(u8, "item", tag_str)) {
-                    entries.append(current_item) catch break;
                     if (entries.items.len == default_item_count) {
-                        break;
+                        if (current_item.updated_timestamp) |current_ts| {
+                            var iter = std.mem.reverseIterator(entries.items);
+                            var oldest_ts: ?i64 = null;
+                            const oldest: ?FeedItem = iter.next();
+                            var replace_index: usize = iter.index;
+                            print("index: |{d}|\n", .{iter.index});
+                            if (oldest != null and oldest.?.updated_timestamp != null) {
+                                oldest_ts = oldest.?.updated_timestamp.?;
+                                while (iter.next()) |item| {
+                                    if (item.updated_timestamp == null) {
+                                        replace_index = iter.index;
+                                        break;
+                                    } else if (item.updated_timestamp.? < oldest_ts.?) {
+                                        replace_index = iter.index;
+                                        oldest_ts = item.updated_timestamp.?;
+                                    }
+                                }
+                            }
+
+                            if (oldest_ts) |ts| {
+                                if (current_ts > ts)  {
+                                    entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+                                }
+                            } else {
+                                entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+                            }
+                        }
+                    } else {
+                        entries.append(current_item) catch {};
                     }
                     current_item = .{ .title = "" };
                     state = .channel;
@@ -485,6 +518,10 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .comment_start, .comment_content => {},
         }
     }
+
+    // TODO: sort entries.items
+    // 1) use mem.sort
+    // 2) or custom sort because null dates might be mixed with non-null dates
 
     return .{
         .feed = feed,
@@ -618,5 +655,16 @@ fn printEvent(event: zig_xml.Event) !void {
         .element_end => |element_end| print("/{?s}({?s}):{s}\n", .{ element_end.name.prefix, element_end.name.ns, element_end.name.local }),
         .comment => |comment| print("<!--{s}\n", .{comment.content}),
         .pi => |pi| print("<?{s} {s}\n", .{ pi.target, pi.content }),
+    }
+}
+
+test "tmp" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const feed = try parseRss(alloc, @embedFile("tmp_file"));
+    for (feed.items) |item| {
+        print("date: {?s}\n", .{item.updated_raw});
     }
 }

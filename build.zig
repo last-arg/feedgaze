@@ -77,6 +77,7 @@ pub fn build(b: *Build) !void {
     test_cmd.setExecCmd(arr.constSlice());
 
     const anon_modules = .{
+        .{.name = "tmp_file", .path="./tmp/ishadeed.xml"},
         .{.name = "atom.atom", .path="./test/atom.atom"},
         .{.name = "atom.xml", .path="./test/atom.xml"},
         .{.name = "rss2.xml", .path="./test/rss2.xml"},
