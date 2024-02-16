@@ -11,6 +11,9 @@
         any rss url. Create somekind of rule?
   [ ] Turn HTML page into feed (for sites that don't have rss feed). Use CSS 
       selector to find page 'titles'? Or something like that.
+  [ ] other fields (rss extensions)
+    - https://alistapart.com/main/feed/ has 'dc:date'
+    - does atom have extensions?
 [ ] Decode/encode HTML characters
 [ ] Add http server
   - https://github.com/zigzap/zap

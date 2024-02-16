@@ -63,20 +63,20 @@ pub const AtomDateTime = struct {
         const minute = std.fmt.parseUnsigned(u16, raw[14..16], 10) catch return error.InvalidFormat;
         const second = std.fmt.parseUnsigned(u16, raw[17..19], 10) catch return error.InvalidFormat;
         const tz = blk: {
+            const sign_index = raw.len - 6;
             if (raw[raw.len - 1] == 'Z') {
                 break :blk dt.Timezone.create("Z", 0);
-            } else {
-                const sign_index = raw.len - 6;
+            } else if (raw[sign_index] == '+' or raw[sign_index] == '-') {
                 const sign_raw = raw[sign_index];
-                if (sign_raw != '+' and sign_raw != '-') {
-                    return error.InvalidError;
-                }
 
                 const tz_hour = std.fmt.parseInt(i16, raw[sign_index + 1 .. sign_index + 3], 10) catch return error.InvalidFormat;
                 const tz_min = std.fmt.parseUnsigned(i16, raw[sign_index + 4 .. sign_index + 6], 10) catch return error.InvalidFormat;
                 // This is based on '+' and '-' ascii numeric values
                 const sign = -1 * (@as(i16, sign_raw) - 44);
                 break :blk dt.Timezone.create(raw[sign_index..], sign * ((tz_hour * 60) + tz_min));
+            } else {
+                // Out of spec, default to "Z" time zone
+                break :blk dt.Timezone.create("Z", 0);
             }
             return error.InvalidFormat;
         };
@@ -93,6 +93,9 @@ test "AtomDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1071340202), d2);
     const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
+    const d4 = try AtomDateTime.parse("2024-02-14T13:21:31");
+    // from: https://andy-bell.co.uk/feed.xml
+    try std.testing.expectEqual(@as(i64, 1707916891), d4);
 }
 
 // https://www.w3.org/Protocols/rfc822/#z28
