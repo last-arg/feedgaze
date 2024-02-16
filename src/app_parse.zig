@@ -275,10 +275,10 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
         }
     }
 
-    return .{
-        .feed = feed,
-        .items = try entries.toOwnedSlice(),
-    };
+    const items = try entries.toOwnedSlice();
+    sortItems(items);
+
+    return .{ .feed = feed, .items = items };
 }
 
 test "parseAtom" {
@@ -492,16 +492,36 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
         }
     }
 
-    // TODO: sort entries.items. Or don't sort in parse fn because otherwise
-    // I would have to sort in other functions also? Do I need to sort, can
-    // sqlite handle it? 'null' date values might mess it up? Have to see.
-    // 1) use mem.sort
-    // 2) or custom sort because null dates might be mixed with non-null dates
+    const items = try entries.toOwnedSlice();
+    sortItems(items);
 
-    return .{
-        .feed = feed,
-        .items = try entries.toOwnedSlice(),
-    };
+    return .{ .feed = feed, .items = items };
+}
+
+// Sorting item.updated_timestamp
+// 1) if all values are null, no sorting
+// 2) if mix of nulls and values push nulls to the bottom
+fn sortItems(items: []FeedItem) void {
+    var has_date = false;
+
+    for (items) |item| {
+        has_date = item.updated_timestamp != null or has_date;
+    }
+
+    if (has_date) {
+        const S = struct {
+            pub fn less_than(_: void, lhs: FeedItem, rhs: FeedItem) bool {
+                if (lhs.updated_timestamp == null) {
+                    return false;
+                } else if (rhs.updated_timestamp == null) {
+                    return true;
+                }
+                return lhs.updated_timestamp.? > rhs.updated_timestamp.?;
+            }
+        };
+
+        mem.sort(FeedItem, items, {}, S.less_than);
+    }
 }
 
 fn add_or_replace_item(entries: *std.ArrayList(FeedItem), current_item: FeedItem) void {

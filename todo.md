@@ -11,17 +11,6 @@
         any rss url. Create somekind of rule?
   [ ] Turn HTML page into feed (for sites that don't have rss feed). Use CSS 
       selector to find page 'titles'? Or something like that.
-  [ ] Feed ordering
-      [ ] Get feeds based on newest first. This is not case for all feeds.
-      For example 'https://ishadeed.com/feed.xml', no idea how it is ordered.
-      [?] Disable ordering based on newest for some feeds?
-      [ ] Fill max amount items up. In case of new item compare oldest date
-      with new item's and if necessary swap. After all items have been processed
-      sort items in list. If no dates don't swap, take top most items. 
-      If there is a mix of dates and not dates: 
-      1) swap last null date with date one
-      2) When sorting put null dates to end? Or keep them was the were found and
-      sort only dates?
 [ ] Decode/encode HTML characters
 [ ] Add http server
   - https://github.com/zigzap/zap

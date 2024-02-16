@@ -28,6 +28,7 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
+    // TODO: do I need updated_raw field?
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
