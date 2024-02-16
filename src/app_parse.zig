@@ -436,37 +436,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .element_end => {
                 const tag_str = token_reader.fullToken(token).element_end.name;
                 if (mem.eql(u8, "item", tag_str)) {
-                    if (entries.items.len == default_item_count) {
-                        if (current_item.updated_timestamp) |current_ts| {
-                            var iter = std.mem.reverseIterator(entries.items);
-                            var oldest_ts: ?i64 = null;
-                            const oldest: ?FeedItem = iter.next();
-                            var replace_index: usize = iter.index;
-                            print("index: |{d}|\n", .{iter.index});
-                            if (oldest != null and oldest.?.updated_timestamp != null) {
-                                oldest_ts = oldest.?.updated_timestamp.?;
-                                while (iter.next()) |item| {
-                                    if (item.updated_timestamp == null) {
-                                        replace_index = iter.index;
-                                        break;
-                                    } else if (item.updated_timestamp.? < oldest_ts.?) {
-                                        replace_index = iter.index;
-                                        oldest_ts = item.updated_timestamp.?;
-                                    }
-                                }
-                            }
-
-                            if (oldest_ts) |ts| {
-                                if (current_ts > ts)  {
-                                    entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
-                                }
-                            } else {
-                                entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
-                            }
-                        }
-                    } else {
-                        entries.append(current_item) catch {};
-                    }
+                    add_or_replace_item(&entries, current_item);
                     current_item = .{ .title = "" };
                     state = .channel;
                     continue;
@@ -519,7 +489,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
         }
     }
 
-    // TODO: sort entries.items
+    // TODO: sort entries.items. Or don't sort in parse fn because otherwise
+    // I would have to sort in other functions also? Do I need to sort, can
+    // sqlite handle it? 'null' date values might mess it up? Have to see.
     // 1) use mem.sort
     // 2) or custom sort because null dates might be mixed with non-null dates
 
@@ -527,6 +499,39 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
         .feed = feed,
         .items = try entries.toOwnedSlice(),
     };
+}
+
+fn add_or_replace_item(entries: *std.ArrayList(FeedItem), current_item: FeedItem) void {
+    if (entries.items.len == default_item_count) {
+        if (current_item.updated_timestamp) |current_ts| {
+            var iter = std.mem.reverseIterator(entries.items);
+            var oldest_ts: ?i64 = null;
+            const oldest: ?FeedItem = iter.next();
+            var replace_index: usize = iter.index;
+            if (oldest != null and oldest.?.updated_timestamp != null) {
+                oldest_ts = oldest.?.updated_timestamp.?;
+                while (iter.next()) |item| {
+                    if (item.updated_timestamp == null) {
+                        replace_index = iter.index;
+                        break;
+                    } else if (item.updated_timestamp.? < oldest_ts.?) {
+                        replace_index = iter.index;
+                        oldest_ts = item.updated_timestamp.?;
+                    }
+                }
+            }
+
+            if (oldest_ts) |ts| {
+                if (current_ts > ts)  {
+                    entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+                }
+            } else {
+                entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+            }
+        }
+    } else {
+        entries.append(current_item) catch {};
+    }    
 }
 
 test "parseRss" {
