@@ -3,6 +3,7 @@ const mem = std.mem;
 const Allocator = mem.Allocator;
 const feed_types = @import("./feed_types.zig");
 const RssDateTime = feed_types.RssDateTime;
+const AtomDateTime = feed_types.AtomDateTime;
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
@@ -158,17 +159,19 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         // <link /> is void element
                         .link => {},
                         .id => current_entry.id = try allocator.dupe(u8, elem_content.text),
-                        .updated => current_entry.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .updated => {
+                            if (AtomDateTime.parse(elem_content.text) catch null) |ts| {
+                                current_entry.updated_timestamp = ts;
+                                current_entry.updated_raw = try allocator.dupe(u8, elem_content.text);
+                            }
+                        }
                     },
                 }
             },
             .element_end => {
                 const tag_str = token_reader.fullToken(token).element_end.name;
                 if (mem.eql(u8, "entry", tag_str)) {
-                    entries.append(current_entry) catch break;
-                    if (entries.items.len == default_item_count) {
-                        break;
-                    }
+                    add_or_replace_item(entries, current_entry);
                     current_entry = .{ .title = "" };
                     state = .feed;
                     continue;

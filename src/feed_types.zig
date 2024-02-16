@@ -210,6 +210,7 @@ pub const FeedItem = struct {
     title: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
+    // TODO: do I need updated_raw field?
     updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
