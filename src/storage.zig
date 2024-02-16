@@ -84,8 +84,8 @@ pub const Storage = struct {
 
     pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fetch_url: []const u8, fallback_title: ?[]const u8) !void {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
-        if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
-            parsed.feed.updated_raw = parsed.items[0].updated_raw;
+        if (parsed.feed.updated_timestamp == null and parsed.items.len > 0) {
+            parsed.feed.updated_timestamp = parsed.items[0].updated_timestamp;
         }
         try parsed.feed.prepareAndValidate(arena, fetch_url);
         if (parsed.feed.title == null) {
@@ -111,8 +111,8 @@ pub const Storage = struct {
 
 
         var parsed = try parse.parse(arena.allocator(), content, content_type);
-        if (parsed.feed.updated_raw == null and parsed.items.len > 0) {
-            parsed.feed.updated_raw = parsed.items[0].updated_raw;
+        if (parsed.feed.updated_timestamp == null and parsed.items.len > 0) {
+            parsed.feed.updated_timestamp = parsed.items[0].updated_timestamp;
         }
 
         parsed.feed.feed_id = feed_info.feed_id;
@@ -129,12 +129,11 @@ pub const Storage = struct {
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
         const query =
-            \\INSERT INTO feed (title, feed_url, page_url, updated_raw, updated_timestamp)
+            \\INSERT INTO feed (title, feed_url, page_url, updated_timestamp)
             \\VALUES (
             \\  @title,
             \\  @feed_url,
             \\  @page_url,
-            \\  @updated_raw,
             \\  @updated_timestamp
             \\) ON CONFLICT(feed_url) DO NOTHING
             \\RETURNING feed_id;
@@ -143,7 +142,6 @@ pub const Storage = struct {
             .title = feed.title,
             .feed_url = feed.feed_url,
             .page_url = feed.page_url,
-            .updated_raw = feed.updated_raw,
             .updated_timestamp = feed.updated_timestamp,
         });
         return feed_id orelse Error.FeedExists;
@@ -151,7 +149,7 @@ pub const Storage = struct {
 
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -159,7 +157,7 @@ pub const Storage = struct {
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
         const query_start =
-            \\SELECT feed_id, title, feed_url, page_url, updated_raw, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, updated_timestamp 
             \\FROM feed 
         ;
 
@@ -269,7 +267,6 @@ pub const Storage = struct {
             \\  title = @title,
             \\  feed_url = @feed_url,
             \\  page_url = @page_url,
-            \\  updated_raw = @updated_raw,
             \\  updated_timestamp = @updated_timestamp
             \\WHERE feed_id = @feed_id;
         ;
@@ -290,8 +287,8 @@ pub const Storage = struct {
         }
 
         const query =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
+            \\INSERT INTO item (feed_id, title, link, id, updated_timestamp, position)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_timestamp, @position)
             \\RETURNING item_id;
         ;
 
@@ -302,7 +299,6 @@ pub const Storage = struct {
                 .title = item.title,
                 .link = item.link,
                 .id = item.id,
-                .updated_raw = item.updated_raw,
                 .updated_timestamp = item.updated_timestamp,
                 .position = i,
             });
@@ -312,13 +308,13 @@ pub const Storage = struct {
     }
 
     pub fn getFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
-        const query = "select feed_id, item_id, title, id, link, updated_raw, updated_timestamp from item where feed_id = ?";
+        const query = "select feed_id, item_id, title, id, link, updated_timestamp from item where feed_id = ?";
         return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
     }
 
     pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize, opts: ShowOptions) ![]FeedItem {
         const query =
-            \\SELECT feed_id, item_id, title, id, link, updated_raw, updated_timestamp
+            \\SELECT feed_id, item_id, title, id, link, updated_timestamp
             \\FROM item 
             \\WHERE feed_id = ?
             \\ORDER BY position ASC LIMIT ?;
@@ -347,7 +343,6 @@ pub const Storage = struct {
             \\  feed_id = @feed_id, 
             \\  link = @link, 
             \\  id = @id, 
-            \\  updated_raw = @updated_raw, 
             \\  updated_timestamp = @updated_timestamp
             \\where item_id = @item_id;
         ;
@@ -439,19 +434,17 @@ pub const Storage = struct {
         }
 
         const query_with_id =
-            \\INSERT INTO item (feed_id, title, link, id, updated_raw, updated_timestamp, position)
-            \\VALUES (@feed_id, @title, @link, @id, @updated_raw, @updated_timestamp, @position)
+            \\INSERT INTO item (feed_id, title, link, id, updated_timestamp, position)
+            \\VALUES (@feed_id, @title, @link, @id, @updated_timestamp, @position)
             \\ON CONFLICT(feed_id, id) DO UPDATE SET
             \\  title = excluded.title,
             \\  link = excluded.link,
-            \\  updated_raw = excluded.updated_raw,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  id = excluded.id,
-            \\  updated_raw = excluded.updated_raw,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
             \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
@@ -461,11 +454,10 @@ pub const Storage = struct {
         const query_without_id =
             \\update item set 
             \\  title = @u_title,
-            \\  updated_raw = @u_raw,
             \\  updated_timestamp = @u_timestamp
             \\where feed_id = @u_feed_id and position = @u_position;
-            \\INSERT INTO item (feed_id, title, updated_raw, updated_timestamp, position)
-            \\select @feed_id, @title, @updated_raw, @updated_timestamp, @position where (select changes() = 0)
+            \\INSERT INTO item (feed_id, title, updated_timestamp, position)
+            \\select @feed_id, @title, @updated_timestamp, @position where (select changes() = 0)
             \\;
         ;
         
@@ -476,21 +468,18 @@ pub const Storage = struct {
                     .title = item.title,
                     .link = item.link,
                     .id = item.id,
-                    .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
                     .position = i,
                 });
             } else {
                 try self.sql_db.exec(query_without_id, .{}, .{
                     .u_title = item.title,
-                    .u_raw = item.updated_raw,
                     .u_timestamp = item.updated_timestamp,
                     .u_feed_id = item.feed_id,
                     .u_position = i,
 
                     .feed_id = item.feed_id,
                     .title = item.title,
-                    .updated_raw = item.updated_raw,
                     .updated_timestamp = item.updated_timestamp,
                     .position = i,
                 });
@@ -521,7 +510,6 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  feed_url TEXT NOT NULL UNIQUE,
     \\  page_url TEXT DEFAULT NULL,
-    \\  updated_raw TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL
     \\);
     ,
@@ -531,7 +519,6 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  link TEXT DEFAULT NULL,
     \\  id TEXT DEFAULT NULL,
-    \\  updated_raw TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
     \\  position INTEGER DEFAULT 0,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,

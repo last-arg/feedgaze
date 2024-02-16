@@ -140,7 +140,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         // Can be site url. Don't need it because already
                         // have fallback url from fn arg 'url'.
                         .id => {},
-                        .updated => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .updated => feed.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null,
                     },
                     .entry => switch (tag) {
                         .title => switch (elem_content) {
@@ -162,7 +162,6 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .updated => {
                             if (AtomDateTime.parse(elem_content.text) catch null) |ts| {
                                 current_entry.updated_timestamp = ts;
-                                current_entry.updated_raw = try allocator.dupe(u8, elem_content.text);
                             }
                         }
                     },
@@ -171,7 +170,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
             .element_end => {
                 const tag_str = token_reader.fullToken(token).element_end.name;
                 if (mem.eql(u8, "entry", tag_str)) {
-                    add_or_replace_item(entries, current_entry);
+                    add_or_replace_item(&entries, current_entry);
                     current_entry = .{ .title = "" };
                     state = .feed;
                     continue;
@@ -291,19 +290,19 @@ test "parseAtom" {
         .title = "Example Feed",
         .feed_url = "http://example.org/feed/",
         .page_url = "http://example.org/",
-        .updated_raw = "2012-12-13T18:30:02Z",
+        .updated_timestamp = try AtomDateTime.parse("2012-12-13T18:30:02Z"),
     };
     try std.testing.expectEqualDeep(expect_feed, result.feed);
     var expect_items = [_]FeedItem{ .{
         .title = "Atom-Powered Robots Run Amok",
         .link = "http://example.org/2003/12/13/atom03",
         .id = "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a",
-        .updated_raw = "2008-11-13T18:30:02Z",
+        .updated_timestamp = try AtomDateTime.parse("2008-11-13T18:30:02Z"),
     }, .{
         .title = "Entry one's 1",
         .link = "http://example.org/2008/12/13/entry-1",
         .id = "urn:uuid:2225c695-dfb8-5ebb-baaa-90da344efa6a",
-        .updated_raw = "2005-12-13T18:30:02Z",
+        .updated_timestamp = try AtomDateTime.parse("2005-12-13T18:30:02Z"),
     } };
     // 'start' is a runtime value. Need value to be runtime to coerce array
     // into a slice.
@@ -382,7 +381,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             },
                         },
                         .link => feed.page_url = try allocator.dupe(u8, elem_content.text),
-                        .pubDate => feed.updated_raw = try allocator.dupe(u8, elem_content.text),
+                        .pubDate => feed.updated_timestamp = RssDateTime.parse(elem_content.text) catch null,
                         .guid, .description => {},
                     },
                     .item => switch (tag) {
@@ -430,7 +429,6 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .pubDate => {
                             if (RssDateTime.parse(elem_content.text) catch null) |ts| {
                                 current_item.updated_timestamp = ts;
-                                current_item.updated_raw = try allocator.dupe(u8, elem_content.text);
                             }
                         }
                     },
@@ -567,14 +565,14 @@ test "parseRss" {
         .title = "Liftoff News",
         .feed_url = "",
         .page_url = "http://liftoff.msfc.nasa.gov/",
-        .updated_raw = "Tue, 10 Jun 2003 04:00:00 +0100",
+        .updated_timestamp = try RssDateTime.parse("Tue, 10 Jun 2003 04:00:00 +0100"),
     };
 
     try std.testing.expectEqualDeep(expect_feed, result.feed);
     const expect_items = [_]FeedItem{ .{
         .title = "Star City's Test",
         .link = "http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp",
-        .updated_raw = "Tue, 03 Jun 2003 09:39:21 GMT",
+        .updated_timestamp = try RssDateTime.parse("Tue, 03 Jun 2003 09:39:21 GMT"),
         .id = "http://liftoff.msfc.nasa.gov/2003/06/03.html#item573",
     }, .{
         .title = "Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a &lt;a href=\"http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm\"&gt;partial eclipse of the Sun&lt;/a&gt; on Saturday, May 31st.",
@@ -693,6 +691,6 @@ test "tmp" {
 
     const feed = try parseRss(alloc, @embedFile("tmp_file"));
     for (feed.items) |item| {
-        print("date: {?s}\n", .{item.updated_raw});
+        print("date: {?d}\n", .{item.updated_timestamp});
     }
 }

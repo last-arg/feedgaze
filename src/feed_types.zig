@@ -28,8 +28,6 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
-    // TODO: do I need updated_raw field?
-    updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
     pub const Error = error{
@@ -52,14 +50,11 @@ pub const Feed = struct {
                 self.page_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
             }
         }
-        if (self.updated_raw) |date| {
-            self.updated_timestamp = AtomDateTime.parse(date) catch RssDateTime.parse(date) catch null;
-        }
     }
 };
 
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3
-const AtomDateTime = struct {
+pub const AtomDateTime = struct {
     pub fn parse(raw: []const u8) !i64 {
         const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
         const month = std.fmt.parseUnsigned(u16, raw[5..7], 10) catch return error.InvalidFormat;
@@ -211,17 +206,12 @@ pub const FeedItem = struct {
     title: []const u8,
     id: ?[]const u8 = null,
     link: ?[]const u8 = null,
-    // TODO: do I need updated_raw field?
-    updated_raw: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
     const Self = @This();
 
     pub fn prepareAndValidate(self: *Self, feed_id: usize) !void {
         self.feed_id = feed_id;
-        if (self.updated_raw) |date| {
-            self.updated_timestamp = AtomDateTime.parse(date) catch RssDateTime.parse(date) catch null;
-        }
     }
 
     pub fn prepareAndValidateAll(items: []Self, feed_id: usize) !void {
