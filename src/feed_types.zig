@@ -99,6 +99,7 @@ test "AtomDateTime.parse" {
 pub const RssDateTime = struct {
     pub const Timezone = enum {
         UT,
+        UTC,
         GMT,
         EST,
         EDT,
@@ -117,7 +118,7 @@ pub const RssDateTime = struct {
             // Timezone is made of letters
             if (std.meta.stringToEnum(@This(), raw)) |tz| {
                 const result: i8 = switch (tz) {
-                    .UT, .GMT => 0,
+                    .UT, .GMT, .UTC => 0,
                     .EST => -5,
                     .EDT => -4,
                     .CST => -6,
@@ -198,6 +199,10 @@ test "RssDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1031387821), d2);
     const d3 = try RssDateTime.parse("07 Sep 02 18:02 -0130");
     try std.testing.expectEqual(@as(i64, 1031427120), d3);
+    // from: https://blog.ploeh.dk/rss.xml
+    const d4 = try RssDateTime.parse("Mon, 12 Feb 2024 07:00:00 UTC");
+    try std.testing.expectEqual(@as(i64, 1707721200), d4);
+    
 }
 
 pub const FeedItem = struct {
