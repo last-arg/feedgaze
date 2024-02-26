@@ -2,12 +2,6 @@ const std = @import("std");
 const print = std.debug.print;
 const Cli = @import("app.zig").Cli;
 
-pub const std_options = struct {
-    // Disable TSL for faster compiles
-    // pub const http_disable_tls = true;
-    // pub const log_level = .debug;
-};
-
 pub fn main() !void {
     var gen = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(gen.allocator());

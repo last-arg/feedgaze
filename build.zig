@@ -22,9 +22,10 @@ pub fn build(b: *Build) !void {
         .root_source_file = .{ .path = "src/main.zig" },
         .target = target,
         .optimize = optimize,
-        // .use_llvm = false,
-        // .use_lld = false,
     });
+    // TODO: test these out
+    // exe.use_llvm = false;
+    // exe.use_lld = false;
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default

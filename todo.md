@@ -12,7 +12,7 @@
   [ ] Turn HTML page into feed (for sites that don't have rss feed). Use CSS 
       selector to find page 'titles'? Or something like that.
   [ ] other fields (rss extensions)
-    - https://alistapart.com/main/feed/ has 'dc:date'
+    - https://alistapart.com/main/feed/ has 'dc:date' (2024-02-16T19:20:22+00:00)
     - does atom have extensions?
 [ ] Decode/encode HTML characters
 [ ] Add http server
