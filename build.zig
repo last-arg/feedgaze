@@ -25,9 +25,9 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .link_libc = true,
     });
-    // TODO: test these out
-    exe.use_llvm = false;
-    exe.use_lld = false;
+    // not working yet, get error due to curl
+    // exe.use_llvm = false;
+    // exe.use_lld = false;
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -60,19 +60,26 @@ pub fn build(b: *Build) !void {
     run_step.dependOn(&run_cmd.step);
 
     // Creates a step for unit testing.
+    var test_source: []const u8 = source_file;
+    var cmds: []const ?[]const u8 = &.{};
+    var filter: ?[]const u8 = null;
+    if (b.args) |args| {
+        test_source = args[0];
+        if (args.len >= 2) {
+            filter = args[1];
+            cmds = @ptrCast(args[2..]);
+        }
+    }
     var test_cmd = b.addTest(.{
-        .root_source_file = .{ .path = source_file },
+        .root_source_file = .{ .path = test_source },
         .target = target,
         .optimize = optimize,
+        .filter = filter,
     });
-    test_cmd.filters = &.{source_file};
-    if (b.args) |args| {
-        test_cmd.filters = args[1..2];
-        test_cmd.setExecCmd(@ptrCast(args[2..]));
-    }
+    test_cmd.setExecCmd(cmds);
 
     const anon_modules = .{
-        .{.name = "tmp_file", .path="./tmp/ishadeed.xml"},
+        .{.name = "tmp_file", .path="./tmp/tmp.xml"},
         .{.name = "atom.atom", .path="./test/atom.atom"},
         .{.name = "atom.xml", .path="./test/atom.xml"},
         .{.name = "rss2.xml", .path="./test/rss2.xml"},
