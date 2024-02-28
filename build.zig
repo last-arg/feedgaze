@@ -17,15 +17,17 @@ pub fn build(b: *Build) !void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
+    const source_file = "src/main.zig";
     const exe = b.addExecutable(.{
         .name = "feedgaze",
-        .root_source_file = .{ .path = "src/main.zig" },
+        .root_source_file = .{ .path = source_file },
         .target = target,
         .optimize = optimize,
+        .link_libc = true,
     });
     // TODO: test these out
-    // exe.use_llvm = false;
-    // exe.use_lld = false;
+    exe.use_llvm = false;
+    exe.use_lld = false;
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -57,25 +59,17 @@ pub fn build(b: *Build) !void {
     const run_step = b.step("run", "Run the app");
     run_step.dependOn(&run_cmd.step);
 
-    var test_file: []const u8 = "src/main.zig";
-    var filter: ?[]const u8 = null;
-    var arr = try std.BoundedArray(?[]const u8, 10).init(1);
-    arr.set(0, null);
-    if (b.args) |args| {
-        test_file = args[0];
-        if (args.len >= 2) {
-            filter = args[1];
-            try arr.appendSlice(@ptrCast(args[2..]));
-        }
-    }
     // Creates a step for unit testing.
     var test_cmd = b.addTest(.{
-        .root_source_file = .{ .path = test_file },
+        .root_source_file = .{ .path = source_file },
         .target = target,
         .optimize = optimize,
     });
-    test_cmd.filter = filter;
-    test_cmd.setExecCmd(arr.constSlice());
+    test_cmd.filters = &.{source_file};
+    if (b.args) |args| {
+        test_cmd.filters = args[1..2];
+        test_cmd.setExecCmd(@ptrCast(args[2..]));
+    }
 
     const anon_modules = .{
         .{.name = "tmp_file", .path="./tmp/ishadeed.xml"},
