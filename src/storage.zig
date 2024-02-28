@@ -23,7 +23,7 @@ pub const Storage = struct {
     options: Options = .{},
 
     const Options = struct {
-        max_item_count: usize = 10,
+        max_item_count: usize = app_config.max_items,
     };
 
     var storage_arr = std.BoundedArray(u8, 4096).init(0) catch unreachable;
@@ -440,21 +440,28 @@ pub const Storage = struct {
             \\  title = excluded.title,
             \\  link = excluded.link,
             \\  updated_timestamp = excluded.updated_timestamp,
-            \\  position = excluded.position
-            \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
+            \\  position = excluded.position,
+            \\  last_modified = strftime('%s', 'now')
+            \\WHERE updated_timestamp IS NULL 
+            \\  OR updated_timestamp != excluded.updated_timestamp 
+            \\  OR position != excluded.position
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  updated_timestamp = excluded.updated_timestamp,
-            \\  position = excluded.position
-            \\WHERE updated_timestamp != excluded.updated_timestamp OR position != excluded.position
+            \\  position = excluded.position,
+            \\  last_modified = strftime('%s', 'now')
+            \\WHERE updated_timestamp IS NULL 
+            \\  OR updated_timestamp != excluded.updated_timestamp 
+            \\  OR position != excluded.position
             \\;
         ;
 
         const query_without_id =
             \\update item set 
             \\  title = @u_title,
-            \\  updated_timestamp = @u_timestamp
+            \\  updated_timestamp = @u_timestamp,
+            \\  last_modified = strftime('%s', 'now')
             \\where feed_id = @u_feed_id and position = @u_position;
             \\INSERT INTO item (feed_id, title, updated_timestamp, position)
             \\select @feed_id, @title, @updated_timestamp, @position where (select changes() = 0)
@@ -488,14 +495,13 @@ pub const Storage = struct {
     }
 
     pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize) !void {
-        // Want to delete items:
-        // - items that have same position
-        // - items that are over max count
+        const last_pos = items_len - 1;
         const del_query =
-            \\DELETE FROM item WHERE feed_id = ? AND position >= ?;
+            \\DELETE FROM item WHERE feed_id = ? AND 
+            \\  (position > ? OR
+            \\   last_modified < (SELECT last_modified FROM item where feed_id = ? AND position = ? order by last_modified DESC limit 1));
         ;
-        const max_pos = @min(items_len, self.options.max_item_count);
-        try self.sql_db.exec(del_query, .{}, .{ feed_id, max_pos });
+        try self.sql_db.exec(del_query, .{}, .{ feed_id, last_pos, feed_id, last_pos });
     }
 
     pub fn getSmallestCountdown(self: *Self) !?i64 {
@@ -520,7 +526,8 @@ const tables = &[_][]const u8{
     \\  link TEXT DEFAULT NULL,
     \\  id TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
-    \\  position INTEGER DEFAULT 0,
+    \\  position INTEGER NOT NULL DEFAULT 0,
+    \\  last_modified INTEGER DEFAULT (strftime("%s", "now")),
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
@@ -531,7 +538,7 @@ const tables = &[_][]const u8{
         \\  feed_id INTEGER UNIQUE NOT NULL,
         \\  update_countdown INTEGER DEFAULT 0,
         \\  update_interval INTEGER DEFAULT {d},
-        \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
+        \\  last_update INTEGER DEFAULT (strftime("%s", "now")),
         \\  last_modified_utc INTEGER DEFAULT NULL,
         \\  etag TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
