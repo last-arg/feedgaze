@@ -38,15 +38,15 @@ pub const Feed = struct {
         self.feed_url = fallback_url;
         const feed_uri = Uri.parse(self.feed_url) catch blk: {
             const base = try std.Uri.parse(fallback_url);
-            const buf = try std.ArrayList(u8).initCapacity(arena.allocator(), fallback_url.len + self.feed_url.len);
-            const result = try base.resolve_inplace(self.feed_url, buf.items);
+            const buf = try arena.allocator().alloc(u8, fallback_url.len + self.feed_url.len);
+            const result = try base.resolve_inplace(self.feed_url, buf);
             self.feed_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
             break :blk result;
         };
         if (self.page_url) |page_url| {
             if (page_url[0] == '/' or page_url[0] == '.') {
-                const buf = try std.ArrayList(u8).initCapacity(arena.allocator(), fallback_url.len + self.feed_url.len);
-                const result = try feed_uri.resolve_inplace(page_url, buf.items);
+                const buf = try arena.allocator().alloc(u8, self.feed_url.len + page_url.len);
+                const result = try feed_uri.resolve_inplace(fallback_url, buf);
                 self.page_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
             }
         }
