@@ -328,6 +328,7 @@ const RssParseTag = enum {
     description,
     link,
     pubDate,
+    @"dc:date",
     guid,
 
     const Self = @This();
@@ -382,6 +383,10 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         },
                         .link => feed.page_url = try allocator.dupe(u8, elem_content.text),
                         .pubDate => feed.updated_timestamp = RssDateTime.parse(elem_content.text) catch null,
+                        .@"dc:date" => {
+                            const str = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
+                            feed.updated_timestamp = AtomDateTime.parse(str) catch null;
+                        },
                         .guid, .description => {},
                     },
                     .item => switch (tag) {
@@ -430,7 +435,11 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             if (RssDateTime.parse(elem_content.text) catch null) |ts| {
                                 current_item.updated_timestamp = ts;
                             }
-                        }
+                        },
+                        .@"dc:date" => {
+                            const str = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
+                            current_item.updated_timestamp = AtomDateTime.parse(str) catch null;
+                        },
                     },
                 }
             },
@@ -451,7 +460,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
                         },
-                        .link, .guid, .pubDate, .description => {},
+                        .link, .guid, .pubDate, .@"dc:date", .description => {},
                     },
                     .item => {
                         switch (tag) {
@@ -473,7 +482,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 current_item.id = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             }, 
-                            .pubDate => {},
+                            .pubDate, .@"dc:date" => {},
                         }
                     },
                 }
@@ -690,6 +699,7 @@ test "tmp" {
     const alloc = arena.allocator();
 
     const feed = try parseRss(alloc, @embedFile("tmp_file"));
+    print("START\n", .{});
     for (feed.items) |item| {
         print("date: {?d}\n", .{item.updated_timestamp});
     }

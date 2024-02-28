@@ -308,7 +308,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer arena.deinit();
 
             if (!options.force) {
-                // TODO: only update feeds that were updated in for loop?
                 try self.storage.updateCountdowns();
             }
             const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
