@@ -119,12 +119,4 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
-
-    // const zig_webui = b.dependency("zig-webui", .{
-    //     .target = dep_args.target,
-    //     .optimize = dep_args.optimize,
-    //     .enable_tls = false, // whether enable tls support
-    //     .is_static = true, // whether static link
-    // });
-    // step.root_module.addImport("webui", zig_webui.module("webui"));
 }

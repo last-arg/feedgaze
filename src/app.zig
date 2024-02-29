@@ -20,7 +20,6 @@ const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
 const html = @import("./html.zig");
-const webui = @import("webui");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -35,7 +34,6 @@ const CliVerb = union(enum) {
     show: ShowOptions,
     update: UpdateOptions,
     run: void,
-    ui: void,
     // TODO: generate html file
     // html: void,
 };
@@ -113,9 +111,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.update(null, .{});
                     }
                 },
-                .ui => {
-                    try ui();
-                }
             }
         }
 
@@ -188,10 +183,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\Options:
                     \\  -h, --help    Print this help and exit
                     ,
-                    .ui => 
-                    \\Usage: feedgaze ui [options]
+                    .server => 
+                    \\Usage: feedgaze server [options]
                     \\
-                    \\  Open ui in browser
+                    \\  Launches server
                     \\
                     \\Options:
                     \\  -h, --help    Print this help and exit
@@ -368,27 +363,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
                 std.log.info("Updated feed '{s}'\n", .{f_update.feed_url});
             }
-        }
-
-        pub fn ui() !void {
-            var public_window = webui.newWindow();
-            webui.setTimeout(0);
-            public_window.setPublic(true);
-            _ = public_window.setPort(8282);
-
-            const public = 
-                \\<!doctype html>
-                \\<script src="webui.js"></script>
-                \\<p>I am public</p><a href='https://google.com'>google</a>
-            ;
-
-            _ = public_window.showBrowser(public, .NoBrowser);
-
-            const public_win_url = public_window.getUrl();
-            print("url: {s}\n", .{public_win_url});
-
-            webui.wait();
-            webui.clean();        
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {
