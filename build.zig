@@ -17,16 +17,26 @@ pub fn build(b: *Build) !void {
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
-    const source_file = "src/main.zig";
+    const use_llvm = blk: {
+        if (b.option(bool, "no-llvm", "Use Zig's llvm code backend")) |val| {
+            break :blk !val;
+        }
+        break :blk true;
+    };
+
+    var source_file: []const u8 = "src/main.zig";
+    if (b.args) |args| {
+        source_file = args[0];
+    }
+
     const exe = b.addExecutable(.{
         .name = "feedgaze",
         .root_source_file = .{ .path = source_file },
         .target = target,
         .optimize = optimize,
         .link_libc = true,
-        // not working yet, get error due to curl
-        // .use_llvm = false,
-        // .use_lld = false,
+        .use_llvm = use_llvm,
+        .use_lld = use_llvm,
     });
 
     // This declares intent for the executable to be installed into the
@@ -75,6 +85,8 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
         .filter = filter,
+        .use_llvm = use_llvm,
+        .use_lld = use_llvm,
     });
     test_cmd.setExecCmd(cmds);
 
