@@ -34,6 +34,7 @@ const CliVerb = union(enum) {
     show: ShowOptions,
     update: UpdateOptions,
     run: void,
+    server: void,
     // TODO: generate html file
     // html: void,
 };
@@ -111,6 +112,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.update(null, .{});
                     }
                 },
+                .server => try server(),
             }
         }
 
@@ -363,6 +365,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
                 std.log.info("Updated feed '{s}'\n", .{f_update.feed_url});
             }
+        }
+
+        pub fn server() !void {
+            print("Start server\n", .{});
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {

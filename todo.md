@@ -18,8 +18,7 @@
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak
-[ ] UI
-  [ ] Explore https://github.com/webui-dev/zig-webui
+  - https://github.com/karlseguin/http.zig
 [ ] HTML templating
   - https://github.com/nektro/zig-pek
   - https://github.com/jacksonsalopek/ztl
@@ -41,3 +40,7 @@
 [ ] UI
   [ ] TUI - NotCurses
     * Example: https://github.com/dundalek/notcurses-zig-example
+
+# Old 
+[ ] UI with [zig-webui](https://github.com/webui-dev/zig-webui)
+Tried this and liked it. But I think I can just go with a server. 

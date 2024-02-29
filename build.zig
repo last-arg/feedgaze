@@ -131,4 +131,13 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
+
+    const zap = b.dependency("zap", .{
+        .target = dep_args.target,
+        .optimize = dep_args.optimize,
+        .openssl = false, // set to true to enable TLS support
+    });
+
+    step.root_module.addImport("zap", zap.module("zap"));
+    step.linkLibrary(zap.artifact("facil.io"));
 }
