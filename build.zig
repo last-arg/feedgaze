@@ -26,7 +26,10 @@ pub fn build(b: *Build) !void {
 
     var source_file: []const u8 = "src/main.zig";
     if (b.args) |args| {
-        source_file = args[0];
+        const value = args[0];
+        if (std.mem.endsWith(u8, value, ".zig")) {
+            source_file = args[0];
+        }
     }
 
     const exe = b.addExecutable(.{
