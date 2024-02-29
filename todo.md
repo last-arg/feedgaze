@@ -5,12 +5,15 @@
       - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
   [ ] Reddit
       - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
-  [ ] Create rules for some urls
-    [ ] On some sites have to figure out where to find the feed (reddit, pinboard, youtube)
+  [ ] Url rules to transform them into feed urls
+    [ ] On some sites have to figure out where to find the feed (reddit, pinboard)
     [ ] Some sites might have and url to rss feed, but page's HTML doesn't contain
         any rss url. Create somekind of rule?
-  [ ] Turn HTML page into feed (for sites that don't have rss feed). Use CSS 
-      selector to find page 'titles'? Or something like that.
+  [ ] HTML page into feed
+    [ ] Use CSS selector to find:
+      - titles
+      - links
+    [ ] Use page title as feed title
 [ ] Decode/encode HTML characters
 [ ] Add http server
   - https://github.com/zigzap/zap

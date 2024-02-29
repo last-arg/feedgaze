@@ -28,5 +28,9 @@
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
             .hash = "1220eefa74530c43e38f7e90dae8055af4f5964a9daf7b38618962e79f39c30079d3",
         },
+        .@"zig-webui" = .{
+            .url = "https://github.com/webui-dev/zig-webui/archive/main.tar.gz",
+            .hash = "1220065e084ab7b708947bd2a59baff9de390e171b72bbdad8fb762102ce6717b1e1",
+        },
     },
 }

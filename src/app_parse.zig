@@ -9,7 +9,6 @@ const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
 
 const max_title_len = 512;
-// TODO: add max_items
 const default_item_count = @import("./app_config.zig").max_items;
 
 pub const FeedAndItems = struct {

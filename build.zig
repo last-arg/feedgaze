@@ -24,10 +24,10 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
         .link_libc = true,
+        // not working yet, get error due to curl
+        // .use_llvm = false,
+        // .use_lld = false,
     });
-    // not working yet, get error due to curl
-    // exe.use_llvm = false;
-    // exe.use_lld = false;
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
@@ -119,4 +119,12 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
+
+    // const zig_webui = b.dependency("zig-webui", .{
+    //     .target = dep_args.target,
+    //     .optimize = dep_args.optimize,
+    //     .enable_tls = false, // whether enable tls support
+    //     .is_static = true, // whether static link
+    // });
+    // step.root_module.addImport("webui", zig_webui.module("webui"));
 }
