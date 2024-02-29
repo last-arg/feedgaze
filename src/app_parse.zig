@@ -337,6 +337,8 @@ const RssParseTag = enum {
     }
 };
 
+// Feed https://frontenddogma.com/posts/feed/ items' pubDate is inside comments
+// <!-- <pubDate>Thu, 15 Feb 2024 00:00:00 +0100</pubDate> -->
 pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_str = TmpStr.init();
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);

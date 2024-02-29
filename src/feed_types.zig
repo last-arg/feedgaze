@@ -167,21 +167,26 @@ pub const RssDateTime = struct {
             // NOTE: Start day and comma (,) are optional
             ctx = ctx[5..];
         }
-        const day = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
-        const month = parseMonth(ctx[3..6]) catch return error.InvalidFormat;
-        ctx = ctx[7..];
         var end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
+        const day = std.fmt.parseUnsigned(u8, ctx[0..end_index], 10) catch return error.InvalidFormat;
+        ctx = ctx[end_index + 1 ..];
+        const month = parseMonth(ctx[0..3]) catch return error.InvalidFormat;
+        end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
+        ctx = ctx[end_index + 1 ..];
+        end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
         var year = std.fmt.parseUnsigned(u16, ctx[0..end_index], 10) catch return error.InvalidFormat;
         if (year < 100) {
             // NOTE: Assuming two letter length year is a year after 2000
             year += 2000;
         }
         ctx = ctx[end_index + 1 ..];
-        const hour = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
-        const minute = std.fmt.parseUnsigned(u8, ctx[3..5], 10) catch return error.InvalidFormat;
+        end_index = std.mem.indexOfScalar(u8, ctx, ':') orelse return error.InvalidFormat;
+        const hour = std.fmt.parseUnsigned(u8, ctx[0..end_index], 10) catch return error.InvalidFormat;
+        ctx = ctx[end_index + 1 ..];
+        const minute = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
         const second = blk: {
-            if (ctx[5] == ':') {
-                break :blk std.fmt.parseUnsigned(u8, ctx[6..8], 10) catch return error.InvalidFormat;
+            if (ctx[2] == ':') {
+                break :blk std.fmt.parseUnsigned(u8, ctx[3..5], 10) catch return error.InvalidFormat;
             }
             break :blk 0;
         };
@@ -205,7 +210,20 @@ test "RssDateTime.parse" {
     // from: https://blog.ploeh.dk/rss.xml
     const d4 = try RssDateTime.parse("Mon, 12 Feb 2024 07:00:00 UTC");
     try std.testing.expectEqual(@as(i64, 1707721200), d4);
-    
+    // from:
+    // - https://verdagon.dev/rss.xml
+    // - https://feeds.simplecast.com/L9810DOa
+    // date has single number
+    const d5 = try RssDateTime.parse("Tue, 5 Jan 2021 12:00:00 -0400");
+    try std.testing.expectEqual(@as(i64, 1609862400), d5);
+    // from: https://verdagon.dev/rss.xml
+    // hours has single number
+    const d6 = try RssDateTime.parse("Tue, 15 Jun 2023 0:00:00 -0500");
+    try std.testing.expectEqual(@as(i64, 1686805200), d6);
+    // from: https://verdagon.dev/rss.xml
+    // month value is too long
+    const d7 = try RssDateTime.parse("Thu, 28 June 2022 10:15:00 -0400");
+    try std.testing.expectEqual(@as(i64, 1656425700), d7);
 }
 
 pub const FeedItem = struct {
@@ -248,7 +266,7 @@ pub const FeedUpdate = struct {
                 feed_update.etag = h.get();
             }
         } else |_| {}
-                
+
         var update_interval: ?i64 = null;
         if (easy.get_header("cache-control")) |header| {
             if (header) |h| {
@@ -270,7 +288,7 @@ pub const FeedUpdate = struct {
                 }
             }
         } else |_| {}
-        
+
         if (update_interval == 0) {
             update_interval = null;
         }
