@@ -20,20 +20,24 @@ fn renderRootPage() !void {
     ;
     const feeds = try storage.selectAll(&db.sql_db, alloc, FeedRender, query_feed, .{});
     const feeds_rendered = try renderFeedsList(alloc, feeds);
-    _ = feeds_rendered;
-    // try writer.print(index_html, .{ .feeds_list = feeds_rendered });
+    // _ = feeds_rendered;
+    try writer.print("{s}\n", .{ .feeds_list = feeds_rendered });
 
     const query_item =
         \\select title, link, updated_timestamp 
         \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
     ;
     const items = try storage.selectAll(&db.sql_db, alloc, FeedItemRender, query_item, .{1});
-
     const items_rendered = try renderFeedItemList(alloc, items);
-    try writer.print("{s}\n", .{items_rendered});
+    _ = items_rendered; // autofix
+    // try writer.print("{s}\n", .{items_rendered});
 }
 
 fn renderFeedItemList(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
+    if (items.len == 0) {
+        return "";
+    }
+
     const li_html = 
         \\<li>
         \\  <a href="{[link]s}">{[title]s}</a>
@@ -45,13 +49,13 @@ fn renderFeedItemList(alloc: std.mem.Allocator, items: []FeedItemRender) ![]cons
     // TODO: over allocating because format placeholders.
     // Subtract lengths of placeholders from final capacity size.
 
-    var cap = items.len * (li_html.len + date_len_max);
+    var capacity = items.len * (li_html.len + date_len_max);
     for (items) |item| {
-        cap += item.title.len;
-        cap += if (item.link) |v| v.len else link_placeholder.len;
+        capacity += item.title.len;
+        capacity += if (item.link) |v| v.len else link_placeholder.len;
     }
 
-    var content = try std.ArrayList(u8).initCapacity(alloc, cap);
+    var content = try std.ArrayList(u8).initCapacity(alloc, capacity);
     defer content.deinit();
     for (items) |item| {
         content.writer().print(li_html, .{
@@ -90,43 +94,28 @@ fn renderFeedsList(alloc: std.mem.Allocator, feeds: []FeedRender) ![]const u8 {
         \\ <ul class="feed-items-list"></ul>
         \\</li>
     ;
-    // TODO: find lengths of format placeholders to get more accurate
-    // allocation size. Currently over-allocating.
 
-    var output_len = (li_html.len + date_len_max) * feeds.len;
-    var page_url_max: usize = 0;
-    var feed_url_max: usize = 0;
-    var title_max: usize = 0;
+    // TODO: over allocating because format placeholders.
+    // Subtract lengths of placeholders from final capacity size.
+
+    var capacity = (li_html.len + date_len_max) * feeds.len;
     for (feeds) |feed| {
         const page_url_len = (feed.page_url orelse feed.feed_url).len;
-        output_len += page_url_len;
-        output_len += feed.feed_url.len;
-        output_len += feed.title.len;
-        if (page_url_len > page_url_max) {
-            page_url_max = page_url_len;
-        }
-        if (feed.feed_url.len > feed_url_max) {
-            feed_url_max = feed.feed_url.len;
-        }
-        if (feed.title.len > feed_url_max) {
-            title_max = feed.title.len;
-        }
+        capacity += page_url_len;
+        capacity += feed.feed_url.len;
+        capacity += feed.title.len;
     }
-    const buf_size = li_html.len + page_url_max +  feed_url_max + title_max + date_len_max;
-    const buf = try alloc.alloc(u8, buf_size);
-    defer alloc.free(buf);
-    var body = try std.ArrayList(u8).initCapacity(alloc, output_len);
-    defer body.deinit();
+    var content = try std.ArrayList(u8).initCapacity(alloc, capacity);
+    defer content.deinit();
     for (feeds) |feed| {
-        const feed_html = try std.fmt.bufPrint(buf, li_html, .{
+        content.writer().print(li_html, .{
             .page_url = feed.page_url orelse feed.feed_url,
             .title = feed.title,
             .feed_url = feed.feed_url,
             .date = feed.updated_timestamp,
-        });
-        body.appendSliceAssumeCapacity(feed_html);
+        }) catch unreachable;
     }
-    return try body.toOwnedSlice();
+    return try content.toOwnedSlice();
 }
 
 fn start() !void {
