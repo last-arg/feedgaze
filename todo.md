@@ -15,6 +15,7 @@
       - links
     [ ] Use page title as feed title
 [ ] Decode/encode HTML characters
+[ ] Remove html tags from parse title/description
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak

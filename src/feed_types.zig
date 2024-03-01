@@ -231,6 +231,9 @@ test "RssDateTime.parse" {
 
 pub const FeedItem = struct {
     feed_id: usize = 0,
+    // TODO: this should not be null. See if there is a reason why I marked it
+    // as null? Probably item_id is null before adding item to DB. Have
+    // different types for inserting and retrieving item?
     item_id: ?usize = null,
     title: []const u8,
     id: ?[]const u8 = null,
@@ -248,6 +251,20 @@ pub const FeedItem = struct {
             try item.prepareAndValidate(feed_id);
         }
     }
+};
+
+pub const FeedItemRender = struct {
+    title: []const u8,
+    link: ?[]const u8,
+    updated_timestamp: ?i64,
+};
+
+pub const FeedRender = struct {
+    feed_id: usize,
+    title: []const u8,
+    feed_url: []const u8,
+    page_url: ?[]const u8,
+    updated_timestamp: ?i64,
 };
 
 pub const FeedUpdate = struct {

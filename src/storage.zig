@@ -3,17 +3,18 @@ const mem = std.mem;
 const assert = std.debug.assert;
 const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
-const feed_types = @import("./feed_types.zig");
-const Feed = feed_types.Feed;
-const FeedItem = feed_types.FeedItem;
-const FeedUpdate = feed_types.FeedUpdate;
-const FeedToUpdate = feed_types.FeedToUpdate;
-const FeedOptions = feed_types.FeedOptions;
+const types = @import("./feed_types.zig");
+const Feed = types.Feed;
+const FeedItem = types.FeedItem;
+const FeedItemRender = types.FeedItemRender;
+const FeedUpdate = types.FeedUpdate;
+const FeedToUpdate = types.FeedToUpdate;
+const FeedOptions = types.FeedOptions;
 const sql = @import("sqlite");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
-const ShowOptions = feed_types.ShowOptions;
-const UpdateOptions = feed_types.UpdateOptions;
+const ShowOptions = types.ShowOptions;
+const UpdateOptions = types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 const app_config = @import("app_config.zig");
 
@@ -307,11 +308,6 @@ pub const Storage = struct {
         return inserts;
     }
 
-    pub fn getFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItem {
-        const query = "select feed_id, item_id, title, id, link, updated_timestamp from item where feed_id = ?";
-        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{feed_id});
-    }
-
     pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: usize, opts: ShowOptions) ![]FeedItem {
         const query =
             \\SELECT feed_id, item_id, title, id, link, updated_timestamp
@@ -508,6 +504,21 @@ pub const Storage = struct {
         const query = "SELECT update_countdown FROM feed_update ORDER BY update_countdown ASC LIMIT 1;";
         return try one(&self.sql_db, i64, query, .{});
     }
+
+    pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
+        const query_item =
+            \\select title, link, updated_timestamp 
+            \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
+        ;
+        return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
+    }
+
+    pub fn feeds_all(self: *Self, alloc: Allocator) ![]types.FeedRender {
+        const query_feed =
+            \\select * from feed order by updated_timestamp DESC;
+        ;
+        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
+    }
 };
 
 const tables = &[_][]const u8{
@@ -585,7 +596,7 @@ fn testAddFeed(storage: *Storage) !void {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const content_type = feed_types.ContentType.rss;
+    const content_type = types.ContentType.rss;
     const url = "http://localhost:8282/rss2.xml";
     var headers = try std.http.Headers.initList(allocator, &.{});
     defer headers.deinit();
@@ -635,7 +646,7 @@ test "Storage.updateFeedAndItems" {
     try testAddFeed(&storage);
 
     const content = @embedFile("rss2.xml");
-    const content_type = feed_types.ContentType.rss;
+    const content_type = types.ContentType.rss;
     const url = "http://localhost:8282/rss2.xml";
     var headers = try std.http.Headers.initList(allocator, &.{});
     defer headers.deinit();
