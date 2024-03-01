@@ -120,7 +120,7 @@ pub const RssDateTime = struct {
         pub fn toMinutes(raw: []const u8) !i16 {
             // Timezone is made of letters
             if (std.meta.stringToEnum(@This(), raw)) |tz| {
-                const result: i8 = switch (tz) {
+                const result: i16 = switch (tz) {
                     .UT, .GMT, .UTC => 0,
                     .EST => -5,
                     .EDT => -4,
@@ -224,6 +224,9 @@ test "RssDateTime.parse" {
     // month value is too long
     const d7 = try RssDateTime.parse("Thu, 28 June 2022 10:15:00 -0400");
     try std.testing.expectEqual(@as(i64, 1656425700), d7);
+    // revealed an integer overflow bug
+    const d8 = try RssDateTime.parse("Mon, 4 Dec 2023 09:00:00 PST");
+    try std.testing.expectEqual(@as(i64, 1701709200), d8);
 }
 
 pub const FeedItem = struct {
