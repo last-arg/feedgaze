@@ -235,16 +235,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const link = links[index];
 
                 fallback_title = link.title;
-                var buf: [128]u8 = undefined;
-                var fixed_buf = std.io.fixedBufferStream(&buf);
-                if (link.link[0] == '/') {
-                    var uri = try std.Uri.parse(url);
-                    uri.path = link.link;
-                    try uri.format("", .{}, fixed_buf.writer());
-                    fetch_url = fixed_buf.getWritten();
+                if (!mem.startsWith(u8, link.link, "http")) {
+                    var url_uri = try std.Uri.parse(url);
+                    const link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
+                    const result = try url_uri.resolve_inplace(link.link, link_buf);
+                    fetch_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
                 } else {
                     fetch_url = link.link;
                 }
+
                 var resp_2 = try req.fetch(fetch_url, .{});
                 defer resp_2.deinit();
 
