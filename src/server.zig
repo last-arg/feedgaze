@@ -40,36 +40,25 @@ fn renderFeedItemList(alloc: std.mem.Allocator, items: []FeedItemRender) ![]cons
         \\  <p>{[date]?d}</p>
         \\</li>
     ;
+    const link_placeholder = "#";
+
+    // TODO: over allocating because format placeholders.
+    // Subtract lengths of placeholders from final capacity size.
 
     var cap = items.len * (li_html.len + date_len_max);
-    var title_len_max: usize = 0;
-    var link_len_max: usize = 0;
     for (items) |item| {
         cap += item.title.len;
-        const link_len = if (item.link) |v| v.len else 0;
-        cap += link_len;
-
-        if (item.title.len > title_len_max) {
-            title_len_max = item.title.len;
-        }
-
-        if (link_len > link_len_max) {
-            link_len_max = link_len;
-        }
+        cap += if (item.link) |v| v.len else link_placeholder.len;
     }
 
-    const buf_len = li_html.len + title_len_max + link_len_max;
-    const buf = try alloc.alloc(u8, buf_len);
-    defer alloc.free(buf);
     var content = try std.ArrayList(u8).initCapacity(alloc, cap);
     defer content.deinit();
     for (items) |item| {
-        const li_content = try std.fmt.bufPrint(buf, li_html, .{
-            .link = item.link orelse "#",
+        content.writer().print(li_html, .{
+            .link = item.link orelse link_placeholder,
             .title = if (item.title.len > 0) item.title else "<no-title>",
             .date = item.updated_timestamp,
-        });
-        content.appendSliceAssumeCapacity(li_content);
+        }) catch unreachable;
     }
 
     return try content.toOwnedSlice();
