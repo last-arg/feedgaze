@@ -16,6 +16,8 @@
     [ ] Use page title as feed title
 [ ] Decode/encode HTML characters
 [ ] Remove html tags from parse title/description
+[ ] I think feed's updated_timestamp should be newest item's updated_timestamp.
+If items don't have updated_timestamp then use feed's updated_timestamp. 
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak

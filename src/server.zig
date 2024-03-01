@@ -16,14 +16,10 @@ fn page_root_render() !void {
     const alloc = arena.allocator();
 
     const feeds = try db.feeds_all(alloc);
-    const feeds_rendered = try feeds_render(alloc, feeds);
+    const feeds_rendered = try feeds_render(&db, alloc, feeds);
     // _ = feeds_rendered;
     try writer.writeAll(feeds_rendered);
 
-    const items = try db.feed_items_with_feed_id(arena.allocator(), 1);
-    const items_rendered = try feed_items_render(alloc, items);
-    // _ = items_rendered; // autofix
-    try writer.writeAll(items_rendered);
 }
 
 fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
@@ -53,7 +49,7 @@ fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const
     for (items) |item| {
         content.writer().print(li_html, .{
             .link = item.link orelse link_placeholder,
-            .title = if (item.title.len > 0) item.title else "<no-title>",
+            .title = if (item.title.len > 0) item.title else "[no-title]",
             .date = item.updated_timestamp,
         }) catch unreachable;
     }
@@ -61,7 +57,7 @@ fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const
     return try content.toOwnedSlice();
 }
 
-fn feeds_render(alloc: std.mem.Allocator, feeds: []types.FeedRender) ![]const u8 {
+fn feeds_render(db: *Storage, alloc: std.mem.Allocator, feeds: []types.FeedRender) ![]const u8 {
     if (feeds.len == 0) {
         return "";
     }
@@ -70,7 +66,7 @@ fn feeds_render(alloc: std.mem.Allocator, feeds: []types.FeedRender) ![]const u8
         \\ <a href="{[page_url]s}">{[title]s}</a>
         \\ <a href="{[feed_url]s}">Feed url</a>
         \\ <p>{[date]?d}</p>
-        \\ <ul class="feed-items-list"></ul>
+        \\ <ul class="feed-items-list">{[items]s}</ul>
         \\</li>
     ;
 
@@ -87,11 +83,15 @@ fn feeds_render(alloc: std.mem.Allocator, feeds: []types.FeedRender) ![]const u8
     var content = try std.ArrayList(u8).initCapacity(alloc, capacity);
     defer content.deinit();
     for (feeds) |feed| {
+        const items = try db.feed_items_with_feed_id(alloc, feed.feed_id);
+        const items_rendered = try feed_items_render(alloc, items);
+
         content.writer().print(li_html, .{
             .page_url = feed.page_url orelse feed.feed_url,
             .title = feed.title,
             .feed_url = feed.feed_url,
             .date = feed.updated_timestamp,
+            .items = items_rendered,
         }) catch unreachable;
     }
     return try content.toOwnedSlice();
