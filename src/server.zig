@@ -1,3 +1,6 @@
+// TODO: find out date's max len
+const date_len_max = 10;
+
 // For fast compiling and testing
 pub fn main() !void {
     // try start();
@@ -5,20 +8,78 @@ pub fn main() !void {
 }
 
 fn renderRootPage() !void {
+    const writer = std.io.getStdOut().writer();
     var db = try Storage.init("./tmp/feeds.db");
     var general = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(general.allocator());
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const query =
+    const query_feed =
         \\select * from feed order by updated_timestamp DESC;
     ;
-    const feeds = try storage.selectAll(&db.sql_db, alloc, FeedRender, query, .{});
-    const feeds_list = try renderFeedsList(alloc, feeds);
-    // _ = feeds_list;
-    try std.io.getStdOut().writer().print(index_html, .{ .feeds_list = feeds_list });
+    const feeds = try storage.selectAll(&db.sql_db, alloc, FeedRender, query_feed, .{});
+    const feeds_rendered = try renderFeedsList(alloc, feeds);
+    _ = feeds_rendered;
+    // try writer.print(index_html, .{ .feeds_list = feeds_rendered });
+
+    const query_item =
+        \\select title, link, updated_timestamp 
+        \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
+    ;
+    const items = try storage.selectAll(&db.sql_db, alloc, FeedItemRender, query_item, .{1});
+
+    const items_rendered = try renderFeedItemList(alloc, items);
+    try writer.print("{s}\n", .{items_rendered});
 }
+
+fn renderFeedItemList(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
+    const li_html = 
+        \\<li>
+        \\  <a href="{[link]s}">{[title]s}</a>
+        \\  <p>{[date]?d}</p>
+        \\</li>
+    ;
+
+    var cap = items.len * (li_html.len + date_len_max);
+    var title_len_max: usize = 0;
+    var link_len_max: usize = 0;
+    for (items) |item| {
+        cap += item.title.len;
+        const link_len = if (item.link) |v| v.len else 0;
+        cap += link_len;
+
+        if (item.title.len > title_len_max) {
+            title_len_max = item.title.len;
+        }
+
+        if (link_len > link_len_max) {
+            link_len_max = link_len;
+        }
+    }
+
+    const buf_len = li_html.len + title_len_max + link_len_max;
+    const buf = try alloc.alloc(u8, buf_len);
+    defer alloc.free(buf);
+    var content = try std.ArrayList(u8).initCapacity(alloc, cap);
+    defer content.deinit();
+    for (items) |item| {
+        const li_content = try std.fmt.bufPrint(buf, li_html, .{
+            .link = item.link orelse "#",
+            .title = if (item.title.len > 0) item.title else "<no-title>",
+            .date = item.updated_timestamp,
+        });
+        content.appendSliceAssumeCapacity(li_content);
+    }
+
+    return try content.toOwnedSlice();
+}
+
+const FeedItemRender = struct {
+    title: []const u8,
+    link: ?[]const u8,
+    updated_timestamp: ?i64,
+};
 
 const FeedRender = struct {
     feed_id: usize,
@@ -40,12 +101,10 @@ fn renderFeedsList(alloc: std.mem.Allocator, feeds: []FeedRender) ![]const u8 {
         \\ <ul class="feed-items-list"></ul>
         \\</li>
     ;
-
     // TODO: find lengths of format placeholders to get more accurate
-    // allocate size. Currently over-allocating.
+    // allocation size. Currently over-allocating.
 
-    const date_max = 10;
-    var output_len = (li_html.len + date_max) * feeds.len;
+    var output_len = (li_html.len + date_len_max) * feeds.len;
     var page_url_max: usize = 0;
     var feed_url_max: usize = 0;
     var title_max: usize = 0;
@@ -64,7 +123,7 @@ fn renderFeedsList(alloc: std.mem.Allocator, feeds: []FeedRender) ![]const u8 {
             title_max = feed.title.len;
         }
     }
-    const buf_size = li_html.len + page_url_max +  feed_url_max + title_max + date_max;
+    const buf_size = li_html.len + page_url_max +  feed_url_max + title_max + date_len_max;
     const buf = try alloc.alloc(u8, buf_size);
     defer alloc.free(buf);
     var body = try std.ArrayList(u8).initCapacity(alloc, output_len);
