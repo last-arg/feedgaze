@@ -204,8 +204,6 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             if (link_href) |href| {
                                 if (mem.eql(u8, "alternate", link_rel)) {
                                     feed.page_url = href;
-                                } else if (mem.eql(u8, "self", link_rel)) {
-                                    feed.feed_url = href;
                                 }
                             }
                             link_href = null;
