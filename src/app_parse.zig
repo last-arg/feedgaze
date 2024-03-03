@@ -16,7 +16,6 @@ pub const FeedAndItems = struct {
     items: []FeedItem,
 };
 
-
 const TmpStr = struct {
     const Self = @This();
     const Str = std.BoundedArray(u8, max_title_len);
@@ -500,7 +499,19 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .attribute_content => {},
             .xml_declaration,
             .pi_start, .pi_content,
-            .comment_start, .comment_content => {},
+            .comment_start => {}, 
+            .comment_content => {
+                // Special case for https://frontenddogma.com/ which has dates inside comments
+                if (state == .item and current_item.updated_timestamp == null) {
+                    var str = token_reader.fullToken(token).comment_content.content;
+                    const start_tag = "<pubDate>";
+                    var index = std.mem.indexOf(u8, str, start_tag) orelse continue;
+                    str = str[index + start_tag.len ..];
+                    index = std.mem.indexOf(u8, str, "</pubDate>") orelse continue;
+                    str = str[0..index];
+                    current_item.updated_timestamp = RssDateTime.parse(str) catch null;
+                }
+            },
         }
     }
 
@@ -705,7 +716,10 @@ test "tmp" {
 
     const feed = try parseRss(alloc, @embedFile("tmp_file"));
     print("START\n", .{});
+    print("feed date: {?d}\n", .{feed.feed.updated_timestamp});
     for (feed.items) |item| {
+        print("title: {s}\n", .{item.title});
         print("date: {?d}\n", .{item.updated_timestamp});
+        print("\n", .{});
     }
 }
