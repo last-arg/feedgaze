@@ -34,6 +34,7 @@ pub const Feed = struct {
         InvalidUri,
     };
 
+    // TODO: remove fallback_url. Always going to use request url as feed_url
     pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: []const u8) !void {
         self.feed_url = fallback_url;
         const feed_uri = Uri.parse(self.feed_url) catch blk: {

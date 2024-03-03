@@ -18,6 +18,7 @@
 [ ] Remove html tags from parse title/description
 [ ] I think feed's updated_timestamp should be newest item's updated_timestamp.
 If items don't have updated_timestamp then use feed's updated_timestamp. 
+[ ] Maybe I should add field 'items' to Feed struct?
 [ ] For some feeds want to take just first max_item_count items. Want to disable
 fetching newest items first. In this case have to think 'updated_timestamp' if
 'feed.updated_timestamp' needs a fallback from items.
