@@ -83,12 +83,12 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fetch_url: []const u8, fallback_title: ?[]const u8) !void {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !void {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.updated_timestamp == null and parsed.items.len > 0) {
             parsed.feed.updated_timestamp = parsed.items[0].updated_timestamp;
         }
-        try parsed.feed.prepareAndValidate(arena, fetch_url);
+        try parsed.feed.prepareAndValidate(arena);
         if (parsed.feed.title == null) {
             parsed.feed.title = fallback_title;
         }
@@ -117,7 +117,7 @@ pub const Storage = struct {
         }
 
         parsed.feed.feed_id = feed_info.feed_id;
-        try parsed.feed.prepareAndValidate(arena, feed_info.feed_url);
+        try parsed.feed.prepareAndValidate(arena);
         try self.updateFeed(parsed.feed);
 
         // Update feed items

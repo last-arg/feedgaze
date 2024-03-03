@@ -260,7 +260,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                     return;
                 }
-                self.storage.addFeed(&arena, feed_options, fetch_url, fallback_title) catch |err| switch (err) {
+                self.storage.addFeed(&arena, feed_options, fallback_title) catch |err| switch (err) {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'", .{fetch_url});
                     },
@@ -271,7 +271,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
 
             } else {
-                self.storage.addFeed(&arena, feed_options, fetch_url, fallback_title) catch |err| switch (err) {
+                self.storage.addFeed(&arena, feed_options, fallback_title) catch |err| switch (err) {
                     error.NothingToInsert => {
                         std.log.info("No items added to feed '{s}'", .{fetch_url});
                     },
