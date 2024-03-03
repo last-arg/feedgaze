@@ -37,12 +37,9 @@ pub const Feed = struct {
     // TODO: remove fallback_url. Always going to use request url as feed_url
     pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator, fallback_url: []const u8) !void {
         self.feed_url = fallback_url;
-        const feed_uri = Uri.parse(self.feed_url) catch blk: {
-            const base = try std.Uri.parse(fallback_url);
-            const buf = try arena.allocator().alloc(u8, fallback_url.len + self.feed_url.len);
-            const result = try base.resolve_inplace(self.feed_url, buf);
-            self.feed_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
-            break :blk result;
+        const feed_uri = Uri.parse(self.feed_url) catch |err| {
+            std.log.err("'feed_url' should always be valid url. Got '{s}'", .{self.feed_url});
+            return err;
         };
         if (self.page_url) |page_url| {
             if (page_url[0] == '/' or page_url[0] == '.') {
