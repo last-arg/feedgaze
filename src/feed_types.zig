@@ -34,16 +34,16 @@ pub const Feed = struct {
         InvalidUri,
     };
 
-    pub fn prepareAndValidate(self: *Self, arena: *std.heap.ArenaAllocator) !void {
+    pub fn prepareAndValidate(self: *Self, alloc: std.mem.Allocator) !void {
         const feed_uri = Uri.parse(self.feed_url) catch |err| {
             std.log.err("'feed_url' should always be valid url. Got '{s}'", .{self.feed_url});
             return err;
         };
         if (self.page_url) |page_url| {
             if (page_url[0] == '/' or page_url[0] == '.') {
-                const buf = try arena.allocator().alloc(u8, self.feed_url.len + page_url.len);
+                const buf = try alloc.alloc(u8, self.feed_url.len + page_url.len);
                 const result = try feed_uri.resolve_inplace(page_url, buf);
-                self.page_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
+                self.page_url = try std.fmt.allocPrint(alloc, "{}", .{result});
             }
         }
     }
@@ -237,16 +237,6 @@ pub const FeedItem = struct {
     updated_timestamp: ?i64 = null,
 
     const Self = @This();
-
-    pub fn prepareAndValidate(self: *Self, feed_id: usize) !void {
-        self.feed_id = feed_id;
-    }
-
-    pub fn prepareAndValidateAll(items: []Self, feed_id: usize) !void {
-        for (items) |*item| {
-            try item.prepareAndValidate(feed_id);
-        }
-    }
 };
 
 pub const FeedItemRender = struct {

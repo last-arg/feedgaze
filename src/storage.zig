@@ -85,15 +85,11 @@ pub const Storage = struct {
 
     pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !void {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
-        if (parsed.feed.updated_timestamp == null and parsed.items.len > 0) {
-            parsed.feed.updated_timestamp = parsed.items[0].updated_timestamp;
-        }
-        try parsed.feed.prepareAndValidate(arena);
         if (parsed.feed.title == null) {
             parsed.feed.title = fallback_title;
         }
         const feed_id = try self.insertFeed(parsed.feed);
-        try FeedItem.prepareAndValidateAll(parsed.items, feed_id);
+        try parsed.prepareAndValidate(arena.allocator());
         _ = try self.insertFeedItems(parsed.items);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
     }
@@ -112,16 +108,12 @@ pub const Storage = struct {
 
 
         var parsed = try parse.parse(arena.allocator(), content, content_type);
-        if (parsed.feed.updated_timestamp == null and parsed.items.len > 0) {
-            parsed.feed.updated_timestamp = parsed.items[0].updated_timestamp;
-        }
 
         parsed.feed.feed_id = feed_info.feed_id;
-        try parsed.feed.prepareAndValidate(arena);
         try self.updateFeed(parsed.feed);
 
         // Update feed items
-        try FeedItem.prepareAndValidateAll(parsed.items, feed_info.feed_id);
+        try parsed.prepareAndValidate(arena.allocator());
         try self.updateAndRemoveFeedItems(parsed.items);
 
         // Update feed_update

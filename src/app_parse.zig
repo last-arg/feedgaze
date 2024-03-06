@@ -14,6 +14,23 @@ const default_item_count = @import("./app_config.zig").max_items;
 pub const FeedAndItems = struct {
     feed: Feed,
     items: []FeedItem,
+
+    pub fn prepareAndValidate(self: *FeedAndItems, alloc: std.mem.Allocator) !void {
+        try self.feed.prepareAndValidate(alloc);
+        if (self.items.len > 0) {
+            const item_first = self.items[0];
+            // make feed date newest item date
+            self.feed.updated_timestamp = item_first.updated_timestamp orelse null;
+
+            // Set all items ids
+            if (item_first.feed_id == 0) { 
+                for (self.items) |*item| {
+                    item.feed_id = self.feed.feed_id;
+                }
+            }
+            
+        }
+    }
 };
 
 const TmpStr = struct {
