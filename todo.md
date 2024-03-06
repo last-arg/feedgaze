@@ -14,14 +14,30 @@
       - titles
       - links
     [ ] Use page title as feed title
+[ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
+there is no <link>
 [ ] Decode/encode HTML characters
-[ ] Remove html tags from parse title/description
-[ ] I think feed's updated_timestamp should be newest item's updated_timestamp.
-If items don't have updated_timestamp then use feed's updated_timestamp. 
+[ ] Remove html tags when parsing title/description
+  [ ] Can be "&lt;", "&gt;" 
+  [ ] Can be "<", ">" if inside "<![CDATA[ ... ]]>" 
+    [ ] Can probably also be "&lt;", "&gt;" 
+  [ ] Some symbols are just part of the text. Are not tags
+  - Considerations
+    - tags must be alphanumeric https://html.spec.whatwg.org/multipage/syntax.html#syntax-tag-name
+      - I think tag must start with a alphabet letter
+      - but custom tags can contain "-"?
+    - open tag must follow with tag name "<code ... >"
+    - close tag must follow with "/" ("</code>")
+    - this will probably remove more than I want in rare cases
 [ ] Maybe I should add field 'items' to Feed struct?
-[ ] For some feeds want to take just first max count of items. Want to disable
-fetching newest items first. In this case have to think 'updated_timestamp' if
-'feed.updated_timestamp' needs a fallback from items.
+  - I am using Feed in sqlite db request, which makes the request fail.
+    Have separate type for db results?
+[ ] For some feeds disable taking newest items. Just take first items as they
+appear in the file. 
+  - These usually aggregate links from different sites. The  items are in 
+    order they were entered. And date (updated_timestamp) is post date.
+  - If there is not feed date, what to use? 
+  [ ] If implemented have to change how feed.updated_timestamp is updated
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak
