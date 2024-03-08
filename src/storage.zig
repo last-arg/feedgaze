@@ -108,12 +108,11 @@ pub const Storage = struct {
 
 
         var parsed = try parse.parse(arena.allocator(), content, content_type);
-
+        parsed.feed.feed_url = feed_info.feed_url;
         parsed.feed.feed_id = feed_info.feed_id;
-        try self.updateFeed(parsed.feed);
-
-        // Update feed items
         try parsed.prepareAndValidate(arena.allocator());
+
+        try self.updateFeed(parsed.feed);
         try self.updateAndRemoveFeedItems(parsed.items);
 
         // Update feed_update
@@ -252,18 +251,25 @@ pub const Storage = struct {
     }
 
     pub fn updateFeed(self: *Self, feed: Feed) !void {
+        assert(feed.feed_url.len > 0);
         if (!try self.hasFeedWithId(feed.feed_id)) {
             return Error.FeedNotFound;
         }
+        // TODO: should I set feed_url also? In case feed_url has changed?
         const query =
             \\UPDATE feed SET
             \\  title = @title,
-            \\  feed_url = @feed_url,
             \\  page_url = @page_url,
             \\  updated_timestamp = @updated_timestamp
             \\WHERE feed_id = @feed_id;
         ;
-        try self.sql_db.exec(query, .{}, feed);
+        const values = .{
+            .feed_id = feed.feed_id,
+            .title = feed.title,
+            .page_url = feed.page_url,
+            .updated_timestamp = feed.updated_timestamp,
+        };
+        try self.sql_db.exec(query, .{}, values);
     }
 
     pub fn hasFeedWithId(self: *Self, feed_id: usize) !bool {
