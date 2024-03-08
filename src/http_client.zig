@@ -29,7 +29,7 @@ pub fn init(allocator: Allocator) !@This() {
     try headers.add("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
     // Some sites require User-Agent, otherwise will be blocked.
     // TODO: make version into variable and use it here
-    try headers.add("User-Agent", "feedgaze 0.1.0");
+    // try headers.add("User-Agent", "feedgaze/0.1.0");
     
     return .{
         .allocator = allocator,
