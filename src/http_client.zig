@@ -6,6 +6,7 @@ const RssDateTime = feed_types.RssDateTime;
 const FetchHeaderOptions = feed_types.FetchHeaderOptions;
 const FeedUpdate = feed_types.FeedUpdate;
 const http = std.http;
+const config = @import("./app_config.zig");
 const mem = std.mem;
 const print = std.debug.print;
 const Client = http.Client;
@@ -21,15 +22,12 @@ headers: curl.Easy.Headers,
 client: curl.Easy,
 
 pub fn init(allocator: Allocator) !@This() {
-    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 5000});
+    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 10000});
     errdefer easy.deinit();
 
     var headers = try easy.create_headers();
     errdefer headers.deinit();
     try headers.add("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
-    // Some sites require User-Agent, otherwise will be blocked.
-    // TODO: make version into variable and use it here
-    // try headers.add("User-Agent", "feedgaze/0.1.0");
     
     return .{
         .allocator = allocator,
@@ -61,6 +59,8 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try self.client.set_headers(self.headers);
     try self.client.set_max_redirects(5);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
+    const user_agent = "feedgaze/" ++ config.version;
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.set_verbose(true);
 
     return try self.client.perform();
