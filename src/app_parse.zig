@@ -400,8 +400,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .pubDate => feed.updated_timestamp = RssDateTime.parse(elem_content.text) catch 
                             AtomDateTime.parse(elem_content.text) catch null,
                         .@"dc:date" => {
-                            const str = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
-                            feed.updated_timestamp = AtomDateTime.parse(str) catch null;
+                            feed.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null;
                         },
                         .guid, .description => {},
                     },
@@ -454,10 +453,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             }
                         },
                         .@"dc:date" => {
-                            // TODO: should be able to remove this trim? And also other places
-                            // where "dc:date" is used.
-                            const str = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
-                            current_item.updated_timestamp = AtomDateTime.parse(str) catch null;
+                            current_item.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null;
                         },
                     },
                 }

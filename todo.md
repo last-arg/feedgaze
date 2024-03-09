@@ -37,7 +37,8 @@ appear in the file.
   - These usually aggregate links from different sites. The  items are in 
     order they were entered. And date (updated_timestamp) is post date.
   - If there is not feed date, what to use? 
-  [ ] If implemented have to change how feed.updated_timestamp is updated
+  [ ] If implemented have to change how feed.updated_timestamp is updated. Currently
+  will used newest (first) feed item.
 [ ] Add http server
   - https://github.com/zigzap/zap
   - https://github.com/cztomsik/tokamak

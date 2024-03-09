@@ -51,7 +51,8 @@ pub const Feed = struct {
 
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3
 pub const AtomDateTime = struct {
-    pub fn parse(raw: []const u8) !i64 {
+    pub fn parse(input: []const u8) !i64 {
+        const raw = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
         const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
         const month = std.fmt.parseUnsigned(u16, raw[5..7], 10) catch return error.InvalidFormat;
         const day = std.fmt.parseUnsigned(u16, raw[8..10], 10) catch return error.InvalidFormat;
@@ -157,7 +158,8 @@ pub const RssDateTime = struct {
         return error.InvalidMonth;
     }
 
-    pub fn parse(str: []const u8) !i64 {
+    pub fn parse(input: []const u8) !i64 {
+        const str = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
         var ctx = str;
         if (ctx[3] == ',') {
             // NOTE: Start day and comma (,) are optional
