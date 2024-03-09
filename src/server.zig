@@ -1,3 +1,4 @@
+const config = @import("app_config.zig");
 // TODO: find out date's max len
 const date_len_max = 10;
 
@@ -8,7 +9,6 @@ pub fn main() !void {
 }
 
 fn page_root_render() !void {
-    const writer = std.io.getStdOut().writer();
     var db = try Storage.init("./tmp/feeds.db");
     var general = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(general.allocator());
@@ -17,30 +17,32 @@ fn page_root_render() !void {
 
     const feeds = try db.feeds_all(alloc);
     const feeds_rendered = try feeds_render(&db, alloc, feeds);
-    // _ = feeds_rendered;
-    try writer.writeAll(feeds_rendered);
+    _ = feeds_rendered;
+    // const writer = std.io.getStdOut().writer();
+    // try writer.writeAll(feeds_rendered);
 
 }
+
+const item_fmt = 
+    \\<li>
+    \\  <a href="{[link]s}">{[title]s}</a>
+    \\  <p>{[date]?d}</p>
+    \\</li>
+;
+
+// '- 1' to remove character 0 length
+const item_no_fmt_len = std.fmt.comptimePrint(item_fmt, .{.link = "", .title = "", .date = 0}).len - 1;
+// title + link = 128
+const average_item_len = item_no_fmt_len + date_len_max + 128;
 
 fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
     if (items.len == 0) {
         return "";
     }
 
-    const li_html = 
-        \\<li>
-        \\  <a href="{[link]s}">{[title]s}</a>
-        \\  <p>{[date]?d}</p>
-        \\</li>
-    ;
-    const no_fmt_len = comptime blk: {
-        // '- 1' to remove character 0 length
-        break :blk std.fmt.comptimePrint(li_html, .{.link = "", .title = "", .date = 0}).len - 1;
-    };
-    
     const link_placeholder = "#";
     const title_placeholder = "[no-title]";
-    var capacity = items.len * (no_fmt_len + date_len_max);
+    var capacity = items.len * (item_no_fmt_len + date_len_max);
     for (items) |item| {
         capacity += if (item.title.len > 0) item.title.len else title_placeholder.len;
         capacity += if (item.link) |v| v.len else link_placeholder.len;
@@ -49,7 +51,7 @@ fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const
     var content = try std.ArrayList(u8).initCapacity(alloc, capacity);
     defer content.deinit();
     for (items) |item| {
-        content.writer().print(li_html, .{
+        content.writer().print(item_fmt, .{
             .link = item.link orelse link_placeholder,
             .title = if (item.title.len > 0) item.title else title_placeholder,
             .date = item.updated_timestamp,
@@ -72,30 +74,38 @@ fn feeds_render(db: *Storage, alloc: std.mem.Allocator, feeds: []types.FeedRende
         \\</li>
     ;
 
-    // TODO: over allocating because format placeholders.
-    // Subtract lengths of placeholders from final capacity size.
+    const no_fmt_len = comptime blk: {
+        // '- 1' to remove character 0 length
+        break :blk std.fmt.comptimePrint(li_html, .{.feed_url = "", .page_url = "", .title = "", .date = 0, .items = ""}).len - 1;
+    };
 
-    var capacity = (li_html.len + date_len_max) * feeds.len;
+    const link_placeholder = "#";
+    const title_placeholder = "[no-title]";
+    var capacity = feeds.len * (no_fmt_len + date_len_max);
+
+
     for (feeds) |feed| {
-        const page_url_len = (feed.page_url orelse feed.feed_url).len;
-        capacity += page_url_len;
+        capacity += (feed.page_url orelse link_placeholder).len;
         capacity += feed.feed_url.len;
-        capacity += feed.title.len;
+        capacity += if (feed.title.len > 0) feed.title.len else title_placeholder.len;
+        capacity += config.max_items * average_item_len;
     }
+
     var content = try std.ArrayList(u8).initCapacity(alloc, capacity);
     defer content.deinit();
     for (feeds) |feed| {
         const items = try db.feed_items_with_feed_id(alloc, feed.feed_id);
         const items_rendered = try feed_items_render(alloc, items);
 
-        content.writer().print(li_html, .{
-            .page_url = feed.page_url orelse feed.feed_url,
-            .title = feed.title,
+        try content.writer().print(li_html, .{
+            .page_url = feed.page_url orelse link_placeholder,
+            .title = if (feed.title.len > 0) feed.title else title_placeholder,
             .feed_url = feed.feed_url,
             .date = feed.updated_timestamp,
             .items = items_rendered,
-        }) catch unreachable;
+        });
     }
+
     return try content.toOwnedSlice();
 }
 
