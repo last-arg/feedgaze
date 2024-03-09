@@ -42,20 +42,23 @@ pub fn deinit(self: *@This()) void {
 }
 
 pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Easy.Response {
-    const url_null = try self.allocator.dupeZ(u8, url);
+    var date_buf: [29]u8 = undefined;
+    const url_buf_len = 1024;
+    var url_buf: [url_buf_len]u8 = undefined;
+    std.debug.assert(url.len < url_buf_len);
+
+    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
 
     if (opts.etag) |etag| {
         try self.headers.add("If-None-Match", etag);
     } else {
-        var date_buf: [29]u8 = undefined;
         if (opts.last_modified_utc) |utc| {
             const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc * 1000);
-            // TODO: move date_buf outside of condition, should not need allocator
-            try self.headers.add("If-Modified-Since", try self.allocator.dupe(u8, date_slice));
+            try self.headers.add("If-Modified-Since", date_slice);
         }
     }
 
-    try self.client.set_url(url_null);
+    try self.client.set_url(url_with_null);
     try self.client.set_headers(self.headers);
     try self.client.set_max_redirects(5);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
