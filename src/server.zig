@@ -33,14 +33,16 @@ fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const
         \\  <p>{[date]?d}</p>
         \\</li>
     ;
+    const no_fmt_len = comptime blk: {
+        // '- 1' to remove character 0 length
+        break :blk std.fmt.comptimePrint(li_html, .{.link = "", .title = "", .date = 0}).len - 1;
+    };
+    
     const link_placeholder = "#";
-
-    // TODO: over allocating because format placeholders.
-    // Subtract lengths of placeholders from final capacity size.
-
-    var capacity = items.len * (li_html.len + date_len_max);
+    const title_placeholder = "[no-title]";
+    var capacity = items.len * (no_fmt_len + date_len_max);
     for (items) |item| {
-        capacity += item.title.len;
+        capacity += if (item.title.len > 0) item.title.len else title_placeholder.len;
         capacity += if (item.link) |v| v.len else link_placeholder.len;
     }
 
@@ -49,7 +51,7 @@ fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const
     for (items) |item| {
         content.writer().print(li_html, .{
             .link = item.link orelse link_placeholder,
-            .title = if (item.title.len > 0) item.title else "[no-title]",
+            .title = if (item.title.len > 0) item.title else title_placeholder,
             .date = item.updated_timestamp,
         }) catch unreachable;
     }
