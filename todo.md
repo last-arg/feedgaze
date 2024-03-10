@@ -14,6 +14,7 @@
       - titles
       - links
     [ ] Use page title as feed title
+  [ ] Add tags
 [ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
 there is no <link>
 [ ] Decode/encode HTML characters

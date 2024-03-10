@@ -51,16 +51,6 @@ fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{d}m", .{mins});
 }
 
-fn page_root_render(arena: *std.heap.ArenaAllocator) ![]const u8 {
-    var db = try Storage.init("./tmp/feeds.db");
-    const alloc = arena.allocator();
-
-    const feeds = try db.feeds_all(alloc);
-    const feeds_rendered = try feeds_render(&db, alloc, feeds);
-    return feeds_rendered;
-}
-
-
 const item_fmt = 
     \\<li>
     \\  <a href="{[link]s}">{[title]s}</a>
@@ -110,7 +100,7 @@ fn feeds_render(db: *Storage, alloc: std.mem.Allocator, feeds: []types.FeedRende
     const li_html = 
         \\<li>
         \\ <a href="{[page_url]s}">{[title]s}</a>
-        \\ <a href="{[feed_url]s}">Feed url</a>
+        \\ <a href="{[feed_url]s}">Feed link</a>
         \\ <time datetime="{[date]s}">{[date_display]s}</time>
         \\ <ul class="feed-items-list">{[items]s}</ul>
         \\</li>
@@ -171,11 +161,87 @@ fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
     return "";
 }
 
+const PageHandler = struct {
+    allocator: std.mem.Allocator,
+    db: Storage,
+    const Self = @This();
+
+    pub fn init(allocator: std.mem.Allocator, db: Storage) Self {
+        return .{
+            .allocator = allocator,
+            .db = db,
+        };
+    }
+
+    pub fn root(self: *Self, req: zap.Request) void {
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+
+        req.parseQuery();
+
+        const search_term = req.getParamSlice("search_value");
+        const mem = std.mem;
+        if (search_term) |value| {
+            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            if (trimmed.len == 0) {
+                req.redirectTo("/", null) catch return;
+                return;
+            }
+        }
+
+        const content = root_content_render(&arena, &self.db, search_term) catch |err| {
+            std.log.warn("{}\n", .{err});
+            return;
+        };
+        const search_value = search_term orelse "";
+        const search_needle = "[search_value]";
+        const content_needle = "[content]";
+        // TODO: do less allocating
+        var out = std.mem.replaceOwned(u8, arena.allocator(), index_html, content_needle, content) catch return;
+        out = std.mem.replaceOwned(u8, arena.allocator(), out, search_needle, search_value) catch return;
+
+        req.sendBody(out) catch |err| {
+            std.log.warn("{}\n", .{err});
+            return;
+        };
+    }
+
+    fn root_content_render(arena: *std.heap.ArenaAllocator, db: *Storage, search_term: ?[]const u8) ![]const u8 {
+        const alloc = arena.allocator();
+        const feeds = blk: {
+            if (search_term) |term| {
+                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    break :blk try db.feeds_search(alloc, trimmed);
+                }
+            }
+            break :blk try db.feeds_all(alloc);
+        };
+        const feeds_rendered = try feeds_render(db, alloc, feeds);
+        return feeds_rendered;
+    }
+};
+
 fn start() !void {
     try std.io.getStdOut().writeAll("hello\n");
+
+    var gpa = std.heap.GeneralPurposeAllocator(.{
+        .thread_safe = true,
+    }){};
+    const allocator = gpa.allocator();
+
+    var page_router = zap.Router.init(allocator, .{
+        .not_found = not_found,
+    });
+    defer page_router.deinit();
+
+    const db = try Storage.init("./tmp/feeds.db");
+    var page_handler = PageHandler.init(allocator, db);
+    try page_router.handle_func("/", zap.RequestHandler(&page_handler, PageHandler.root));
+    
     var listener = zap.HttpListener.init(.{
         .port = 3000,
-        .on_request = on_request,
+        .on_request = zap.RequestHandler(&page_router, &zap.Router.serve),
         .log = true,
     });
     try listener.listen();
@@ -184,23 +250,13 @@ fn start() !void {
 
     // start worker threads
     zap.start(.{
-        .threads = 2,
-        .workers = 2,
+        .threads = 1,
+        .workers = 1,
     });
 }
 
-fn on_request(r: zap.Request) void {
-    if (r.path) |the_path| {
-        std.debug.print("PATH: {s}\n", .{the_path});
-    }
-
-    if (r.query) |the_query| {
-        std.debug.print("QUERY: {s}\n", .{the_query});
-    }
-    // Routes:
-    // 1) / - display most recently updated feeds
-    //    Have a search box that filters based on page and feed url?
-    r.sendBody(index_html) catch return;
+fn not_found(req: zap.Request) void {
+    req.sendBody("Not found") catch return;
 }
 
 const std = @import("std");

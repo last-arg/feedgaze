@@ -517,6 +517,16 @@ pub const Storage = struct {
         ;
         return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
     }
+
+    pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8) ![]types.FeedRender {
+        const query_feed =
+            \\select * from feed 
+            \\where (feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');
+            \\order by updated_timestamp DESC;
+        ;
+        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{search_term, search_term});
+    }
+    
 };
 
 const tables = &[_][]const u8{
