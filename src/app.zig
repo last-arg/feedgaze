@@ -16,6 +16,7 @@ const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
+const TagOptions = feed_types.TagOptions;
 const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
@@ -35,6 +36,7 @@ const CliVerb = union(enum) {
     update: UpdateOptions,
     run: void,
     server: void,
+    tag: TagOptions,
     // TODO: generate html file
     // html: void,
 };
@@ -111,6 +113,36 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         }
                         try self.update(null, .{});
                     }
+                },
+                .tag => |opts| {
+                    if (opts.list) {
+                        try self.out.print("list\n", .{});
+                        const tags = try self.storage.tags_all(self.allocator);
+
+                        if (tags.len == 0) {
+                            try self.out.print("There are no tags.\n", .{});
+                        }
+
+                        for (tags) |tag| {
+                            try self.out.writeAll(tag);
+                        }
+                        return;
+                    }
+
+                    if (args.positionals.len == 0) {
+                        try self.out.print("No tags to add. Please add tags you want to add.\n", .{});
+                        return;
+                    }
+
+                    if (opts.remove) {
+                        // TODO: trim tags of whitespace
+                        try self.storage.tags_remove(args.positionals);
+                        return;
+                    }
+
+                    // TODO: make sure tags are valid
+                    // TODO: trim tags of whitespace
+                    try self.storage.tags_add(args.positionals);
                 },
                 .server => try server(),
             }
@@ -189,6 +221,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\Usage: feedgaze server [options]
                     \\
                     \\  Launches server
+                    \\
+                    \\Options:
+                    \\  -h, --help    Print this help and exit
+                    ,
+                    .tag => 
+                    \\Usage: feedgaze tag [options]
+                    \\
+                    \\  Add remove tags
                     \\
                     \\Options:
                     \\  -h, --help    Print this help and exit

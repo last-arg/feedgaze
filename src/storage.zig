@@ -527,6 +527,24 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{search_term, search_term});
     }
     
+    pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
+        const query = "select name from tag;";
+        return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
+    }
+
+    pub fn tags_add(self: *Self, tags: [][]const u8) !void {
+        const query = "INSERT INTO tag (name) VALUES(?);";
+        for (tags) |tag| {
+            try self.sql_db.exec(query, .{}, .{tag});
+        }
+    }
+
+    pub fn tags_remove(self: *Self, tags: [][]const u8) !void {
+        const query = "DELETE FROM tag WHERE name = ?";
+        for (tags) |tag| {
+            try self.sql_db.exec(query, .{}, .{tag});
+        }
+    }
 };
 
 const tables = &[_][]const u8{
@@ -563,6 +581,19 @@ const tables = &[_][]const u8{
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
         \\);
     , .{ .update_interval = app_config.update_interval }),
+    \\CREATE TABLE IF NOT EXISTS tag(
+    \\  tag_id INTEGER PRIMARY KEY,
+    \\  name TEXT UNIQUE NOT NULL
+    \\)
+    ,
+    \\CREATE TABLE IF NOT EXISTS feed_tag(
+    \\  tag_id INTEGER NOT NULL,
+    \\  feed_id INTEGER NOT NULL,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
+    \\  FOREIGN KEY(tag_id) REFERENCES tag(tag_id) ON DELETE CASCADE,
+    \\  UNIQUE(tag_id, feed_id)
+    \\)
+    ,
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
