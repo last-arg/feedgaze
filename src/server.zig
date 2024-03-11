@@ -173,14 +173,34 @@ const PageHandler = struct {
         };
     }
 
-    pub fn root(self: *Self, req: zap.Request) void {
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
+};
+
+const Handler = struct {
+    var allocator: std.mem.Allocator = undefined;
+    var db: Storage = undefined;
+
+    fn on_request(req: zap.Request) void {
+        std.debug.print("path: |{?s}|\n", .{req.path});
+        const path = req.path orelse return;
+
+        if (path.len == 0 or mem.eql(u8, path, "/")) {
+            root_page(req);
+            return;
+        } else if (mem.eql(u8, path, "/tags")) {
+            req.sendBody("tags") catch return;
+            return;
+        }
+
+        not_found(req);
+    }
+
+    pub fn root_page(req: zap.Request) void {
+        var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
 
         req.parseQuery();
 
         const search_term = req.getParamSlice("search_value");
-        const mem = std.mem;
         if (search_term) |value| {
             const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
             if (trimmed.len == 0) {
@@ -189,7 +209,7 @@ const PageHandler = struct {
             }
         }
 
-        const content = root_content_render(&arena, &self.db, search_term) catch |err| {
+        const content = root_content_render(&arena, search_term) catch |err| {
             std.log.warn("{}\n", .{err});
             return;
         };
@@ -206,7 +226,7 @@ const PageHandler = struct {
         };
     }
 
-    fn root_content_render(arena: *std.heap.ArenaAllocator, db: *Storage, search_term: ?[]const u8) ![]const u8 {
+    fn root_content_render(arena: *std.heap.ArenaAllocator, search_term: ?[]const u8) ![]const u8 {
         const alloc = arena.allocator();
         const feeds = blk: {
             if (search_term) |term| {
@@ -217,7 +237,7 @@ const PageHandler = struct {
             }
             break :blk try db.feeds_all(alloc);
         };
-        const feeds_rendered = try feeds_render(db, alloc, feeds);
+        const feeds_rendered = try feeds_render(&db, alloc, feeds);
         return feeds_rendered;
     }
 };
@@ -229,19 +249,13 @@ fn start() !void {
         .thread_safe = true,
     }){};
     const allocator = gpa.allocator();
-
-    var page_router = zap.Router.init(allocator, .{
-        .not_found = not_found,
-    });
-    defer page_router.deinit();
-
     const db = try Storage.init("./tmp/feeds.db");
-    var page_handler = PageHandler.init(allocator, db);
-    try page_router.handle_func("/", zap.RequestHandler(&page_handler, PageHandler.root));
     
+    Handler.allocator = allocator;
+    Handler.db = db;
     var listener = zap.HttpListener.init(.{
         .port = 3000,
-        .on_request = zap.RequestHandler(&page_router, &zap.Router.serve),
+        .on_request = Handler.on_request,
         .log = true,
     });
     try listener.listen();
@@ -253,6 +267,10 @@ fn start() !void {
         .threads = 1,
         .workers = 1,
     });
+
+    // show potential memory leaks when ZAP is shut down
+    const has_leaked = gpa.detectLeaks();
+    std.log.debug("Has leaked: {}\n", .{has_leaked});
 }
 
 fn not_found(req: zap.Request) void {
@@ -268,3 +286,4 @@ const Storage = storage.Storage;
 const config = @import("app_config.zig");
 const Datetime = @import("zig-datetime").datetime.Datetime;
 const index_html = @embedFile("./index.html");
+const mem = std.mem;
