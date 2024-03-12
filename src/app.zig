@@ -30,14 +30,13 @@ pub const Response = struct {
 };
 
 const CliVerb = union(enum) {
-    add: void,
     remove: void,
     show: ShowOptions,
     update: UpdateOptions,
     run: void,
     server: void,
     tag: TagOptions,
-    feed: feed_types.FeedCliOptions,
+    add: feed_types.AddOptions,
     // TODO: generate html file
     // html: void,
 };
@@ -79,15 +78,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             self.storage = try connectDatabase(args.options.database);
 
             switch (verb) {
-                .add => {
-                    if (args.positionals.len > 0) {
-                        for (args.positionals) |url| {
-                            _ = try self.add(url);
-                        }
-                    } else {
-                        std.log.err("'add' subcommand requires feed url.\nExample: feedgaze add <url>", .{});
-                    }
-                },
                 .remove => {
                     if (args.positionals.len > 0) {
                         for (args.positionals) |url| {
@@ -185,7 +175,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
 
                     if (args.positionals.len == 0) {
-                        try self.out.print("Please enter feed url you want to add or modify.\n", .{});
+                        try self.out.print("Please enter valid input you want to add or modify.\n", .{});
                         return;
                     }
                     
@@ -214,13 +204,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     const input = args.positionals[0];
 
-                    const feeds = try self.storage.feeds_search(arena.allocator(), input);
-                    if (feeds.len > 0 and tags_ids.len > 0) {
-                        for (feeds) |feed| {
-                            try self.storage.feed_add_tags(feed.feed_id, tags_ids);
+                    if (tags_ids.len > 0) {
+                        const feeds = try self.storage.feeds_search(arena.allocator(), input);
+                        if (feeds.len > 0) {
+                            for (feeds) |feed| {
+                                try self.storage.feed_add_tags(feed.feed_id, tags_ids);
+                            }
+                            try self.out.print("Added tags to {d} feed(s)\n", .{feeds.len});
+                            return;
                         }
-                        try self.out.print("Added tags to {d} feed(s)\n", .{feeds.len});
-                        return;
                     } 
 
                     // make request
@@ -254,15 +246,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             if (verb) |v| {
                 output = switch (v) {
-                    .add =>
-                    \\Usage: feedgaze add <url> [options]
-                    \\
-                    \\  Add feed. Requires url to feed.
-                    \\
-                    \\Options:
-                    \\  -h, --help    Print this help and exit
-                    \\
-                    ,
                     .remove =>
                     \\Usage: feedgaze remove <search_term> [options]
                     \\
@@ -316,10 +299,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\Options:
                     \\  -h, --help    Print this help and exit
                     ,
-                    .feed => 
-                    \\Usage: feedgaze feed [options]
+                    .add => 
+                    \\Usage: feedgaze add [options] <input>
                     \\
-                    \\  Manage feeds
+                    \\  Add, modify feeds
                     \\
                     \\Options:
                     \\  -h, --help    Print this help and exit
