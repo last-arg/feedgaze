@@ -83,7 +83,7 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !void {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) {
             parsed.feed.title = fallback_title;
@@ -92,6 +92,7 @@ pub const Storage = struct {
         try parsed.prepareAndValidate(arena.allocator());
         _ = try self.insertFeedItems(parsed.items);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
+        return feed_id;
     }
 
     const curl = @import("curl");
@@ -521,10 +522,13 @@ pub const Storage = struct {
     pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8) ![]types.FeedRender {
         const query_feed =
             \\select * from feed 
-            \\where (feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');
-            \\order by updated_timestamp DESC;
+            \\where (
+            \\  feed.title LIKE '%' || ? || '%' OR
+            \\  feed.page_url LIKE '%' || ? || '%' OR
+            \\  feed.feed_url LIKE '%' || ? || '%' 
+            \\);
         ;
-        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{search_term, search_term});
+        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{search_term, search_term, search_term});
     }
     
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
@@ -533,16 +537,36 @@ pub const Storage = struct {
     }
 
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
-        const query = "INSERT INTO tag (name) VALUES(?);";
+        const query = "INSERT INTO tag (name) VALUES(?) ON CONFLICT DO NOTHING;";
         for (tags) |tag| {
             try self.sql_db.exec(query, .{}, .{tag});
         }
     }
 
+    pub fn tags_ids(self: *Self, tags: [][]const u8, buf: []usize) ![]usize {
+        const query = "select tag_id from tag where name = ?;"; 
+        var i: usize = 0;
+        for (tags) |tag| {
+            if (try one(&self.sql_db, usize, query, .{tag})) |value| {
+                buf[i] = value;
+                i += 1;
+            }
+        }
+        return buf[0..i];
+    }
+
     pub fn tags_remove(self: *Self, tags: [][]const u8) !void {
         const query = "DELETE FROM tag WHERE name = ?";
         for (tags) |tag| {
+            assert(tag.len > 0);
             try self.sql_db.exec(query, .{}, .{tag});
+        }
+    }
+
+    pub fn feed_add_tags(self: *Self, feed_id: usize, tag_ids: []usize) !void {
+        const query = "INSERT INTO feed_tag (feed_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING";
+        for (tag_ids) |tag_id| {
+            try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
         }
     }
 };

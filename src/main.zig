@@ -3,19 +3,23 @@ const print = std.debug.print;
 const Cli = @import("app.zig").Cli;
 
 pub fn main() !void {
-    var gen = std.heap.GeneralPurposeAllocator(.{}){};
-    var arena = std.heap.ArenaAllocator.init(gen.allocator());
-    defer arena.deinit();
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    {
+        var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+        defer arena.deinit();
 
-    const writer = std.io.getStdOut().writer();
-    const reader = std.io.getStdIn().reader();
-    const CliApp = Cli(@TypeOf(writer), @TypeOf(reader));
-    var app_cli = CliApp{
-        .allocator = arena.allocator(),
-        .out = writer,
-        .in = reader,
-    };
-    try app_cli.run();
+        const writer = std.io.getStdOut().writer();
+        const reader = std.io.getStdIn().reader();
+        const CliApp = Cli(@TypeOf(writer), @TypeOf(reader));
+        var app_cli = CliApp{
+            .allocator = arena.allocator(),
+            .out = writer,
+            .in = reader,
+        };
+        try app_cli.run();
+    }
+    const has_leaked = gpa.detectLeaks();
+    std.log.debug("Has leaked: {}\n", .{has_leaked});
 }
 
 // pub fn main() !void {

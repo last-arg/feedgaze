@@ -20,7 +20,14 @@ pub const ShowOptions = struct {
 pub const TagOptions = struct {
     list: bool = false,
     remove: bool = false,
+    many: ?[]const u8 = null,
     // @"remove-unused": bool = false,
+};
+
+pub const FeedCliOptions = struct {
+    list: bool = false,
+    tags: ?[]const u8 = null
+    // remove: bool = false,
 };
 
 pub const UpdateOptions = struct {

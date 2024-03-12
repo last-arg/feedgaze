@@ -37,6 +37,7 @@ const CliVerb = union(enum) {
     run: void,
     server: void,
     tag: TagOptions,
+    feed: feed_types.FeedCliOptions,
     // TODO: generate html file
     // html: void,
 };
@@ -81,7 +82,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 .add => {
                     if (args.positionals.len > 0) {
                         for (args.positionals) |url| {
-                            try self.add(url);
+                            _ = try self.add(url);
                         }
                     } else {
                         std.log.err("'add' subcommand requires feed url.\nExample: feedgaze add <url>", .{});
@@ -115,9 +116,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 },
                 .tag => |opts| {
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+
                     if (opts.list) {
-                        try self.out.print("list\n", .{});
-                        const tags = try self.storage.tags_all(self.allocator);
+                        const tags = try self.storage.tags_all(arena.allocator());
 
                         if (tags.len == 0) {
                             try self.out.print("There are no tags.\n", .{});
@@ -143,6 +146,76 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // TODO: make sure tags are valid
                     // TODO: trim tags of whitespace
                     try self.storage.tags_add(args.positionals);
+                },
+                .feed => |opts| {
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+
+                    if (opts.list) {
+                        const feeds = try self.storage.feeds_all(arena.allocator());
+
+                        if (feeds.len == 0) {
+                            try self.out.print("There are no feeds.\n", .{});
+                        }
+
+                        // TODO: list tags
+                        const feed_fmt = 
+                        \\
+                        \\{s}
+                        \\  Page url: {s}
+                        \\  Feed url: {s}
+                        \\
+                        ;
+                        for (feeds) |feed| {
+                            const title = if (feed.title.len == 0) "<no-title>" else feed.title;
+                            const page_url = feed.page_url orelse "<no-page-url>";
+                            try self.out.print(feed_fmt, .{title, page_url, feed.feed_url});
+                        }
+                        return;
+                    }
+
+                    if (args.positionals.len == 0) {
+                        try self.out.print("Please enter feed url you want to add or modify.\n", .{});
+                        return;
+                    }
+                    
+                    // TODO: search more than one value?
+                    var tags_ids: []usize = &.{};
+
+                    if (opts.tags) |tags_raw| {
+                        var tags_iter = mem.splitScalar(u8, tags_raw, ',');
+                        const cap = mem.count(u8, tags_raw, ",") + 1;
+                        var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), cap);
+                        defer tags_arr.deinit();
+                        while (tags_iter.next()) |tag| {
+                            const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
+                            if (trimmed.len > 0) {
+                                tags_arr.appendAssumeCapacity(trimmed);
+                            }
+                        }
+
+                        // make sure all tags exist in db/stroage
+                        try self.storage.tags_add(tags_arr.items);
+
+                        // get tags' ids
+                        const tags_ids_buf = try arena.allocator().alloc(usize, cap);
+                        tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
+                    }
+
+                    const input = args.positionals[0];
+
+                    const feeds = try self.storage.feeds_search(arena.allocator(), input);
+                    if (feeds.len > 0 and tags_ids.len > 0) {
+                        for (feeds) |feed| {
+                            try self.storage.feed_add_tags(feed.feed_id, tags_ids);
+                        }
+                        try self.out.print("Added tags to {d} feed(s)\n", .{feeds.len});
+                        return;
+                    } 
+
+                    // make request
+                    const feed_id = try self.add(input);
+                    try self.storage.feed_add_tags(feed_id, tags_ids);
                 },
                 .server => try server(),
             }
@@ -232,13 +305,24 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\
                     \\Options:
                     \\  -h, --help    Print this help and exit
+                    ,
+                    .feed => 
+                    \\Usage: feedgaze feed [options]
+                    \\
+                    \\  Manage feeds
+                    \\
+                    \\Options:
+                    \\  -h, --help    Print this help and exit
                 };
             }
 
             _ = try self.out.write(output);
         }
 
-        pub fn add(self: *Self, url: []const u8) !void {
+        pub fn add(self: *Self, url: []const u8) !usize {
+            _ = std.Uri.parse(url) catch {
+                return error.InvalidUri;
+            };
             // if (try self.storage.hasFeedWithFeedUrl(url)) {
             //     // TODO?: ask user if they want re-add feed?
             //     std.log.info("There already exists feed '{s}'", .{url});
@@ -258,7 +342,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var fallback_title: ?[]const u8 = null;
             if (resp.body.items.len == 0) {
                 std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-                return;
+                return error.EmptyBody;
             }
 
             var feed_options = FeedOptions.fromResponse(resp);
@@ -268,7 +352,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const links = try html.parseHtmlForFeedLinks(arena.allocator(), content);
                 if (links.len == 0) {
                     std.log.info("Found no feed links", .{});
-                    return;
+                    return error.NoFeedLinksInHtml;
                 }
 
                 const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
@@ -289,7 +373,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                 if (resp_2.body.items.len == 0) {
                     std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-                    return;
+                    return error.EmptyBody;
                 }
 
                 feed_options = FeedOptions.fromResponse(resp_2);
@@ -298,28 +382,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 if (content_type == .html) {
                     // NOTE: should not happen
                     std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
-                    return;
+                    return error.UnexpectedContentTypeHtml;
                 }
-                self.storage.addFeed(&arena, feed_options, fallback_title) catch |err| switch (err) {
-                    error.NothingToInsert => {
-                        std.log.info("No items added to feed '{s}'", .{fetch_url});
-                    },
-                    error.FeedExists => {
-                        std.log.info("Feed '{s}' already exists", .{fetch_url});
-                    },
-                    else => return err,
-                };
-
+                return try self.storage.addFeed(&arena, feed_options, fallback_title);
             } else {
-                self.storage.addFeed(&arena, feed_options, fallback_title) catch |err| switch (err) {
-                    error.NothingToInsert => {
-                        std.log.info("No items added to feed '{s}'", .{fetch_url});
-                    },
-                    error.FeedExists => {
-                        std.log.info("Feed '{s}' already exists", .{fetch_url});
-                    },
-                    else => return err,
-                };
+                return try self.storage.addFeed(&arena, feed_options, fallback_title);
             }
         }
 
