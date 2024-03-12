@@ -539,6 +539,7 @@ pub const Storage = struct {
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
         const query = "INSERT INTO tag (name) VALUES(?) ON CONFLICT DO NOTHING;";
         for (tags) |tag| {
+            assert(tags.len > 0);
             try self.sql_db.exec(query, .{}, .{tag});
         }
     }

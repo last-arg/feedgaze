@@ -137,17 +137,27 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         return;
                     }
 
+                    const tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), args.positionals.len);
+                    defer tags_arr.deinit();
+                    for (args.positionals) |tag| {
+                        const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
+                        if (trimmed.len > 0) {
+                            tags_arr.appendAssumeCapacity(trimmed);
+                        }
+                    }
+
                     if (opts.remove) {
-                        // TODO: trim tags of whitespace
-                        try self.storage.tags_remove(args.positionals);
+                        try self.storage.tags_remove(tags_arr.items);
                         return;
                     }
 
                     // TODO: make sure tags are valid
-                    // TODO: trim tags of whitespace
-                    try self.storage.tags_add(args.positionals);
+                    // Validate after remove? Because there might be some
+                    // invalid tags in storage. 
+
+                    try self.storage.tags_add(tags_arr.items);
                 },
-                .feed => |opts| {
+                .add => |opts| {
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
                     defer arena.deinit();
 
