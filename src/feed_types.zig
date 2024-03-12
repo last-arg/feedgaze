@@ -20,6 +20,7 @@ pub const ShowOptions = struct {
 pub const TagOptions = struct {
     list: bool = false,
     remove: bool = false,
+    feed: ?[]const u8 = null,
     // @"remove-unused": bool = false,
 };
 

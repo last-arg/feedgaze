@@ -136,12 +136,39 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         }
                     }
 
+                    if (opts.feed) |input| {
+                        const feeds = try self.storage.feeds_search(arena.allocator(), input);
+                        if (feeds.len > 0) {
+                            if (!opts.remove) {
+                                // TODO: validate tags
+                                try self.storage.tags_add(tags_arr.items);
+                            }
+                            const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
+                            const tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
+
+                            if (opts.remove) {
+                                for (feeds) |feed| {
+                                    try self.storage.tags_feed_remove(feed.feed_id, tags_ids);
+                                }
+                                try self.out.print("Removed tags from {d} feed(s).\n", .{feeds.len});
+                            } else {
+                                for (feeds) |feed| {
+                                    try self.storage.tags_feed_add(feed.feed_id, tags_ids);
+                                }
+                                try self.out.print("Added tags to {d} feed(s).\n", .{feeds.len});
+                            }
+                        } else {
+                            try self.out.print("Found no feeds to add or remove tags.\n", .{});
+                        }
+                        return;
+                    }
+
                     if (opts.remove) {
                         try self.storage.tags_remove(tags_arr.items);
                         return;
                     }
 
-                    // TODO: make sure tags are valid
+                    // TODO: validate tags
                     // Validate after remove? Because there might be some
                     // invalid tags in storage. Might have invalid tags
                     // because might have changed what is valid and what not.
@@ -214,7 +241,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         const feeds = try self.storage.feeds_search(arena.allocator(), input);
                         if (feeds.len > 0) {
                             for (feeds) |feed| {
-                                try self.storage.feed_add_tags(feed.feed_id, tags_ids);
+                                try self.storage.tags_feed_add(feed.feed_id, tags_ids);
                             }
                             try self.out.print("Added tags to {d} feed(s)\n", .{feeds.len});
                             return;
@@ -223,7 +250,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     // make request
                     const feed_id = try self.add(input);
-                    try self.storage.feed_add_tags(feed_id, tags_ids);
+                    try self.storage.tags_feed_add(feed_id, tags_ids);
                 },
                 .server => try server(),
             }

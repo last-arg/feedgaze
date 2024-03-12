@@ -564,8 +564,15 @@ pub const Storage = struct {
         }
     }
 
-    pub fn feed_add_tags(self: *Self, feed_id: usize, tag_ids: []usize) !void {
+    pub fn tags_feed_add(self: *Self, feed_id: usize, tag_ids: []usize) !void {
         const query = "INSERT INTO feed_tag (feed_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING";
+        for (tag_ids) |tag_id| {
+            try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
+        }
+    }
+
+    pub fn tags_feed_remove(self: *Self, feed_id: usize, tag_ids: []usize) !void {
+        const query = "DELETE FROM feed_tag WHERE feed_id = ? AND tag_id = ?;";
         for (tag_ids) |tag_id| {
             try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
         }
