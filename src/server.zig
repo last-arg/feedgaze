@@ -214,20 +214,19 @@ const Handler = struct {
             return;
         };
         const search_value = search_term orelse "";
-        const search_needle = "[search_value]";
-        const content_needle = "[content]";
+        const search_needle = "search_value";
+        const content_needle = "content";
 
         var html_arr = std.ArrayList(u8).init(arena.allocator());
         defer html_arr.deinit();
-        var iter = mem.splitSequence(u8, index_html, search_needle);
-        html_arr.appendSlice(iter.next() orelse "") catch return;
+        var iter = mem.splitAny(u8, index_html, "[]");
         while (iter.next()) |html_raw| {
-            html_arr.appendSlice(search_value) catch return;
-            var content_iter = mem.splitSequence(u8, html_raw, content_needle);
-            html_arr.appendSlice(content_iter.next() orelse "") catch return;
-            while (content_iter.next()) |content_raw| {
+            if (mem.eql(u8, html_raw, search_needle)) {
+                html_arr.appendSlice(search_value) catch return;
+            } else if (mem.eql(u8, html_raw, content_needle)) {
                 html_arr.appendSlice(content) catch return;
-                html_arr.appendSlice(content_raw) catch return;
+            } else {
+                html_arr.appendSlice(html_raw) catch return;
             }
         }
 
