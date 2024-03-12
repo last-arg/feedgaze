@@ -143,7 +143,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     // TODO: make sure tags are valid
                     // Validate after remove? Because there might be some
-                    // invalid tags in storage. 
+                    // invalid tags in storage. Might have invalid tags
+                    // because might have changed what is valid and what not.
+                    //
+                    // Valid tag symbols:
+                    // - A-z, 0-9
+                    // - no space
+                    
 
                     try self.storage.tags_add(tags_arr.items);
                 },
