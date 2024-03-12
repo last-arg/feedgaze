@@ -216,11 +216,22 @@ const Handler = struct {
         const search_value = search_term orelse "";
         const search_needle = "[search_value]";
         const content_needle = "[content]";
-        // TODO: do less allocating
-        var out = std.mem.replaceOwned(u8, arena.allocator(), index_html, content_needle, content) catch return;
-        out = std.mem.replaceOwned(u8, arena.allocator(), out, search_needle, search_value) catch return;
 
-        req.sendBody(out) catch |err| {
+        var html_arr = std.ArrayList(u8).init(arena.allocator());
+        defer html_arr.deinit();
+        var iter = mem.splitSequence(u8, index_html, search_needle);
+        html_arr.appendSlice(iter.next() orelse "") catch return;
+        while (iter.next()) |html_raw| {
+            html_arr.appendSlice(search_value) catch return;
+            var content_iter = mem.splitSequence(u8, html_raw, content_needle);
+            html_arr.appendSlice(content_iter.next() orelse "") catch return;
+            while (content_iter.next()) |content_raw| {
+                html_arr.appendSlice(content) catch return;
+                html_arr.appendSlice(content_raw) catch return;
+            }
+        }
+
+        req.sendBody(html_arr.items) catch |err| {
             std.log.warn("{}\n", .{err});
             return;
         };
