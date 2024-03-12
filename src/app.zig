@@ -127,7 +127,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         return;
                     }
 
-                    const tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), args.positionals.len);
+                    var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), args.positionals.len);
                     defer tags_arr.deinit();
                     for (args.positionals) |tag| {
                         const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
