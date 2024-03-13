@@ -180,8 +180,6 @@ const Handler = struct {
     var db: Storage = undefined;
 
     fn on_request(req: zap.Request) void {
-        std.debug.print("path: |{?s}|\n", .{req.path});
-        std.debug.print("query: |{?s}|\n", .{req.query});
         const path = req.path orelse return;
 
         if (path.len == 0 or mem.eql(u8, path, "/")) {
@@ -305,6 +303,7 @@ fn start() !void {
     const allocator = gpa.allocator();
     const db = try Storage.init("./tmp/feeds.db");
     
+    zap.enableDebugLog();
     Handler.allocator = allocator;
     Handler.db = db;
     var listener = zap.HttpListener.init(.{
@@ -330,6 +329,17 @@ fn start() !void {
 fn not_found(req: zap.Request) void {
     req.sendBody("Not found") catch return;
 }
+
+// fn gzip_compress_example() {
+//     if (req.getHeader("accept-encoding")) |value| {
+//         var html_stream =  std.io.fixedBufferStream(html);
+//         var html_arr = std.ArrayList(u8).init(arena.allocator());
+//         std.debug.print("accept: {s}\n", .{value});
+//         std.compress.gzip.compress(html_stream.reader(), html_arr.writer(), .{}) catch return;
+//         html = html_arr.items;
+//         req.setHeader("Content-Encoding", "gzip") catch return;
+//     }
+// }
 
 const std = @import("std");
 const zap = @import("zap");
