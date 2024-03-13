@@ -323,6 +323,9 @@ fn start() !void {
 
     std.log.debug("Listening on 0.0.0.0:3000\n", .{});
 
+    const thread = try makeRequestThread(allocator, "http://127.0.0.1:3000/");
+    defer thread.join();    
+
     // start worker threads
     zap.start(.{
         .threads = 1,
@@ -335,7 +338,21 @@ fn start() !void {
 }
 
 fn not_found(req: zap.Request) void {
+    req.setStatus(.not_found);
     req.sendBody("Not found") catch return;
+}
+
+fn makeRequest(a: std.mem.Allocator, url: []const u8) !void {
+    const uri = try std.Uri.parse(url);
+
+    var http_client: std.http.Client = .{ .allocator = a };
+    defer http_client.deinit();
+
+    _ = try http_client.fetch(.{ .location = .{.uri = uri} });
+}
+
+fn makeRequestThread(a: std.mem.Allocator, url: []const u8) !std.Thread {
+    return try std.Thread.spawn(.{}, makeRequest, .{ a, url });
 }
 
 // fn gzip_compress_example() {
