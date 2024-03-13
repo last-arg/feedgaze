@@ -440,6 +440,7 @@ pub const FeedOptions = struct {
     body: []const u8 = "",
     content_type: ?ContentType = null,
     feed_updates: FeedUpdate = .{},
+    feed_url: []const u8 = "",
 
     pub fn fromResponse(resp: curl.Easy.Response) @This() {
         const header_value = resp.get_header("content-type") catch null;

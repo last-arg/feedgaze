@@ -321,8 +321,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
+        // TODO: add several urls
+        // - skip urls already have
+        //   - can override with --force?
         pub fn add(self: *Self, url: []const u8) !usize {
             _ = std.Uri.parse(url) catch {
+                std.log.warn("Invalid input url '{s}'\n", .{url});
                 return error.InvalidUri;
             };
             // if (try self.storage.hasFeedWithFeedUrl(url)) {
@@ -341,7 +345,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var resp = try req.fetch(fetch_url, .{});
             defer resp.deinit();
 
-            var fallback_title: ?[]const u8 = null;
             if (resp.body.items.len == 0) {
                 std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
                 return error.EmptyBody;
@@ -360,7 +363,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
                 const link = links[index];
 
-                fallback_title = link.title;
+                // add/move this to feed_options
+                const fallback_title = link.title;
                 if (!mem.startsWith(u8, link.link, "http")) {
                     var url_uri = try std.Uri.parse(url);
                     const link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
@@ -386,9 +390,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                     return error.UnexpectedContentTypeHtml;
                 }
+                feed_options.feed_url = try req.get_url(arena.allocator());
                 return try self.storage.addFeed(&arena, feed_options, fallback_title);
             } else {
-                return try self.storage.addFeed(&arena, feed_options, fallback_title);
+                feed_options.feed_url = try req.get_url(arena.allocator());
+                return try self.storage.addFeed(&arena, feed_options, null);
             }
         }
 

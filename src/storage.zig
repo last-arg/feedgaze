@@ -83,6 +83,7 @@ pub const Storage = struct {
         }
     }
 
+    // TODO: use feed_opts.feed_url
     pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) {

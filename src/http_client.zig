@@ -69,13 +69,24 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     return try self.client.perform();
 }
 
+pub fn get_url(self: *@This(), allocator: Allocator) ![]const u8 {
+    var cstr: [*c]const u8 = undefined;
+    try checkCode(
+        curl.libcurl.curl_easy_getinfo(self.client.handle, curl.libcurl.CURLINFO_EFFECTIVE_URL, &cstr)
+    );
+    const len = std.mem.len(cstr);
+    const dest = try allocator.alloc(u8, len);
+    std.mem.copyForwards(u8, dest, cstr[0..len]);
+    return dest;
+}
+
 pub fn checkCode(code: curl.libcurl.CURLcode) !void {
     if (code == curl.libcurl.CURLE_OK) {
         return;
     }
 
     // https://curl.se/libcurl/c/libcurl-errors.html
-    std.log.debug("curl err code:{d}, msg:{s}\n", .{ code, curl.libcurl.curl_easy_strerror(code) });
+    std.log.debug("curl err code: {d}, msg: {s}\n", .{ code, curl.libcurl.curl_easy_strerror(code) });
 
     return error.Unexpected;
 }
