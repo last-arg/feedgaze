@@ -181,17 +181,65 @@ const Handler = struct {
 
     fn on_request(req: zap.Request) void {
         std.debug.print("path: |{?s}|\n", .{req.path});
+        std.debug.print("query: |{?s}|\n", .{req.query});
         const path = req.path orelse return;
 
         if (path.len == 0 or mem.eql(u8, path, "/")) {
             root_page(req);
             return;
         } else if (mem.eql(u8, path, "/tags")) {
-            req.sendBody("tags") catch return;
+            tags_page(req);
             return;
         }
 
         not_found(req);
+    }
+
+    pub fn tags_page(req: zap.Request) void {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        var tags_arr = std.ArrayList([]const u8).init(arena.allocator());
+        var iter = req.getParamSlices();
+        while (iter.next()) |param| {
+            if (mem.eql(u8, param.name, "tag")) {
+                tags_arr.append(param.value) catch return;
+            }
+        }
+
+        const tags_fmt = @embedFile("./tags.zig-fmt.html");
+        // get feeds' with tags
+        const feeds = db.feeds_with_tags(arena.allocator(), tags_arr.items) catch return;
+        std.debug.print("len: {d}\n", .{feeds.len});
+        const feeds_rendered = feeds_render(&db, arena.allocator(), feeds) catch return;
+
+        const tag_links = tags_render(&arena) catch return; 
+        const page_content = std.fmt.allocPrint(arena.allocator(), tags_fmt, .{
+            .feed_items = feeds_rendered,
+            .tag_links = tag_links,
+        }) catch return;
+
+        const content_needle = "[content]";
+        const html = mem.replaceOwned(u8, arena.allocator(), base_html, content_needle, page_content) catch return;
+
+        req.setHeader("content-type", "text/html") catch return;
+        req.sendBody(html) catch return;
+    }
+
+    fn tags_render(arena: *std.heap.ArenaAllocator) ![]const u8 {
+        const a_html = 
+            \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
+        ;
+
+        const tags = try db.tags_all(arena.allocator());
+        var content = std.ArrayList(u8).init(arena.allocator());
+        defer content.deinit();
+        // TODO: might need to encode tag for href
+        for (tags) |tag| {
+            try content.writer().print(a_html, .{ .tag = tag });
+        }
+
+        return try content.toOwnedSlice();
     }
 
     pub fn root_page(req: zap.Request) void {

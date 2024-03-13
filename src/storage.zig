@@ -577,6 +577,26 @@ pub const Storage = struct {
             try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
         }
     }
+
+    pub fn feeds_with_tags(self: *Self, allocator: Allocator, tags: [][]const u8) ![]types.FeedRender {
+        if (tags.len == 0) { return &.{}; }
+        const query_fmt = 
+        \\select * from feed where feed_id in (
+        \\	select distinct(feed_id) from feed_tag where tag_id in (
+        \\		select tag_id from tag where name in ({s})
+        \\	)
+        \\) order by updated_timestamp DESC;
+        ;
+        var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
+        query_arr.appendAssumeCapacity('?');
+        for (tags[1..]) |_| {
+            query_arr.appendSliceAssumeCapacity(",?");
+        }
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items});
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+        return try stmt.all(types.FeedRender, allocator, .{}, tags);
+    }
 };
 
 const tables = &[_][]const u8{
