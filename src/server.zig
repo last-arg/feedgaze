@@ -214,23 +214,19 @@ const Handler = struct {
             return;
         };
         const search_value = search_term orelse "";
-        const search_needle = "search_value";
-        const content_needle = "content";
 
-        var html_arr = std.ArrayList(u8).init(arena.allocator());
-        defer html_arr.deinit();
-        var iter = mem.splitAny(u8, index_html, "[]");
-        while (iter.next()) |html_raw| {
-            if (mem.eql(u8, html_raw, search_needle)) {
-                html_arr.appendSlice(search_value) catch return;
-            } else if (mem.eql(u8, html_raw, content_needle)) {
-                html_arr.appendSlice(content) catch return;
-            } else {
-                html_arr.appendSlice(html_raw) catch return;
-            }
-        }
+        const index_fmt = @embedFile("index.zig-fmt.html");
+        const index_render = std.fmt.allocPrint(arena.allocator(), index_fmt, .{
+            .feed_items = content,
+            .search_value = search_value,
+        }) catch return;
 
-        req.sendBody(html_arr.items) catch |err| {
+        const content_needle = "[content]";
+
+        const html = mem.replaceOwned(u8, arena.allocator(), base_html, content_needle, index_render) catch return;
+
+        req.setHeader("content-type", "text/html") catch return;
+        req.sendBody(html) catch |err| {
             std.log.warn("{}\n", .{err});
             return;
         };
@@ -295,5 +291,5 @@ const storage = @import("./storage.zig");
 const Storage = storage.Storage;
 const config = @import("app_config.zig");
 const Datetime = @import("zig-datetime").datetime.Datetime;
-const index_html = @embedFile("./index.html");
+const base_html = @embedFile("./base.html");
 const mem = std.mem;

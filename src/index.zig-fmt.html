@@ -1,0 +1,14 @@
+<header>
+  <a href="/">Home</a>
+  <a href="/tags">Tags</a>
+</header>
+
+<main>
+<form method="GET">
+  <label for="search_value">Search feeds</label>
+  <input type="search" name="search_value" id="search_value" value="{[search_value]s}">
+  <button type="submit">Search feeds</button>
+  <button type="reset">Reset search</button>
+</form>
+<ul>{[feed_items]s}</ul>
+</main>
