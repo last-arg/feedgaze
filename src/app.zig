@@ -177,40 +177,16 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // - A-z, 0-9
                     // - no space
                     
-
                     try self.storage.tags_add(tags_arr.items);
                 },
                 .add => |opts| {
-                    var arena = std.heap.ArenaAllocator.init(self.allocator);
-                    defer arena.deinit();
-
-                    if (opts.list) {
-                        const feeds = try self.storage.feeds_all(arena.allocator());
-
-                        if (feeds.len == 0) {
-                            try self.out.print("There are no feeds.\n", .{});
-                        }
-
-                        // TODO: list tags
-                        const feed_fmt = 
-                        \\
-                        \\{s}
-                        \\  Page url: {s}
-                        \\  Feed url: {s}
-                        \\
-                        ;
-                        for (feeds) |feed| {
-                            const title = if (feed.title.len == 0) "<no-title>" else feed.title;
-                            const page_url = feed.page_url orelse "<no-page-url>";
-                            try self.out.print(feed_fmt, .{title, page_url, feed.feed_url});
-                        }
-                        return;
-                    }
-
                     if (args.positionals.len == 0) {
                         try self.out.print("Please enter valid input you want to add or modify.\n", .{});
                         return;
                     }
+
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
                     
                     // TODO: search more than one value?
                     var tags_ids: []usize = &.{};
@@ -549,6 +525,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         pub fn show(self: *Self, inputs: [][]const u8, opts: ShowOptions) !void {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
+
             const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
 
             for (feeds) |feed| {

@@ -15,6 +15,10 @@
       - links
     [ ] Use page title as feed title
   [ ] Add tags
+[ ] Reduce how often http request are made
+  - increase update interval base on when last update was
+    - more than 1 year = several days?
+    - more than 1 month = 1 day or more?
 [ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
 there is no <link>
 [ ] Decode/encode HTML characters

@@ -25,7 +25,6 @@ pub const TagOptions = struct {
 };
 
 pub const AddOptions = struct {
-    list: bool = false,
     tags: ?[]const u8 = null
 };
 
