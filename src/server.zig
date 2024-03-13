@@ -227,7 +227,7 @@ const Handler = struct {
     fn tags_render(arena: *std.heap.ArenaAllocator, tags_checked: [][]const u8) ![]const u8 {
         const a_html = 
             \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-            \\<label for="tag-index-{[tag_index]d}">{[tag]s}<label>
+            \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
             \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
         ;
 
@@ -268,11 +268,13 @@ const Handler = struct {
             return;
         };
         const search_value = search_term orelse "";
+        const tag_links = tags_render(&arena, &.{}) catch return; 
 
         const index_fmt = @embedFile("index.zig-fmt.html");
         const index_render = std.fmt.allocPrint(arena.allocator(), index_fmt, .{
             .feed_items = content,
             .search_value = search_value,
+            .tag_links = tag_links,
         }) catch return;
 
         const content_needle = "[content]";
@@ -323,8 +325,8 @@ fn start() !void {
 
     std.log.debug("Listening on 0.0.0.0:3000\n", .{});
 
-    const thread = try makeRequestThread(allocator, "http://127.0.0.1:3000/");
-    defer thread.join();    
+    // const thread = try makeRequestThread(allocator, "http://127.0.0.1:3000/");
+    // defer thread.join();    
 
     // start worker threads
     zap.start(.{
