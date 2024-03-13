@@ -211,7 +211,7 @@ const Handler = struct {
         std.debug.print("len: {d}\n", .{feeds.len});
         const feeds_rendered = feeds_render(&db, arena.allocator(), feeds) catch return;
 
-        const tag_links = tags_render(&arena) catch return; 
+        const tag_links = tags_render(&arena, tags_arr.items) catch return; 
         const page_content = std.fmt.allocPrint(arena.allocator(), tags_fmt, .{
             .feed_items = feeds_rendered,
             .tag_links = tag_links,
@@ -224,17 +224,25 @@ const Handler = struct {
         req.sendBody(html) catch return;
     }
 
-    fn tags_render(arena: *std.heap.ArenaAllocator) ![]const u8 {
+    fn tags_render(arena: *std.heap.ArenaAllocator, tags_checked: [][]const u8) ![]const u8 {
         const a_html = 
+            \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+            \\<label for="tag-index-{[tag_index]d}">{[tag]s}<label>
             \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
         ;
 
         const tags = try db.tags_all(arena.allocator());
         var content = std.ArrayList(u8).init(arena.allocator());
         defer content.deinit();
-        // TODO: might need to encode tag for href
-        for (tags) |tag| {
-            try content.writer().print(a_html, .{ .tag = tag });
+        for (tags, 0..) |tag, i| {
+            const is_checked = blk: {
+                for (tags_checked) |tag_checked| { 
+                    if (mem.eql(u8, tag_checked, tag)) { break :blk "checked"; }
+                }
+                break :blk "";
+            };
+            // TODO: might need to encode tag for href
+            try content.writer().print(a_html, .{ .tag = tag, .tag_index= i, .is_checked = is_checked });
         }
 
         return try content.toOwnedSlice();

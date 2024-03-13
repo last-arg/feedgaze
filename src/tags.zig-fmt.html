@@ -2,7 +2,10 @@
   <a href="/">Home</a>
   <a href="/tags">Tags</a>
 </header>
-<div class="tag-links">{[tag_links]s}</div>
+<form class="tag-links">
+  {[tag_links]s}
+  <button>Filter tags</button>
+</form>
 <main>
   <ul>{[feed_items]s}</ul>
 </main>
