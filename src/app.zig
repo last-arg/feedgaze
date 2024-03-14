@@ -347,6 +347,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             var feed_options = FeedOptions.fromResponse(resp);
             if (feed_options.content_type == .html) {
+                feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+            }
+            if (feed_options.content_type == .html) {
                 const links = try html.parseHtmlForFeedLinks(arena.allocator(), feed_options.body);
                 if (links.len == 0) {
                     std.log.info("Found no feed links", .{});
@@ -379,9 +382,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                 feed_options = FeedOptions.fromResponse(resp_2);
                 if (feed_options.content_type == .html) {
-                    // NOTE: should not happen
-                    std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
-                    return error.UnexpectedContentTypeHtml;
+                    // Let's make sure it is html, some give wrong content-type.
+                    feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+                    const ct = feed_options.content_type;
+                    if (ct == null or ct == .html) {
+                        std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
+                        return error.UnexpectedContentTypeHtml;
+                    }
                 }
                 feed_options.feed_url = try req.get_url(arena.allocator());
                 feed_options.title = link.title;
