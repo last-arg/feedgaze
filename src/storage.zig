@@ -84,11 +84,12 @@ pub const Storage = struct {
     }
 
     // TODO: use feed_opts.feed_url
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions, fallback_title: ?[]const u8) !usize {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) {
-            parsed.feed.title = fallback_title;
+            parsed.feed.title = feed_opts.title orelse "";
         }
+        parsed.feed.feed_url = feed_opts.feed_url;
         const feed_id = try self.insertFeed(parsed.feed);
         try parsed.prepareAndValidate(arena.allocator());
         _ = try self.insertFeedItems(parsed.items);
@@ -133,7 +134,7 @@ pub const Storage = struct {
             \\RETURNING feed_id;
         ;
         const feed_id = try one(&self.sql_db, usize, query, .{
-            .title = feed.title,
+            .title = feed.title orelse "",
             .feed_url = feed.feed_url,
             .page_url = feed.page_url,
             .updated_timestamp = feed.updated_timestamp,
@@ -600,6 +601,7 @@ pub const Storage = struct {
     }
 };
 
+// TODO: feed.title default value should be null
 const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed(
     \\  feed_id INTEGER PRIMARY KEY,

@@ -351,10 +351,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             var feed_options = FeedOptions.fromResponse(resp);
-            var content = feed_options.body;
-            var content_type = feed_options.content_type;
-            if (content_type == .html) {
-                const links = try html.parseHtmlForFeedLinks(arena.allocator(), content);
+            if (feed_options.content_type == .html) {
+                const links = try html.parseHtmlForFeedLinks(arena.allocator(), feed_options.body);
                 if (links.len == 0) {
                     std.log.info("Found no feed links", .{});
                     return error.NoFeedLinksInHtml;
@@ -383,18 +381,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 feed_options = FeedOptions.fromResponse(resp_2);
-                content = feed_options.body;
-                content_type = feed_options.content_type;
-                if (content_type == .html) {
+                if (feed_options.content_type == .html) {
                     // NOTE: should not happen
                     std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                     return error.UnexpectedContentTypeHtml;
                 }
                 feed_options.feed_url = try req.get_url(arena.allocator());
-                return try self.storage.addFeed(&arena, feed_options, fallback_title);
+                feed_options.title = fallback_title;
+                return try self.storage.addFeed(&arena, feed_options);
             } else {
                 feed_options.feed_url = try req.get_url(arena.allocator());
-                return try self.storage.addFeed(&arena, feed_options, null);
+                return try self.storage.addFeed(&arena, feed_options);
             }
         }
 

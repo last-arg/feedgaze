@@ -25,7 +25,7 @@ pub const FeedAndItems = struct {
             // Set all items ids
             if (item_first.feed_id == 0) { 
                 for (self.items) |*item| {
-                    item.feed_id = self.feed.feed_id;
+                    item.*.feed_id = self.feed.feed_id;
                 }
             }
             
