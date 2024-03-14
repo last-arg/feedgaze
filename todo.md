@@ -15,6 +15,7 @@
       - links
     [ ] Use page title as feed title
   [ ] Add tags
+[ ] Can disable updating for feeds?
 [ ] Investigate 'add https://gitlab.com/dejawu/ectype'
   - hits a constraint (item.feed_id, item.link) in 'item' table
   - offending link 'https://gitlab.com/dejawu/ectype/-/commits/object-map'

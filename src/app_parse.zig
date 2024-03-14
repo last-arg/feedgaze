@@ -97,6 +97,7 @@ const AtomParseTag = enum {
     title,
     link,
     updated,
+    published,
     id,
 
     const Self = @This();
@@ -162,6 +163,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         // have fallback url from fn arg 'url'.
                         .id => {},
                         .updated => feed.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null,
+                        .published => {},
                     },
                     .entry => switch (tag) {
                         .title => switch (elem_content) {
@@ -181,6 +183,13 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .link => {},
                         .id => current_entry.id = try allocator.dupe(u8, elem_content.text),
                         .updated => {
+                            if (current_entry.updated_timestamp == null) {
+                                if (AtomDateTime.parse(elem_content.text) catch null) |ts| {
+                                    current_entry.updated_timestamp = ts;
+                                }
+                            }
+                        },
+                        .published => {
                             if (AtomDateTime.parse(elem_content.text) catch null) |ts| {
                                 current_entry.updated_timestamp = ts;
                             }
@@ -203,7 +212,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
                         },
-                        .id, .updated, .link => {},
+                        .id, .updated, .link, .published => {},
                     },
                     .entry => {
                         switch (tag) {
@@ -211,7 +220,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 current_entry.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             },
-                            .id, .updated, .link => {},
+                            .id, .updated, .link, .published => {},
                         }
                     },
                 }
@@ -232,7 +241,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             link_href = null;
                             link_rel = "alternate";
                         },
-                        .title, .id, .updated => {},
+                        .title, .id, .updated, .published => {},
                     },
                     .entry => {
                         switch (tag) {
@@ -245,7 +254,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 link_href = null;
                                 link_rel = "alternate";
                             },
-                            .title, .id, .updated => {},
+                            .title, .id, .updated, .published => {},
                         }
                     },
                 }
@@ -283,7 +292,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             .rel => link_rel = try allocator.dupe(u8, attr_value),
                         }
                     },
-                    .title, .id, .updated => {},
+                    .title, .id, .updated, .published => {},
                 }
 
             },
