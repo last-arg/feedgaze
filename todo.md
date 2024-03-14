@@ -15,6 +15,7 @@
       - links
     [ ] Use page title as feed title
   [ ] Add tags
+[ ] add transactions
 [ ] Can disable updating for feeds?
 [ ] Investigate 'add https://gitlab.com/dejawu/ectype'
   - hits a constraint (item.feed_id, item.link) in 'item' table

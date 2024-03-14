@@ -285,8 +285,9 @@ pub const Storage = struct {
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
         if (inserts.len == 0) {
-            return error.NothingToInsert;
+            return &.{};
         }
+
         if (!try self.hasFeedWithId(inserts[0].feed_id)) {
             return Error.FeedNotFound;
         }
@@ -427,7 +428,7 @@ pub const Storage = struct {
     // 4 | Title 4 | 3
     pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
         if (inserts.len == 0) {
-            return error.NothingToInsert;
+            return;
         }
         if (!try self.hasFeedWithId(inserts[0].feed_id)) {
             return Error.FeedNotFound;

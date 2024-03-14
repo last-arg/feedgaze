@@ -458,10 +458,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| switch (err) {
-                    error.NothingToInsert => {
-                        std.log.info("No items added to feed '{s}'\n", .{f_update.feed_url});
-                        continue;
-                    },
                     error.NoHtmlParse => {
                         std.log.err("Failed to update feed '{s}'. Update should not return html file.\n", .{f_update.feed_url});
                         continue;
