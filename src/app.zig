@@ -211,22 +211,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
                     }
 
-                    const input = args.positionals[0];
-
-                    if (tags_ids.len > 0) {
-                        const feeds = try self.storage.feeds_search(arena.allocator(), input);
-                        if (feeds.len > 0) {
-                            for (feeds) |feed| {
-                                try self.storage.tags_feed_add(feed.feed_id, tags_ids);
+                    for (args.positionals) |input| {
+                        const feed_id = self.add(input) catch |err| switch (err) {
+                            error.InvalidUri => {
+                                try self.out.print("Invalid input '{s}'\n", .{input});
+                                continue;
+                            },
+                            error.FeedExists => {
+                                try self.out.print("There already exists feed '{s}'\n", .{input});
+                                continue;
+                            },
+                            else => {
+                                std.log.err("Error with input '{s}'. Error message: {}", .{input, err});
+                                return err;
                             }
-                            try self.out.print("Added tags to {d} feed(s)\n", .{feeds.len});
-                            return;
-                        }
-                    } 
-
-                    // make request
-                    const feed_id = try self.add(input);
-                    try self.storage.tags_feed_add(feed_id, tags_ids);
+                        };
+                        try self.storage.tags_feed_add(feed_id, tags_ids);
+                    }
                 },
                 .server => try server(),
             }
@@ -321,19 +322,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
-        // TODO: add several urls
-        // - skip urls already have
-        //   - can override with --force?
         pub fn add(self: *Self, url: []const u8) !usize {
             _ = std.Uri.parse(url) catch {
-                std.log.warn("Invalid input url '{s}'\n", .{url});
                 return error.InvalidUri;
             };
-            // if (try self.storage.hasFeedWithFeedUrl(url)) {
-            //     // TODO?: ask user if they want re-add feed?
-            //     std.log.info("There already exists feed '{s}'", .{url});
-            //     return;
-            // }
+            if (try self.storage.hasFeedWithFeedUrl(url)) {
+                return error.FeedExists;
+            }
 
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
