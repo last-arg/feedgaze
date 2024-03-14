@@ -15,6 +15,9 @@
       - links
     [ ] Use page title as feed title
   [ ] Add tags
+[ ] Investigate 'add https://gitlab.com/dejawu/ectype'
+  - hits a constraint (item.feed_id, item.link) in 'item' table
+  - offending link 'https://gitlab.com/dejawu/ectype/-/commits/object-map'
 [ ] Reduce how often http request are made
   - increase update interval base on when last update was
     - more than 1 year = several days?

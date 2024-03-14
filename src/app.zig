@@ -356,8 +356,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
                 const link = links[index];
 
-                // add/move this to feed_options
-                const fallback_title = link.title;
                 if (!mem.startsWith(u8, link.link, "http")) {
                     var url_uri = try std.Uri.parse(url);
                     const link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
@@ -366,6 +364,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 } else {
                     fetch_url = link.link;
                 }
+
+                // Need to create new curl request
+                var req_2 = try http_client.init(arena.allocator());
+                defer req_2.deinit();
 
                 var resp_2 = try req.fetch(fetch_url, .{});
                 defer resp_2.deinit();
@@ -382,7 +384,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return error.UnexpectedContentTypeHtml;
                 }
                 feed_options.feed_url = try req.get_url(arena.allocator());
-                feed_options.title = fallback_title;
+                feed_options.title = link.title;
                 return try self.storage.addFeed(&arena, feed_options);
             } else {
                 feed_options.feed_url = try req.get_url(arena.allocator());
