@@ -91,6 +91,7 @@ pub const Storage = struct {
         }
         parsed.feed.feed_url = feed_opts.feed_url;
         const feed_id = try self.insertFeed(parsed.feed);
+        parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator());
         _ = try self.insertFeedItems(parsed.items);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
