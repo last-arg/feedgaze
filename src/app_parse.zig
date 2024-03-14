@@ -15,15 +15,21 @@ pub const FeedAndItems = struct {
     feed: Feed,
     items: []FeedItem,
 
+    pub fn feed_updated_timestamp(self: *FeedAndItems) void {
+        if (self.items.len > 0) {
+            // make feed date newest item date
+            self.feed.updated_timestamp = self.items[0].updated_timestamp orelse null;
+        }
+    }
+
     pub fn prepareAndValidate(self: *FeedAndItems, alloc: std.mem.Allocator) !void {
         try self.feed.prepareAndValidate(alloc);
         if (self.items.len > 0) {
-            const item_first = self.items[0];
-            // make feed date newest item date
-            self.feed.updated_timestamp = item_first.updated_timestamp orelse null;
+            self.feed_updated_timestamp();
 
+            const item_first = self.items[0];
             // Set all items ids
-            if (item_first.feed_id == 0) { 
+            if (item_first.feed_id == 0 and self.feed.feed_id != 0) { 
                 for (self.items) |*item| {
                     item.*.feed_id = self.feed.feed_id;
                 }

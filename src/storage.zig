@@ -90,6 +90,7 @@ pub const Storage = struct {
             parsed.feed.title = feed_opts.title orelse "";
         }
         parsed.feed.feed_url = feed_opts.feed_url;
+        parsed.feed_updated_timestamp();
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator());
@@ -201,6 +202,7 @@ pub const Storage = struct {
         return (try one(&self.sql_db, bool, query, .{url})) orelse false;
     }
 
+    // TODO: also add title to search from
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
         const query =
             \\SELECT 
