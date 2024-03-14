@@ -135,6 +135,9 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
 
+    const rem = b.dependency("rem", dep_args);
+    step.root_module.addImport("rem", rem.module("rem"));
+
     const zap = b.dependency("zap", .{
         .target = dep_args.target,
         .optimize = dep_args.optimize,

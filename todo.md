@@ -10,10 +10,10 @@
     [ ] Some sites might have and url to rss feed, but page's HTML doesn't contain
         any rss url. Create somekind of rule?
   [ ] HTML page into feed
-    [ ] Use CSS selector to find:
+    - Use CSS selector to find:
       - titles
       - links
-    [ ] Use page title as feed title
+    - Use page title as feed title
   [ ] Add tags
 [ ] add transactions
 [ ] Can disable updating for feeds?
@@ -25,9 +25,10 @@
     - more than 1 year = several days?
     - more than 1 month = 1 day or more?
 [ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
-there is no <link>
+there is no <link>. FYI <link> is required by the spec.
 [ ] Decode/encode HTML characters
 [ ] Remove html tags when parsing title/description
+  Best options is probably to use simple/dumb solution.
   [ ] Can be "&lt;", "&gt;" 
   [ ] Can be "<", ">" if inside "<![CDATA[ ... ]]>" 
     [ ] Can probably also be "&lt;", "&gt;" 

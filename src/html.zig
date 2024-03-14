@@ -131,3 +131,47 @@ fn isDuplicate(items: []FeedLink, link: []const u8) bool {
     }
     return false;
 }
+
+const rem = @import("rem");
+pub fn html_fragemnt_parse() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    // This is the text that will be read by the parser.
+    // Since the parser accepts Unicode codepoints, the text must be decoded before it can be used.
+    const input = 
+        \\<h1 id="me" class="first" style=bold>Your text goes here!</h1>  
+        \\<p>Hello 
+        \\    <span>world</span>  big</p>
+    ;
+    const decoded_input = &rem.util.utf8DecodeStringComptime(input);
+
+    // Create the DOM in which the parsed Document will be created.
+    var dom = rem.Dom{ .allocator = allocator };
+    defer dom.deinit();
+
+    var context_element = rem.Dom.Element{
+        .element_type = .html_div,
+        .parent = null,
+        .attributes = .{},
+        .children = .{},
+    };
+
+    // Create the HTML parser.
+    var parser = try rem.Parser.initFragment(&dom, &context_element, decoded_input, allocator, .report, false, .no_quirks);
+    defer parser.deinit();
+
+    // This causes the parser to read the input and produce a Document.
+    try parser.run();
+
+    // `errors` returns the list of parse errors that were encountered while parsing.
+    // Since we know that our input was well-formed HTML, we expect there to be 0 parse errors.
+    const errors = parser.errors();
+    std.debug.assert(errors.len == 0);
+
+    // We can now print the resulting Document to the console.
+    const stdout = std.io.getStdOut().writer();
+    const document = parser.getDocument();
+    try rem.util.printDocument(stdout, document, &dom, allocator);
+}
