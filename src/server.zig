@@ -62,7 +62,7 @@ const item_no_fmt_len = std.fmt.comptimePrint(item_fmt, .{.link = "", .title = "
 // title + link = 128
 const average_item_len = item_no_fmt_len + date_len_max + 128;
 
-fn feed_items_render(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
+fn feed_items_render_old(alloc: std.mem.Allocator, items: []FeedItemRender) ![]const u8 {
     if (items.len == 0) {
         return "";
     }
@@ -129,7 +129,7 @@ fn feeds_render(db: *Storage, alloc: std.mem.Allocator, feeds: []types.FeedRende
     defer content.deinit();
     for (feeds) |feed| {
         const items = try db.feed_items_with_feed_id(alloc, feed.feed_id);
-        const items_rendered = try feed_items_render(alloc, items);
+        const items_rendered = try feed_items_render_old(alloc, items);
 
         try content.writer().print(li_html, .{
             .page_url = feed.page_url orelse link_placeholder,
@@ -228,6 +228,9 @@ const Handler = struct {
 
         try feed_render(writer, feed.?);
 
+        const items = try db.feed_items_with_feed_id(arena.allocator(), feed.?.feed_id);
+        try feed_items_ul_render(writer, items);
+        
         if (base_iter.next()) |html_end| {
             try writer.writeAll(html_end);
         } else {
@@ -240,6 +243,46 @@ const Handler = struct {
         try req.sendBody(arr.items);
 
         return true;
+    }
+
+    fn feed_items_ul_render(writer: anytype, items: []FeedItemRender) !void {
+        try writer.writeAll("<ul>");
+        for (items) |item| {
+            try writer.writeAll("<li>");
+            try feed_item_render(writer, item);
+            try writer.writeAll("</li>");
+        }
+        try writer.writeAll("</ul>");
+    }
+
+    pub fn feed_item_render(writer: anytype, item: FeedItemRender) !void {
+        const title = if (item.title.len > 0) item.title else "[no-title]";
+        if (item.link) |link| {
+            const page_url_fmt = 
+            \\<a href="{[page_url]s}">{[title]s}</a>
+            ;
+            try writer.print(page_url_fmt, .{ 
+                .page_url = link, 
+                .title = title,  
+            });
+        } else {
+            const title_fmt = 
+            \\<p>{[title]s}</p>
+            ;
+            try writer.print(title_fmt, .{ .title = title });
+        }
+
+        if (item.updated_timestamp) |ts| {
+            const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+            var date_display_buf: [16]u8 = undefined;
+            var date_buf: [date_len_max]u8 = undefined;
+            const time_fmt =
+            \\<time datetime="{[date]s}">{[date_display]s}</time>
+            ;
+            const date_str = timestampToString(&date_buf, item.updated_timestamp);
+            const date_display_str = try date_display(&date_display_buf, now_sec, ts);
+            try writer.print(time_fmt, .{.date = date_str, .date_display = date_display_str});
+        }
     }
 
     pub fn feed_render(writer: anytype, feed: types.FeedRender) !void {
