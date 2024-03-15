@@ -175,3 +175,122 @@ pub fn html_fragemnt_parse() !void {
     const document = parser.getDocument();
     try rem.util.printDocument(stdout, document, &dom, allocator);
 }
+
+// Very simple way to remove html tags. On rare occurences will also remove
+// tags from html text. Will only remove tag if after '<' or '&lt;' comes 
+// alphabetic character or slash (/).
+pub fn HtmlTextIter() type {
+    return struct{
+        buffer: []const u8,
+        index: usize,
+        state: State = .text,
+        tag_type: TagType = .normal,
+
+        const TagType = enum {
+            normal, 
+            encoded,
+
+            pub fn to_string_end(self: @This()) []const u8 {
+                return switch (self) {
+                    .normal => ">",
+                    .encoded => "&gt;",
+                };
+            }
+
+            pub fn len(self: @This()) usize {
+                return self.to_string_end().len;
+            }
+        };
+
+        const State = enum {
+            tag,
+            text,
+        };
+        
+        pub fn next(self: *@This()) ?[]const u8 {
+            if (self.index >= self.buffer.len) {
+                return null;
+            }
+            while (self.index < self.buffer.len) {
+                switch(self.state) {
+                    .text => {
+                        var end_index = self.buffer.len;
+
+                        if (mem.indexOfPosLinear(u8, self.buffer, self.index, "<")) |index| {
+                            end_index = index;
+                            self.state = .tag;
+                            self.tag_type = .normal;
+                        }
+
+                        if (mem.indexOfPosLinear(u8, self.buffer, self.index, "&lt;")) |index| {
+                            if (index <= end_index) {
+                                end_index = index;
+                                self.state = .tag;
+                                self.tag_type = .encoded;
+                            }
+                        }
+
+                        const start_index = self.index;
+                        self.index = end_index + self.tag_type.len();
+
+                        if (self.index >= self.buffer.len) {
+                            return null;
+                        }
+
+                        const letter_after_lt = self.buffer[self.index];
+                        if (!std.ascii.isAlphabetic(letter_after_lt) and letter_after_lt != '/') {
+                            // treat '<' and '&lt;'  as text
+                            end_index = self.index;
+                            self.state = .text;
+                        }
+
+                        const result = self.buffer[start_index..end_index];
+
+                        if (result.len > 0) {
+                            return result;
+                        }
+                    },
+                    .tag => {
+                        const needle = self.tag_type.to_string_end();
+                        if (mem.indexOfPosLinear(u8, self.buffer, self.index, needle)) |index| {
+                            self.index = index + needle.len;
+                            self.state = .text;
+                        }
+                    },
+                }
+            }
+
+            return null;
+        }
+    };
+}
+
+pub fn html_text(html: []const u8) HtmlTextIter() {
+    return .{ .buffer = html, .index = 0 };
+}
+
+pub fn html_remove_tags(input: []const u8) void {
+    var iter = html_text(input);
+    while (iter.next()) |value| {
+        print("\ntext: |{s}|\n", .{value});
+    }
+
+    const raw = 
+        \\<h1 id="me" class="first" style=bold>Your text goes here!</h1>  
+        \\<p>Hello 
+        \\    <span>world</span>  big</p>
+    ;
+    var iter_1 = html_text(raw);
+    while (iter_1.next()) |value| {
+        print("\ntext: |{s}|\n", .{value});
+    }
+
+    
+}
+
+pub fn main() void {
+    const html_raw = \\&lt;p&gt;ZSF is launching a fundraiser today. As part of it, I put together some charts along with a 2023 financial report that I think you will find interesting:&lt;/p&gt;&lt;p&gt;&lt;a href="https://ziglang.org/news/2024-financials/#2024-financial-report-and-fundraiser" target="_blank" rel="nofollow noopener noreferrer" translate="no"&gt;&lt;span class="invisible"&gt;https://&lt;/span&gt;&lt;span class="ellipsis"&gt;ziglang.org/news/2024-financia&lt;/span&gt;&lt;span class="invisible"&gt;ls/#2024-financial-report-and-fundraiser&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;
+    ;
+    html_remove_tags(html_raw);
+}
+
