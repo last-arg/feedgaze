@@ -224,13 +224,14 @@ const Handler = struct {
             return error.FailedToWriteHtml;
         }
 
-        std.debug.print("feed: {any}\n", .{feed});
-
-        try feed_render(writer, feed.?);
-
         const items = try db.feed_items_with_feed_id(arena.allocator(), feed.?.feed_id);
-        try feed_items_ul_render(writer, items);
-        
+
+        if (req.getParamSlice("edit")) |_| {
+            try feed_edit_page(writer);
+        } else {
+            try feed_view_page(writer, feed.?, items);
+        }
+
         if (base_iter.next()) |html_end| {
             try writer.writeAll(html_end);
         } else {
@@ -243,6 +244,21 @@ const Handler = struct {
         try req.sendBody(arr.items);
 
         return true;
+    }
+
+    fn feed_view_page(writer: anytype, feed: types.FeedRender, items: []FeedItemRender) !void {
+        try feed_render(writer, feed);
+        const edit_html =
+        \\<a href="?id={d}&edit=">Edit feed</a>
+        ;
+        try writer.print(edit_html, .{feed.feed_id});
+
+        try feed_items_ul_render(writer, items);
+    }
+    
+
+    fn feed_edit_page(writer: anytype) !void {
+        try writer.writeAll("TODO: feed edit page");
     }
 
     fn feed_items_ul_render(writer: anytype, items: []FeedItemRender) !void {
