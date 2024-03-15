@@ -58,11 +58,22 @@ const TmpStr = struct {
         };
     }
 
+    // TODO: Add three dots (...) if all content doesn't fit in buffer
+    // Or do it after checking self.is_full?
+    // Or do it inside catch?
     fn appendSlice(self: *Self, items: []const u8) void {
         if (self.is_full) {
             return;
         }
-        const tmp_items = if (self.arr.len == 0) mem.trimLeft(u8, items, &std.ascii.whitespace) else items;
+        const trimmed = mem.trim(u8, items, &std.ascii.whitespace);
+        if (trimmed.len == 0) {
+            return;
+        }
+        if (self.arr.len != 0 and self.arr.len < self.arr.capacity()) {
+            self.append(' ');
+        }
+        const space_left = self.arr.capacity() - self.arr.len;
+        const tmp_items = trimmed[0..@min(trimmed.len, space_left)];
         self.arr.appendSlice(tmp_items) catch {
             self.is_full = true;
         };
@@ -123,6 +134,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
     var link_href: ?[]const u8 = null;
     var link_rel: []const u8 = "alternate";
     var attr_key: ?AtomLinkAttr = null;
+    var content_state = ContentState.text;
 
     var stream = std.io.fixedBufferStream(content);
     var input_buffered_reader = std.io.bufferedReader(stream.reader());
@@ -144,19 +156,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                 const elem_content = token_reader.fullToken(token).element_content.content;
                 switch (state) {
                     .feed => switch (tag) {
-                        .title => switch (elem_content) {
-                            .text => |text| tmp_str.appendSlice(text),
-                            .codepoint => |cp| {
-                                var buf: [4]u8 = undefined;
-                                const len = try std.unicode.utf8Encode(cp, &buf);
-                                tmp_str.appendSlice(buf[0..len]);
-                            },
-                            .entity => |ent| {
-                                tmp_str.append('&');
-                                tmp_str.appendSlice(ent);
-                                tmp_str.append(';');
-                            },
-                        },
+                        .title => try content_to_str(&tmp_str, &content_state, elem_content),
                         // <link /> is void element
                         .link => {},
                         // Can be site url. Don't need it because already
@@ -166,19 +166,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .published => {},
                     },
                     .entry => switch (tag) {
-                        .title => switch (elem_content) {
-                            .text => |text| tmp_str.appendSlice(text),
-                            .codepoint => |cp| {
-                                var buf: [4]u8 = undefined;
-                                const len = try std.unicode.utf8Encode(cp, &buf);
-                                tmp_str.appendSlice(buf[0..len]);
-                            },
-                            .entity => |ent| {
-                                tmp_str.append('&');
-                                tmp_str.appendSlice(ent);
-                                tmp_str.append(';');
-                            },
-                        },
+                        .title => try content_to_str(&tmp_str, &content_state, elem_content),
                         // <link /> is void element
                         .link => {},
                         .id => current_entry.id = try allocator.dupe(u8, elem_content.text),
@@ -211,6 +199,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
+                            content_state = .text;
                         },
                         .id, .updated, .link, .published => {},
                     },
@@ -219,6 +208,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             .title => {
                                 current_entry.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
+                                content_state = .text;
                             },
                             .id, .updated, .link, .published => {},
                         }
@@ -376,6 +366,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var state: RssParseState = .channel;
     var current_tag: ?RssParseTag = null;
     var current_item: FeedItem = .{.title = ""};
+    var content_state = ContentState.text;
 
     var stream = std.io.fixedBufferStream(content);
     var input_buffered_reader = std.io.bufferedReader(stream.reader());
@@ -398,19 +389,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
 
                 switch (state) {
                     .channel => switch (tag) {
-                        .title => switch (elem_content) {
-                            .text => |text| tmp_str.appendSlice(text),
-                            .codepoint => |cp| {
-                                var buf: [4]u8 = undefined;
-                                const len = try std.unicode.utf8Encode(cp, &buf);
-                                tmp_str.appendSlice(buf[0..len]);
-                            },
-                            .entity => |ent| {
-                                tmp_str.append('&');
-                                tmp_str.appendSlice(ent);
-                                tmp_str.append(';');
-                            },
-                        },
+                        .title => try content_to_str(&tmp_str, &content_state, elem_content),
                         .link => feed.page_url = try allocator.dupe(u8, elem_content.text),
                         .pubDate => feed.updated_timestamp = RssDateTime.parse(elem_content.text) catch 
                             AtomDateTime.parse(elem_content.text) catch null,
@@ -420,33 +399,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .guid, .description => {},
                     },
                     .item => switch (tag) {
-                        .title => switch (elem_content) {
-                            .text => |text| tmp_str.appendSlice(text),
-                            .codepoint => |cp| {
-                                var buf: [4]u8 = undefined;
-                                const len = try std.unicode.utf8Encode(cp, &buf);
-                                tmp_str.appendSlice(buf[0..len]);
-                            },
-                            .entity => |ent| {
-                                tmp_str.append('&');
-                                tmp_str.appendSlice(ent);
-                                tmp_str.append(';');
-                            },
-                        },
+                        .title => try content_to_str(&tmp_str, &content_state, elem_content),
                         .description => if (current_item.title.len == 0) {
-                            switch (elem_content) {
-                                .text => |text| tmp_str.appendSlice(text),
-                                .codepoint => |cp| {
-                                    var buf: [4]u8 = undefined;
-                                    const len = try std.unicode.utf8Encode(cp, &buf);
-                                    tmp_str.appendSlice(buf[0..len]);
-                                },
-                                .entity => |ent| {
-                                    tmp_str.append('&');
-                                    tmp_str.appendSlice(ent);
-                                    tmp_str.append(';');
-                                },
-                            }
+                            try content_to_str(&tmp_str, &content_state, elem_content);
                         },
                         .link, .guid => switch (elem_content) {
                             .text => |text| tmp_str.appendSlice(text),
@@ -489,6 +444,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .title => {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
+                            content_state = .text;
                         },
                         .link, .guid, .pubDate, .@"dc:date", .description => {},
                     },
@@ -497,11 +453,13 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             .title => {
                                 current_item.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
+                                content_state = .text;
                             },
                             .description => {
                                 if (current_item.title.len == 0) {
                                     current_item.title = try allocator.dupe(u8, tmp_str.slice());
                                     tmp_str.reset();
+                                    content_state = .text;
                                 }
                             },
                             .link => {
@@ -697,10 +655,10 @@ test "getContentType" {
     const atom_type = getContentType(atom);
     try std.testing.expectEqual(ContentType.atom, atom_type.?);
 
-    const html =
+    const html_raw =
         \\<!DOCTYPE html>
     ;
-    const html_type = getContentType(html);
+    const html_type = getContentType(html_raw);
     try std.testing.expectEqual(ContentType.html, html_type.?);
 }
 
@@ -735,17 +693,55 @@ fn printEvent(event: zig_xml.Event) !void {
     }
 }
 
+const ContentState = enum {text, skip, lt};
+
+const html = @import("./html.zig");
+fn content_to_str(tmp_str: *TmpStr, state: *ContentState, elem_content: zig_xml.Token.Content) !void {
+    if (tmp_str.is_full) {
+        return;
+    }
+    switch (elem_content) {
+        .text => |text| {
+            if (state.* == .lt and text.len > 0 and (std.ascii.isAlphabetic(text[0]) or text[0] == '/')) {
+                state.* = .skip;
+                return;
+            } else if (state.* == .skip) {
+                return;
+            }
+            var iter = html.html_text(text);
+            while (iter.next()) |value| {
+                tmp_str.appendSlice(value);
+            }
+        },
+        .codepoint => |cp| {
+            var buf: [4]u8 = undefined;
+            const len = try std.unicode.utf8Encode(cp, &buf);
+            tmp_str.appendSlice(buf[0..len]);
+        },
+        .entity => |ent| {
+            if (mem.eql(u8, ent, "lt")) {
+                state.* = .lt;
+            } else if (mem.eql(u8, ent, "gt")) {
+                state.* = .text;
+            } else {
+                tmp_str.append('&');
+                tmp_str.appendSlice(ent);
+                tmp_str.append(';');
+            }
+        },
+    }
+}
+
 test "tmp" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     const feed = try parseRss(alloc, @embedFile("tmp_file"));
-    print("START\n", .{});
-    print("feed date: {?d}\n", .{feed.feed.updated_timestamp});
+    print("START {d}\n", .{feed.items.len});
     for (feed.items) |item| {
         print("title: {s}\n", .{item.title});
-        print("date: {?d}\n", .{item.updated_timestamp});
+        // print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});
     }
 }
