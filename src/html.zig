@@ -214,6 +214,7 @@ pub fn HtmlTextIter() type {
             while (self.index < self.buffer.len) {
                 switch(self.state) {
                     .text => {
+                        const start_index = self.index;
                         var end_index = self.buffer.len;
 
                         if (mem.indexOfPosLinear(u8, self.buffer, self.index, "<")) |index| {
@@ -230,18 +231,15 @@ pub fn HtmlTextIter() type {
                             }
                         }
 
-                        const start_index = self.index;
-                        self.index = end_index + self.tag_type.len();
+                        self.index = end_index + (if (self.state == .tag) self.tag_type.len() else 0);
 
-                        if (self.index >= self.buffer.len) {
-                            return null;
-                        }
-
-                        const letter_after_lt = self.buffer[self.index];
-                        if (!std.ascii.isAlphabetic(letter_after_lt) and letter_after_lt != '/') {
-                            // treat '<' and '&lt;'  as text
-                            end_index = self.index;
-                            self.state = .text;
+                        if (self.state == .tag) {
+                            const letter_after_lt = self.buffer[self.index];
+                            if (!std.ascii.isAlphabetic(letter_after_lt) and letter_after_lt != '/') {
+                                // treat '<' and '&lt;'  as text
+                                end_index = self.index;
+                                self.state = .text;
+                            }
                         }
 
                         const result = self.buffer[start_index..end_index];
