@@ -17,9 +17,6 @@
   [ ] Add tags
 [ ] add transactions
 [ ] Can disable updating for feeds?
-[ ] Investigate 'add https://gitlab.com/dejawu/ectype'
-  - hits a constraint (item.feed_id, item.link) in 'item' table
-  - offending link 'https://gitlab.com/dejawu/ectype/-/commits/object-map'
 [ ] Reduce how often http request are made
   - increase update interval base on when last update was
     - more than 1 year = several days?
@@ -27,19 +24,6 @@
 [ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
 there is no <link>. FYI <link> is required by the spec.
 [ ] Decode/encode HTML characters
-[ ] Remove html tags when parsing title/description
-  Best options is probably to use simple/dumb solution.
-  [ ] Can be "&lt;", "&gt;" 
-  [ ] Can be "<", ">" if inside "<![CDATA[ ... ]]>" 
-    [ ] Can probably also be "&lt;", "&gt;" 
-  [ ] Some symbols are just part of the text. Are not tags
-  - Considerations
-    - tags must be alphanumeric https://html.spec.whatwg.org/multipage/syntax.html#syntax-tag-name
-      - I think tag must start with a alphabet letter
-      - but custom tags can contain "-"?
-    - open tag must follow with tag name "<code ... >"
-    - close tag must follow with "/" ("</code>")
-    - this will probably remove more than I want in rare cases
 [ ] Maybe I should add field 'items' to Feed struct?
   - I am using Feed in sqlite db request, which makes the request fail.
     Have separate type for db results?

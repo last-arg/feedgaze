@@ -532,6 +532,16 @@ fn sortItems(items: []FeedItem) void {
 }
 
 fn add_or_replace_item(entries: *std.ArrayList(FeedItem), current_item: FeedItem) void {
+    // Don't allow duplicate links. This is a contraint in sqlite DB also.
+    // Maybe change this in the future? For example in 'https://gitlab.com/dejawu/ectype.atom'
+    // there can be several same links. They are same links because two
+    // different actions (push, delete) were taken in connection with the link.
+    for (entries.items) |item| {
+        if (item.link != null and current_item.link != null and
+            mem.eql(u8, item.link.?, current_item.link.?)) {
+            return;
+        }
+    }
     if (entries.items.len == default_item_count) {
         if (current_item.updated_timestamp) |current_ts| {
             var iter = std.mem.reverseIterator(entries.items);
