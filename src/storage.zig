@@ -603,6 +603,11 @@ pub const Storage = struct {
         defer stmt.deinit();
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
     }
+
+    pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.FeedRender {
+        const query = "select * from feed where feed_id = ?";
+        return oneAlloc(&self.sql_db, allocator, types.FeedRender, query, .{id});
+    }
 };
 
 // TODO: feed.title default value should be null

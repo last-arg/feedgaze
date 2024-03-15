@@ -188,9 +188,83 @@ const Handler = struct {
         } else if (mem.eql(u8, path, "/tags")) {
             tags_page(req);
             return;
+        } else if (mem.eql(u8, path, "/feed")) {
+            if (feed_page(req) catch false) {
+                return;
+            }
         }
 
         not_found(req);
+    }
+
+    pub fn feed_page(req: zap.Request) !bool {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        req.parseQuery();
+        const id_raw = req.getParamSlice("id") orelse return false;
+        std.debug.print("feed_id: {s}\n", .{id_raw});
+        const feed_id = try std.fmt.parseUnsigned(usize, id_raw, 10);
+        const feed = try db.feed_with_id(arena.allocator(), feed_id);
+
+        if (feed == null) {
+            return false;
+        }
+
+        var arr = try std.ArrayList(u8).initCapacity(arena.allocator(), 64 * 1024);
+        defer arr.deinit();
+        var writer = arr.writer();
+
+        const content_needle = "[content]";
+        var base_iter = mem.splitSequence(u8, base_html, content_needle);
+
+        if (base_iter.next()) |html_start| {
+            try writer.writeAll(html_start);
+        } else {
+            return error.FailedToWriteHtml;
+        }
+
+        std.debug.print("feed: {any}\n", .{feed});
+
+        try feed_render(writer, feed.?);
+
+        if (base_iter.next()) |html_end| {
+            try writer.writeAll(html_end);
+        } else {
+            return error.FailedToWriteHtml;
+        }
+
+        std.debug.assert(base_iter.next() == null);
+
+        try req.setHeader("content-type", "text/html");
+        try req.sendBody(arr.items);
+
+        return true;
+    }
+
+    pub fn feed_render(writer: anytype, feed: types.FeedRender) !void {
+        if (feed.page_url) |url| {
+            const page_url_fmt = 
+            \\<a href="{[page_url]s}">{[title]s}</a>
+            ;
+            try writer.print(page_url_fmt, .{ 
+                .page_url = url, 
+                .title = if (feed.title.len > 0) feed.title else "[no-title]",  
+            });
+        } else {
+            const title_fmt = 
+            \\<p>{[title]s}</p>
+            ;
+            try writer.print(title_fmt, .{ 
+                .title = if (feed.title.len > 0) feed.title else "[no-title]",  
+            });
+        }
+
+
+        const feed_url_fmt = 
+        \\<a href="{[feed_url]s}">Feed link</a>
+        ;
+        try writer.print(feed_url_fmt, .{ .feed_url = feed.feed_url });
     }
 
     pub fn tags_page(req: zap.Request) void {
