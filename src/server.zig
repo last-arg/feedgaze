@@ -36,83 +36,79 @@ fn start_tokamak() !void {
 
 const handler = tk.chain(.{
     tk.logger(.{}),
-    tk.group("/", tk.router(routes)), // and this is our shorthand
+    tk.get("/", root_handler),
+    tk.get("/style.css", tk.sendStatic("./src/style.css")),
+    // tk.group("/", tk.router(routes)), // and this is our shorthand
     tk.send(error.NotFound),
 });
 
-const routes = struct {
-    const root_html = @embedFile("./views/root.html");
-    const base_layout = @embedFile("./layouts/base.html");
+const root_html = @embedFile("./views/root.html");
+const base_layout = @embedFile("./layouts/base.html");
 
-    pub fn @"GET /style.css"() []const u8 {
-        return @embedFile("./style.css");
+pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+    var search_value: ?[]const u8 = null;
+    if (req.url.query) |query| {
+        var iter = mem.splitSequence(u8, query, "&");
+        while (iter.next()) |kv| {
+            var kv_iter = mem.splitSequence(u8, kv, "=");
+            const key = kv_iter.next() orelse break;
+            if (mem.eql(u8, key, "search")) {
+                search_value = mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
+                std.debug.print("found: |{?s}|\n", .{search_value});
+            }
+        }
     }
+
+    // TODO: for some reason not working
+    if (search_value != null and search_value.?.len == 0) {
+        try resp.noContent();
+        try resp.setHeader("location", "/");
+        resp.status = .permanent_redirect;
+        return;
+    }
+
+    const db = try ctx.injector.get(*Storage);
+
+    try resp.setHeader("content-type", "text/html");
+    const w = try resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req.allocator, db, w, search_value orelse "");
+
+    const feeds = blk: {
+        if (search_value) |term| {
+            const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :blk try db.feeds_search(req.allocator, trimmed);
+            }
+        }
+        break :blk try db.feeds_all(req.allocator);
+    };
     
-    pub fn @"GET /"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
-        var search_value: ?[]const u8 = null;
-        if (req.url.query) |query| {
-            var iter = mem.splitSequence(u8, query, "&");
-            while (iter.next()) |kv| {
-                var kv_iter = mem.splitSequence(u8, kv, "=");
-                const key = kv_iter.next() orelse break;
-                if (mem.eql(u8, key, "search")) {
-                    search_value = mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
-                    std.debug.print("found: |{?s}|\n", .{search_value});
-                }
-            }
-        }
+    try w.writeAll("<ul>");
+    for (feeds) |feed| {
+        try w.writeAll("<li>");
+        try feed_render(w, feed);
 
-        // TODO: for some reason not working
-        if (search_value != null and search_value.?.len == 0) {
-            try resp.noContent();
-            try resp.setHeader("location", "/");
-            resp.status = .permanent_redirect;
-            return;
-        }
-
-        const db = try ctx.injector.get(*Storage);
-
-        try resp.setHeader("content-type", "text/html");
-        const w = try resp.writer(); 
-        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-        const head = base_iter.next() orelse unreachable;
-        const foot = base_iter.next() orelse unreachable;
-
-        try w.writeAll(head);
-
-        try body_head_render(req.allocator, db, w, search_value orelse "");
-
-        const feeds = blk: {
-            if (search_value) |term| {
-                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :blk try db.feeds_search(req.allocator, trimmed);
-                }
-            }
-            break :blk try db.feeds_all(req.allocator);
-        };
-        
+        const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
         try w.writeAll("<ul>");
-        for (feeds) |feed| {
+        for (items) |item| {
             try w.writeAll("<li>");
-            try feed_render(w, feed);
-
-            const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
-            try w.writeAll("<ul>");
-            for (items) |item| {
-                try w.writeAll("<li>");
-                try item_render(w, item);
-                try w.writeAll("</li>");
-            }
-            try w.writeAll("</ul>");
-
+            try item_render(w, item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
 
-        try w.writeAll(foot);
+        try w.writeAll("</li>");
     }
-};
+    try w.writeAll("</ul>");
+
+    try w.writeAll(foot);
+}
 
 fn feed_render(w: anytype, feed: types.FeedRender) !void {
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
