@@ -131,24 +131,37 @@ const routes = struct {
                 });
             }
 
-            const item_base_fmt =
+            const item_link_fmt =
             \\<a href="{[link]s}">{[title]s}</a>
             \\<time datetime="{[date]s}">{[date_display]s}</time>
             ;
-            
+
+            const item_title_fmt =
+            \\<p>{[title]s}</p>
+            \\<time datetime="{[date]s}">{[date_display]s}</time>
+            ;
+                        
             const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
             try w.writeAll("<ul>");
             for (items) |item| {
                 try w.writeAll("<li>");
                 const item_title = if (item.title.len > 0) item.title else title_placeholder;
                 const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-                try w.print(item_base_fmt, .{
-                    .title = item_title,
-                    // TODO: no link variant
-                    .link = item.link orelse "",
-                    .date = timestampToString(&date_buf, item.updated_timestamp),
-                    .date_display = item_date_display_val,
-                });
+                if (item.link) |link| {
+                    try w.print(item_link_fmt, .{
+                        .title = item_title,
+                        .link = link,
+                        .date = timestampToString(&date_buf, item.updated_timestamp),
+                        .date_display = item_date_display_val,
+                    });
+                } else {
+                    try w.print(item_title_fmt, .{
+                        .title = item_title,
+                        .date = timestampToString(&date_buf, item.updated_timestamp),
+                        .date_display = item_date_display_val,
+                    });
+                }
+
                 try w.writeAll("</li>");
             }
             try w.writeAll("</ul>");
