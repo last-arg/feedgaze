@@ -80,7 +80,7 @@ const routes = struct {
 
         try w.writeAll(head);
 
-        try write_body_head(req.allocator, db, w, search_value orelse "");
+        try body_head_render(req.allocator, db, w, search_value orelse "");
 
         const feeds = blk: {
             if (search_value) |term| {
@@ -92,76 +92,16 @@ const routes = struct {
             break :blk try db.feeds_all(req.allocator);
         };
         
-        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-        var date_display_buf: [16]u8 = undefined;
-        var date_buf: [date_len_max]u8 = undefined;
-
-        const feed_link_fmt = 
-        \\<a href="{[page_url]s}">{[title]s}</a>
-        \\<a href="{[feed_url]s}">Feed link</a>
-        \\<time datetime="{[date]s}">{[date_display]s}</time>
-        ;
-
-        const feed_title_fmt =
-        \\<p>{[title]s}</p>
-        \\<a href="{[feed_url]s}">Feed link</a>
-        \\<time datetime="{[date]s}">{[date_display]s}</time>
-        ;
-
         try w.writeAll("<ul>");
         for (feeds) |feed| {
             try w.writeAll("<li>");
+            try feed_render(w, feed);
 
-            const title = if (feed.title.len > 0) feed.title else title_placeholder;
-            const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-            if (feed.page_url) |page_url| {
-                try w.print(feed_link_fmt, .{
-                    .page_url = page_url,
-                    .title = title,
-                    .feed_url = feed.feed_url,
-                    .date = timestampToString(&date_buf, feed.updated_timestamp),
-                    .date_display = date_display_val,
-                });
-            } else {
-                try w.print(feed_title_fmt, .{
-                    .title = title,
-                    .feed_url = feed.feed_url,
-                    .date = timestampToString(&date_buf, feed.updated_timestamp),
-                    .date_display = date_display_val,
-                });
-            }
-
-            const item_link_fmt =
-            \\<a href="{[link]s}">{[title]s}</a>
-            \\<time datetime="{[date]s}">{[date_display]s}</time>
-            ;
-
-            const item_title_fmt =
-            \\<p>{[title]s}</p>
-            \\<time datetime="{[date]s}">{[date_display]s}</time>
-            ;
-                        
             const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
             try w.writeAll("<ul>");
             for (items) |item| {
                 try w.writeAll("<li>");
-                const item_title = if (item.title.len > 0) item.title else title_placeholder;
-                const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-                if (item.link) |link| {
-                    try w.print(item_link_fmt, .{
-                        .title = item_title,
-                        .link = link,
-                        .date = timestampToString(&date_buf, item.updated_timestamp),
-                        .date_display = item_date_display_val,
-                    });
-                } else {
-                    try w.print(item_title_fmt, .{
-                        .title = item_title,
-                        .date = timestampToString(&date_buf, item.updated_timestamp),
-                        .date_display = item_date_display_val,
-                    });
-                }
-
+                try item_render(w, item);
                 try w.writeAll("</li>");
             }
             try w.writeAll("</ul>");
@@ -174,7 +114,78 @@ const routes = struct {
     }
 };
 
-fn write_body_head(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8) !void {
+fn feed_render(w: anytype, feed: types.FeedRender) !void {
+    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    var date_display_buf: [16]u8 = undefined;
+    var date_buf: [date_len_max]u8 = undefined;
+
+    const feed_link_fmt = 
+    \\<a href="{[page_url]s}">{[title]s}</a>
+    \\<a href="{[feed_url]s}">Feed link</a>
+    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    ;
+
+    const feed_title_fmt =
+    \\<p>{[title]s}</p>
+    \\<a href="{[feed_url]s}">Feed link</a>
+    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    ;
+
+    const title = if (feed.title.len > 0) feed.title else title_placeholder;
+    const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
+    if (feed.page_url) |page_url| {
+        try w.print(feed_link_fmt, .{
+            .page_url = page_url,
+            .title = title,
+            .feed_url = feed.feed_url,
+            .date = timestampToString(&date_buf, feed.updated_timestamp),
+            .date_display = date_display_val,
+        });
+    } else {
+        try w.print(feed_title_fmt, .{
+            .title = title,
+            .feed_url = feed.feed_url,
+            .date = timestampToString(&date_buf, feed.updated_timestamp),
+            .date_display = date_display_val,
+        });
+    }
+}
+
+fn item_render(w: anytype, item: FeedItemRender) !void {
+    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    var date_display_buf: [16]u8 = undefined;
+    var date_buf: [date_len_max]u8 = undefined;
+
+    const item_link_fmt =
+    \\<a href="{[link]s}">{[title]s}</a>
+    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    ;
+
+    const item_title_fmt =
+    \\<p>{[title]s}</p>
+    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    ;
+                
+    const item_title = if (item.title.len > 0) item.title else title_placeholder;
+    const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
+
+    if (item.link) |link| {
+        try w.print(item_link_fmt, .{
+            .title = item_title,
+            .link = link,
+            .date = timestampToString(&date_buf, item.updated_timestamp),
+            .date_display = item_date_display_val,
+        });
+    } else {
+        try w.print(item_title_fmt, .{
+            .title = item_title,
+            .date = timestampToString(&date_buf, item.updated_timestamp),
+            .date_display = item_date_display_val,
+        });
+    }
+}
+
+fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8) !void {
     try w.writeAll("<header>");
     try w.writeAll(
       \\<a href="/">Home</a>
@@ -510,31 +521,6 @@ const Handler = struct {
             const date_display_str = try date_display(&date_display_buf, now_sec, ts);
             try writer.print(time_fmt, .{.date = date_str, .date_display = date_display_str});
         }
-    }
-
-    pub fn feed_render(writer: anytype, feed: types.FeedRender) !void {
-        if (feed.page_url) |url| {
-            const page_url_fmt = 
-            \\<a href="{[page_url]s}">{[title]s}</a>
-            ;
-            try writer.print(page_url_fmt, .{ 
-                .page_url = url, 
-                .title = if (feed.title.len > 0) feed.title else "[no-title]",  
-            });
-        } else {
-            const title_fmt = 
-            \\<p>{[title]s}</p>
-            ;
-            try writer.print(title_fmt, .{ 
-                .title = if (feed.title.len > 0) feed.title else "[no-title]",  
-            });
-        }
-
-
-        const feed_url_fmt = 
-        \\<a href="{[feed_url]s}">Feed link</a>
-        ;
-        try writer.print(feed_url_fmt, .{ .feed_url = feed.feed_url });
     }
 
     pub fn tags_page(req: zap.Request) void {
