@@ -8,36 +8,201 @@ const date_len_max = std.fmt.comptimePrint(date_fmt, .{
     .minute = 2,
     .second = 2,
 }).len;
+const title_placeholder = "[no-title]";
 
 // For fast compiling and testing
 pub fn main() !void {
     std.debug.print("RUN MAIN\n", .{});
     // try start();
-    try start_jetzig();
-    
-    // var general = std.heap.GeneralPurposeAllocator(.{}){};
-    // var arena = std.heap.ArenaAllocator.init(general.allocator());
-    // defer arena.deinit();
-    // const r = try page_root_render(&arena);
-    // std.debug.print("{s}\n", .{r});
+    try start_tokamak();
 }
 
-pub const jetzig = @import("jetzig");
-pub const routes = @import("routes").routes;
+const tk = @import("tokamak");
 
-pub const jetzig_options = struct {
-    pub const middleware: []const type = &.{@import("app/middleware/storage.zig")};
+fn start_tokamak() !void {
+    var general = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(general.allocator());
+    defer arena.deinit();
+
+    var db = try Storage.init("./tmp/feeds.db");
+
+    var server = try tk.Server.start(arena.allocator(), handler, .{ 
+        .injector = try tk.Injector.from(.{ &db }),
+        .port = 8080, .n_threads = 2,
+        .keep_alive = false,
+    });
+    server.wait();
+}
+
+const handler = tk.chain(.{
+    tk.logger(.{}),
+    tk.group("/", tk.router(routes)), // and this is our shorthand
+    tk.send(error.NotFound),
+});
+
+const routes = struct {
+    const root_html = @embedFile("./views/root.html");
+    const base_layout = @embedFile("./layouts/base.html");
+
+    pub fn @"GET /style.css"() []const u8 {
+        return @embedFile("./style.css");
+    }
+    
+    pub fn @"GET /"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+        var search_value: ?[]const u8 = null;
+        if (req.url.query) |query| {
+            var iter = mem.splitSequence(u8, query, "&");
+            while (iter.next()) |kv| {
+                var kv_iter = mem.splitSequence(u8, kv, "=");
+                const key = kv_iter.next() orelse break;
+                if (mem.eql(u8, key, "search")) {
+                    search_value = mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
+                    std.debug.print("found: |{?s}|\n", .{search_value});
+                }
+            }
+        }
+
+        // TODO: for some reason not working
+        if (search_value != null and search_value.?.len == 0) {
+            try resp.noContent();
+            try resp.setHeader("location", "/");
+            resp.status = .permanent_redirect;
+            return;
+        }
+
+        const db = try ctx.injector.get(*Storage);
+
+        try resp.setHeader("content-type", "text/html");
+        const w = try resp.writer(); 
+        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+        const head = base_iter.next() orelse unreachable;
+        const foot = base_iter.next() orelse unreachable;
+
+        try w.writeAll(head);
+
+        try write_body_head(req.allocator, db, w, search_value orelse "");
+
+        const feeds = blk: {
+            if (search_value) |term| {
+                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    break :blk try db.feeds_search(req.allocator, trimmed);
+                }
+            }
+            break :blk try db.feeds_all(req.allocator);
+        };
+        
+        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        var date_display_buf: [16]u8 = undefined;
+        var date_buf: [date_len_max]u8 = undefined;
+
+        const feed_link_fmt = 
+        \\<a href="{[page_url]s}">{[title]s}</a>
+        \\<a href="{[feed_url]s}">Feed link</a>
+        \\<time datetime="{[date]s}">{[date_display]s}</time>
+        ;
+
+        const feed_title_fmt =
+        \\<p>{[title]s}</p>
+        \\<a href="{[feed_url]s}">Feed link</a>
+        \\<time datetime="{[date]s}">{[date_display]s}</time>
+        ;
+
+        try w.writeAll("<ul>");
+        for (feeds) |feed| {
+            try w.writeAll("<li>");
+
+            const title = if (feed.title.len > 0) feed.title else title_placeholder;
+            const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
+            if (feed.page_url) |page_url| {
+                try w.print(feed_link_fmt, .{
+                    .page_url = page_url,
+                    .title = title,
+                    .feed_url = feed.feed_url,
+                    .date = timestampToString(&date_buf, feed.updated_timestamp),
+                    .date_display = date_display_val,
+                });
+            } else {
+                try w.print(feed_title_fmt, .{
+                    .title = title,
+                    .feed_url = feed.feed_url,
+                    .date = timestampToString(&date_buf, feed.updated_timestamp),
+                    .date_display = date_display_val,
+                });
+            }
+
+            const item_base_fmt =
+            \\<a href="{[link]s}">{[title]s}</a>
+            \\<time datetime="{[date]s}">{[date_display]s}</time>
+            ;
+            
+            const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
+            try w.writeAll("<ul>");
+            for (items) |item| {
+                try w.writeAll("<li>");
+                const item_title = if (item.title.len > 0) item.title else title_placeholder;
+                const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
+                try w.print(item_base_fmt, .{
+                    .title = item_title,
+                    // TODO: no link variant
+                    .link = item.link orelse "",
+                    .date = timestampToString(&date_buf, item.updated_timestamp),
+                    .date_display = item_date_display_val,
+                });
+                try w.writeAll("</li>");
+            }
+            try w.writeAll("</ul>");
+
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+
+        try w.writeAll(foot);
+    }
 };
 
-pub fn start_jetzig() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const allocator = gpa.allocator();
+fn write_body_head(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8) !void {
+    try w.writeAll("<header>");
+    try w.writeAll(
+      \\<a href="/">Home</a>
+      \\<a href="/tags">Tags</a>
+    );
 
-    const app = try jetzig.init(allocator);
-    defer app.deinit();
+    const tag_fmt = 
+    \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+    \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
+    ;
 
-    try app.start(comptime jetzig.route(routes));
+    const tag_link_fmt = 
+    \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
+    ;
+
+    const tags = try db.tags_all(allocator);
+    try w.writeAll("<form action='/tags'>");
+    for (tags, 0..) |tag, i| {
+        try w.writeAll("<span>");
+        try w.print(tag_fmt, .{
+            .tag = tag,
+            .tag_index = i,
+            .is_checked = "",
+        });
+        try w.print(tag_link_fmt, .{ .tag = tag });
+        try w.writeAll("</span>");
+    }
+    try w.writeAll("<button>Filter tags</button>");
+    try w.writeAll("</form>");
+
+    const search_fmt = 
+    \\<form method="GET">
+    \\  <label for="search_value">Search feeds</label>
+    \\  <input type="search" name="search" id="search_value" value="{[search]s}">
+    \\  <button type="submit">Search feeds</button>
+    \\</form>
+    ;
+
+    try w.print(search_fmt, .{ .search = search_value });
+
+    try w.writeAll("</header>");
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
@@ -87,7 +252,6 @@ fn feed_items_render_old(alloc: std.mem.Allocator, items: []FeedItemRender) ![]c
     }
 
     const link_placeholder = "#";
-    const title_placeholder = "[no-title]";
     var capacity = items.len * (item_no_fmt_len + 2 * date_len_max);
     for (items) |item| {
         capacity += if (item.title.len > 0) item.title.len else title_placeholder.len;
@@ -130,7 +294,6 @@ fn feeds_render(db: *Storage, alloc: std.mem.Allocator, feeds: []types.FeedRende
     };
 
     const link_placeholder = "#";
-    const title_placeholder = "[no-title]";
     var capacity = feeds.len * (no_fmt_len + date_len_max);
 
     for (feeds) |feed| {

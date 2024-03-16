@@ -4,7 +4,6 @@ const Build = std.Build;
 const CompileStep = Build.Step.Compile;
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
-const jetzig = @import("jetzig");
 
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -46,7 +45,6 @@ pub fn build(b: *Build) !void {
     const run_cmd = b.addRunArtifact(exe);
 
     commonModules(b, exe, .{.target = target, .optimize = optimize});
-    jetzig.jetzigInit(b, exe, .{}) catch unreachable;
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -131,6 +129,9 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const rem = b.dependency("rem", dep_args);
     step.root_module.addImport("rem", rem.module("rem"));
+
+    const tokamak = b.dependency("tokamak", .{});
+    step.root_module.addImport("tokamak", tokamak.module("tokamak"));
 
     const zap = b.dependency("zap", .{
         .target = dep_args.target,

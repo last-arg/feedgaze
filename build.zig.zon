@@ -36,10 +36,6 @@
             .url = "https://github.com/chadwain/rem/archive/refs/heads/master.tar.gz",
             .hash = "1220d4c8ba1f2496bd0d6b39b57d8194767dbdaa9115675fbb57414f304494c67414",
         },
-        .jetzig = .{
-            .url = "https://github.com/jetzig-framework/jetzig/archive/refs/heads/main.tar.gz",
-            .hash = "1220c4e6019e8fd26412cdfd14b3d34189e10940f3ca4bff20ca677b1b6a59e5c5f2",
-        },
         .tokamak = .{
             .url = "https://github.com/cztomsik/tokamak/archive/refs/heads/main.tar.gz",
             .hash = "1220846cf445e56242037908016e7ecebe792b269214894956d15dbb695732ff0490",
