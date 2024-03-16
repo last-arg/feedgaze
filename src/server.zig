@@ -54,16 +54,14 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
             const key = kv_iter.next() orelse break;
             if (mem.eql(u8, key, "search")) {
                 search_value = mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
-                std.debug.print("found: |{?s}|\n", .{search_value});
             }
         }
     }
 
-    // TODO: for some reason not working
     if (search_value != null and search_value.?.len == 0) {
-        try resp.noContent();
-        try resp.setHeader("location", "/");
         resp.status = .permanent_redirect;
+        try resp.setHeader("location", "/");
+        try resp.respond();
         return;
     }
 
