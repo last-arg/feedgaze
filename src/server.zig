@@ -47,7 +47,9 @@ const base_layout = @embedFile("./layouts/base.html");
 
 pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     var search_value: ?[]const u8 = null;
-    if (req.url.query) |query| {
+    if (req.url.query) |query_raw| {
+        const query = try std.Uri.unescapeString(req.allocator, query_raw);
+        mem.replaceScalar(u8, query, '+', ' ');
         var iter = mem.splitSequence(u8, query, "&");
         while (iter.next()) |kv| {
             var kv_iter = mem.splitSequence(u8, kv, "=");
@@ -530,7 +532,7 @@ const Handler = struct {
         }
 
         const tags_fmt = @embedFile("./tags.zig-fmt.html");
-        // get feeds' with tags
+        // get feeds with tags
         const feeds = db.feeds_with_tags(arena.allocator(), tags_arr.items) catch return;
         std.debug.print("len: {d}\n", .{feeds.len});
         const feeds_rendered = feeds_render(&db, arena.allocator(), feeds) catch return;
