@@ -12,13 +12,32 @@ const date_len_max = std.fmt.comptimePrint(date_fmt, .{
 // For fast compiling and testing
 pub fn main() !void {
     std.debug.print("RUN MAIN\n", .{});
-    try start();
+    // try start();
+    try start_jetzig();
     
     // var general = std.heap.GeneralPurposeAllocator(.{}){};
     // var arena = std.heap.ArenaAllocator.init(general.allocator());
     // defer arena.deinit();
     // const r = try page_root_render(&arena);
     // std.debug.print("{s}\n", .{r});
+}
+
+pub const jetzig = @import("jetzig");
+pub const routes = @import("routes").routes;
+
+pub const jetzig_options = struct {
+    pub const middleware: []const type = &.{@import("app/middleware/storage.zig")};
+};
+
+pub fn start_jetzig() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer std.debug.assert(gpa.deinit() == .ok);
+    const allocator = gpa.allocator();
+
+    const app = try jetzig.init(allocator);
+    defer app.deinit();
+
+    try app.start(comptime jetzig.route(routes));
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
@@ -227,7 +246,7 @@ const Handler = struct {
         const items = try db.feed_items_with_feed_id(arena.allocator(), feed.?.feed_id);
 
         if (req.getParamSlice("edit")) |_| {
-            try feed_edit_page(writer);
+            try feed_edit_page(writer, feed.?, items);
         } else {
             try feed_view_page(writer, feed.?, items);
         }
@@ -257,8 +276,24 @@ const Handler = struct {
     }
     
 
-    fn feed_edit_page(writer: anytype) !void {
-        try writer.writeAll("TODO: feed edit page");
+    // TODO: add delete button
+    fn feed_edit_page(writer: anytype, feed: types.FeedRender, items: []FeedItemRender) !void {
+        const form_fmt = 
+        \\<a href="/feed?id={[feed_id]d}">Cancel feed edit / Back to feed page</a>
+        \\<form method="POST">
+        \\  <input type="hidden" name="feed_id" value="{[feed_id]d}">
+        \\  <label for="feed-title">Feed title</label>
+        \\  <input type="text" id="feed-title" name="title" value="{[title]s}">
+        \\  <fieldset>
+        \\    <legend>Tags</legend>
+        \\  </fieldset>
+        \\  <button>Edit feed</button>
+        \\</form>
+        ;
+        const title = if (feed.title.len > 0) feed.title else "[no-title]";
+        try writer.print(form_fmt, .{.feed_id = feed.feed_id, .title = title});
+
+        try feed_items_ul_render(writer, items);
     }
 
     fn feed_items_ul_render(writer: anytype, items: []FeedItemRender) !void {

@@ -4,17 +4,10 @@ const Build = std.Build;
 const CompileStep = Build.Step.Compile;
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
+const jetzig = @import("jetzig");
 
 pub fn build(b: *Build) !void {
-    // Standard target options allows the person running `zig build` to choose
-    // what target to build for. Here we do not override the defaults, which
-    // means any target is allowed, and the default is native. Other options
-    // for restricting supported target set are available.
     const target = b.standardTargetOptions(.{});
-
-    // Standard optimization options allow the person running `zig build` to select
-    // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
-    // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
 
     const use_llvm = blk: {
@@ -53,6 +46,7 @@ pub fn build(b: *Build) !void {
     const run_cmd = b.addRunArtifact(exe);
 
     commonModules(b, exe, .{.target = target, .optimize = optimize});
+    jetzig.jetzigInit(b, exe, .{}) catch unreachable;
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
