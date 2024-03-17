@@ -132,13 +132,4 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const tokamak = b.dependency("tokamak", .{});
     step.root_module.addImport("tokamak", tokamak.module("tokamak"));
-
-    const zap = b.dependency("zap", .{
-        .target = dep_args.target,
-        .optimize = dep_args.optimize,
-        .openssl = false, // set to true to enable TLS support
-    });
-
-    step.root_module.addImport("zap", zap.module("zap"));
-    step.linkLibrary(zap.artifact("facil.io"));
 }
