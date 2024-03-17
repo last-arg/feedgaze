@@ -610,6 +610,37 @@ pub const Storage = struct {
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
     }
 
+    pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8) ![]types.FeedRender {
+        assert(search_value.len > 0);
+        assert(tags.len > 0);
+        const query_fmt = 
+        \\SELECT * FROM feed WHERE feed_id in (
+        \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
+        \\		SELECT tag_id FROM tag WHERE name IN ({s})
+        \\	)
+        \\) AND (
+        \\  feed.title LIKE '%' || ? || '%' OR
+        \\  feed.page_url LIKE '%' || ? || '%' OR
+        \\  feed.feed_url LIKE '%' || ? || '%' 
+        \\) ORDER BY updated_timestamp DESC;
+        ;
+
+        var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
+        query_arr.appendAssumeCapacity('?');
+        for (tags[1..]) |_| {
+            query_arr.appendSliceAssumeCapacity(",?");
+        }
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items});
+        print("query: |{s}|\n", .{query});
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+        var args = try std.ArrayList([]const u8).initCapacity(allocator, tags.len + 3);
+        defer args.deinit();
+        args.appendSliceAssumeCapacity(tags);
+        args.appendSliceAssumeCapacity(&.{search_value, search_value, search_value});
+        return try stmt.all(types.FeedRender, allocator, .{}, args.items);
+    }
+
     pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
         const query_fmt = 
         \\select * from feed where feed_id not in (

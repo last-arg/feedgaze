@@ -52,23 +52,7 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         break :blk null;
     };
 
-    // TODO: handle empty search_value for /tags
-    // if (search_value != null and search_value.?.len == 0) {
-    //     resp.status = .permanent_redirect;
-    //     try resp.setHeader("location", "/");
-    //     try resp.respond();
-    //     return;
-    // }
-
     const db = try ctx.injector.get(*Storage);
-    try resp.setHeader("content-type", "text/html");
-    const w = try resp.writer(); 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
-
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
 
@@ -85,11 +69,45 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         }
     }
 
+    if (tags_active.items.len == 0) {
+        if (search_value) |value| {
+            if (value.len == 0) {
+                resp.status = .permanent_redirect;
+                try resp.setHeader("location", "/tags");
+                try resp.respond();
+            } else {
+                resp.status = .permanent_redirect;
+                const url_begin = "/?search=";
+                const buf_url = try req.allocator.alloc(u8, value.len + url_begin.len);
+                mem.copyForwards(u8, buf_url[0..], url_begin);
+                mem.copyForwards(u8, buf_url[url_begin.len..], value);
+                try resp.setHeader("location", buf_url[0..]);
+                try resp.respond();
+            }
+            return;
+        }
+    }
+    
+    try resp.setHeader("content-type", "text/html");
+
+    const w = try resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
     try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
     if (tags_active.items.len > 0) {
-        const feeds = try db.feeds_with_tags(req.allocator, tags_active.items);
-        try feeds_and_items_print(w, req.allocator, db, feeds);
+        if (search_value != null and search_value.?.len > 0) {
+            const value = search_value.?;
+            const feeds = try db.feeds_search_with_tags(req.allocator, value, tags_active.items);
+            try feeds_and_items_print(w, req.allocator, db, feeds);
+        } else {
+            const feeds = try db.feeds_with_tags(req.allocator, tags_active.items);
+            try feeds_and_items_print(w, req.allocator, db, feeds);
+        }
     } else {
         const tags = try db.tags_all_with_ids(req.allocator);
         try w.writeAll("<h2>Tags</h2>");
@@ -106,7 +124,7 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     try w.writeAll(foot);
 }
 
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender,) !void {
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
     try w.writeAll("<ul>");
     for (feeds) |feed| {
         try w.writeAll("<li>");
