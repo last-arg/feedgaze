@@ -38,27 +38,47 @@ const handler = tk.chain(.{
     tk.logger(.{}),
     tk.get("/", root_handler),
     tk.get("/style.css", tk.sendStatic("./src/style.css")),
+    tk.get("/tags", tags_handler),
     // tk.group("/", tk.router(routes)), // and this is our shorthand
     tk.send(error.NotFound),
 });
 
+fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+    _ = ctx; // autofix
+    _ = req; // autofix
+    _ = resp; // autofix
+    
+}
+
 const root_html = @embedFile("./views/root.html");
 const base_layout = @embedFile("./layouts/base.html");
 
-pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
-    var search_value: ?[]const u8 = null;
-    if (req.url.query) |query_raw| {
-        const query = try std.Uri.unescapeString(req.allocator, query_raw);
-        mem.replaceScalar(u8, query, '+', ' ');
-        var iter = mem.splitSequence(u8, query, "&");
-        while (iter.next()) |kv| {
-            var kv_iter = mem.splitSequence(u8, kv, "=");
-            const key = kv_iter.next() orelse break;
-            if (mem.eql(u8, key, "search")) {
-                search_value = mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
-            }
+fn get_search_value(input: []const u8) !?[]const u8 {
+    var iter = mem.splitSequence(u8, input, "&");
+    while (iter.next()) |kv| {
+        var kv_iter = mem.splitSequence(u8, kv, "=");
+        const key = kv_iter.next() orelse break;
+        if (mem.eql(u8, key, "search")) {
+            return mem.trim(u8, kv_iter.next() orelse "", &std.ascii.whitespace);
         }
     }
+    return null;
+}
+
+fn decode_query(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
+    const query = try std.Uri.unescapeString(allocator, input);
+    mem.replaceScalar(u8, query, '+', ' ');
+    return query;
+}
+
+pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+    const search_value = blk: {
+        if (req.url.query) |query_raw| {
+            const query = try decode_query(req.allocator, query_raw);
+            break :blk try get_search_value(query);
+        }
+        break :blk null;
+    };
 
     if (search_value != null and search_value.?.len == 0) {
         resp.status = .permanent_redirect;
