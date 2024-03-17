@@ -70,10 +70,9 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try w.writeAll(head);
 
-    try body_head_render(req.allocator, db, w, search_value orelse "");
-
-    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 10);
+    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
+
     if (query_decoded) |query| {
         var iter = mem.splitScalar(u8, query, '&');
         while (iter.next()) |kv| {
@@ -86,6 +85,8 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
             }
         }
     }
+
+    try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
     if (tags_active.items.len > 0) {
         const feeds = try db.feeds_with_tags(req.allocator, tags_active.items);
@@ -175,7 +176,7 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
 
     try w.writeAll(head);
 
-    try body_head_render(req.allocator, db, w, search_value orelse "");
+    try body_head_render(req.allocator, db, w, search_value orelse "", &.{});
 
     const feeds = blk: {
         if (search_value) |term| {
@@ -271,7 +272,7 @@ fn tag_link_print(w: anytype, tag: []const u8) !void {
     try w.print(tag_link_fmt, .{ .tag = tag });
 }
 
-fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8) !void {
+fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8, tags_checked: [][]const u8,) !void {
     try w.writeAll("<header>");
     try w.writeAll("<h1>feedgaze</h1>");
     try w.writeAll(
@@ -288,10 +289,17 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("<form action='/tags'>");
     for (tags, 0..) |tag, i| {
         try w.writeAll("<span>");
+        var is_checked: []const u8 = "";
+        for (tags_checked) |tag_checked| {
+            if (mem.eql(u8, tag, tag_checked)) {
+                is_checked = "checked";
+                break;
+            }
+        }
         try w.print(tag_fmt, .{
             .tag = tag,
             .tag_index = i,
-            .is_checked = "",
+            .is_checked = is_checked,
         });
         try tag_link_print(w, tag);
         try w.writeAll("</span>");
