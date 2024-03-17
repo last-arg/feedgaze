@@ -52,6 +52,57 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         break :blk null;
     };
 
+    // redirects
+    if (search_value) |value| {
+        const query = query_decoded.?;
+        const has_tags = mem.containsAtLeast(u8, query, 1, "tag=");
+        if (!has_tags) {
+            const location = blk: {
+                if (value.len > 0) {
+                    const url_begin = "/?search=";
+                    const buf_url = try req.allocator.alloc(u8, value.len + url_begin.len);
+                    mem.copyForwards(u8, buf_url[0..], url_begin);
+                    mem.copyForwards(u8, buf_url[url_begin.len..], value);
+                    break :blk buf_url[0..];
+                }
+                break :blk "/tags";
+            };
+            resp.status = .permanent_redirect;
+            try resp.setHeader("location", location);
+            try resp.respond();
+            return;
+        } else if (value.len == 0) {
+            // remove empty 'search' from tags
+            const needle = "search=";
+            if (mem.indexOf(u8, query, needle)) |index| {
+                var have_extra_symbol = false;
+                const start = blk: {
+                    if (index == 0 or query[index - 1] != '&') {
+                        break :blk index;
+                    }
+                    have_extra_symbol = true;
+                    break :blk index - 1;
+                };
+                const end = blk: {
+                    const index_end = index + needle.len;
+                    if (!have_extra_symbol and index_end < query.len and query[index_end] == '&') {
+                        break :blk index + 1;
+                    }
+                    break :blk index_end;
+                };
+                const location_start = "/tags?";
+                const buf = try req.allocator.alloc(u8, start + query[end..].len + location_start.len);
+                mem.copyForwards(u8, buf, location_start);
+                mem.copyForwards(u8, buf[location_start.len..], query[0..start]);
+                mem.copyForwards(u8, buf[location_start.len + start..], query[end..]);
+                resp.status = .permanent_redirect;
+                try resp.setHeader("location", buf[0..]);
+                try resp.respond();
+                return;
+            }
+        }
+    }
+    
     const db = try ctx.injector.get(*Storage);
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
@@ -69,25 +120,6 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         }
     }
 
-    if (tags_active.items.len == 0) {
-        if (search_value) |value| {
-            if (value.len == 0) {
-                resp.status = .permanent_redirect;
-                try resp.setHeader("location", "/tags");
-                try resp.respond();
-            } else {
-                resp.status = .permanent_redirect;
-                const url_begin = "/?search=";
-                const buf_url = try req.allocator.alloc(u8, value.len + url_begin.len);
-                mem.copyForwards(u8, buf_url[0..], url_begin);
-                mem.copyForwards(u8, buf_url[url_begin.len..], value);
-                try resp.setHeader("location", buf_url[0..]);
-                try resp.respond();
-            }
-            return;
-        }
-    }
-    
     try resp.setHeader("content-type", "text/html");
 
     const w = try resp.writer(); 
