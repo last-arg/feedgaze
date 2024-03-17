@@ -306,15 +306,22 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("<button>Filter tags</button>");
     try w.writeAll("</form>");
 
-    const search_fmt = 
-    \\<form method="GET">
+    try w.writeAll(
+        \\<form method="GET" action="">
+    );
+
+    for (tags_checked) |tag| {
+        try w.print(
+        \\<input type="hidden" name="tag" value={s}>
+        , .{tag});
+    }
+
+    try w.print(
     \\  <label for="search_value">Search feeds</label>
-    \\  <input type="search" name="search" id="search_value" value="{[search]s}">
+    \\  <input type="search" name="search" id="search_value" value="{s}">
     \\  <button type="submit">Search feeds</button>
     \\</form>
-    ;
-
-    try w.print(search_fmt, .{ .search = search_value });
+    , .{ search_value });
 
     try w.writeAll("</header>");
 }
