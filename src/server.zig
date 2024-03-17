@@ -44,10 +44,89 @@ const handler = tk.chain(.{
 });
 
 fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
-    _ = ctx; // autofix
-    _ = req; // autofix
-    _ = resp; // autofix
-    
+    var query_decoded: ?[]const u8 = null;
+    const search_value = blk: {
+        if (req.url.query) |query_raw| {
+            query_decoded = try decode_query(req.allocator, query_raw);
+            break :blk try get_search_value(query_decoded.?);
+        }
+        break :blk null;
+    };
+
+    // TODO: handle empty search_value for /tags
+    // if (search_value != null and search_value.?.len == 0) {
+    //     resp.status = .permanent_redirect;
+    //     try resp.setHeader("location", "/");
+    //     try resp.respond();
+    //     return;
+    // }
+
+    const db = try ctx.injector.get(*Storage);
+    try resp.setHeader("content-type", "text/html");
+    const w = try resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req.allocator, db, w, search_value orelse "");
+
+    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 10);
+    defer tags_active.deinit();
+    if (query_decoded) |query| {
+        var iter = mem.splitScalar(u8, query, '&');
+        while (iter.next()) |kv| {
+            var kv_iter = mem.splitScalar(u8, kv, '=');
+            const key = kv_iter.next() orelse unreachable;
+            if (mem.eql(u8, key, "tag")) {
+                if (kv_iter.next()) |value| {
+                    try tags_active.append(value);
+                }
+            }
+        }
+    }
+
+    if (tags_active.items.len > 0) {
+        const feeds = try db.feeds_with_tags(req.allocator, tags_active.items);
+        try feeds_and_items_print(w, req.allocator, db, feeds);
+    } else {
+        const tags = try db.tags_all_with_ids(req.allocator);
+        try w.writeAll("<h2>Tags</h2>");
+        try w.writeAll("<ul>");
+        for (tags) |tag| {
+            try w.writeAll("<li>");
+            try w.print("{d} - ", .{tag.tag_id});
+            try tag_link_print(w, tag.name);
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+    }
+
+    try w.writeAll(foot);
+}
+
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender,) !void {
+    try w.writeAll("<ul>");
+    for (feeds) |feed| {
+        try w.writeAll("<li>");
+        try feed_render(w, feed);
+
+        const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
+        if (items.len == 0) {
+            continue;
+        }
+        try w.writeAll("<ul>");
+        for (items) |item| {
+            try w.writeAll("<li>");
+            try item_render(w, item);
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+
+        try w.writeAll("</li>");
+    }
+    try w.writeAll("</ul>");
 }
 
 const root_html = @embedFile("./views/root.html");
@@ -88,7 +167,6 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
     }
 
     const db = try ctx.injector.get(*Storage);
-
     try resp.setHeader("content-type", "text/html");
     const w = try resp.writer(); 
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
@@ -109,23 +187,7 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
         break :blk try db.feeds_all(req.allocator);
     };
     
-    try w.writeAll("<ul>");
-    for (feeds) |feed| {
-        try w.writeAll("<li>");
-        try feed_render(w, feed);
-
-        const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
-        try w.writeAll("<ul>");
-        for (items) |item| {
-            try w.writeAll("<li>");
-            try item_render(w, item);
-            try w.writeAll("</li>");
-        }
-        try w.writeAll("</ul>");
-
-        try w.writeAll("</li>");
-    }
-    try w.writeAll("</ul>");
+    try feeds_and_items_print(w, req.allocator, db, feeds);
 
     try w.writeAll(foot);
 }
@@ -201,8 +263,17 @@ fn item_render(w: anytype, item: FeedItemRender) !void {
     }
 }
 
+fn tag_link_print(w: anytype, tag: []const u8) !void {
+    const tag_link_fmt = 
+    \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
+    ;
+    
+    try w.print(tag_link_fmt, .{ .tag = tag });
+}
+
 fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8) !void {
     try w.writeAll("<header>");
+    try w.writeAll("<h1>feedgaze</h1>");
     try w.writeAll(
       \\<a href="/">Home</a>
       \\<a href="/tags">Tags</a>
@@ -211,10 +282,6 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     const tag_fmt = 
     \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
     \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
-    ;
-
-    const tag_link_fmt = 
-    \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
     ;
 
     const tags = try db.tags_all(allocator);
@@ -226,7 +293,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
             .tag_index = i,
             .is_checked = "",
         });
-        try w.print(tag_link_fmt, .{ .tag = tag });
+        try tag_link_print(w, tag);
         try w.writeAll("</span>");
     }
     try w.writeAll("<button>Filter tags</button>");

@@ -542,6 +542,12 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
     }
 
+    const TagResult = struct{tag_id: usize, name: []const u8};
+    pub fn tags_all_with_ids(self: *Self, alloc: Allocator) ![]TagResult {
+        const query = "select * from tag order by name ASC;";
+        return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
+    }
+    
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
         const query = "INSERT INTO tag (name) VALUES(?) ON CONFLICT DO NOTHING;";
         for (tags) |tag| {
@@ -602,6 +608,15 @@ pub const Storage = struct {
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
+    }
+
+    pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
+        const query_fmt = 
+        \\select * from feed where feed_id not in (
+        \\	select distinct(feed_id) from feed_tag
+        \\) order by updated_timestamp DESC;
+        ;
+        return try selectAll(&self.sql_db, allocator, types.FeedRender, query_fmt, .{});
     }
 
     pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.FeedRender {
