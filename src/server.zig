@@ -59,11 +59,8 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         if (!has_tags) {
             const location = blk: {
                 if (value.len > 0) {
-                    const url_begin = "/?search=";
-                    const buf_url = try req.allocator.alloc(u8, value.len + url_begin.len);
-                    mem.copyForwards(u8, buf_url[0..], url_begin);
-                    mem.copyForwards(u8, buf_url[url_begin.len..], value);
-                    break :blk buf_url[0..];
+                    const loc_fmt = "/?search={s}";
+                    break :blk try std.fmt.allocPrint(req.allocator, loc_fmt, .{value});
                 }
                 break :blk "/tags";
             };
@@ -90,13 +87,10 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
                     }
                     break :blk index_end;
                 };
-                const location_start = "/tags?";
-                const buf = try req.allocator.alloc(u8, start + query[end..].len + location_start.len);
-                mem.copyForwards(u8, buf, location_start);
-                mem.copyForwards(u8, buf[location_start.len..], query[0..start]);
-                mem.copyForwards(u8, buf[location_start.len + start..], query[end..]);
+                const loc_fmt = "/tags?{s}{s}";
+                const location = try std.fmt.allocPrint(req.allocator, loc_fmt, .{query[0..start], query[end..]});
                 resp.status = .permanent_redirect;
-                try resp.setHeader("location", buf[0..]);
+                try resp.setHeader("location", location);
                 try resp.respond();
                 return;
             }
