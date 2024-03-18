@@ -38,9 +38,37 @@ const handler = tk.chain(.{
     tk.get("/", root_handler),
     tk.get("/style.css", tk.sendStatic("./src/style.css")),
     tk.get("/feeds", feeds_handler),
+    tk.get("/tags", tags_handler),
     // tk.group("/", tk.router(routes)), // and this is our shorthand
     tk.send(error.NotFound),
 });
+
+fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+    const db = try ctx.injector.get(*Storage);
+    try resp.setHeader("content-type", "text/html");
+
+    const w = try resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req.allocator, db, w, "", &.{});
+
+    const tags = try db.tags_all_with_ids(req.allocator);
+    try w.writeAll("<h2>Tags</h2>");
+    try w.writeAll("<ul>");
+    for (tags) |tag| {
+        try w.writeAll("<li>");
+        try w.print("{d} - ", .{tag.tag_id});
+        try tag_link_print(w, tag.name);
+        try w.writeAll("</li>");
+    }
+    try w.writeAll("</ul>");
+
+    try w.writeAll(foot);
+}
 
 fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     var query_decoded: ?[]const u8 = null;
@@ -302,6 +330,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll(
       \\<a href="/">Home</a>
       \\<a href="/feeds">Feeds</a>
+      \\<a href="/tags">Tags</a>
     );
 
     const tag_fmt = 
