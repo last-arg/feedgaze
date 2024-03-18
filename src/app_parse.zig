@@ -65,18 +65,25 @@ const TmpStr = struct {
         if (self.is_full) {
             return;
         }
-        const trimmed = mem.trim(u8, items, &std.ascii.whitespace);
+        const trim_left = mem.trimLeft(u8, items, &std.ascii.whitespace);
+        if (self.arr.len > 0 and self.arr.buffer[self.arr.len - 1] != ' ' and trim_left.len < items.len) {
+            self.append(' ');
+        }
+
+        const trimmed = mem.trimRight(u8, trim_left, &std.ascii.whitespace);
         if (trimmed.len == 0) {
             return;
         }
-        if (self.arr.len != 0 and self.arr.len < self.arr.capacity()) {
-            self.append(' ');
-        }
+
         const space_left = self.arr.capacity() - self.arr.len;
         const tmp_items = trimmed[0..@min(trimmed.len, space_left)];
         self.arr.appendSlice(tmp_items) catch {
             self.is_full = true;
         };
+
+        if (trimmed.len < trim_left.len) {
+            self.append(' ');
+        }
     }
     
     fn reset(self: *Self) void {
@@ -710,6 +717,7 @@ fn content_to_str(tmp_str: *TmpStr, state: *ContentState, elem_content: zig_xml.
     if (tmp_str.is_full) {
         return;
     }
+
     switch (elem_content) {
         .text => |text| {
             if (state.* == .lt and text.len > 0 and (std.ascii.isAlphabetic(text[0]) or text[0] == '/')) {
@@ -748,9 +756,9 @@ test "tmp" {
     const alloc = arena.allocator();
 
     const feed = try parseRss(alloc, @embedFile("tmp_file"));
-    print("START {d}\n", .{feed.items.len});
+    print("\nSTART {d}\n", .{feed.items.len});
     for (feed.items) |item| {
-        print("title: {s}\n", .{item.title});
+        print("title: |{s}|\n", .{item.title});
         // print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});
     }
