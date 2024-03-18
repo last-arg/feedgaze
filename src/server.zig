@@ -71,44 +71,12 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 }
 
 fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
-    var query_decoded: ?[]const u8 = null;
-    const search_value = blk: {
-        if (req.url.query) |query_raw| {
-            query_decoded = try decode_query(req.allocator, query_raw);
-            break :blk try get_search_value(query_decoded.?);
-        }
-        break :blk null;
-    };
-
-    // st= and search=<anything> have to redirect (remove search=)
-    if (req.url.query) |query| {
-        if (mem.containsAtLeast(u8, query, 1, "st=")) {
-            const needle = "search=";
-            if (mem.indexOf(u8, query, needle)) |index| {
-                var start = index;
-                var end = query.len;
-
-                if (mem.indexOfPosLinear(u8, query, index+needle.len, "&")) |index_end| {
-                    end = index_end + 1;
-                } else {
-                    if (start > 0 and query[index - 1] == '&') {
-                        start -= 1;
-                    }
-                }
-
-                const loc_fmt = "/feeds?{s}{s}";
-                const location = try std.fmt.allocPrint(req.allocator, loc_fmt, .{query[0..start], query[end..]});
-                resp.status = .permanent_redirect;
-                try resp.setHeader("location", location);
-                try resp.respond();
-                return;
-            }
-        }
-    }
-
     const db = try ctx.injector.get(*Storage);
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
+
+    const query_decoded: ?[]const u8 = if (req.url.query) |q| try decode_query(req.allocator, q) else null;
+    var is_tags_only = false;
 
     if (query_decoded) |query| {
         var iter = mem.splitScalar(u8, query, '&');
@@ -117,8 +85,13 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
             const key = kv_iter.next() orelse unreachable;
             if (mem.eql(u8, key, "tag")) {
                 if (kv_iter.next()) |value| {
-                    try tags_active.append(value);
+                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        try tags_active.append(trimmed);
+                    }
                 }
+            } else if (mem.eql(u8, key, "tags-only")) {
+                is_tags_only = true;
             }
         }
     }
@@ -132,10 +105,12 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try w.writeAll(head);
 
+    const search_value = if (query_decoded) |q| try get_search_value(q) else null;
+
     try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
     if (tags_active.items.len > 0) {
-        if (search_value != null and search_value.?.len > 0) {
+        if (!is_tags_only and search_value != null and search_value.?.len > 0) {
             const value = search_value.?;
             const feeds = try db.feeds_search_with_tags(req.allocator, value, tags_active.items);
             try feeds_and_items_print(w, req.allocator, db, feeds);
@@ -145,10 +120,12 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         }
     } else {
         const feeds = blk: {
-            if (search_value) |term| {
-                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :blk try db.feeds_search(req.allocator, trimmed);
+            if (!is_tags_only) {
+                if (search_value) |term| {
+                    const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        break :blk try db.feeds_search(req.allocator, trimmed);
+                    }
                 }
             }
             break :blk try db.feeds_all(req.allocator);
@@ -363,7 +340,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
         try tag_link_print(w, tag);
         try w.writeAll("</span>");
     }
-    try w.writeAll("<button name='st'>Filter tags only</button>");
+    try w.writeAll("<button name='tags-only'>Filter tags only</button>");
 
     try w.print(
     \\  <label for="search_value">Search feeds</label>
