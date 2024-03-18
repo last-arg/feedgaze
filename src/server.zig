@@ -143,6 +143,15 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("<li>");
         try feed_render(w, feed);
 
+        const tags = try db.feed_tags(allocator, feed.feed_id);
+        if (tags.len > 0) {
+            try w.writeAll("<div>");
+            for (tags) |tag| {
+                try tag_link_print(w, tag);
+            }
+            try w.writeAll("</div>");
+        }
+        
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
         if (items.len == 0) {
             continue;

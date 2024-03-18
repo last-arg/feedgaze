@@ -547,7 +547,16 @@ pub const Storage = struct {
         const query = "select * from tag order by name ASC;";
         return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
     }
-    
+
+    pub fn feed_tags(self: *Self, alloc: Allocator, feed_id: usize) ![][]const u8 {
+        const query = 
+        \\select name from tag where tag_id in (
+        \\  select distinct(tag_id) from feed_tag where feed_id = ?
+        \\)
+        ;
+        return try selectAll(&self.sql_db, alloc, []const u8, query, .{feed_id});
+    }
+        
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
         const query = "INSERT INTO tag (name) VALUES(?) ON CONFLICT DO NOTHING;";
         for (tags) |tag| {
