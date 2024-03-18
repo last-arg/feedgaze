@@ -144,16 +144,17 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
             try feeds_and_items_print(w, req.allocator, db, feeds);
         }
     } else {
-        const tags = try db.tags_all_with_ids(req.allocator);
-        try w.writeAll("<h2>Tags</h2>");
-        try w.writeAll("<ul>");
-        for (tags) |tag| {
-            try w.writeAll("<li>");
-            try w.print("{d} - ", .{tag.tag_id});
-            try tag_link_print(w, tag.name);
-            try w.writeAll("</li>");
-        }
-        try w.writeAll("</ul>");
+        const feeds = blk: {
+            if (search_value) |term| {
+                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    break :blk try db.feeds_search(req.allocator, trimmed);
+                }
+            }
+            break :blk try db.feeds_all(req.allocator);
+        };
+    
+        try feeds_and_items_print(w, req.allocator, db, feeds);
     }
 
     try w.writeAll(foot);
@@ -340,6 +341,11 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
 
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/feeds'>");
+    // This makes is the default action of form. For example used when pressing
+    // enter inside input text field.
+    try w.writeAll(
+    \\  <button style="display: none">Default form action</button>
+    );
     for (tags, 0..) |tag, i| {
         try w.writeAll("<span>");
         var is_checked: []const u8 = "";
