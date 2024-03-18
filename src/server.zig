@@ -37,12 +37,12 @@ const handler = tk.chain(.{
     tk.logger(.{}),
     tk.get("/", root_handler),
     tk.get("/style.css", tk.sendStatic("./src/style.css")),
-    tk.get("/tags", tags_handler),
+    tk.get("/feeds", feeds_handler),
     // tk.group("/", tk.router(routes)), // and this is our shorthand
     tk.send(error.NotFound),
 });
 
-fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     var query_decoded: ?[]const u8 = null;
     const search_value = blk: {
         if (req.url.query) |query_raw| {
@@ -52,42 +52,23 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
         break :blk null;
     };
 
-    // redirects
-    if (search_value) |value| {
-        const query = query_decoded.?;
-        const has_tags = mem.containsAtLeast(u8, query, 1, "tag=");
-        if (!has_tags) {
-            const location = blk: {
-                if (value.len > 0) {
-                    const loc_fmt = "/?search={s}";
-                    break :blk try std.fmt.allocPrint(req.allocator, loc_fmt, .{value});
-                }
-                break :blk "/tags";
-            };
-            resp.status = .permanent_redirect;
-            try resp.setHeader("location", location);
-            try resp.respond();
-            return;
-        } else if (value.len == 0) {
-            // remove empty 'search' from tags
+    // st= and search=<anything> have to redirect (remove search=)
+    if (req.url.query) |query| {
+        if (mem.containsAtLeast(u8, query, 1, "st=")) {
             const needle = "search=";
             if (mem.indexOf(u8, query, needle)) |index| {
-                var have_extra_symbol = false;
-                const start = blk: {
-                    if (index == 0 or query[index - 1] != '&') {
-                        break :blk index;
+                var start = index;
+                var end = query.len;
+
+                if (mem.indexOfPosLinear(u8, query, index+needle.len, "&")) |index_end| {
+                    end = index_end + 1;
+                } else {
+                    if (start > 0 and query[index - 1] == '&') {
+                        start -= 1;
                     }
-                    have_extra_symbol = true;
-                    break :blk index - 1;
-                };
-                const end = blk: {
-                    const index_end = index + needle.len;
-                    if (!have_extra_symbol and index_end < query.len and query[index_end] == '&') {
-                        break :blk index + 1;
-                    }
-                    break :blk index_end;
-                };
-                const loc_fmt = "/tags?{s}{s}";
+                }
+
+                const loc_fmt = "/feeds?{s}{s}";
                 const location = try std.fmt.allocPrint(req.allocator, loc_fmt, .{query[0..start], query[end..]});
                 resp.status = .permanent_redirect;
                 try resp.setHeader("location", location);
@@ -96,7 +77,7 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
             }
         }
     }
-    
+
     const db = try ctx.injector.get(*Storage);
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
@@ -309,7 +290,7 @@ fn item_render(w: anytype, item: FeedItemRender) !void {
 
 fn tag_link_print(w: anytype, tag: []const u8) !void {
     const tag_link_fmt = 
-    \\<a href="/tags?tag={[tag]s}">{[tag]s}</a>
+    \\<a href="/feeds?tag={[tag]s}">{[tag]s}</a>
     ;
     
     try w.print(tag_link_fmt, .{ .tag = tag });
@@ -320,7 +301,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("<h1>feedgaze</h1>");
     try w.writeAll(
       \\<a href="/">Home</a>
-      \\<a href="/tags">Tags</a>
+      \\<a href="/feeds">Feeds</a>
     );
 
     const tag_fmt = 
@@ -329,7 +310,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     ;
 
     const tags = try db.tags_all(allocator);
-    try w.writeAll("<form action='/tags'>");
+    try w.writeAll("<form action='/feeds'>");
     for (tags, 0..) |tag, i| {
         try w.writeAll("<span>");
         var is_checked: []const u8 = "";
@@ -347,26 +328,15 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
         try tag_link_print(w, tag);
         try w.writeAll("</span>");
     }
-    try w.writeAll("<button>Filter tags</button>");
-    try w.writeAll("</form>");
-
-    try w.writeAll(
-        \\<form method="GET" action="">
-    );
-
-    for (tags_checked) |tag| {
-        try w.print(
-        \\<input type="hidden" name="tag" value={s}>
-        , .{tag});
-    }
+    try w.writeAll("<button name='st'>Filter tags only</button>");
 
     try w.print(
     \\  <label for="search_value">Search feeds</label>
     \\  <input type="search" name="search" id="search_value" value="{s}">
-    \\  <button type="submit">Search feeds</button>
-    \\</form>
+    \\  <button>Filter</button>
     , .{ search_value });
 
+    try w.writeAll("</form>");
     try w.writeAll("</header>");
 }
 
