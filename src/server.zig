@@ -77,6 +77,7 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     const query_decoded: ?[]const u8 = if (req.url.query) |q| try decode_query(req.allocator, q) else null;
     var is_tags_only = false;
+    var after_raw: ?[]const u8 = null;
 
     if (query_decoded) |query| {
         var iter = mem.splitScalar(u8, query, '&');
@@ -92,6 +93,13 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
                 }
             } else if (mem.eql(u8, key, "tags-only")) {
                 is_tags_only = true;
+            } else if (mem.eql(u8, key, "after")) {
+                if (kv_iter.next()) |value| {
+                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        after_raw = trimmed;
+                    }
+                }
             }
         }
     }
@@ -109,29 +117,50 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
-    if (tags_active.items.len > 0) {
-        if (!is_tags_only and search_value != null and search_value.?.len > 0) {
-            const value = search_value.?;
-            const feeds = try db.feeds_search_with_tags(req.allocator, value, tags_active.items);
-            try feeds_and_items_print(w, req.allocator, db, feeds);
-        } else {
-            const feeds = try db.feeds_with_tags(req.allocator, tags_active.items);
-            try feeds_and_items_print(w, req.allocator, db, feeds);
+    const after = after: {
+        if (after_raw) |value| {
+            break :after std.fmt.parseInt(usize, value, 10) catch null;
         }
-    } else {
-        const feeds = blk: {
-            if (!is_tags_only) {
-                if (search_value) |term| {
-                    const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
-                    if (trimmed.len > 0) {
-                        break :blk try db.feeds_search(req.allocator, trimmed);
-                    }
+        break :after null;
+    };
+
+    const feeds = blk: {
+        if (tags_active.items.len > 0) {
+            if (!is_tags_only and search_value != null and search_value.?.len > 0) {
+                const value = search_value.?;
+                break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items);
+            } else {
+                break :blk try db.feeds_with_tags(req.allocator, tags_active.items);
+            }
+        }
+
+        if (!is_tags_only) {
+            if (search_value) |term| {
+                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    break :blk try db.feeds_search(req.allocator, trimmed, after);
                 }
             }
-            break :blk try db.feeds_all(req.allocator);
+        }
+
+        break :blk try db.feeds_page(req.allocator, after);
+    };
+
+    try feeds_and_items_print(w, req.allocator, db, feeds);
+    if (feeds.len > 0) {
+        const last = feeds[feeds.len - 1];
+        const id = last.feed_id;
+        const href = blk: {
+            if (req.url.query) |query| {
+                if (query.len > 0) {
+                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{query, id});
+                }
+            }
+            break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id});
         };
-    
-        try feeds_and_items_print(w, req.allocator, db, feeds);
+        try w.print(
+            \\<a href="{s}">Next</a>
+        , .{href});
     }
 
     try w.writeAll(foot);
@@ -190,6 +219,9 @@ fn decode_query(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
     return query;
 }
 
+// TODO: remove most of this
+// - make /feeds -> /
+// - redirect / -> /feeds
 pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     const search_value = blk: {
         if (req.url.query) |query_raw| {
@@ -221,7 +253,7 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
         if (search_value) |term| {
             const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
             if (trimmed.len > 0) {
-                break :blk try db.feeds_search(req.allocator, trimmed);
+                break :blk try db.feeds_search(req.allocator, trimmed, null);
             }
         }
         break :blk try db.feeds_all(req.allocator);

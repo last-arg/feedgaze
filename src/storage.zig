@@ -525,16 +525,42 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
     }
 
-    pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8) ![]types.FeedRender {
-        const query_feed =
+    pub fn feeds_page(self: *Self, alloc: Allocator, after: ?After) ![]types.FeedRender {
+        if (after) |feed_id| {
+            const query =
+                \\select * from feed 
+                \\where (updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND feed_id < ?)
+                \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = ?) 
+                \\order by updated_timestamp DESC, feed_id DESC limit 2;
+            ;
+            const args = .{feed_id, feed_id, feed_id};
+            return try selectAll(&self.sql_db, alloc, types.FeedRender, query, args);
+        } else {
+            const query =
+                \\select * from feed order by updated_timestamp DESC, feed_id DESC limit 2;
+            ;
+            return try selectAll(&self.sql_db, alloc, types.FeedRender, query, .{});
+        }
+    }
+
+    pub const After = usize;
+    pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8, after: ?After) ![]types.FeedRender {
+        const query_base =
             \\select * from feed 
-            \\where (
+            \\where {s} (
             \\  feed.title LIKE '%' || ? || '%' OR
             \\  feed.page_url LIKE '%' || ? || '%' OR
             \\  feed.feed_url LIKE '%' || ? || '%' 
-            \\);
+            \\) LIMIT 2;
         ;
-        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{search_term, search_term, search_term});
+        const query_search = comptimePrint(query_base, .{""});
+        const partial = "updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND";
+        const query_after = comptimePrint(query_base, .{partial});
+        if (after) |feed_id| {
+            return try selectAll(&self.sql_db, alloc, types.FeedRender, query_after, .{feed_id, search_term, search_term, search_term});
+        } else {
+            return try selectAll(&self.sql_db, alloc, types.FeedRender, query_search, .{search_term, search_term, search_term});
+        }
     }
     
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
