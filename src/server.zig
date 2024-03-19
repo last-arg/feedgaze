@@ -182,15 +182,18 @@ const Query = struct {
     }
 
     pub fn parse(self: *Query, query: []const u8) !void {
-        var iter = mem.splitScalar(u8, query, '&');
+        const count_max = mem.count(u8, query, "&") + 1;
+        try self.keys.ensureTotalCapacityPrecise(count_max);
+        try self.values.ensureTotalCapacityPrecise(count_max);
 
+        var iter = mem.splitScalar(u8, query, '&');
         while (iter.next()) |kv| {
             var kv_iter = mem.splitScalar(u8, kv, '=');
             const key = kv_iter.next() orelse return error.InvalidQueryParamKey;
             const value = kv_iter.next() orelse return error.InvalidQueryParamValue;
             std.debug.assert(kv_iter.next() == null);
-            try self.keys.append(key);
-            try self.values.append(value);
+            self.keys.appendAssumeCapacity(key);
+            self.values.appendAssumeCapacity(value);
         }
         std.debug.assert(self.keys.items.len == self.values.items.len);
     }
