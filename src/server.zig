@@ -103,22 +103,22 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
-    const after = after: {
-        if (query_map.get_value("after")) |value| {
-            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-            if (trimmed.len > 0) {
-                break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
-            }
-        }
-        break :after null;
-    };
-
     const feeds = blk: {
+        const after = after: {
+            if (query_map.get_value("after")) |value| {
+                const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+                }
+            }
+            break :after null;
+        };
+
         const is_tags_only = query_map.has("tags-only");
         if (tags_active.items.len > 0) {
             if (!is_tags_only and search_value != null and search_value.?.len > 0) {
                 const value = search_value.?;
-                break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items);
+                break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items, after);
             } else {
                 break :blk try db.feeds_with_tags(req.allocator, tags_active.items);
             }

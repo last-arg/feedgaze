@@ -645,19 +645,33 @@ pub const Storage = struct {
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
     }
 
-    pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8) ![]types.FeedRender {
+    pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8, after: ?After) ![]types.FeedRender {
         assert(search_value.len > 0);
         assert(tags.len > 0);
+
+        const after_cond = blk: {
+            if (after) |feed_id| {
+                const cond_raw =
+                \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
+                \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
+                ;
+                break :blk try std.fmt.allocPrint(allocator, cond_raw, .{.id = feed_id});
+            }
+            break :blk null;
+        };
+        defer if (after_cond) |slice| allocator.free(slice);
+
         const query_fmt = 
-        \\SELECT * FROM feed WHERE feed_id in (
-        \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
-        \\		SELECT tag_id FROM tag WHERE name IN ({s})
-        \\	)
-        \\) AND (
-        \\  feed.title LIKE '%' || ? || '%' OR
-        \\  feed.page_url LIKE '%' || ? || '%' OR
-        \\  feed.feed_url LIKE '%' || ? || '%' 
-        \\) ORDER BY updated_timestamp DESC;
+            \\SELECT * FROM feed WHERE feed_id in (
+            \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
+            \\		SELECT tag_id FROM tag WHERE name IN ({s})
+            \\	)
+            \\) {s} AND (
+            \\  feed.title LIKE '%' || ? || '%' OR
+            \\  feed.page_url LIKE '%' || ? || '%' OR
+            \\  feed.feed_url LIKE '%' || ? || '%' 
+            \\) 
+            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT 2;
         ;
 
         var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
@@ -665,7 +679,7 @@ pub const Storage = struct {
         for (tags[1..]) |_| {
             query_arr.appendSliceAssumeCapacity(",?");
         }
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items});
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items, after_cond orelse ""});
         print("query: |{s}|\n", .{query});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
