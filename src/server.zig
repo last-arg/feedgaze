@@ -43,13 +43,11 @@ const handler = tk.chain(.{
     not_found,
 });
 
-// TODO: browser gives status code 404, logger 500
-// Also browser has extra text: '{"error":"ResponseAlreadyStarted"}'
 fn not_found(ctx: *tk.Context) !void {
     ctx.res.status = .not_found;
+    try ctx.res.setHeader("content-type", "text/html");
     const w = try ctx.res.writer();
     try w.writeAll("<h1>Not Found</h1>");
-    try ctx.res.respond();
 }
 
 const feeds_path = struct {
