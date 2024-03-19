@@ -37,11 +37,130 @@ const handler = tk.chain(.{
     tk.logger(.{}),
     tk.get("/", root_handler),
     tk.get("/style.css", tk.sendStatic("./src/style.css")),
-    tk.get("/feeds", feeds_handler),
+    tk.group("/feeds", tk.router(feeds_path)),
     tk.get("/tags", tags_handler),
-    // tk.group("/", tk.router(routes)), // and this is our shorthand
-    tk.send(error.NotFound),
+    // TODO: not found page/route
+    not_found,
 });
+
+// TODO: browser gives status code 404, logger 500
+// Also browser has extra text: '{"error":"ResponseAlreadyStarted"}'
+fn not_found(ctx: *tk.Context) !void {
+    ctx.res.status = .not_found;
+    const w = try ctx.res.writer();
+    try w.writeAll("<h1>Not Found</h1>");
+    try ctx.res.respond();
+}
+
+const feeds_path = struct {
+    pub fn @"GET /"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
+        const db = try ctx.injector.get(*Storage);
+
+        var query_map = Query.init(req.allocator);
+        defer query_map.deinit();
+        if (req.url.query) |query| {
+            try query_map.parse(query);
+        }
+
+        try resp.setHeader("content-type", "text/html");
+
+        const w = try resp.writer(); 
+        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+        const head = base_iter.next() orelse unreachable;
+        const foot = base_iter.next() orelse unreachable;
+
+        try w.writeAll(head);
+
+        const search_value = blk: {
+            if (query_map.get_value("search")) |value| {
+                const dupe = try req.allocator.dupe(u8, value);
+                mem.replaceScalar(u8, dupe, '+', ' ');
+                break :blk try std.Uri.unescapeString(req.allocator, dupe);
+            }
+            break :blk null;
+        };
+        defer if (search_value) |v| req.allocator.free(v);
+
+        const tags_count = query_map.key_count("tag");
+        var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, tags_count);
+        defer tags_active.deinit();
+
+        var tag_iter = query_map.values_iter("tag");
+        while (tag_iter.next()) |value| {
+            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                const tag = try std.Uri.unescapeString(req.allocator, trimmed);
+                tags_active.appendAssumeCapacity(tag);
+            }
+        }
+
+        try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
+
+        const feeds = blk: {
+            const after = after: {
+                if (query_map.get_value("after")) |value| {
+                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+                    }
+                }
+                break :after null;
+            };
+
+            const is_tags_only = query_map.has("tags-only");
+            if (tags_active.items.len > 0) {
+                if (!is_tags_only and search_value != null and search_value.?.len > 0) {
+                    const value = search_value.?;
+                    break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items, after);
+                } else {
+                    break :blk try db.feeds_with_tags(req.allocator, tags_active.items, after);
+                }
+            }
+
+            if (!is_tags_only) {
+                if (search_value) |term| {
+                    const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        break :blk try db.feeds_search(req.allocator, trimmed, after);
+                    }
+                }
+            }
+
+            break :blk try db.feeds_page(req.allocator, after);
+        };
+
+        try feeds_and_items_print(w, req.allocator, db, feeds);
+        if (feeds.len > 0) {
+            if (feeds.len == config.query_feed_limit) {
+                const href = blk: {
+                    const id_new = feeds[feeds.len - 1].feed_id;
+                    if (req.url.query) |q| {
+                        if (query_map.get_value("after")) |id_curr| {
+                            var buf_needle: [32]u8 = undefined;
+                            const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
+                            var buf_replace: [32]u8 = undefined;
+                            const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
+                            const query_new = try std.mem.replaceOwned(u8, req.allocator, q, needle, replace);
+                            break :blk try std.fmt.allocPrint(req.allocator, "?{s}", .{query_new});
+                        } else if (q.len > 0) {
+                            break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{q, id_new});
+                        }
+                    }
+                    break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id_new});
+                };
+                try w.print(
+                    \\<a href="{s}">Next</a>
+                , .{href});
+            }
+        } else {
+            try w.writeAll(
+                \\<p>Nothing more to show</p>
+            );
+        }
+
+        try w.writeAll(foot);
+    }
+};
 
 fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     const db = try ctx.injector.get(*Storage);
@@ -70,113 +189,7 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     try w.writeAll(foot);
 }
 
-fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
-    const db = try ctx.injector.get(*Storage);
 
-    var query_map = Query.init(req.allocator);
-    defer query_map.deinit();
-    if (req.url.query) |query| {
-        try query_map.parse(query);
-    }
-
-    try resp.setHeader("content-type", "text/html");
-
-    const w = try resp.writer(); 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
-
-    const search_value = blk: {
-        if (query_map.get_value("search")) |value| {
-            const dupe = try req.allocator.dupe(u8, value);
-            mem.replaceScalar(u8, dupe, '+', ' ');
-            break :blk try std.Uri.unescapeString(req.allocator, dupe);
-        }
-        break :blk null;
-    };
-    defer if (search_value) |v| req.allocator.free(v);
-
-    const tags_count = query_map.key_count("tag");
-    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, tags_count);
-    defer tags_active.deinit();
-
-    var tag_iter = query_map.values_iter("tag");
-    while (tag_iter.next()) |value| {
-        const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-        if (trimmed.len > 0) {
-            const tag = try std.Uri.unescapeString(req.allocator, trimmed);
-            tags_active.appendAssumeCapacity(tag);
-        }
-    }
-
-    try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
-
-    const feeds = blk: {
-        const after = after: {
-            if (query_map.get_value("after")) |value| {
-                const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
-                }
-            }
-            break :after null;
-        };
-
-        const is_tags_only = query_map.has("tags-only");
-        if (tags_active.items.len > 0) {
-            if (!is_tags_only and search_value != null and search_value.?.len > 0) {
-                const value = search_value.?;
-                break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items, after);
-            } else {
-                break :blk try db.feeds_with_tags(req.allocator, tags_active.items, after);
-            }
-        }
-
-        if (!is_tags_only) {
-            if (search_value) |term| {
-                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :blk try db.feeds_search(req.allocator, trimmed, after);
-                }
-            }
-        }
-
-        break :blk try db.feeds_page(req.allocator, after);
-    };
-
-    try feeds_and_items_print(w, req.allocator, db, feeds);
-    if (feeds.len > 0) {
-        if (feeds.len == config.query_feed_limit) {
-            const href = blk: {
-                const id_new = feeds[feeds.len - 1].feed_id;
-                if (req.url.query) |q| {
-                    if (query_map.get_value("after")) |id_curr| {
-                        var buf_needle: [32]u8 = undefined;
-                        const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
-                        var buf_replace: [32]u8 = undefined;
-                        const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
-                        const query_new = try std.mem.replaceOwned(u8, req.allocator, q, needle, replace);
-                        break :blk try std.fmt.allocPrint(req.allocator, "?{s}", .{query_new});
-                    } else if (q.len > 0) {
-                        break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{q, id_new});
-                    }
-                }
-                break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id_new});
-            };
-            try w.print(
-                \\<a href="{s}">Next</a>
-            , .{href});
-        }
-    } else {
-        try w.writeAll(
-            \\<p>Nothing more to show</p>
-        );
-    }
-
-    try w.writeAll(foot);
-}
 
 const Query = struct {
     allocator: std.mem.Allocator,
@@ -264,11 +277,19 @@ const Query = struct {
     }
 };
 
+fn feed_edit_render(w: anytype, feed_id: usize) !void {
+    const edit_fmt = 
+    \\<a href="/feeds/{d}">Edit feed</a>
+    ;
+    try w.print(edit_fmt, .{ feed_id });
+}
+
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
     try w.writeAll("<ul>");
     for (feeds) |feed| {
         try w.writeAll("<li>");
         try feed_render(w, feed);
+        try feed_edit_render(w, feed.feed_id);
 
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
@@ -290,12 +311,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
-        if (items.len < config.max_items) {
-            // TODO: also add some filter flag (in head form) that indicates 
-            // if to render all items?
-            // <input type="checkbox" name="items-all">
-            try w.writeAll("<a href=''>TODO: Go to feed page for more items</a>");
-        }
 
         try w.writeAll("</li>");
     }
