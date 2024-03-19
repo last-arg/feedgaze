@@ -527,18 +527,17 @@ pub const Storage = struct {
 
     pub fn feeds_page(self: *Self, alloc: Allocator, after: ?After) ![]types.FeedRender {
         if (after) |feed_id| {
-            const query =
+            const query = comptimePrint(
                 \\select * from feed 
                 \\where (updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND feed_id < ?)
                 \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = ?) 
-                \\order by updated_timestamp DESC, feed_id DESC limit 2;
-            ;
+                \\order by updated_timestamp DESC, feed_id DESC limit {d};
+            , .{app_config.query_feed_limit});
             const args = .{feed_id, feed_id, feed_id};
             return try selectAll(&self.sql_db, alloc, types.FeedRender, query, args);
         } else {
             const query =
-                \\select * from feed order by updated_timestamp DESC, feed_id DESC limit 2;
-            ;
+                "select * from feed order by updated_timestamp DESC, feed_id DESC LIMIT " ++ comptimePrint("{d}", .{app_config.query_feed_limit});
             return try selectAll(&self.sql_db, alloc, types.FeedRender, query, .{});
         }
     }
@@ -551,7 +550,8 @@ pub const Storage = struct {
             \\  feed.title LIKE '%' || ? || '%' OR
             \\  feed.page_url LIKE '%' || ? || '%' OR
             \\  feed.feed_url LIKE '%' || ? || '%' 
-            \\) LIMIT 2;
+            \\) LIMIT 
+            ++ comptimePrint("{d}", .{app_config.query_feed_limit})
         ;
         const query_search = comptimePrint(query_base, .{""});
         const partial = "updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND";
@@ -671,7 +671,8 @@ pub const Storage = struct {
             \\  feed.page_url LIKE '%' || ? || '%' OR
             \\  feed.feed_url LIKE '%' || ? || '%' 
             \\) 
-            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT 2;
+            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT 
+            ++ comptimePrint("{d}", .{app_config.query_feed_limit})
         ;
 
         var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
