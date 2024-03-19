@@ -98,17 +98,16 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     };
     defer if (search_value) |v| req.allocator.free(v);
 
-    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
+    const tags_count = query_map.key_count("tag");
+    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, tags_count);
     defer tags_active.deinit();
 
     var tag_iter = query_map.values_iter("tag");
-    // TODO: these tag values are encoded, should probably decode them
-    // Deocde here or when parsing query_map?
-    // std.Uri.unescapeString(, )
     while (tag_iter.next()) |value| {
         const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
         if (trimmed.len > 0) {
-            try tags_active.append(trimmed);
+            const tag = try std.Uri.unescapeString(req.allocator, trimmed);
+            tags_active.appendAssumeCapacity(tag);
         }
     }
 
@@ -194,7 +193,11 @@ const Query = struct {
         };
     }
 
-    pub fn parse(self: *Query, query: []const u8) !void {
+    pub fn parse(self: *Query, input: []const u8) !void {
+        // Being a little naughty
+        const query: []u8 = @constCast(input);
+        mem.replaceScalar(u8, query, '+', ' ');
+
         const count_max = mem.count(u8, query, "&") + 1;
         try self.keys.ensureTotalCapacityPrecise(count_max);
         try self.values.ensureTotalCapacityPrecise(count_max);
@@ -209,6 +212,13 @@ const Query = struct {
             self.values.appendAssumeCapacity(value);
         }
         std.debug.assert(self.keys.items.len == self.values.items.len);
+    }
+
+    pub fn key_count(self: Query, key: []const u8) usize {
+        var iter = self.values_iter(key);
+        var count: usize = 0;
+        while (iter.next()) |_| : (count += 1){}
+        return count;
     }
 
     // stored keys and value will be encoded
@@ -280,6 +290,12 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
+        if (items.len < config.max_items) {
+            // TODO: also add some filter flag (in head form) that indicates 
+            // if to render all items?
+            // <input type="checkbox" name="items-all">
+            try w.writeAll("<a href=''>TODO: Go to feed page for more items</a>");
+        }
 
         try w.writeAll("</li>");
     }
@@ -301,19 +317,13 @@ fn get_search_value(input: []const u8) !?[]const u8 {
     return null;
 }
 
-fn decode_query(allocator: std.mem.Allocator, input: []const u8) ![]const u8 {
-    const query = try std.Uri.unescapeString(allocator, input);
-    mem.replaceScalar(u8, query, '+', ' ');
-    return query;
-}
-
 // TODO: remove most of this
 // - make /feeds -> /
 // - redirect / -> /feeds
 pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     const search_value = blk: {
         if (req.url.query) |query_raw| {
-            const query = try decode_query(req.allocator, query_raw);
+            const query = try std.Uri.unescapeString(req.allocator, query_raw);
             break :blk try get_search_value(query);
         }
         break :blk null;
