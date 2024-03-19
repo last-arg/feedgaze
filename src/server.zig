@@ -138,25 +138,27 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try feeds_and_items_print(w, req.allocator, db, feeds);
     if (feeds.len > 0) {
-        const href = blk: {
-            const id_new = feeds[feeds.len - 1].feed_id;
-            if (req.url.query) |q| {
-                if (query_map.get_value("after")) |id_curr| {
-                    var buf_needle: [32]u8 = undefined;
-                    const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
-                    var buf_replace: [32]u8 = undefined;
-                    const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
-                    const query_new = try std.mem.replaceOwned(u8, req.allocator, q, needle, replace);
-                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}", .{query_new});
-                } else if (q.len > 0) {
-                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{q, id_new});
+        if (feeds.len == config.query_feed_limit) {
+            const href = blk: {
+                const id_new = feeds[feeds.len - 1].feed_id;
+                if (req.url.query) |q| {
+                    if (query_map.get_value("after")) |id_curr| {
+                        var buf_needle: [32]u8 = undefined;
+                        const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
+                        var buf_replace: [32]u8 = undefined;
+                        const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
+                        const query_new = try std.mem.replaceOwned(u8, req.allocator, q, needle, replace);
+                        break :blk try std.fmt.allocPrint(req.allocator, "?{s}", .{query_new});
+                    } else if (q.len > 0) {
+                        break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{q, id_new});
+                    }
                 }
-            }
-            break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id_new});
-        };
-        try w.print(
-            \\<a href="{s}">Next</a>
-        , .{href});
+                break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id_new});
+            };
+            try w.print(
+                \\<a href="{s}">Next</a>
+            , .{href});
+        }
     } else {
         try w.writeAll(
             \\<p>Nothing more to show</p>
