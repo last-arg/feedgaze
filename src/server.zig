@@ -88,12 +88,23 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try w.writeAll(head);
 
-    const search_value = query_map.get_value("search");
+    const search_value = blk: {
+        if (query_map.get_value("search")) |value| {
+            const dupe = try req.allocator.dupe(u8, value);
+            mem.replaceScalar(u8, dupe, '+', ' ');
+            break :blk try std.Uri.unescapeString(req.allocator, dupe);
+        }
+        break :blk null;
+    };
+    defer if (search_value) |v| req.allocator.free(v);
 
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
     defer tags_active.deinit();
 
     var tag_iter = query_map.values_iter("tag");
+    // TODO: these tag values are encoded, should probably decode them
+    // Deocde here or when parsing query_map?
+    // std.Uri.unescapeString(, )
     while (tag_iter.next()) |value| {
         const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
         if (trimmed.len > 0) {
