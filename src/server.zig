@@ -120,7 +120,7 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
                 const value = search_value.?;
                 break :blk try db.feeds_search_with_tags(req.allocator, value, tags_active.items, after);
             } else {
-                break :blk try db.feeds_with_tags(req.allocator, tags_active.items);
+                break :blk try db.feeds_with_tags(req.allocator, tags_active.items, after);
             }
         }
 

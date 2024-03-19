@@ -550,8 +550,8 @@ pub const Storage = struct {
             \\  feed.title LIKE '%' || ? || '%' OR
             \\  feed.page_url LIKE '%' || ? || '%' OR
             \\  feed.feed_url LIKE '%' || ? || '%' 
-            \\) LIMIT 
-            ++ comptimePrint("{d}", .{app_config.query_feed_limit})
+            \\) LIMIT
+            ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
         const query_search = comptimePrint(query_base, .{""});
         const partial = "updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND";
@@ -625,25 +625,40 @@ pub const Storage = struct {
         }
     }
 
-    pub fn feeds_with_tags(self: *Self, allocator: Allocator, tags: [][]const u8) ![]types.FeedRender {
+    pub fn feeds_with_tags(self: *Self, allocator: Allocator, tags: [][]const u8, after: ?After) ![]types.FeedRender {
         if (tags.len == 0) { return &.{}; }
         const query_fmt = 
-        \\select * from feed where feed_id in (
-        \\	select distinct(feed_id) from feed_tag where tag_id in (
-        \\		select tag_id from tag where name in ({s})
-        \\	)
-        \\) order by updated_timestamp DESC;
+        \\SELECT * FROM feed WHERE feed_id IN (
+        \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
+        \\		SELECT tag_id FROM tag where name in ({s})
+        \\	) {s}
+        \\) ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
+        ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
+
+        const after_cond = blk: {
+            if (after) |feed_id| {
+                break :blk try std.fmt.allocPrint(allocator, after_cond_raw, .{.id = feed_id});
+            }
+            break :blk null;
+        };
+        defer if (after_cond) |slice| allocator.free(slice);
+
         var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
         query_arr.appendAssumeCapacity('?');
         for (tags[1..]) |_| {
             query_arr.appendSliceAssumeCapacity(",?");
         }
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items});
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items, after_cond orelse ""});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
     }
+
+    const after_cond_raw =
+    \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
+    \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
+    ;
 
     pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8, after: ?After) ![]types.FeedRender {
         assert(search_value.len > 0);
@@ -651,11 +666,7 @@ pub const Storage = struct {
 
         const after_cond = blk: {
             if (after) |feed_id| {
-                const cond_raw =
-                \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
-                \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
-                ;
-                break :blk try std.fmt.allocPrint(allocator, cond_raw, .{.id = feed_id});
+                break :blk try std.fmt.allocPrint(allocator, after_cond_raw, .{.id = feed_id});
             }
             break :blk null;
         };
@@ -671,8 +682,8 @@ pub const Storage = struct {
             \\  feed.page_url LIKE '%' || ? || '%' OR
             \\  feed.feed_url LIKE '%' || ? || '%' 
             \\) 
-            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT 
-            ++ comptimePrint("{d}", .{app_config.query_feed_limit})
+            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
+            ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
 
         var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
