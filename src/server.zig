@@ -72,36 +72,11 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
 fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
     const db = try ctx.injector.get(*Storage);
-    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
-    defer tags_active.deinit();
 
-    const query_decoded: ?[]const u8 = if (req.url.query) |q| try decode_query(req.allocator, q) else null;
-    var is_tags_only = false;
-    var after_raw: ?[]const u8 = null;
-
-    if (query_decoded) |query| {
-        var iter = mem.splitScalar(u8, query, '&');
-        while (iter.next()) |kv| {
-            var kv_iter = mem.splitScalar(u8, kv, '=');
-            const key = kv_iter.next() orelse unreachable;
-            if (mem.eql(u8, key, "tag")) {
-                if (kv_iter.next()) |value| {
-                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-                    if (trimmed.len > 0) {
-                        try tags_active.append(trimmed);
-                    }
-                }
-            } else if (mem.eql(u8, key, "tags-only")) {
-                is_tags_only = true;
-            } else if (mem.eql(u8, key, "after")) {
-                if (kv_iter.next()) |value| {
-                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-                    if (trimmed.len > 0) {
-                        after_raw = trimmed;
-                    }
-                }
-            }
-        }
+    var query_map = Query.init(req.allocator);
+    defer query_map.deinit();
+    if (req.url.query) |query| {
+        try query_map.parse(query);
     }
 
     try resp.setHeader("content-type", "text/html");
@@ -113,18 +88,33 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try w.writeAll(head);
 
-    const search_value = if (query_decoded) |q| try get_search_value(q) else null;
+    const search_value = query_map.get_value("search");
+
+    var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, 6);
+    defer tags_active.deinit();
+
+    var tag_iter = query_map.values_iter("tag");
+    while (tag_iter.next()) |value| {
+        const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+        if (trimmed.len > 0) {
+            try tags_active.append(trimmed);
+        }
+    }
 
     try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
 
     const after = after: {
-        if (after_raw) |value| {
-            break :after std.fmt.parseInt(usize, value, 10) catch null;
+        if (query_map.get_value("after")) |value| {
+            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+            }
         }
         break :after null;
     };
 
     const feeds = blk: {
+        const is_tags_only = query_map.has("tags-only");
         if (tags_active.items.len > 0) {
             if (!is_tags_only and search_value != null and search_value.?.len > 0) {
                 const value = search_value.?;
@@ -148,23 +138,105 @@ fn feeds_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try feeds_and_items_print(w, req.allocator, db, feeds);
     if (feeds.len > 0) {
-        const last = feeds[feeds.len - 1];
-        const id = last.feed_id;
         const href = blk: {
-            if (req.url.query) |query| {
-                if (query.len > 0) {
-                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{query, id});
+            const id_new = feeds[feeds.len - 1].feed_id;
+            if (req.url.query) |q| {
+                if (query_map.get_value("after")) |id_curr| {
+                    var buf_needle: [32]u8 = undefined;
+                    const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
+                    var buf_replace: [32]u8 = undefined;
+                    const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
+                    const query_new = try std.mem.replaceOwned(u8, req.allocator, q, needle, replace);
+                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}", .{query_new});
+                } else if (q.len > 0) {
+                    break :blk try std.fmt.allocPrint(req.allocator, "?{s}&after={d}", .{q, id_new});
                 }
             }
-            break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id});
+            break :blk try std.fmt.allocPrint(req.allocator, "?after={d}", .{id_new});
         };
         try w.print(
             \\<a href="{s}">Next</a>
         , .{href});
+    } else {
+        try w.writeAll(
+            \\<p>Nothing more to show</p>
+        );
     }
 
     try w.writeAll(foot);
 }
+
+const Query = struct {
+    allocator: std.mem.Allocator,
+    keys: ArraySlice,
+    values: ArraySlice,
+
+    const ArraySlice = std.ArrayList([]const u8);
+
+    pub fn init(allocator: std.mem.Allocator) Query {
+        return .{
+            .allocator = allocator,
+            .keys = ArraySlice.init(allocator),
+            .values = ArraySlice.init(allocator),
+        };
+    }
+
+    pub fn parse(self: *Query, query: []const u8) !void {
+        var iter = mem.splitScalar(u8, query, '&');
+
+        while (iter.next()) |kv| {
+            var kv_iter = mem.splitScalar(u8, kv, '=');
+            const key = kv_iter.next() orelse return error.InvalidQueryParamKey;
+            const value = kv_iter.next() orelse return error.InvalidQueryParamValue;
+            std.debug.assert(kv_iter.next() == null);
+            try self.keys.append(key);
+            try self.values.append(value);
+        }
+        std.debug.assert(self.keys.items.len == self.values.items.len);
+    }
+
+    // stored keys and value will be encoded
+    pub fn get_value(self: Query, key: []const u8) ?[]const u8 {
+        // TODO: encode input key?
+        for (self.keys.items, 0..) |key_item, i| {
+            if (mem.eql(u8, key, key_item)) {
+                return self.values.items[i];
+            }
+        }
+        return null;
+    }
+
+    pub fn has(self: Query, key: []const u8) bool {
+        return self.get_value(key) != null;
+    }
+
+    const QueryIter = struct {
+            query: Query,  
+            key_search: []const u8,
+            index: usize = 0,
+            pub fn next(self: *@This()) ?[]const u8 {
+                if (self.index < self.query.keys.items.len) {
+                    for (self.index..self.query.keys.items.len) |i| {
+                        const key = self.query.keys.items[i];
+                        if (mem.eql(u8, key, self.key_search)) {
+                            self.index = i + 1;
+                            return self.query.values.items[i];
+                        }
+                    }
+                }
+                return null;
+            }
+        };
+
+    pub fn values_iter(query: Query, key: []const u8) QueryIter {
+        return .{.query = query, .key_search = key };
+    }
+
+    pub fn deinit(self: *Query) void {
+        self.keys.deinit();
+        self.values.deinit();
+    }
+};
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
     try w.writeAll("<ul>");
