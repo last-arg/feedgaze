@@ -4,6 +4,7 @@ const Build = std.Build;
 const CompileStep = Build.Step.Compile;
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
+const jetzig = @import("jetzig");
 
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
@@ -29,7 +30,6 @@ pub fn build(b: *Build) !void {
         .root_source_file = .{ .path = source_file },
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     });
@@ -45,6 +45,7 @@ pub fn build(b: *Build) !void {
     const run_cmd = b.addRunArtifact(exe);
 
     commonModules(b, exe, .{.target = target, .optimize = optimize});
+    jetzig.jetzigInit(b, exe, .{}) catch unreachable;
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
