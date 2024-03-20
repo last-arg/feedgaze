@@ -183,6 +183,9 @@ const feeds_path = struct {
         try body_head_render(req.allocator, db, w, "", &.{});
 
         try w.writeAll("<h2>Edit feed</h2>");
+        try w.print(
+            \\<p>Feed url: <a href="">{[feed_url]s}</a></p>
+        , .{ .feed_url = feed.feed_url });
         try w.writeAll("<form method='POST'>");
         // TODO: render feed edit stuff
         // title
@@ -196,13 +199,11 @@ const feeds_path = struct {
         \\<label for="page_url">Page url</label>
         \\<input type="text" id="page_url" name="page_url" value="{[page_url]s}">
         \\<a href="{[page_url]s}">Go to page url</a>
-        \\<p>Feed url: <a href="">{[feed_url]s}</a></p>
         ;
         try w.print(inputs_fmt, .{
             .title = feed.title, 
             .feed_id = feed.feed_id,
             .page_url = feed.page_url orelse "",
-            .feed_url = feed.feed_url,
         });
 
         // TODO: feed updating
