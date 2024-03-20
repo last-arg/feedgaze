@@ -157,6 +157,81 @@ const feeds_path = struct {
 
         try w.writeAll(foot);
     }
+
+    pub fn @"GET /:id"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response, id_raw: []const u8) !void {
+        const feed_id = try std.fmt.parseInt(usize, id_raw, 10);
+        const db = try ctx.injector.get(*Storage);
+        const feed_result = try db.feed_with_id(req.allocator, feed_id);
+        if (feed_result == null) {
+            try not_found(ctx);
+            return;
+        }
+
+        const feed = feed_result.?;
+        const tags_all = try db.tags_all(req.allocator);
+        const feed_tags = try db.feed_tags(req.allocator, feed.feed_id);
+        const items = try db.feed_items_with_feed_id(req.allocator, feed.feed_id);
+
+        try resp.setHeader("content-type", "text/html");
+        const w = try resp.writer(); 
+
+        try w.writeAll("<form method='POST'>");
+        // TODO: render feed edit stuff
+        // title
+        // feed_url - can't edit?
+        // page_url - might get overwritten during update 
+
+        const inputs_fmt = 
+        \\<input type="hidden" name="feed_id" value="{[feed_id]d}">
+        \\<label for="title">Feed title</label>
+        \\<input type="text" id="title" name="title" value="{[title]s}">
+        \\<label for="page_url">Page url</label>
+        \\<input type="text" id="page_url" name="page_url" value="{[page_url]s}">
+        \\<a href="{[page_url]s}">Go to page url</a>
+        \\<p>Feed url: <a href="">{[feed_url]s}</a></p>
+        ;
+        try w.print(inputs_fmt, .{
+            .title = feed.title, 
+            .feed_id = feed.feed_id,
+            .page_url = feed.page_url orelse "",
+            .feed_url = feed.feed_url,
+        });
+
+        // TODO: feed updating
+        // - update feed now?
+        //   - show time till next update?
+        // - allow changing update interval?
+
+        for (tags_all, 0..) |tag, i| {
+            const is_checked = blk: {
+                for (feed_tags) |f_tag| {
+                    if (mem.eql(u8, tag, f_tag)) {
+                        break :blk "checked";
+                    }
+                }
+                break :blk "";
+            };
+            try tag_input_render(w, .{
+                .tag = tag,
+                .tag_index = i,
+                .is_checked = is_checked,
+            });
+        }
+        try w.writeAll("<button>Save feed changes</button>");
+        try w.writeAll("</form>");
+
+        try w.writeAll("<ul>");
+        for (items) |item| {
+            try w.writeAll("<li>");
+            try item_render(w, item);
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+    }
+
+    pub fn @"GET *"(ctx: *tk.Context) !void {
+        try not_found(ctx);
+    }
 };
 
 fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
@@ -462,11 +537,6 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
       \\<a href="/tags">Tags</a>
     );
 
-    const tag_fmt = 
-    \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
-    ;
-
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/feeds'>");
     // This makes is the default action of form. For example used when pressing
@@ -483,7 +553,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
                 break;
             }
         }
-        try w.print(tag_fmt, .{
+        try tag_input_render(w, .{
             .tag = tag,
             .tag_index = i,
             .is_checked = is_checked,
@@ -501,6 +571,14 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
 
     try w.writeAll("</form>");
     try w.writeAll("</header>");
+}
+
+fn tag_input_render(w: anytype, args: struct{tag: []const u8, tag_index: usize, is_checked: []const u8}) !void {
+    const tag_fmt = 
+    \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+    \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
+    ;
+    try w.print(tag_fmt, args);
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
