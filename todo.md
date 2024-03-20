@@ -14,10 +14,9 @@
       - titles
       - links
     - Use page title as feed title
-  [ ] Add tags
 [ ] add transactions
 [ ] Can disable updating for feeds?
-[ ] Reduce how often http request are made
+[ ] Reduce how often feed update http request are made
   - increase update interval base on when last update was
     - more than 1 year = several days?
     - more than 1 month = 1 day or more?
@@ -34,13 +33,15 @@ appear in the file.
   - If there is not feed date, what to use? 
   [ ] If implemented have to change how feed.updated_timestamp is updated. Currently
   will used newest (first) feed item.
-[ ] Add http server
-  - https://github.com/zigzap/zap
-  - https://github.com/cztomsik/tokamak
-  - https://github.com/karlseguin/http.zig
-[ ] HTML templating
-  - https://github.com/nektro/zig-pek
-  - https://github.com/jacksonsalopek/ztl
+Web page
+  [ ] Design
+    - I think it would be better to make navigation area into sidebar. Will give
+    more vertical space to display more feeds and items. And usually don't 
+    want text to go too wide. And tag list can grow big, would be harder to 
+    mitigate it when navigation it horizontal area on top.
+    - If feed + item area goes to wide have two choices
+      - Make feeds into columns. Latest feeds' would go from left to right.
+      - Make items into columns. Latest items' would go top to bottom.
 
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
@@ -63,3 +64,11 @@ appear in the file.
 # Old 
 [ ] UI with [zig-webui](https://github.com/webui-dev/zig-webui)
 Tried this and liked it. But I think I can just go with a server. 
+[ ] Add http server
+  - https://github.com/zigzap/zap
+  - https://github.com/cztomsik/tokamak
+  - https://github.com/karlseguin/http.zig
+[ ] HTML templating
+  - https://github.com/nektro/zig-pek
+  - https://github.com/jacksonsalopek/ztl
+
