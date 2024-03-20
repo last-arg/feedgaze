@@ -1,7 +1,6 @@
 tmp/
 zig-out/
 zig-cache/
-*.core
-.jetzig
+*.wip
 *-shm
 *-wal

@@ -13,65 +13,8 @@ const title_placeholder = "[no-title]";
 // For fast compiling and testing
 pub fn main() !void {
     std.debug.print("RUN SERVER\n", .{});
-    // try start_tokamak();
-    try jetzig_start();
+    try start_tokamak();
 }
-
-pub const jet = @import("jetzig");
-pub const routes = @import("routes").routes;
-
-const StorageMiddleWare = struct {
-    const Self = @This();
-    db: Storage,
-
-    pub fn init(req: *jet.http.Request) !*Self {
-        const middleware = try req.allocator.create(Self);
-        // TODO: init/deinit db every request is inefficient
-        middleware.db = try Storage.init("./tmp/feeds.db");
-        return middleware;
-    }
-
-    pub fn afterRequest(self: *Self, req: *jet.http.Request) !void {
-        const data = req.response_data;
-        const root = try data.object();
-
-        const tags = try self.db.tags_all(req.allocator);
-        const tags_arr = try data.array();
-        try tags_arr.array.array.ensureTotalCapacity(tags.len);
-        try root.put("tags", tags_arr);
-        for (tags) |tag| {
-            tags_arr.array.array.appendAssumeCapacity(data.string(tag));
-        }
-
-        std.debug.print("path: {s}\n", .{req.path.base_path});
-        std.debug.print("query: {?s}\n", .{req.path.query});
-
-    }
-    
-    pub fn deinit(self: *Self, request: *jet.http.Request) void {
-        self.db.deinit();
-        request.allocator.destroy(self);
-    }
-};
-
-pub const jetzig_options = struct {
-    pub const middleware: []const type = &.{
-        // @import("app/middleware/DemoMiddleware.zig"),
-        StorageMiddleWare,
-    };
-};
-
-pub fn jetzig_start() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer std.debug.assert(gpa.deinit() == .ok);
-    const allocator = gpa.allocator();
-
-    const app = try jet.init(allocator);
-    defer app.deinit();
-
-    try app.start(comptime jet.route(routes));
-}
-
 
 const tk = @import("tokamak");
 
