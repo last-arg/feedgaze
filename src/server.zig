@@ -46,7 +46,7 @@ const handler = tk.chain(.{
 fn not_found(ctx: *tk.Context) !void {
     try ctx.res.setHeader("content-type", "text/html");
     try ctx.res.notFound();
-    try ctx.res.send(@as([]const u8, "<h1>Not found</h1>"));
+    try ctx.res.send(@as([]const u8, @embedFile("./not_found.html")));
 }
 
 const feeds_path = struct {
