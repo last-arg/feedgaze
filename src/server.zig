@@ -174,7 +174,15 @@ const feeds_path = struct {
 
         try resp.setHeader("content-type", "text/html");
         const w = try resp.writer(); 
+        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+        const head = base_iter.next() orelse unreachable;
+        const foot = base_iter.next() orelse unreachable;
 
+        try w.writeAll(head);
+
+        try body_head_render(req.allocator, db, w, "", &.{});
+
+        try w.writeAll("<h2>Edit feed</h2>");
         try w.writeAll("<form method='POST'>");
         // TODO: render feed edit stuff
         // title
@@ -215,6 +223,7 @@ const feeds_path = struct {
                 .tag = tag,
                 .tag_index = i,
                 .is_checked = is_checked,
+                .prefix = "tag-edit-",
             });
         }
         try w.writeAll("<button>Save feed changes</button>");
@@ -227,6 +236,8 @@ const feeds_path = struct {
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
+
+        try w.writeAll(foot);
     }
 
     pub fn @"GET *"(ctx: *tk.Context) !void {
@@ -572,10 +583,19 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("</header>");
 }
 
-fn tag_input_render(w: anytype, args: struct{tag: []const u8, tag_index: usize, is_checked: []const u8}) !void {
+const InputRenderArgs = struct{
+    tag: []const u8, 
+    tag_index: usize, 
+    is_checked: []const u8,
+    prefix: []const u8 = "tag-id-",
+};
+
+fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
-    \\<input type="checkbox" name="tag" id="tag-index-{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label for="tag-index-{[tag_index]d}">{[tag]s}</label>
+    \\<span>
+    \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+    \\<label for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
+    \\</span>
     ;
     try w.print(tag_fmt, args);
 }
