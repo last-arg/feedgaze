@@ -117,3 +117,19 @@ body {
 a {
   margin-inline: 1rem;
 }
+
+/* TODO: change html structure */
+/* use :has? */
+input[type=checkbox] ~ label {
+  background: var(--label-bg, transparent);
+}
+
+/* When new tag is added */
+input[type="checkbox"]:checked:not(:default) ~ label {
+  --label-bg: green;
+}
+
+/* When tag is removed */
+input[type="checkbox"]:default:not(:checked) ~ label {
+  --label-bg: red;
+}
