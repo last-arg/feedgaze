@@ -50,6 +50,10 @@ pub const Storage = struct {
         };
     }
 
+    pub fn deinit(self: *Self) void {
+        self.sql_db.deinit();
+    }
+
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;

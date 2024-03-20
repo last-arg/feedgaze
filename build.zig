@@ -8,7 +8,9 @@ const jetzig = @import("jetzig");
 
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
+    const optimize = b.standardOptimizeOption(.{
+        // .preferred_optimize_mode = .ReleaseFast,
+    });
 
     const use_llvm = blk: {
         if (b.option(bool, "no-llvm", "Use Zig's llvm code backend")) |val| {
