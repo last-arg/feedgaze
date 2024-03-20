@@ -349,7 +349,7 @@ const Query = struct {
     }
 };
 
-fn feed_edit_render(w: anytype, feed_id: usize) !void {
+fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     const edit_fmt = 
     \\<a href="/feeds/{d}">Edit feed</a>
     ;
@@ -361,7 +361,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     for (feeds) |feed| {
         try w.writeAll("<li>");
         try feed_render(w, feed);
-        try feed_edit_render(w, feed.feed_id);
+        try feed_edit_link_render(w, feed.feed_id);
 
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
@@ -389,7 +389,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     try w.writeAll("</ul>");
 }
 
-const root_html = @embedFile("./views/root.html");
 const base_layout = @embedFile("./layouts/base.html");
 
 fn get_search_value(input: []const u8) !?[]const u8 {
@@ -659,5 +658,4 @@ const storage = @import("./storage.zig");
 const Storage = storage.Storage;
 const config = @import("app_config.zig");
 const Datetime = @import("zig-datetime").datetime.Datetime;
-const base_html = @embedFile("./base.html");
 const mem = std.mem;
