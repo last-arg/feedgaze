@@ -355,6 +355,14 @@ const Query = struct {
         return .{.query = query, .key_search = key };
     }
 
+    pub fn format(self: *const Query, comptime _: []const u8, _: anytype, writer: anytype) !void {
+        try writer.writeAll("=== Query keys and values ===\n");
+        for (self.keys.items, 0..) |key, i| {
+            const value = self.values.items[i];
+            try writer.print("{s}: {s}\n", .{key, value});
+        }
+    }
+
     pub fn deinit(self: *Query) void {
         self.keys.deinit();
         self.values.deinit();
