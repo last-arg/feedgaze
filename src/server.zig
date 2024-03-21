@@ -39,7 +39,6 @@ const handler = tk.chain(.{
     tk.get("/style.css", tk.sendStatic("./src/style.css")),
     tk.group("/feeds", tk.router(feeds_path)),
     tk.get("/tags", tags_handler),
-    // TODO: not found page/route
     not_found,
 });
 
@@ -241,9 +240,57 @@ const feeds_path = struct {
         try w.writeAll(foot);
     }
 
-    pub fn @"GET *"(ctx: *tk.Context) !void {
-        try not_found(ctx);
+    // TODO: implement Cookies and Session
+    pub fn @"POST /:id"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response, id: usize, _: void) !void {
+        const db = try ctx.injector.get(*Storage);
+        std.debug.print("id: {d}\n", .{id});
+
+        const reader = try req.raw.reader();
+        const body = try reader.readAllAlloc(req.allocator, std.math.maxInt(u32));
+        var q = Query.init(req.allocator);
+        defer q.deinit();
+        try q.parse(body);
+        
+        std.debug.print("url: {}\n", .{ctx.req.url});
+        std.debug.print("\n{}\n", .{q});
+        if (!try db.hasFeedWithId(id)) {
+            try not_found(ctx);
+            return;
+        }
+
+        resp.status = .see_other;
+
+        const url_success = try std.fmt.allocPrint(req.allocator, "/feeds/{d}?success=", .{id});
+        try resp.setHeader("Location", url_success);
+        try resp.respond();
+        // TODO:
+        // decode and validate form data
+        // update feed
+        // update feed tags
+        // - remove tags aren't part of feed 
+        // - add tags to make sure every tag exists
+
+        const tags_count = q.key_count("tag");
+        var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, tags_count);
+        defer tags_active.deinit();
+
+        var tag_iter = q.values_iter("tag");
+        while (tag_iter.next()) |value| {
+            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                const tag = try std.Uri.unescapeString(req.allocator, trimmed);
+                tags_active.appendAssumeCapacity(tag);
+            }
+        }
+
+        try db.tags_remove_keep(req.allocator, id, tags_active.items);
+        // db.tags_all();
     }
+    
+
+    // pub fn @"GET *"(ctx: *tk.Context) !void {
+    //     try not_found(ctx);
+    // }
 };
 
 fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {

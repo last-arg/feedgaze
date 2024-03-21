@@ -574,6 +574,44 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
     }
 
+    pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: usize, tags: [][]const u8) !void {
+        var arena = std.heap.ArenaAllocator.init(allocator_in);
+        const allocator = arena.allocator();
+        defer arena.deinit();
+        if (tags.len == 0) {
+            return;
+        }
+        var tag_ids_arr = try std.ArrayList(usize).initCapacity(allocator, tags.len);
+        defer tag_ids_arr.deinit();
+        
+        const tag_ids = try self.tags_ids(tags, tag_ids_arr.allocatedSlice());
+        if (tag_ids.len == 0) {
+            return;
+        }
+        const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in ([tag_ids])";
+        var query_dyn = try std.ArrayList(u8).initCapacity(allocator, tag_ids.len * 10);
+        defer query_dyn.deinit();
+        var iter = std.mem.splitSequence(u8, query_fmt, "[tag_ids]");
+        const query_begin = iter.next() orelse unreachable;
+        const query_end = iter.next() orelse unreachable;
+        std.debug.assert(iter.next() == null);
+
+        try query_dyn.appendSlice(query_begin);
+        {
+            const str = try std.fmt.allocPrint(allocator, "{d}", .{tag_ids[0]});
+            try query_dyn.appendSlice(str);
+        }
+        for (tag_ids[1..]) |tag_id| {
+            const str = try std.fmt.allocPrint(allocator, ",{d}", .{tag_id});
+            try query_dyn.appendSlice(str);
+        }
+        try query_dyn.appendSlice(query_end);
+
+        var stmt = try self.sql_db.prepareDynamic(query_dyn.items);
+        defer stmt.deinit();
+        return try stmt.exec(.{}, .{feed_id});
+    }
+
     pub fn feed_tags(self: *Self, alloc: Allocator, feed_id: usize) ![][]const u8 {
         const query = 
         \\select name from tag where tag_id in (
@@ -596,6 +634,7 @@ pub const Storage = struct {
         var i: usize = 0;
         for (tags) |tag| {
             if (try one(&self.sql_db, usize, query, .{tag})) |value| {
+                std.debug.print("id: {d}", .{value});
                 buf[i] = value;
                 i += 1;
             }
