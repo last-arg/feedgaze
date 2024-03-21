@@ -33,8 +33,8 @@
             .hash = "1220d4c8ba1f2496bd0d6b39b57d8194767dbdaa9115675fbb57414f304494c67414",
         },
         .tokamak = .{
-            .url = "https://github.com/cztomsik/tokamak/archive/refs/heads/main.tar.gz",
-            .hash = "1220846cf445e56242037908016e7ecebe792b269214894956d15dbb695732ff0490",
+            .url = "https://github.com/last-arg/tokamak/archive/refs/heads/main.tar.gz",
+            .hash = "12204db1e548b5837f883ad1efa18c3b4b85a7c840cd21ea21292fbb3cd9ac869e79",
         },
     },
 }
