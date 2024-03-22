@@ -244,6 +244,10 @@ const feeds_path = struct {
     pub fn @"POST /:id"(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response, id: usize, _: void) !void {
         const db = try ctx.injector.get(*Storage);
         std.debug.print("id: {d}\n", .{id});
+        if (!try db.hasFeedWithId(id)) {
+            try not_found(ctx);
+            return;
+        }
 
         const reader = try req.raw.reader();
         const body = try reader.readAllAlloc(req.allocator, std.math.maxInt(u32));
@@ -253,22 +257,34 @@ const feeds_path = struct {
         
         std.debug.print("url: {}\n", .{ctx.req.url});
         std.debug.print("\n{}\n", .{q});
-        if (!try db.hasFeedWithId(id)) {
-            try not_found(ctx);
-            return;
-        }
 
-        resp.status = .see_other;
-
-        const url_success = try std.fmt.allocPrint(req.allocator, "/feeds/{d}?success=", .{id});
-        try resp.setHeader("Location", url_success);
-        try resp.respond();
         // TODO:
         // decode and validate form data
+
+        const title = blk: {
+            if (q.get_value("title")) |title_encoded| {
+                const result = try std.Uri.unescapeString(req.allocator, title_encoded);
+                break :blk mem.trim(u8, result, &std.ascii.whitespace);
+            }
+            break :blk "";
+        };
+        const page_url = blk: {
+            if (q.get_value("page_url")) |encoded| {
+                const url = try std.Uri.unescapeString(req.allocator, encoded);
+                const result = mem.trim(u8, url, &std.ascii.whitespace);
+                if (result.len > 0) {
+                    break :blk result;
+                }
+            }
+            break :blk null;
+        };
+
         // update feed
-        // update feed tags
-        // - remove tags aren't part of feed 
-        // - add tags to make sure every tag exists
+        try db.feed_modify(.{
+            .feed_id = id,
+            .title = title,
+            .page_url = page_url,
+        });
 
         const tags_count = q.key_count("tag");
         var tags_active = try std.ArrayList([]const u8).initCapacity(req.allocator, tags_count);
@@ -283,8 +299,22 @@ const feeds_path = struct {
             }
         }
 
-        try db.tags_remove_keep(req.allocator, id, tags_active.items);
-        // db.tags_all();
+        // update feed tags
+        if (tags_active.items.len > 0) {
+            var tag_ids_arr = try std.ArrayList(usize).initCapacity(req.allocator, tags_active.items.len);
+            defer tag_ids_arr.deinit();
+        
+            const tag_ids = try db.tags_ids(tags_active.items, tag_ids_arr.allocatedSlice());
+            if (tag_ids.len >= 0) {
+                try db.tags_remove_keep(req.allocator, id, tag_ids);
+                try db.tags_feed_add(id, tag_ids);
+            }
+        }
+
+        resp.status = .see_other;
+        const url_success = try std.fmt.allocPrint(req.allocator, "/feeds/{d}?success=", .{id});
+        try resp.setHeader("Location", url_success);
+        try resp.respond();
     }
     
 

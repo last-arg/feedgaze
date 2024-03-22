@@ -574,20 +574,12 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
     }
 
-    pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: usize, tags: [][]const u8) !void {
+    pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: usize, tag_ids: []usize) !void {
+        std.debug.assert(tag_ids.len >= 0);
         var arena = std.heap.ArenaAllocator.init(allocator_in);
         const allocator = arena.allocator();
         defer arena.deinit();
-        if (tags.len == 0) {
-            return;
-        }
-        var tag_ids_arr = try std.ArrayList(usize).initCapacity(allocator, tags.len);
-        defer tag_ids_arr.deinit();
-        
-        const tag_ids = try self.tags_ids(tags, tag_ids_arr.allocatedSlice());
-        if (tag_ids.len == 0) {
-            return;
-        }
+
         const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in ([tag_ids])";
         var query_dyn = try std.ArrayList(u8).initCapacity(allocator, tag_ids.len * 10);
         defer query_dyn.deinit();
@@ -753,6 +745,21 @@ pub const Storage = struct {
     pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.FeedRender {
         const query = "select * from feed where feed_id = ?";
         return oneAlloc(&self.sql_db, allocator, types.FeedRender, query, .{id});
+    }
+
+    const FeedModifty = struct {
+        feed_id: usize,
+        title: []const u8,
+        page_url: ?[]const u8,
+    };
+    pub fn feed_modify(self: *Self, feed: FeedModifty) !void {
+        const query =
+            \\UPDATE feed SET
+            \\  title = @title,
+            \\  page_url = @page_url
+            \\WHERE feed_id = @feed_id;
+        ;
+        try self.sql_db.exec(query, .{}, feed);
     }
 };
 
