@@ -192,7 +192,6 @@ const feeds_path = struct {
         // page_url - might get overwritten during update 
 
         const inputs_fmt = 
-        \\<input type="hidden" name="feed_id" value="{[feed_id]d}">
         \\<label for="title">Feed title</label>
         \\<input type="text" id="title" name="title" value="{[title]s}">
         \\<label for="page_url">Page url</label>
@@ -201,7 +200,6 @@ const feeds_path = struct {
         ;
         try w.print(inputs_fmt, .{
             .title = feed.title, 
-            .feed_id = feed.feed_id,
             .page_url = feed.page_url orelse "",
         });
 
@@ -266,7 +264,7 @@ const feeds_path = struct {
                 const result = try std.Uri.unescapeString(req.allocator, title_encoded);
                 break :blk mem.trim(u8, result, &std.ascii.whitespace);
             }
-            break :blk "";
+            return error.NoFormInputTitle;
         };
         const page_url = blk: {
             if (q.get_value("page_url")) |encoded| {
@@ -640,8 +638,10 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll(
     \\  <button style="display: none">Default form action</button>
     );
+    try w.writeAll("<fieldset>");
+    try w.writeAll("<legend>Tags</legend>");
     for (tags, 0..) |tag, i| {
-        try w.writeAll("<span>");
+        try w.writeAll("<div>");
         var is_checked: []const u8 = "";
         for (tags_checked) |tag_checked| {
             if (mem.eql(u8, tag, tag_checked)) {
@@ -655,8 +655,9 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
             .is_checked = is_checked,
         });
         try tag_link_print(w, tag);
-        try w.writeAll("</span>");
+        try w.writeAll("</div>");
     }
+    try w.writeAll("</fieldset>");
     try w.writeAll("<button name='tags-only'>Filter tags only</button>");
 
     try w.print(
