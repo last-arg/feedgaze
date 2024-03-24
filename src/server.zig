@@ -640,22 +640,11 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     );
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
+
+    try tag_label_render(w, "[untagged]", 0, tags_checked);
+
     for (tags, 0..) |tag, i| {
-        try w.writeAll("<div>");
-        var is_checked: []const u8 = "";
-        for (tags_checked) |tag_checked| {
-            if (mem.eql(u8, tag, tag_checked)) {
-                is_checked = "checked";
-                break;
-            }
-        }
-        try tag_input_render(w, .{
-            .tag = tag,
-            .tag_index = i,
-            .is_checked = is_checked,
-        });
-        try tag_link_print(w, tag);
-        try w.writeAll("</div>");
+        try tag_label_render(w, tag, i + 1, tags_checked);
     }
     try w.writeAll("</fieldset>");
     try w.writeAll("<button name='tags-only'>Filter tags only</button>");
@@ -668,6 +657,24 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
 
     try w.writeAll("</form>");
     try w.writeAll("</header>");
+}
+
+fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
+    try w.writeAll("<div>");
+    var is_checked: []const u8 = "";
+    for (tags_checked) |tag_checked| {
+        if (mem.eql(u8, tag, tag_checked)) {
+            is_checked = "checked";
+            break;
+        }
+    }
+    try tag_input_render(w, .{
+        .tag = tag,
+        .tag_index = index,
+        .is_checked = is_checked,
+    });
+    try tag_link_print(w, tag);
+    try w.writeAll("</div>");
 }
 
 const InputRenderArgs = struct{
