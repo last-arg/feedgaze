@@ -564,7 +564,7 @@ pub const Storage = struct {
     }
     
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
-        const query = "select name from tag;";
+        const query = "SELECT name FROM tag ORDER BY name ASC;";
         return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
     }
 
