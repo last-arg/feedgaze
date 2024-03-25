@@ -686,6 +686,20 @@ pub const Storage = struct {
         return try stmt.all(types.FeedRender, allocator, .{}, tags);
     }
 
+    pub fn feeds_untagged(self: *Self, allocator: Allocator) ![]types.FeedRender {
+        const query_fmt = 
+        \\SELECT * FROM feed WHERE feed_id NOT IN (
+        \\	SELECT distinct(feed_id) FROM feed_tag
+        \\) ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
+        ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
+        ;
+
+        const query = query_fmt;
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+        return try stmt.all(types.FeedRender, allocator, .{}, .{});
+    }
+    
     const after_cond_raw =
     \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
     \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 

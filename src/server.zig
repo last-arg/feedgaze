@@ -9,6 +9,7 @@ const date_len_max = std.fmt.comptimePrint(date_fmt, .{
     .second = 2,
 }).len;
 const title_placeholder = "[no-title]";
+const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
@@ -102,6 +103,9 @@ const feeds_path = struct {
                 }
                 break :after null;
             };
+
+            const feeds_untagged = try db.feeds_untagged(req.allocator);
+            std.debug.print("untagged.len: {d}\n", .{feeds_untagged.len});
 
             const is_tags_only = query_map.has("tags-only");
             if (tags_active.items.len > 0) {
@@ -641,7 +645,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
 
-    try tag_label_render(w, "[untagged]", 0, tags_checked);
+    try tag_label_render(w, untagged, 0, tags_checked);
 
     for (tags, 0..) |tag, i| {
         try tag_label_render(w, tag, i + 1, tags_checked);
