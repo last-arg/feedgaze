@@ -542,7 +542,6 @@ pub const Storage = struct {
         }
     }
 
-    pub const After = usize;
     pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8, after: ?After) ![]types.FeedRender {
         const query_base =
             \\select * from feed 
@@ -700,10 +699,11 @@ pub const Storage = struct {
         return try stmt.all(types.FeedRender, allocator, .{}, .{});
     }
 
+    pub const After = usize;
     const FeedSearchArgs = struct {
         tags: [][]const u8 = &.{},
         search: ?[]const u8 = null,
-        after: ?usize = null,
+        after: ?After = null,
         has_untagged: bool = false,
     };
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
@@ -825,43 +825,11 @@ pub const Storage = struct {
     pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8, after: ?After) ![]types.FeedRender {
         assert(search_value.len > 0);
         assert(tags.len > 0);
-
-        const after_cond = blk: {
-            if (after) |feed_id| {
-                break :blk try std.fmt.allocPrint(allocator, after_cond_raw, .{.id = feed_id});
-            }
-            break :blk null;
-        };
-        defer if (after_cond) |slice| allocator.free(slice);
-
-        const query_fmt = 
-            \\SELECT * FROM feed WHERE feed_id in (
-            \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
-            \\		SELECT tag_id FROM tag WHERE name IN ({s})
-            \\	)
-            \\) {s} AND (
-            \\  feed.title LIKE '%' || ? || '%' OR
-            \\  feed.page_url LIKE '%' || ? || '%' OR
-            \\  feed.feed_url LIKE '%' || ? || '%' 
-            \\) 
-            \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
-            ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
-        ;
-
-        var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
-        query_arr.appendAssumeCapacity('?');
-        for (tags[1..]) |_| {
-            query_arr.appendSliceAssumeCapacity(",?");
-        }
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items, after_cond orelse ""});
-        print("query: |{s}|\n", .{query});
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
-        var args = try std.ArrayList([]const u8).initCapacity(allocator, tags.len + 3);
-        defer args.deinit();
-        args.appendSliceAssumeCapacity(tags);
-        args.appendSliceAssumeCapacity(&.{search_value, search_value, search_value});
-        return try stmt.all(types.FeedRender, allocator, .{}, args.items);
+        return try self.feeds_search_complex(allocator, .{
+            .tags = tags,
+            .after = after,
+            .search = search_value,
+        });
     }
 
     pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
@@ -1064,7 +1032,7 @@ test "Storage.updateFeedAndItems" {
     }
 }
 
-pub fn main() !void{
+pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     var arena = std.heap.ArenaAllocator.init(allocator);
