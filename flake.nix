@@ -7,12 +7,12 @@
     zig.url = "github:mitchellh/zig-overlay";
   };
 
-  outputs = { self, nixpkgs, zig, flake-utils }@inputs:
+  outputs = { self, nixpkgs, zig, flake-utils }:
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2024-01-03"; };
-          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
+          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2024-03-30"; };
+          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
         in
         {
           devShell = import ./shell.nix { inherit pkgs; };
