@@ -754,21 +754,33 @@ pub const Storage = struct {
         };
         defer if (ids_tag.len > 0) allocator.free(ids_tag);
 
-        if (ids_tag.len > 0) {
+        if (ids_tag.len > 0 or args.has_untagged) {
             if (has_prev_cond) {
                 try where_writer.writeAll(" AND ");
             } else {
                 try where_writer.writeAll("WHERE ");
             }
 
-            try where_writer.writeAll("feed_id in (");
-            try where_writer.writeAll("SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (");
-            try where_writer.print("{d}", .{ids_tag[0]});
-            for (ids_tag[1..]) |id| {
-                try where_writer.print(",{d}", .{id});
+            try where_writer.writeAll("(");
+            if (ids_tag.len > 0) {
+                try where_writer.writeAll("feed_id in (");
+                try where_writer.writeAll("SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (");
+                try where_writer.print("{d}", .{ids_tag[0]});
+                for (ids_tag[1..]) |id| {
+                    try where_writer.print(",{d}", .{id});
+                }
+                try where_writer.writeAll(")");
+                try where_writer.writeAll(")");
             }
 
-            try where_writer.writeAll(")");
+            if (args.has_untagged) {
+                if (ids_tag.len > 0) {
+                    try where_writer.writeAll(" OR ");
+                }
+                const query_untagged = "feed_id NOT IN (SELECT distinct(feed_id) FROM feed_tag)";
+                try where_writer.writeAll(query_untagged);
+            }
+
             try where_writer.writeAll(")");
             has_prev_cond = true;
         }
@@ -793,9 +805,6 @@ pub const Storage = struct {
             has_prev_cond = true;
         }
 
-        // TODO: untagged
-        // print("search_query: {s}\n", .{query_where.items});
-                
         const query_fmt = 
         \\SELECT * FROM feed {s}
         \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
@@ -1067,6 +1076,7 @@ pub fn main() !void{
         .tags = &tags,
         // .after = 4,
         .search = "prog",
+        .has_untagged = true,
     });
     print("result.len: {d}\n", .{result.len});
     print("result.id: {d}\n", .{result[0].feed_id});
