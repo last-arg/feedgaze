@@ -34,7 +34,7 @@
         },
         .tokamak = .{
             .url = "https://github.com/last-arg/tokamak/archive/refs/heads/main.tar.gz",
-            .hash = "12204db1e548b5837f883ad1efa18c3b4b85a7c840cd21ea21292fbb3cd9ac869e79",
+            .hash = "1220369aaa8d845cd7152cacc5dbb95a40355d80bd3471b66b07da57d0b806362122",
         },
     },
 }
