@@ -91,7 +91,11 @@ const feeds_path = struct {
             }
         }
 
-        try body_head_render(req.allocator, db, w, search_value orelse "", tags_active.items);
+        try body_head_render(req.allocator, db, w, .{ 
+            .search = search_value orelse "", 
+            .tags_checked = tags_active.items, 
+            .has_untagged = query_map.has("untagged"),
+        });
 
         const feeds = blk: {
             const after = after: {
@@ -180,7 +184,7 @@ const feeds_path = struct {
 
         try w.writeAll(head);
 
-        try body_head_render(req.allocator, db, w, "", &.{});
+        try body_head_render(req.allocator, db, w, .{});
 
         try w.writeAll("<h2>Edit feed</h2>");
         try w.print(
@@ -333,7 +337,7 @@ fn tags_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !void {
 
     try w.writeAll(head);
 
-    try body_head_render(req.allocator, db, w, "", &.{});
+    try body_head_render(req.allocator, db, w, .{});
 
     const tags = try db.tags_all_with_ids(req.allocator);
     try w.writeAll("<h2>Tags</h2>");
@@ -527,7 +531,7 @@ pub fn root_handler(ctx: *tk.Context, req: *tk.Request, resp: *tk.Response) !voi
 
     try w.writeAll(head);
 
-    try body_head_render(req.allocator, db, w, search_value orelse "", &.{});
+    try body_head_render(req.allocator, db, w, .{ .search = search_value orelse "" });
 
     const feeds = blk: {
         if (search_value) |term| {
@@ -623,7 +627,13 @@ fn tag_link_print(w: anytype, tag: []const u8) !void {
     try w.print(tag_link_fmt, .{ .tag = tag });
 }
 
-fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, search_value: []const u8, tags_checked: [][]const u8,) !void {
+const HeadOptions = struct {
+    search: []const u8 = "",
+    tags_checked: [][]const u8 = &.{},
+    has_untagged: bool = false,
+};
+
+fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts: HeadOptions) !void {
     try w.writeAll("<header>");
     try w.writeAll("<h1>feedgaze</h1>");
     try w.writeAll(
@@ -642,10 +652,11 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
 
-    try tag_label_render(w, untagged, 0, tags_checked);
+    // TODO: pass has_untagged value
+    try untagged_label_render(w, opts.has_untagged);
 
     for (tags, 0..) |tag, i| {
-        try tag_label_render(w, tag, i + 1, tags_checked);
+        try tag_label_render(w, tag, i + 1, opts.tags_checked);
     }
     try w.writeAll("</fieldset>");
     try w.writeAll("<button name='tags-only'>Filter tags only</button>");
@@ -654,10 +665,24 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, sear
     \\  <label for="search_value">Search feeds</label>
     \\  <input type="search" name="search" id="search_value" value="{s}">
     \\  <button>Filter</button>
-    , .{ search_value });
+    , .{ opts.search });
 
     try w.writeAll("</form>");
     try w.writeAll("</header>");
+}
+
+fn untagged_label_render(w: anytype, has_untagged: bool) !void {
+    try w.writeAll("<div>");
+    const is_checked: []const u8 = if (has_untagged) "checked" else "";
+    const tag_fmt = 
+    \\<span>
+    \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
+    \\<label for="untagged">{[value]s}</label>
+    \\</span>
+    ;
+    try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
+    try w.print("<a href='/feeds?untagged='>{s}</a>", .{ untagged });
+    try w.writeAll("</div>");
 }
 
 fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
