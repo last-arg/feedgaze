@@ -653,6 +653,9 @@ pub const Storage = struct {
     };
 
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+        var savepoint = try self.sql_db.savepoint("search_complex");
+        defer savepoint.rollback();
+
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
         var query_where = try ArrayList(u8).initCapacity(allocator, 1024);
@@ -767,7 +770,9 @@ pub const Storage = struct {
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
-        return try stmt.all(types.FeedRender, allocator, .{}, .{});
+        const result =  try stmt.all(types.FeedRender, allocator, .{}, .{});
+        savepoint.commit();
+        return result;
     }
     
     const after_cond_raw =
