@@ -10,11 +10,11 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "122007f33ec840d1693ff065bcdc93cca64c1e75a80cab7d7a53260273a8d5a9e036",
+            .hash = "12203f7d14722debe8f1a2168f28a262aaa5ec2457a7a975fc7dcc1123ed11597c98",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "12203ded54c85878eea7f12744066dcb4397177395ac49a7b2aa365bf6047b623829",
+            .hash = "12208a1de366740d11de525db7289345949f5fd46527db3f89eecc7bb49b012c0732",
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
@@ -22,11 +22,11 @@
         },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
-            .hash = "1220d70515390ed942a0864fe3aad2f3b485b3fcb9df07d61dbefea9873373647e33",
+            .hash = "12203dc7f1f6362f4bd5dd196d7f1de1e1c4f27da4bc87a40624eec05574c622e66c",
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "1220eefa74530c43e38f7e90dae8055af4f5964a9daf7b38618962e79f39c30079d3",
+            .hash = "1220c82a8eb4c314ea5b2c2bbf99b59a80b0f139c43a7cc14d1ad7e5a5ab27aa077e",
         },
         .rem = .{
             .url = "https://github.com/chadwain/rem/archive/refs/heads/master.tar.gz",
