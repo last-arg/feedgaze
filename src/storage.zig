@@ -708,6 +708,7 @@ pub const Storage = struct {
     };
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
         var buf: [1024]u8 = undefined;
+        var buf_cstr: [256]u8 = undefined;
         var query_where = try ArrayList(u8).initCapacity(allocator, 1024);
         defer query_where.deinit();
         const where_writer = query_where.writer();
@@ -732,13 +733,15 @@ pub const Storage = struct {
                 defer tags_str.deinit();
 
                 {
-                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", args.tags[0].ptr);
-                    const tag_slice = mem.sliceTo(c_str, 0);
+                    const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{args.tags[0]});
+                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
+                    const tag_slice = mem.sliceTo(c_str, 0x0);
                     try tags_str.appendSlice(tag_slice);
                 }
 
                 for (args.tags[1..]) |tag| {
-                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag.ptr);
+                    const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
+                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
                     const tag_slice = mem.sliceTo(c_str, 0);
                     try tags_str.append(',');
                     try tags_str.appendSlice(tag_slice);
@@ -799,8 +802,12 @@ pub const Storage = struct {
             } else {
                 try where_writer.writeAll("WHERE ");
             }
-            const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value.ptr);
+
+            const value_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{value});
+            const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value_cstr.ptr);
             const search = mem.sliceTo(c_str, 0);
+            std.debug.print("serach_value: |{s}|\n", .{search});
+
             try where_writer.print(search_fmt, .{.search_value = search });
             has_prev_cond = true;
         }
@@ -811,7 +818,6 @@ pub const Storage = struct {
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
-        print("query: |{s}|\n", .{query});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         return try stmt.all(types.FeedRender, allocator, .{}, .{});
