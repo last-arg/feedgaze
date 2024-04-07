@@ -274,20 +274,20 @@ pub const FeedUpdate = struct {
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
 
-        if (easy.get_header("last-modified")) |header| {
+        if (easy.getHeader("last-modified")) |header| {
             if (header) |h| {
                 feed_update.last_modified_utc = RssDateTime.parse(h.get()) catch null;
             }
         } else |_| {}
 
-        if (easy.get_header("etag")) |header| {
+        if (easy.getHeader("etag")) |header| {
             if (header) |h| {
                 feed_update.etag = h.get();
             }
         } else |_| {}
 
         var update_interval: ?i64 = null;
-        if (easy.get_header("cache-control")) |header| {
+        if (easy.getHeader("cache-control")) |header| {
             if (header) |h| {
                 const value = h.get();
                 var iter = std.mem.split(u8, value, ",");
@@ -312,7 +312,7 @@ pub const FeedUpdate = struct {
             update_interval = null;
         }
 
-        if (easy.get_header("expires")) |header| {
+        if (easy.getHeader("expires")) |header| {
             if (header) |h| {
                 const value = RssDateTime.parse(h.get()) catch null;
                 if (value) |v| {
@@ -444,10 +444,10 @@ pub const FeedOptions = struct {
     title: ?[]const u8 = null,
 
     pub fn fromResponse(resp: curl.Easy.Response) @This() {
-        const header_value = resp.get_header("content-type") catch null;
+        const header_value = resp.getHeader("content-type") catch null;
         const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
         return .{
-            .body = resp.body.items,
+            .body = resp.body.?.items,
             .content_type = content_type,
             .feed_updates = FeedUpdate.fromCurlHeaders(resp),
         };

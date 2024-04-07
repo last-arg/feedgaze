@@ -25,7 +25,7 @@ pub fn init(allocator: Allocator) !@This() {
     var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 10000});
     errdefer easy.deinit();
 
-    var headers = try easy.create_headers();
+    var headers = try easy.createHeaders();
     errdefer headers.deinit();
     try headers.add("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
     
@@ -58,15 +58,23 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
         }
     }
 
-    try self.client.set_url(url_with_null);
-    try self.client.set_headers(self.headers);
-    try self.client.set_max_redirects(5);
+    try self.client.setUrl(url_with_null);
+    try self.client.setHeaders(self.headers);
+    try self.client.setMaxRedirects(5);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
+    // TODO: using 0 value is not good. Remove/fix it in future 
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_SSL_VERIFYPEER, @as(c_long, 0)));
     const user_agent = "feedgaze/" ++ config.version;
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
-    // try self.client.set_verbose(true);
+    // try self.client.setVerbose(true);
 
-    return try self.client.perform();
+    var buf = curl.Buffer.init(self.allocator);
+    try self.client.setWritefunction(curl.bufferWriteCallback);
+    try self.client.setWritedata(&buf);
+
+    var resp = try self.client.perform();
+    resp.body = buf;
+    return resp;
 }
 
 pub fn get_url(self: *@This(), allocator: Allocator) ![]const u8 {

@@ -102,9 +102,10 @@ pub const Storage = struct {
     const curl = @import("curl");
     const ContentType = parse.ContentType;
     pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, resp: curl.Easy.Response, feed_info: FeedToUpdate) !void {
-        const content = resp.body.items;
+        const body = resp.body orelse return error.NoBody;
+        const content = body.items;
         const content_type = blk: {
-            const value = resp.get_header("content-type") catch null;
+            const value = resp.getHeader("content-type") catch null;
             if (value) |v| {
                 break :blk ContentType.fromString(v.get());
             }
@@ -609,7 +610,6 @@ pub const Storage = struct {
         var i: usize = 0;
         for (tags) |tag| {
             if (try one(&self.sql_db, usize, query, .{tag})) |value| {
-                std.debug.print("id: {d}", .{value});
                 buf[i] = value;
                 i += 1;
             }
@@ -754,7 +754,6 @@ pub const Storage = struct {
             const value_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{value});
             const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value_cstr.ptr);
             const search = mem.sliceTo(c_str, 0);
-            std.debug.print("serach_value: |{s}|\n", .{search});
 
             try where_writer.print(search_fmt, .{.search_value = search });
             has_prev_cond = true;

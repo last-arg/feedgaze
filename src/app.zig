@@ -340,7 +340,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var resp = try req.fetch(fetch_url, .{});
             defer resp.deinit();
 
-            if (resp.body.items.len == 0) {
+            if (resp.body.?.items.len == 0) {
                 std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
                 return error.EmptyBody;
             }
@@ -375,7 +375,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 var resp_2 = try req.fetch(fetch_url, .{});
                 defer resp_2.deinit();
 
-                if (resp_2.body.items.len == 0) {
+                if (resp_2.body.?.items.len == 0) {
                     std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
                     return error.EmptyBody;
                 }
