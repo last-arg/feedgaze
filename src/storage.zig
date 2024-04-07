@@ -789,6 +789,8 @@ pub const Storage = struct {
         }
         
         if (args.search) |value| {
+            const value_trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            std.debug.assert(value_trimmed.len > 0);
             const search_fmt =
                 \\(
                 \\  feed.title LIKE '%' || {[search_value]s} || '%' OR
