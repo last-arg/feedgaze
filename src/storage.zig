@@ -543,23 +543,7 @@ pub const Storage = struct {
     }
 
     pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8, after: ?After) ![]types.FeedRender {
-        const query_base =
-            \\select * from feed 
-            \\where {s} (
-            \\  feed.title LIKE '%' || ? || '%' OR
-            \\  feed.page_url LIKE '%' || ? || '%' OR
-            \\  feed.feed_url LIKE '%' || ? || '%' 
-            \\) LIMIT
-            ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
-        ;
-        const query_search = comptimePrint(query_base, .{""});
-        const partial = "updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND";
-        const query_after = comptimePrint(query_base, .{partial});
-        if (after) |feed_id| {
-            return try selectAll(&self.sql_db, alloc, types.FeedRender, query_after, .{feed_id, search_term, search_term, search_term});
-        } else {
-            return try selectAll(&self.sql_db, alloc, types.FeedRender, query_search, .{search_term, search_term, search_term});
-        }
+        return try self.feeds_search_complex(alloc, .{.search = search_term, .after = after});
     }
     
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
@@ -657,46 +641,7 @@ pub const Storage = struct {
 
     pub fn feeds_with_tags(self: *Self, allocator: Allocator, tags: [][]const u8, after: ?After) ![]types.FeedRender {
         if (tags.len == 0) { return &.{}; }
-        const query_fmt = 
-        \\SELECT * FROM feed WHERE feed_id IN (
-        \\	SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (
-        \\		SELECT tag_id FROM tag where name in ({s})
-        \\	) {s}
-        \\) ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
-        ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
-        ;
-
-        const after_cond = blk: {
-            if (after) |feed_id| {
-                break :blk try std.fmt.allocPrint(allocator, after_cond_raw, .{.id = feed_id});
-            }
-            break :blk null;
-        };
-        defer if (after_cond) |slice| allocator.free(slice);
-
-        var query_arr = try std.ArrayList(u8).initCapacity(allocator, tags.len * 2);
-        query_arr.appendAssumeCapacity('?');
-        for (tags[1..]) |_| {
-            query_arr.appendSliceAssumeCapacity(",?");
-        }
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_arr.items, after_cond orelse ""});
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
-        return try stmt.all(types.FeedRender, allocator, .{}, tags);
-    }
-
-    pub fn feeds_untagged(self: *Self, allocator: Allocator) ![]types.FeedRender {
-        const query_fmt = 
-        \\SELECT * FROM feed WHERE feed_id NOT IN (
-        \\	SELECT distinct(feed_id) FROM feed_tag
-        \\) ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
-        ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
-        ;
-
-        const query = query_fmt;
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
-        return try stmt.all(types.FeedRender, allocator, .{}, .{});
+        return try self.feeds_search_complex(allocator, .{.tags = tags, .after = after});
     }
 
     pub const After = usize;
@@ -706,6 +651,7 @@ pub const Storage = struct {
         after: ?After = null,
         has_untagged: bool = false,
     };
+
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;

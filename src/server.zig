@@ -104,11 +104,6 @@ const feeds_path = struct {
                 break :after null;
             };
 
-            {
-                const result = try db.feeds_search_complex(req.allocator, .{});
-                std.debug.print("result.len: {d}\n", .{result.len});
-            }
-
             const is_tags_only = query_map.has("tags-only");
             if (tags_active.items.len > 0) {
                 if (!is_tags_only and search_value != null and search_value.?.len > 0) {
