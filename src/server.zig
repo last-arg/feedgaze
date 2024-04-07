@@ -104,8 +104,10 @@ const feeds_path = struct {
                 break :after null;
             };
 
-            const feeds_untagged = try db.feeds_untagged(req.allocator);
-            std.debug.print("untagged.len: {d}\n", .{feeds_untagged.len});
+            {
+                const result = try db.feeds_search_complex(req.allocator, .{});
+                std.debug.print("result.len: {d}\n", .{result.len});
+            }
 
             const is_tags_only = query_map.has("tags-only");
             if (tags_active.items.len > 0) {

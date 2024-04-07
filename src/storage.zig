@@ -699,6 +699,114 @@ pub const Storage = struct {
         defer stmt.deinit();
         return try stmt.all(types.FeedRender, allocator, .{}, .{});
     }
+
+    const FeedSearchArgs = struct {
+        tags: [][]const u8 = &.{},
+        search: ?[]const u8 = null,
+        after: ?usize = null,
+        has_untagged: bool = false,
+    };
+    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+        var buf: [1024]u8 = undefined;
+        var query_where = try ArrayList(u8).initCapacity(allocator, 1024);
+        defer query_where.deinit();
+        const where_writer = query_where.writer();
+
+        var has_prev_cond = false;
+
+        if (args.after) |after| {
+            const after_fmt =
+            \\((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
+            \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}))
+            ;
+
+            try where_writer.writeAll("WHERE ");
+            try where_writer.print(after_fmt, .{.id = after });
+            has_prev_cond = true;
+        }
+
+        
+        const ids_tag = blk: {
+            if (args.tags.len > 0) {
+                var tags_str = std.ArrayList(u8).init(allocator);
+                defer tags_str.deinit();
+
+                {
+                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", args.tags[0].ptr);
+                    const tag_slice = mem.sliceTo(c_str, 0);
+                    try tags_str.appendSlice(tag_slice);
+                }
+
+                for (args.tags[1..]) |tag| {
+                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag.ptr);
+                    const tag_slice = mem.sliceTo(c_str, 0);
+                    try tags_str.append(',');
+                    try tags_str.appendSlice(tag_slice);
+                }
+
+                const query_fmt = "SELECT tag_id FROM tag where name in ({s})";
+                const query = try std.fmt.allocPrint(allocator, query_fmt, .{tags_str.items});
+                var stmt = try self.sql_db.prepareDynamic(query);
+                defer stmt.deinit();
+                break :blk try stmt.all(usize, allocator, .{}, .{});
+            }
+            break :blk &.{};
+        };
+        defer if (ids_tag.len > 0) allocator.free(ids_tag);
+
+        if (ids_tag.len > 0) {
+            if (has_prev_cond) {
+                try where_writer.writeAll(" AND ");
+            } else {
+                try where_writer.writeAll("WHERE ");
+            }
+
+            try where_writer.writeAll("feed_id in (");
+            try where_writer.writeAll("SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (");
+            try where_writer.print("{d}", .{ids_tag[0]});
+            for (ids_tag[1..]) |id| {
+                try where_writer.print(",{d}", .{id});
+            }
+
+            try where_writer.writeAll(")");
+            try where_writer.writeAll(")");
+            has_prev_cond = true;
+        }
+        
+        if (args.search) |value| {
+            const search_fmt =
+                \\(
+                \\  feed.title LIKE '%' || {[search_value]s} || '%' OR
+                \\  feed.page_url LIKE '%' || {[search_value]s} || '%' OR
+                \\  feed.feed_url LIKE '%' || {[search_value]s} || '%' 
+                \\) 
+            ;
+
+            if (has_prev_cond) {
+                try where_writer.writeAll(" AND ");
+            } else {
+                try where_writer.writeAll("WHERE ");
+            }
+            const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value.ptr);
+            const search = mem.sliceTo(c_str, 0);
+            try where_writer.print(search_fmt, .{.search_value = search });
+            has_prev_cond = true;
+        }
+
+        // TODO: untagged
+        // print("search_query: {s}\n", .{query_where.items});
+                
+        const query_fmt = 
+        \\SELECT * FROM feed {s}
+        \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
+        ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
+        ;
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
+        print("query: |{s}|\n", .{query});
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+        return try stmt.all(types.FeedRender, allocator, .{}, .{});
+    }
     
     const after_cond_raw =
     \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
@@ -945,4 +1053,21 @@ test "Storage.updateFeedAndItems" {
         const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
         try std.testing.expectEqual(@as(usize, 3), count.?);
     }
+}
+
+pub fn main() !void{
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    defer arena.deinit();
+
+    var storage = try Storage.init("./tmp/feeds.db");
+    var tags = [_][]const u8{"programming"};
+    const result = try storage.feeds_search_complex(arena.allocator(), .{
+        .tags = &tags,
+        // .after = 4,
+        .search = "prog",
+    });
+    print("result.len: {d}\n", .{result.len});
+    print("result.id: {d}\n", .{result[0].feed_id});
 }
