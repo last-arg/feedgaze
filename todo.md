@@ -20,8 +20,6 @@
   - increase update interval base on when last update was
     - more than 1 year = several days?
     - more than 1 month = 1 day or more?
-[ ] Parsing RSS: <guid isPermalink="true"> mean value is valid link. Useful if 
-there is no <link>. FYI <link> is required by the spec.
 [ ] Decode/encode HTML characters
 [ ] Maybe I should add field 'items' to Feed struct?
   - I am using Feed in sqlite db request, which makes the request fail.

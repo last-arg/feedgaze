@@ -378,6 +378,8 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var stream = std.io.fixedBufferStream(content);
     var input_buffered_reader = std.io.bufferedReader(stream.reader());
     var token_reader = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+    var is_guid_link = false;
+    var guid_has_permalink = false;
 
     var token = try token_reader.next();
     while (token != .eof) : (token = try token_reader.next()) {
@@ -474,7 +476,15 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 tmp_str.reset();
                             }, 
                             .guid => {
-                                current_item.id = try allocator.dupe(u8, tmp_str.slice());
+                                // This means that current_item.link == null and <guid> has attribute
+                                // 'isPermalink'
+                                if (guid_has_permalink) {
+                                    current_item.link = try allocator.dupe(u8, tmp_str.slice());
+                                    is_guid_link = false;
+                                    guid_has_permalink = false;
+                                } else {
+                                    current_item.id = try allocator.dupe(u8, tmp_str.slice());
+                                }
                                 tmp_str.reset();
                             }, 
                             .pubDate, .@"dc:date" => {},
@@ -486,8 +496,23 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .element_end_empty => {
                 current_tag = null;
             },
-            .attribute_start => {},
-            .attribute_content => {},
+            .attribute_start => {
+                if (current_item.link == null and state == .item) {
+                    const tag = current_tag orelse continue;
+                    if (tag == .guid) {
+                        const attr = token_reader.fullToken(token).attribute_start;
+                        guid_has_permalink = std.mem.eql(u8, attr.name, "isPermaLink");
+                    }
+                }
+            },
+            .attribute_content => {
+                // This means element is in <guid> and attribute is 'isPermaLink'. And
+                // current_item.link == null
+                if (guid_has_permalink) {
+                    const attr_content = token_reader.fullToken(token).attribute_content;
+                    is_guid_link = std.mem.eql(u8, attr_content.content.text, "true");
+                }
+            },
             .xml_declaration,
             .pi_start, .pi_content,
             .comment_start => {}, 
@@ -759,6 +784,7 @@ test "tmp" {
     print("\nSTART {d}\n", .{feed.items.len});
     for (feed.items) |item| {
         print("title: |{s}|\n", .{item.title});
+        print("link: |{?s}|\n", .{item.link});
         // print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});
     }
