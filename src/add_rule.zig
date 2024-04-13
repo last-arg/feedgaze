@@ -7,7 +7,6 @@ const AddRule = struct {
     const Self = @This();
     rules: []Rule = &.{},
 
-
     const Rule = struct {
         const Match = struct {
             host: []const u8,
@@ -30,17 +29,15 @@ const AddRule = struct {
 
             try writer.writeAll("Rule.Result:\n\tpath: ");
             try writer.writeAll(value.result.path);
-            try writer.writeAll("\n");
         }
     };
     
     pub fn find_match(self: Self, input: []const u8) !?Rule {
         const uri = try std.Uri.parse(input);
-        std.debug.print("input: {s}\n", .{input});
+        const host = uri.host orelse return null;
         var rule_matched: ?Rule = null;
 
         for (self.rules) |rule| {
-            const host = uri.host orelse continue;
             if (!std.mem.eql(u8, rule.match.host, host)) {
                 continue;
             }
@@ -61,6 +58,9 @@ const AddRule = struct {
                         break;
                     }
                     if (rule_part[0] == '*') {
+                        if (rule_part.len > 0) {
+                            
+                        }
                         continue;
                     } else if (!mem.eql(u8, input_part, rule_part)) {
                         break;
@@ -75,28 +75,70 @@ const AddRule = struct {
                 rule_match = false;
             }
             if (rule_match) {
+                const last_index = mem.lastIndexOfScalar(u8, rule.result.path, '*') orelse 0;
+                const slash_last_index = mem.lastIndexOfScalar(u8, rule.result.path, '/') orelse 0;
+                if (last_index > slash_last_index) {
+                    const needle = rule.result.path[last_index + 1..];
+                    if (needle.len > 0) {
+                        if (mem.endsWith(u8, uri.path, needle)) {
+                            continue;
+                        }
+                    }
+                }
                 rule_matched = rule;
                 break;
             }
         }
 
-        std.debug.print("{any}\n", .{rule_matched});
+        // std.debug.print("input: {s}\n", .{input});
+        // std.debug.print("{any}\n", .{rule_matched});
 
         return rule_matched;
     }
 
-    pub fn transform_match(rule: Rule) !void {
-        _ = rule;
-        // TODO: Transform input url
+    pub fn transform_match(self: Self, allocator: mem.Allocator, input: []const u8) ![]const u8 {
+        const rule_match_opt = try self.find_match(input);
+        const rule_match = rule_match_opt orelse return error.NoRuleMatch;
+        var uri = try std.Uri.parse(input);
+
+        var output_arr = try std.ArrayList(u8).initCapacity(allocator, uri.path.len);
+        defer output_arr.deinit();
+
+        var uri_iter = mem.splitScalar(u8, uri.path, '/');
+        _ = uri_iter.next();
+        var result_iter = mem.splitScalar(u8, rule_match.result.path, '/');
+        _ = result_iter.next();
+
+        while (result_iter.next()) |result| {
+            const uri_value = uri_iter.next() orelse continue;
+            try output_arr.append('/');
+            if (result[0] == '*') {
+                try output_arr.appendSlice(uri_value);
+                if (result.len > 0) {
+                    try output_arr.appendSlice(result[1..]);
+                }
+            } else {
+                try output_arr.appendSlice(result);
+            }
+        }
+
+        uri.path = output_arr.items;
+        return try std.fmt.allocPrint(allocator, "{}", .{uri});
     }
 };
 
 test "tmp" {
-    const expect = std.testing.expect;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator(); 
 
     const url_1 = "https://github.com/letoram/arcan/commits/master";
     const url_2 = "https://github.com/11ty/webc/commits";
     var rules = [_]AddRule.Rule{
+        .{
+            .match = .{.host = "github.com", .path = "/hello"},
+            .result = .{.path = "/world"},
+        },
         .{
             .match = .{.host = "github.com", .path = "/*/*/commits"},
             .result = .{.path = "/*/*/commits.atom"},
@@ -111,7 +153,11 @@ test "tmp" {
         },
     };
     const rule = AddRule{ .rules = &rules };
-    _ = try rule.find_match(url_1);
-    _ = try rule.find_match(url_2);
-    try expect(true);
+    const r_1 = try rule.transform_match(allocator, "https://github.com/hello");
+    std.debug.print("r_1: {s}\n", .{r_1});
+    _ = rule.transform_match(allocator, "https://github.com/letoram/arcan/commits/master.atom") catch {};
+    const r_3 = try rule.transform_match(allocator, url_1);
+    std.debug.print("r_3: {s}\n", .{r_3});
+    const r_4 = try rule.transform_match(allocator, url_2);
+    std.debug.print("r_4: {s}\n", .{r_4});
 }

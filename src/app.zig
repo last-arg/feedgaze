@@ -333,6 +333,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
+            // TODO: check if url applies to any add rules
+
             // fetch url content
             var req = try http_client.init(arena.allocator());
             defer req.deinit();
