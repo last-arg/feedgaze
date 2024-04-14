@@ -838,7 +838,7 @@ const tables = &[_][]const u8{
     \\  id TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
     \\  position INTEGER NOT NULL DEFAULT 0,
-    \\  last_modified INTEGER DEFAULT (strftime("%s", "now")),
+    \\  last_modified INTEGER DEFAULT (strftime('%s', 'now')),
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
@@ -849,7 +849,7 @@ const tables = &[_][]const u8{
         \\  feed_id INTEGER UNIQUE NOT NULL,
         \\  update_countdown INTEGER DEFAULT 0,
         \\  update_interval INTEGER DEFAULT {d},
-        \\  last_update INTEGER DEFAULT (strftime("%s", "now")),
+        \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
         \\  last_modified_utc INTEGER DEFAULT NULL,
         \\  etag TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
