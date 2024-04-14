@@ -41,6 +41,8 @@ Web page
       - Make feeds into columns. Latest feeds' would go from left to right.
       - Make items into columns. Latest items' would go top to bottom.
   [ ] Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
+[ ] Database (sqlite)
+  [ ] look into creating indices
 
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)

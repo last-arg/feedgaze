@@ -3,11 +3,11 @@ const mem = std.mem;
 
 // TODO: cli, web test rules
 
-const AddRule = struct {
+pub const AddRule = struct {
     const Self = @This();
     rules: []Rule = &.{},
 
-    const Rule = struct {
+    pub const Rule = struct {
         const Match = struct {
             host: []const u8,
             path: []const u8,

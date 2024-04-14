@@ -818,6 +818,32 @@ pub const Storage = struct {
         ;
         try self.sql_db.exec(query, .{}, feed);
     }
+
+    // const InsertRuleHost = struct {
+    //     name: []const u8,
+    // };
+
+    // const InsertAddRule = struct {
+    //     match_host_id: usize,
+    //     match_path: []const u8,
+    //     result_host_id: usize,
+    //     result_path: []const u8,
+    // };
+
+    pub fn rule_add(self: *Self) !void {
+        const query_insert_host =
+        \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
+        ;
+        const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
+        const name = "github.com";
+        const host_id = try one(&self.sql_db, usize, query_insert_host, .{name}) 
+            orelse try one(&self.sql_db, usize, query_select_host, .{name})
+            orelse return error.CouldNotGetAddRuleHostId;
+
+        print("id: {d}\n", .{host_id});
+
+        // See if rules exists. Have to compare every column value.
+    }
 };
 
 // TODO: feed.title default value should be null
@@ -868,6 +894,27 @@ const tables = &[_][]const u8{
     \\  UNIQUE(tag_id, feed_id)
     \\)
     ,
+    \\CREATE TABLE IF NOT EXISTS feed_tag(
+    \\  tag_id INTEGER NOT NULL,
+    \\  feed_id INTEGER NOT NULL,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
+    \\  FOREIGN KEY(tag_id) REFERENCES tag(tag_id) ON DELETE CASCADE,
+    \\  UNIQUE(tag_id, feed_id)
+    \\)
+    ,
+    \\CREATE TABLE IF NOT EXISTS add_rule_host(
+    \\  host_id INTEGER PRIMARY KEY,
+    \\  name TEXT NOT NULL UNIQUE
+    \\)
+    ,
+    \\CREATE TABLE IF NOT EXISTS add_rule(
+    \\  match_host_id INTEGER NOT NULL,
+    \\  match_path TEXT NOT NULL,
+    \\  result_host_id INTEGER NOT NULL,
+    \\  result_path TEXT NOT NULL,
+    \\  FOREIGN KEY(match_host_id) REFERENCES add_rule_host(host_id),
+    \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id)
+    \\)
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
@@ -991,6 +1038,12 @@ test "Storage.updateFeedAndItems" {
 }
 
 pub fn main() !void {
+    var storage = try Storage.init(null);
+    try storage.rule_add();
+    try storage.rule_add();
+}
+
+pub fn main1() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     var arena = std.heap.ArenaAllocator.init(allocator);
