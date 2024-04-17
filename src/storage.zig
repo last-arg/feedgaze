@@ -830,7 +830,9 @@ pub const Storage = struct {
     //     result_path: []const u8,
     // };
 
-    pub fn rule_add(self: *Self) !void {
+    pub fn rule_add(self: *Self, match: std.Uri, result: std.Uri) !void {
+        _ = match; // autofix
+        _ = result; // autofix
         const query_insert_host =
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
@@ -1035,28 +1037,4 @@ test "Storage.updateFeedAndItems" {
         const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
         try std.testing.expectEqual(@as(usize, 3), count.?);
     }
-}
-
-pub fn main() !void {
-    var storage = try Storage.init(null);
-    try storage.rule_add();
-    try storage.rule_add();
-}
-
-pub fn main1() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    var storage = try Storage.init("./tmp/feeds.db");
-    var tags = [_][]const u8{"programming"};
-    const result = try storage.feeds_search_complex(arena.allocator(), .{
-        .tags = &tags,
-        // .after = 4,
-        .search = "prog",
-        .has_untagged = true,
-    });
-    print("result.len: {d}\n", .{result.len});
-    print("result.id: {d}\n", .{result[0].feed_id});
 }
