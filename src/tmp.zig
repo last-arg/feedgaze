@@ -5,8 +5,29 @@ const Storage = @import("storage.zig").Storage;
 const print = std.debug.print;
 
 pub fn main() !void {
-    try run_rule_transform();
-    try run_storage_rule_add();
+    // try run_storage_rule_add();
+    // try run_rule_transform();
+    try run_add_new_feed();
+}
+
+// check if new feed url hits any add_rules
+// - if it does transform feed url 
+// - if not use url as is
+pub fn run_add_new_feed() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator(); 
+
+    var storage = try Storage.init("./tmp/feeds.db");
+    const input = "http://github.com/hello";
+    const uri = try std.Uri.parse(input);
+    const add_rule = try storage.get_add_rule(allocator, uri);
+    print("add_rule: {any}\n", .{add_rule});
+
+    const r_1 = try AddRule.transform_rule_match(allocator, uri, add_rule.?);
+    print("r_1: {s}\n", .{r_1});
+
+    // const rule_match = AddRule.Rule.Match.create(input);
 }
 
 // from add_rule.zig

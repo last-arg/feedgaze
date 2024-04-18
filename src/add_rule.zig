@@ -8,50 +8,39 @@ pub const AddRule = @This();
 rules: []Rule = &.{},
 
 pub fn create_rule(match_raw:[]const u8, result_raw: []const u8) !Rule {
-    const match_uri = std.Uri.parse(match_raw) catch return error.InvalidMatchUrl;
-    const match_host = match_uri.host orelse return error.MissingMatchHost;
+    const uri = std.Uri.parse(match_raw) catch return error.InvalidMatchUrl;
+    const host = uri.host orelse return error.MissingMatchHost;
     const result_uri = std.Uri.parse(result_raw) catch std.Uri.parseWithoutScheme(result_raw) catch {
         return error.InvalidResultUrl;
     };
 
     // TODO?: check that match and result placeholders match?
     // Make sure can create result url from match?
+    // Does placeholder count for match and result have to be same?
 
     return .{
-       .match = .{
-          .host = match_host, 
-          .path = match_uri.path, 
-       },
-       .result = .{
-          .host = result_uri.host orelse match_host, 
-          .path = result_uri.path, 
-       },
+      .match_host = host,
+      .match_path = uri.path,
+      .result_host = result_uri.host orelse host, 
+      .result_path = result_uri.path, 
     };
 }
 
 pub const Rule = struct {
-    const Match = struct {
-        host: []const u8,
-        path: []const u8,
-    };
-    const Result = struct {
-        host: []const u8 = "",
-        path: []const u8,
-    };
-    match: Match,
-    result: Result,
+    match_host: []const u8,
+    match_path: []const u8,
+    result_host: []const u8 = "",
+    result_path: []const u8,
 
     pub fn format(value: Rule, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;
-        try writer.writeAll("Rule.Match:\n\thost: ");
-        try writer.writeAll(value.match.host);
-        try writer.writeAll("\n\tpath: ");
-        try writer.writeAll(value.match.path);
-        try writer.writeAll("\n");
-
-        try writer.writeAll("Rule.Result:\n\tpath: ");
-        try writer.writeAll(value.result.path);
+        try writer.writeAll("Rule:\n\tmatch_host: ");
+        try writer.writeAll(value.match_host);
+        try writer.writeAll("\n\tmatch_path: ");
+        try writer.writeAll(value.match_path);
+        try writer.writeAll("\n\tresult_path: ");
+        try writer.writeAll(value.result_path);
     }
 };
 
@@ -119,17 +108,13 @@ pub fn find_match(self: AddRule, input: []const u8) !?Rule {
     return rule_matched;
 }
 
-pub fn transform_match(self: AddRule, allocator: mem.Allocator, input: []const u8) ![]const u8 {
-    const rule_match_opt = try self.find_match(input);
-    const rule_match = rule_match_opt orelse return error.NoRuleMatch;
-    var uri = try std.Uri.parse(input);
-
+pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: Rule) ![]const u8 {
     var output_arr = try std.ArrayList(u8).initCapacity(allocator, uri.path.len);
     defer output_arr.deinit();
 
     var uri_iter = mem.splitScalar(u8, uri.path, '/');
     _ = uri_iter.next();
-    var result_iter = mem.splitScalar(u8, rule_match.result.path, '/');
+    var result_iter = mem.splitScalar(u8, rule.result_path, '/');
     _ = result_iter.next();
 
     while (result_iter.next()) |result| {
@@ -145,6 +130,7 @@ pub fn transform_match(self: AddRule, allocator: mem.Allocator, input: []const u
         }
     }
 
-    uri.path = output_arr.items;
-    return try std.fmt.allocPrint(allocator, "{}", .{uri});
+    var tmp_uri = uri;
+    tmp_uri.path = output_arr.items;
+    return try std.fmt.allocPrint(allocator, "{}", .{tmp_uri});
 }

@@ -850,6 +850,23 @@ pub const Storage = struct {
         ;
         try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match.path, host_id, rule.result.path});
     }
+
+    pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
+        const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
+        const host_id = (try one(&self.sql_db, usize, query_select_host, .{uri.host})) orelse return null;
+
+        const query = 
+        \\select 
+        \\  (select name from add_rule_host where host_id = ?) as match_host, 
+        \\  match_path, 
+        \\  (select name from add_rule_host where host_id = ?) as result_host, 
+        \\  result_path 
+        \\from add_rule 
+        \\where match_host_id = ? AND match_path = ?;
+        ;
+
+        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{host_id, host_id, host_id, uri.path});
+    }
 };
 
 // TODO: feed.title default value should be null
