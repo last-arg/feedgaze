@@ -21,6 +21,13 @@
     - more than 1 year = several days?
     - more than 1 month = 1 day or more?
 [ ] Decode/encode HTML characters
+[ ] Atom parsing:
+  [ ] see if I need to handle xhtml encoding for <title>
+    https://validator.w3.org/feed/docs/atom.html#text
+    <title> can have attribute type which tells how content is encoded.
+    Encodings: text (default), html, xhtml
+    I think function content_to_str() hadles text and html encodings
+    in some very general way.
 [ ] Maybe I should add field 'items' to Feed struct?
   - I am using Feed in sqlite db request, which makes the request fail.
     Have separate type for db results?
