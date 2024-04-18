@@ -7,8 +7,26 @@ const print = std.debug.print;
 pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
-    try run_add_new_feed();
+    // try run_add_new_feed();
+    try run_parse_atom();
 }
+
+fn run_parse_atom() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    const content = @embedFile("tmp_file"); 
+    const feed = try @import("app_parse.zig").parseAtom(alloc, content);
+    print("\nSTART {d}\n", .{feed.items.len});
+    // for (feed.items) |item| {
+    //     print("title: |{s}|\n", .{item.title});
+    //     print("link: |{?s}|\n", .{item.link});
+    //     // print("date: {?d}\n", .{item.updated_timestamp});
+    //     print("\n", .{});
+    // }
+}
+
 
 // check if new feed url hits any add_rules
 // - if it does transform feed url 

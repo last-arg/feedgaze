@@ -5,6 +5,16 @@ const CompileStep = Build.Step.Compile;
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
+const anon_modules = .{
+    .{.name = "tmp_file", .path="./tmp/tmp.xml"},
+    .{.name = "atom.atom", .path="./test/atom.atom"},
+    .{.name = "atom.xml", .path="./test/atom.xml"},
+    .{.name = "rss2.xml", .path="./test/rss2.xml"},
+    .{.name = "json_feed.json", .path="./test/json_feed.json"},
+    .{.name = "many-links.html", .path="./test/many-links.html"},
+    .{.name = "baldurbjarnason.com.html", .path="./tmp/baldurbjarnason.com.html"},
+};
+
 pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -43,6 +53,11 @@ pub fn build(b: *Build) !void {
     // step is evaluated that depends on it. The next line below will establish
     // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
+
+    const tmp_file = anon_modules[0];
+    exe.root_module.addAnonymousImport(tmp_file.name, .{
+        .root_source_file = .{ .path = tmp_file.path },
+    });
 
     commonModules(b, exe, .{.target = target, .optimize = optimize});
 
@@ -84,16 +99,6 @@ pub fn build(b: *Build) !void {
         .use_lld = use_llvm,
     });
     test_cmd.setExecCmd(cmds);
-
-    const anon_modules = .{
-        .{.name = "tmp_file", .path="./tmp/tmp.xml"},
-        .{.name = "atom.atom", .path="./test/atom.atom"},
-        .{.name = "atom.xml", .path="./test/atom.xml"},
-        .{.name = "rss2.xml", .path="./test/rss2.xml"},
-        .{.name = "json_feed.json", .path="./test/json_feed.json"},
-        .{.name = "many-links.html", .path="./test/many-links.html"},
-        .{.name = "baldurbjarnason.com.html", .path="./tmp/baldurbjarnason.com.html"},
-    };
 
     inline for (anon_modules) |file| {
         test_cmd.root_module.addAnonymousImport(file.name, .{
