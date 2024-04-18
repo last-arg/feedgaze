@@ -52,8 +52,8 @@ pub const Feed = struct {
         };
         if (self.page_url) |page_url| {
             if (page_url[0] == '/' or page_url[0] == '.') {
-                const buf = try alloc.alloc(u8, self.feed_url.len + page_url.len);
-                const result = try feed_uri.resolve_inplace(page_url, buf);
+                var buf = try alloc.alloc(u8, self.feed_url.len + page_url.len);
+                const result = try feed_uri.resolve_inplace(page_url, &buf);
                 self.page_url = try std.fmt.allocPrint(alloc, "{}", .{result});
             }
         }

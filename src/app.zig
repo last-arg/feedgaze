@@ -337,7 +337,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var fetch_url = url;
 
             if (uri.host) |host| {
-                const rules = try self.storage.get_rules_for_host(arena.allocator(), host);
+                const host_str = AddRule.uri_component_val(host);
+                const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
                 defer arena.allocator().free(rules);
                 if (try AddRule.find_rule_match(uri, rules)) |rule| {
                     std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -372,8 +373,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                 if (!mem.startsWith(u8, link.link, "http")) {
                     var url_uri = try std.Uri.parse(url);
-                    const link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
-                    const result = try url_uri.resolve_inplace(link.link, link_buf);
+                    var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
+                    const result = try url_uri.resolve_inplace(link.link, &link_buf);
                     fetch_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
                 } else {
                     fetch_url = link.link;

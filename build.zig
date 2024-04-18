@@ -132,9 +132,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
 
-    const rem = b.dependency("rem", dep_args);
-    step.root_module.addImport("rem", rem.module("rem"));
-
     const tokamak = b.dependency("tokamak", .{});
     step.root_module.addImport("tokamak", tokamak.module("tokamak"));
 }

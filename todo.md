@@ -14,7 +14,11 @@
       - titles
       - links
     - Use page title as feed title
+    - check https://github.com/chadwain/rem
 [ ] add transactions
+[ ] Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
+    '.percent_encoded' probably better option. Currently just get/set whatever
+    is there.
 [ ] Can disable updating for feeds?
 [ ] Reduce how often feed update http request are made
   - increase update interval base on when last update was

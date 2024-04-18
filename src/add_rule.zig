@@ -44,8 +44,14 @@ pub const RuleWithHost = struct {
     }
 };
 
+pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
+    return switch (uri_comp) {
+        .raw, .percent_encoded => |val| val,
+    };
+}
+
 pub fn find_rule_match(uri: std.Uri, rules: []RuleWithHost) !?RuleWithHost {
-    var uri_path_iter = mem.splitScalar(u8, uri.path, '/');
+    var uri_path_iter = mem.splitScalar(u8, uri_component_val(uri.path), '/');
     outer: for (rules) |rule| {
         uri_path_iter.reset();
         _ = uri_path_iter.next() orelse continue;
@@ -149,10 +155,11 @@ pub fn find_match(self: AddRule, input: []const u8) !?Rule {
 }
 
 pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWithHost) ![]const u8 {
-    var output_arr = try std.ArrayList(u8).initCapacity(allocator, uri.path.len);
+    const path_str = uri_component_val(uri.path);
+    var output_arr = try std.ArrayList(u8).initCapacity(allocator, path_str.len);
     defer output_arr.deinit();
 
-    var uri_iter = mem.splitScalar(u8, uri.path, '/');
+    var uri_iter = mem.splitScalar(u8, path_str, '/');
     _ = uri_iter.next();
     var result_iter = mem.splitScalar(u8, rule.result_path, '/');
     _ = result_iter.next();
@@ -171,6 +178,13 @@ pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWi
     }
 
     var tmp_uri = uri;
-    tmp_uri.path = output_arr.items;
+    set_uri_component(&tmp_uri.path, output_arr.items);
     return try std.fmt.allocPrint(allocator, "{}", .{tmp_uri});
 }
+
+pub fn set_uri_component(uri_comp: *std.Uri.Component, val: []const u8) void {
+    switch(uri_comp.*) {
+        .raw, .percent_encoded => |*field| field.* = val,
+    }
+}
+

@@ -7,8 +7,8 @@ const print = std.debug.print;
 pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
-    // try run_add_new_feed();
-    try run_parse_atom();
+    try run_add_new_feed();
+    // try run_parse_atom();
 }
 
 fn run_parse_atom() !void {
@@ -42,7 +42,8 @@ pub fn run_add_new_feed() !void {
 
     const uri = try std.Uri.parse(input);
 
-    const rules = try storage.get_rules_for_host(allocator, uri.host.?);
+    const host_str = switch(uri.host.?) { .raw, .percent_encoded => |val| val };
+    const rules = try storage.get_rules_for_host(allocator, host_str);
     const rule_with_host = try AddRule.find_rule_match(uri, rules);
     print("rule_with_host: {any}\n", .{rule_with_host});
 

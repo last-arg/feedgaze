@@ -10,7 +10,7 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "12203f7d14722debe8f1a2168f28a262aaa5ec2457a7a975fc7dcc1123ed11597c98",
+            .hash = "12200f05fa91c8b6d6fa931f850d4702efc376b2cc04c0e63f009881a575ef1f69a2",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
@@ -26,11 +26,7 @@
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "1220c82a8eb4c314ea5b2c2bbf99b59a80b0f139c43a7cc14d1ad7e5a5ab27aa077e",
-        },
-        .rem = .{
-            .url = "https://github.com/chadwain/rem/archive/refs/heads/master.tar.gz",
-            .hash = "1220d4c8ba1f2496bd0d6b39b57d8194767dbdaa9115675fbb57414f304494c67414",
+            .hash = "1220f2f863742c19fec9381537083da27519a7e638ce690973b34faf89f8f2b32729",
         },
         .tokamak = .{
             .url = "https://github.com/last-arg/tokamak/archive/refs/heads/main.tar.gz",
