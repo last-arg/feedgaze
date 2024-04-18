@@ -19,12 +19,16 @@ pub fn run_add_new_feed() !void {
     const allocator = arena.allocator(); 
 
     var storage = try Storage.init("./tmp/feeds.db");
-    const input = "http://github.com/hello";
-    const uri = try std.Uri.parse(input);
-    const add_rule = try storage.get_add_rule(allocator, uri);
-    print("add_rule: {any}\n", .{add_rule});
+    const input = "https://github.com/letoram/arcan/commits/master";
+    print("\ninput url: {s}\n", .{input});
 
-    const r_1 = try AddRule.transform_rule_match(allocator, uri, add_rule.?);
+    const uri = try std.Uri.parse(input);
+
+    const rules = try storage.get_rules_for_host(allocator, uri.host.?);
+    const rule_with_host = try AddRule.find_rule_match(uri, rules);
+    print("rule_with_host: {any}\n", .{rule_with_host});
+
+    const r_1 = try AddRule.transform_rule_match(allocator, uri, rule_with_host.?);
     print("r_1: {s}\n", .{r_1});
 
     // const rule_match = AddRule.Rule.Match.create(input);
@@ -40,8 +44,8 @@ pub fn run_rule_transform() !void {
     const url_2 = "https://github.com/11ty/webc/commits";
     var rules = [_]AddRule.Rule{
         try create_rule("http://github.com/hello", "/world"),
-        try create_rule("http://github.com/*/*/commits", "/*/*/commits.atom"),
         try create_rule("http://github.com/*/*", "/*/*/commits.atom"),
+        try create_rule("http://github.com/*/*/commits", "/*/*/commits.atom"),
         try create_rule("http://github.com/*/*/commits/*", "/*/*/commits/*.atom"),
     };
     const rule = AddRule{ .rules = &rules };
@@ -58,7 +62,9 @@ pub fn run_rule_transform() !void {
 pub fn run_storage_rule_add() !void {
     // var storage = try Storage.init(null);
     var storage = try Storage.init("./tmp/feeds.db");
-    const r1 = try create_rule("http://github.com/hello", "/world");
+    const r1 = try create_rule("https://github.com/*/*/commits", "/*/*/commits.atom");
+    const r2 = try create_rule("https://github.com/*/*/commits/*", "/*/*/commits/*.atom");
+
     try storage.rule_add(r1);
-    try storage.rule_add(r1);
+    try storage.rule_add(r2);
 }

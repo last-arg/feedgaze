@@ -836,19 +836,33 @@ pub const Storage = struct {
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const name = rule.match.host;
+        const name = rule.match_host;
         const host_id = try one(&self.sql_db, usize, query_insert_host, .{name}) 
             orelse try one(&self.sql_db, usize, query_select_host, .{name})
             orelse return error.CouldNotGetAddRuleHostId;
-
-        print("id: {d}\n", .{host_id});
 
         const query_insert_rule = 
         \\insert or ignore into 
         \\  add_rule(match_host_id, match_path, result_host_id, result_path) 
         \\  values (?, ?, ?, ?);
         ;
-        try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match.path, host_id, rule.result.path});
+        try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match_path, host_id, rule.result_path});
+    }
+
+    const AddRule = @import("add_rule.zig");
+    pub fn get_rules_for_host(self: *Self, allocator: Allocator, host: []const u8) ![]AddRule.RuleWithHost {
+        const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
+        const host_id = (try one(&self.sql_db, usize, query_select_host, .{host})) orelse return &.{};
+        const query = 
+        \\select 
+        \\  match_path,
+        \\  (select name from add_rule_host where host_id = add_rule.result_host_id) as result_host, 
+        \\  result_path
+        \\from add_rule 
+        \\where match_host_id = ?;
+        ;
+
+        return try selectAll(&self.sql_db, allocator, AddRule.RuleWithHost, query, .{host_id});
     }
 
     pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
@@ -862,10 +876,13 @@ pub const Storage = struct {
         \\  (select name from add_rule_host where host_id = ?) as result_host, 
         \\  result_path 
         \\from add_rule 
-        \\where match_host_id = ? AND match_path = ?;
+        \\where match_host_id = ? AND match_path like ?;
         ;
 
-        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{host_id, host_id, host_id, uri.path});
+        const tmp_path = try allocator.dupe(u8, uri.path);
+        mem.replaceScalar(u8, tmp_path, '*', '%');
+        print("path: {s}\n", .{tmp_path});
+        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{host_id, host_id, host_id, tmp_path});
     }
 };
 

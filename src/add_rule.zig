@@ -1,5 +1,6 @@
 const std = @import("std");
 const mem = std.mem;
+const assert = std.debug.assert;
 
 // TODO: cli, web test rules
 
@@ -24,6 +25,45 @@ pub fn create_rule(match_raw:[]const u8, result_raw: []const u8) !Rule {
       .result_host = result_uri.host orelse host, 
       .result_path = result_uri.path, 
     };
+}
+
+pub const RuleWithHost = struct {
+    match_path: []const u8,
+    result_host: []const u8 = "",
+    result_path: []const u8,
+
+    pub fn format(value: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+        _ = fmt;
+        _ = options;
+        try writer.writeAll("RuleWithHost:\n\tmatch_path: ");
+        try writer.writeAll(value.match_path);
+        try writer.writeAll("\n\tresult_host: ");
+        try writer.writeAll(value.result_host);
+        try writer.writeAll("\n\tresult_path: ");
+        try writer.writeAll(value.result_path);
+    }
+};
+
+pub fn find_rule_match(uri: std.Uri, rules: []RuleWithHost) !?RuleWithHost {
+    var uri_path_iter = mem.splitScalar(u8, uri.path, '/');
+    outer: for (rules) |rule| {
+        uri_path_iter.reset();
+        _ = uri_path_iter.next() orelse continue;
+        var rule_path_iter = mem.splitScalar(u8, rule.match_path, '/');
+        _ = rule_path_iter.next() orelse continue;
+        
+        while (uri_path_iter.next()) |uri_path_part| {
+            if (uri_path_part.len == 0) continue;
+            const rule_path_part = rule_path_iter.next() orelse continue :outer;
+            assert(rule_path_part.len > 0);
+            if (rule_path_part[0] != '*' and !mem.eql(u8, rule_path_part, uri_path_part)) {
+                continue :outer;
+            }
+        }
+        return rule;
+    }
+
+    return null;
 }
 
 pub const Rule = struct {
@@ -108,7 +148,7 @@ pub fn find_match(self: AddRule, input: []const u8) !?Rule {
     return rule_matched;
 }
 
-pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: Rule) ![]const u8 {
+pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWithHost) ![]const u8 {
     var output_arr = try std.ArrayList(u8).initCapacity(allocator, uri.path.len);
     defer output_arr.deinit();
 

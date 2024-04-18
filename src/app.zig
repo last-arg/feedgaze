@@ -322,8 +322,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
+        const AddRule = @import("add_rule.zig");
         pub fn add(self: *Self, url: []const u8) !usize {
-            _ = std.Uri.parse(url) catch {
+            const uri = std.Uri.parse(url) catch {
                 return error.InvalidUri;
             };
             if (try self.storage.hasFeedWithFeedUrl(url)) {
@@ -333,12 +334,20 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            // TODO: check if url applies to any add rules
+            var fetch_url = url;
+
+            if (uri.host) |host| {
+                const rules = try self.storage.get_rules_for_host(arena.allocator(), host);
+                defer arena.allocator().free(rules);
+                if (try AddRule.find_rule_match(uri, rules)) |rule| {
+                    std.log.info("Found matching rule. Using rule to transform url.", .{});
+                    fetch_url = try AddRule.transform_rule_match(arena.allocator(), uri, rule);
+                }
+            }
 
             // fetch url content
             var req = try http_client.init(arena.allocator());
             defer req.deinit();
-            var fetch_url = url;
             var resp = try req.fetch(fetch_url, .{});
             defer resp.deinit();
 
