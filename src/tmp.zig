@@ -7,7 +7,6 @@ const print = std.debug.print;
 pub fn main() !void {
     try run_rule_transform();
     try run_storage_rule_add();
-    try run_storage_rule_search();
 }
 
 // from add_rule.zig
@@ -38,25 +37,7 @@ pub fn run_rule_transform() !void {
 pub fn run_storage_rule_add() !void {
     // var storage = try Storage.init(null);
     var storage = try Storage.init("./tmp/feeds.db");
-    try storage.rule_add();
-    try storage.rule_add();
-}
-
-// from storage.zig
-pub fn run_storage_rule_search() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    const allocator = gpa.allocator();
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    var storage = try Storage.init("./tmp/feeds.db");
-    var tags = [_][]const u8{"programming"};
-    const result = try storage.feeds_search_complex(arena.allocator(), .{
-        .tags = &tags,
-        // .after = 4,
-        .search = "prog",
-        .has_untagged = true,
-    });
-    print("result.len: {d}\n", .{result.len});
-    print("result.id: {d}\n", .{result[0].feed_id});
+    const r1 = try create_rule("http://github.com/hello", "/world");
+    try storage.rule_add(r1);
+    try storage.rule_add(r1);
 }

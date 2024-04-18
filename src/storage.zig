@@ -830,21 +830,25 @@ pub const Storage = struct {
     //     result_path: []const u8,
     // };
 
-    pub fn rule_add(self: *Self, match: std.Uri, result: std.Uri) !void {
-        _ = match; // autofix
-        _ = result; // autofix
+    const Rule = @import("add_rule.zig").Rule;
+    pub fn rule_add(self: *Self, rule: Rule) !void {
         const query_insert_host =
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const name = "github.com";
+        const name = rule.match.host;
         const host_id = try one(&self.sql_db, usize, query_insert_host, .{name}) 
             orelse try one(&self.sql_db, usize, query_select_host, .{name})
             orelse return error.CouldNotGetAddRuleHostId;
 
         print("id: {d}\n", .{host_id});
 
-        // See if rules exists. Have to compare every column value.
+        const query_insert_rule = 
+        \\insert or ignore into 
+        \\  add_rule(match_host_id, match_path, result_host_id, result_path) 
+        \\  values (?, ?, ?, ?);
+        ;
+        try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match.path, host_id, rule.result.path});
     }
 };
 
@@ -910,12 +914,14 @@ const tables = &[_][]const u8{
     \\)
     ,
     \\CREATE TABLE IF NOT EXISTS add_rule(
+    \\  add_rule_id INTEGER PRIMARY KEY,
     \\  match_host_id INTEGER NOT NULL,
     \\  match_path TEXT NOT NULL,
     \\  result_host_id INTEGER NOT NULL,
     \\  result_path TEXT NOT NULL,
     \\  FOREIGN KEY(match_host_id) REFERENCES add_rule_host(host_id),
-    \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id)
+    \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id),
+    \\  UNIQUE(match_host_id, match_path)
     \\)
 };
 
