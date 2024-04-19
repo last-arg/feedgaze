@@ -519,9 +519,11 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
     }
 
+    // TODO: implement pagination (After)
     pub fn feeds_all(self: *Self, alloc: Allocator) ![]types.FeedRender {
         const query_feed =
-            \\select * from feed order by updated_timestamp DESC;
+            \\SELECT * FROM feed ORDER BY updated_timestamp DESC
+            ++ comptimePrint(" LIMIT {d}", .{app_config.query_feed_limit})
         ;
         return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
     }
@@ -768,6 +770,7 @@ pub const Storage = struct {
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
+        print("query: {s}\n", .{query});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         const result =  try stmt.all(types.FeedRender, allocator, .{}, .{});

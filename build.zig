@@ -132,6 +132,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const curl = b.dependency("curl", dep_args);
     step.root_module.addImport("curl", curl.module("curl"));
 
-    const tokamak = b.dependency("tokamak", .{});
-    step.root_module.addImport("tokamak", tokamak.module("tokamak"));
+    const httpz = b.dependency("httpz", .{});
+    step.root_module.addImport("httpz", httpz.module("httpz"));
 }
