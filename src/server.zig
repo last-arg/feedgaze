@@ -155,35 +155,41 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk try db.feeds_page(req.arena, after);
     };
 
-    try feeds_and_items_print(w, req.arena, db, feeds);
+    try w.writeAll("<main>");
     if (feeds.len > 0) {
+        try feeds_and_items_print(w, req.arena, db, feeds);
         if (feeds.len == config.query_feed_limit) {
-            const href = blk: {
-                const id_new = feeds[feeds.len - 1].feed_id;
-                // TODO: construct 'next' href/url
-                if (query.get("after")) |id_curr| {
-                    _ = id_curr;
-                    // var buf_needle: [32]u8 = undefined;
-                    // const needle = try std.fmt.bufPrint(&buf_needle, "after={s}", .{id_curr});
-                    // var buf_replace: [32]u8 = undefined;
-                    // const replace = try std.fmt.bufPrint(&buf_replace, "after={d}", .{id_new});
-                    // const query_new = try std.mem.replaceOwned(u8, req.arena, q, needle, replace);
-                    // break :blk try std.fmt.allocPrint(req.arena, "?{s}", .{query_new});
-                    break :blk "/todo";
-                } else if (query.len > 0) {
-                    break :blk try std.fmt.allocPrint(req.arena, "?{s}&after={d}", .{"todo=", id_new});
+            var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
+            defer new_url_arr.deinit();
+            new_url_arr.appendSliceAssumeCapacity("/?");
+            const href_next = blk: {
+                for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
+                    if (mem.eql(u8, "after", key)) {
+                        continue;
+                    }
+                    try new_url_arr.appendSlice(key);
+                    try new_url_arr.append('=');
+                    try new_url_arr.appendSlice(value);
+                    try new_url_arr.append('&');
                 }
-                break :blk try std.fmt.allocPrint(req.arena, "/?after={d}", .{id_new});
+
+                try new_url_arr.appendSlice("after");
+                try new_url_arr.append('=');
+                const id_last = feeds[feeds.len - 1].feed_id;
+                try new_url_arr.writer().print("{d}", .{id_last});
+
+                break :blk new_url_arr.items;
             };
             try w.print(
                 \\<a href="{s}">Next</a>
-            , .{href});
+            , .{href_next});
         }
     } else {
         try w.writeAll(
             \\<p>Nothing to show</p>
         );
     }
+    try w.writeAll("</main>");
 
     try w.writeAll(foot);
 }
