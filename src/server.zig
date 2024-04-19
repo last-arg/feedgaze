@@ -45,9 +45,37 @@ fn start_server() !void {
     // use get/post/put/head/patch/options/delete
     // you can also use "all" to attach to all methods
     router.get("/", root_get);
+    router.get("/tags", tags_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
+}
+
+fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+    resp.content_type = .HTML;
+
+    const w = resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req.arena, db, w, .{});
+
+    const tags = try db.tags_all_with_ids(req.arena);
+    try w.writeAll("<h2>Tags</h2>");
+    try w.writeAll("<ul>");
+    for (tags) |tag| {
+        try w.writeAll("<li>");
+        try w.print("{d} - ", .{tag.tag_id});
+        try tag_link_print(w, tag.name);
+        try w.writeAll("</li>");
+    }
+    try w.writeAll("</ul>");
+
+    try w.writeAll(foot);
 }
 
 // TODO: try to split base to head and foot during comptime
