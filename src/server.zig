@@ -46,9 +46,15 @@ fn start_server() !void {
     // you can also use "all" to attach to all methods
     router.get("/", root_get);
     router.get("/tags", tags_get);
+    router.get("/style.css", style_get);
 
     // start the server in the current thread, blocking.
-    try server.listen(); 
+    try server.listen();
+}
+
+fn style_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
+    resp.content_type = .CSS;
+    resp.body = @embedFile("./style.css");
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
