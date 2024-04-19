@@ -114,10 +114,6 @@ body {
   line-height: var(--leading-standard);
 }  
 
-a {
-  margin-inline: 1rem;
-}
-
 /* TODO: change html structure */
 /* use :has? */
 input[type=checkbox] ~ label {
@@ -170,4 +166,20 @@ EXCEPTIONS
   flex-basis: 0;
   flex-grow: 999;
   min-width: var(--sidebar-content-min-width, 50%);
+}
+
+/* 
+VISUALLY HIDDEN UTILITY
+Info: https://piccalil.li/quick-tip/visually-hidden/ 
+*/
+.visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+  white-space: nowrap;
 }

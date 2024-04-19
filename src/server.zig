@@ -52,9 +52,12 @@ fn start_server() !void {
     try server.listen(); 
 }
 
-fn style_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
+fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     resp.content_type = .CSS;
-    resp.body = @embedFile("./style.css");
+    const file = try std.fs.cwd().openFile("./public/style.css", .{});
+    defer file.close();
+
+    resp.body = try file.readToEndAlloc(req.arena, std.math.maxInt(u32));
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -354,7 +357,7 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     const tag_fmt = 
     \\<span>
     \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
-    \\<label for="untagged">{[value]s}</label>
+    \\<label class="visually-hidden" for="untagged">{[value]s}</label>
     \\</span>
     ;
     try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
@@ -391,7 +394,7 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
     \\<span>
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
+    \\<label class="visually-hidden" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
     \\</span>
     ;
     try w.print(tag_fmt, args);
