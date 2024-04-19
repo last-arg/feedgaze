@@ -49,7 +49,7 @@ fn start_server() !void {
     router.get("/style.css", style_get);
 
     // start the server in the current thread, blocking.
-    try server.listen();
+    try server.listen(); 
 }
 
 fn style_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
@@ -107,7 +107,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.arena, query.len);
     defer tags_active.deinit();
 
-    for (query.keys, query.values) |key, value| {
+    for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
         if (mem.eql(u8, "tag", key)) {
             const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
             if (trimmed.len > 0) {
