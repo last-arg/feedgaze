@@ -100,6 +100,7 @@ textarea:not([rows]) {
   --leading-standard: 1.5;
 }
 
+
 /* 
   Global styles 
 
@@ -114,9 +115,24 @@ body {
   line-height: var(--leading-standard);
 }  
 
+ul {
+  margin-block-start: 0;
+  padding-inline-start: 0;
+}
+
+fieldset {
+  border: none;
+  padding: 0;
+  margin-inline: 0;
+}
+
+
+/* 
+  Block styles 
+*/
 .tag {
   position: relative;
-  background: var(--label-bg, gray);
+  background: var(--label-bg, oklch(94% 0 0));
 }
 
 /* When new tag is added */
@@ -132,6 +148,50 @@ body {
 .sidebar header {
   --sidebar-target-width: 10rem;
 }
+
+.feed {
+  background: oklch(86% 0 0);
+}
+
+.feed-header {
+  background: oklch(92% 0 0);
+}
+
+.feed-item {
+  max-width: 50ch;
+  display: flex;
+}
+
+.feed-item a,
+.feed-item p {
+  background: oklch(95% 0 0);
+  flex-grow: 1;
+}
+
+/* 
+  TODO: change colors based on color unit used. Like in fraidycat. 
+  Can visually find/identify new items faster.
+  Server side probably generates some class or attribute.
+  Don't forget to handle future dates.
+*/
+.feed-item time {
+  font-family: monospace;
+  font-size: 16px;
+  background: oklch(90% 0 0);
+  align-self: self-start;
+  margin-inline-start: 2px;
+  text-align: end;
+  line-height: 1;
+  padding: 4px 6px;
+  min-width: calc(3ch + (2 * 6px));
+  /* When date, month, year is displayed. Happens when date is in the future. */
+  width: min-content;
+}
+
+
+/* 
+  Component styles 
+*/
 
 /* 
 Source: https://github.com/Set-Creative-Studio/cube-boilerplate/blob/main/src/css/compositions/sidebar.css
@@ -171,10 +231,19 @@ EXCEPTIONS
   min-width: var(--sidebar-content-min-width, 60%);
 }
 
-.feed-item {
-  max-width: 50ch;
-  background: oklch(78.12% 0.049 158.4);
+/* 
+FLOW COMPOSITION 
+Like the Every Layout stack: https://every-layout.dev/layouts/stack/
+Info about this implementation: https://piccalil.li/quick-tip/flow-utility/ 
+*/
+.flow > * + * {
+  margin-top: var(--flow-space, 1em);
 }
+
+
+/* 
+  Utility styles 
+*/
 
 .truncate {
   display: -webkit-box;
@@ -199,11 +268,3 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
   white-space: nowrap;
 }
 
-/* 
-FLOW COMPOSITION 
-Like the Every Layout stack: https://every-layout.dev/layouts/stack/
-Info about this implementation: https://piccalil.li/quick-tip/flow-utility/ 
-*/
-.flow > * + * {
-  margin-top: var(--flow-space, 1em);
-}

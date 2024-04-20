@@ -74,8 +74,9 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try body_head_render(req.arena, db, w, .{});
 
     const tags = try db.tags_all_with_ids(req.arena);
+    try w.writeAll("<div>");
     try w.writeAll("<h2>Tags</h2>");
-    try w.writeAll("<ul>");
+    try w.writeAll("<ul role='list'>");
     for (tags) |tag| {
         try w.writeAll("<li>");
         try w.print("{d} - ", .{tag.tag_id});
@@ -83,6 +84,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
+    try w.writeAll("</div>");
 
     try w.writeAll(foot);
 }
@@ -198,9 +200,10 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
-    try w.writeAll("<ul>");
+    try w.writeAll("<ul class='flow' role='list'>");
     for (feeds) |feed| {
-        try w.writeAll("<li>");
+        try w.writeAll("<li class='feed'>");
+        try w.writeAll("<div class='feed-header'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
 
@@ -212,12 +215,13 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
+        try w.writeAll("</div>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
         if (items.len == 0) {
             continue;
         }
-        try w.writeAll("<ul class='flow'>");
+        try w.writeAll("<ul class='feed-item-list flow'>");
         for (items) |item| {
             try w.writeAll("<li class='feed-item'>");
             try item_render(w, item);
@@ -322,6 +326,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
       \\<a href="/tags">Tags</a>
     );
 
+    try w.writeAll("<h2>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/'>");
     // This makes is the default action of form. For example used when pressing
@@ -330,7 +335,8 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     \\  <button style="display: none">Default form action</button>
     );
     try w.writeAll("<fieldset>");
-    try w.writeAll("<legend>Tags</legend>");
+    try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
+    try w.writeAll("<h3 aria-hidden='true'>Tags</h3>");
 
     // TODO: pass has_untagged value
     try untagged_label_render(w, opts.has_untagged);
@@ -342,9 +348,11 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     try w.writeAll("<button name='tags-only'>Filter tags only</button>");
 
     try w.print(
-    \\  <label for="search_value">Search feeds</label>
+    \\<p>
+    \\  <label for="search_value">Filter term</label>
     \\  <input type="search" name="search" id="search_value" value="{s}">
     \\  <button>Filter</button>
+    \\</p>
     , .{ opts.search });
 
     try w.writeAll("</form>");
