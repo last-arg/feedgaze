@@ -217,9 +217,9 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         if (items.len == 0) {
             continue;
         }
-        try w.writeAll("<ul>");
+        try w.writeAll("<ul class='flow'>");
         for (items) |item| {
-            try w.writeAll("<li>");
+            try w.writeAll("<li class='feed-item'>");
             try item_render(w, item);
             try w.writeAll("</li>");
         }
@@ -243,12 +243,12 @@ fn item_render(w: anytype, item: FeedItemRender) !void {
     var date_buf: [date_len_max]u8 = undefined;
 
     const item_link_fmt =
-    \\<a href="{[link]s}">{[title]s}</a>
+    \\<a href="{[link]s}" class="truncate" title="{[title]s}">{[title]s}</a>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
     const item_title_fmt =
-    \\<p>{[title]s}</p>
+    \\<p class="truncate" title="{[title]s}">{[title]s}</p>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
                 
@@ -355,7 +355,7 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     try w.writeAll("<div>");
     const is_checked: []const u8 = if (has_untagged) "checked" else "";
     const tag_fmt = 
-    \\<span>
+    \\<span class="tag">
     \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
     \\<label class="visually-hidden" for="untagged">{[value]s}</label>
     \\</span>
@@ -392,7 +392,7 @@ const InputRenderArgs = struct{
 
 fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
-    \\<span>
+    \\<span class="tag">
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
     \\<label class="visually-hidden" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
     \\</span>
