@@ -39,9 +39,8 @@ pub fn build(b: *Build) !void {
         .root_source_file = .{ .path = source_file },
         .target = target,
         .optimize = optimize,
-        .link_libc = true,
         .use_llvm = use_llvm,
-        .use_lld = use_llvm,
+        .use_lld = false,
     });
 
     // This declares intent for the executable to be installed into the
