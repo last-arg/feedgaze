@@ -42,11 +42,12 @@ pub const FeedAndItems = struct {
 pub const TmpStr = struct {
     const Self = @This();
     const Str = std.BoundedArray(u8, max_title_len);
-    const ContentState = enum {text, skip, lt};
+    const ContentState = enum { text, skip, lt };
 
     arr: Str,
     is_full: bool = false,
     state: ContentState = .text,
+    is_prev_amp: bool = false,
 
     fn init() Self {
         return .{ .arr = Str.init(0) catch unreachable };
@@ -63,7 +64,6 @@ pub const TmpStr = struct {
             .text => |text| {
                 if (state == .lt) {
                     if (mem.eql(u8, text, "p") or mem.eql(u8, text, "/p")) {
-                        print("ent p\n", .{});
                         const len = tmp_str.arr.len;
                         if (len > 0 and tmp_str.arr.buffer[len - 1] != ' ') {
                             tmp_str.append(' ');
@@ -77,37 +77,64 @@ pub const TmpStr = struct {
                 } else if (state == .skip) {
                     return;
                 }
-                var iter = html.html_text(text);
+
+                var t = text;
+                if (tmp_str.is_prev_amp) {
+                    if (mem.indexOfScalar(u8, text, ';')) |index| {
+                        tmp_str.entity_to_str(text[0..index]);
+                        const start = index + 1;
+                        if (start >= t.len) {
+                            return;
+                        }
+                        t = text[index + 1..];
+                    }
+                    tmp_str.is_prev_amp = false;
+                }
+
+                var iter = html.html_text(t);
                 while (iter.next()) |value| {
                     tmp_str.appendSlice(value);
                 }
             },
             .codepoint => |cp| {
+                if (tmp_str.is_prev_amp) {
+                    tmp_str.append('&');
+                    tmp_str.is_prev_amp = false;
+                }
+
                 var buf: [4]u8 = undefined;
                 const len = try std.unicode.utf8Encode(cp, &buf);
                 tmp_str.appendSlice(buf[0..len]);
             },
-            .entity => |ent| {
-                if (mem.eql(u8, ent, "lt")) {
-                    tmp_str.state = .lt;
-                } else if (mem.eql(u8, ent, "gt")) {
-                    tmp_str.state = .text;
+            .entity => |ent| entity_to_str(tmp_str, ent),
+        }
+    }
+
+    fn entity_to_str(tmp_str: *TmpStr, ent: []const u8) void {
+        if (mem.eql(u8, ent, "lt")) {
+            tmp_str.state = .lt;
+        } else if (mem.eql(u8, ent, "gt")) {
+            tmp_str.state = .text;
+        } else if (tmp_str.state != .skip) {
+            if (entity_to_char(ent)) |char| {
+                if (char == '&' and !tmp_str.is_prev_amp) {
+                    tmp_str.is_prev_amp = true;
                 } else {
-                    if (entity_to_char(ent)) |char| {
-                        tmp_str.append(char);
-                    } else {
-                        tmp_str.append('&');
-                        tmp_str.appendSlice(ent);
-                        tmp_str.append(';');
-                    }
+                    tmp_str.append(char);
                 }
-            },
+            } else {
+                tmp_str.append('&');
+                tmp_str.appendSlice(ent);
+                tmp_str.append(';');
+            }
         }
     }
 
     fn entity_to_char(entity: []const u8) ?u8 {
         if (mem.eql(u8, entity, "amp")) {
-            return '\'';
+            return '&';
+        } else if (mem.eql(u8, entity, "quot")) {
+            return '\"';
         }
         return null;
     }
