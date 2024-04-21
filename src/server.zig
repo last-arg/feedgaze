@@ -46,10 +46,109 @@ fn start_server() !void {
     // you can also use "all" to attach to all methods
     router.get("/", root_get);
     router.get("/tags", tags_get);
+    router.get("/feed/:id", feed_get);
     router.get("/style.css", style_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
+}
+
+
+fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+    const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const id = std.fmt.parseUnsigned(usize, id_raw, 10) catch return error.InvalidIdParam;
+    const feed = db.feed_with_id(req.arena, id) catch {
+        return error.DatabaseFailure;
+    } orelse {
+        resp.status = 404;
+        resp.body = "Feed not found";
+        return;
+    };
+
+    const tags_all = db.tags_all(req.arena) catch blk: {
+        std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
+        break :blk &.{};
+    };
+
+    const feed_tags = db.feed_tags(req.arena, feed.feed_id) catch blk: {
+        std.log.warn("Request '/feed/{d}' failed to get feed tags", .{feed.feed_id});
+        break :blk &.{};
+    };
+
+    const items = db.feed_items_with_feed_id(req.arena, feed.feed_id) catch blk: {
+        std.log.warn("Request '/feed/{d}' failed to get feed items", .{feed.feed_id});
+        break :blk &.{};
+    };
+
+    const w = resp.writer();
+
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req.arena, db, w, .{});
+
+    try w.writeAll("<div>");
+    try w.writeAll("<h2>Edit feed</h2>");
+    try w.print(
+        \\<p>Feed url: <a href="">{[feed_url]s}</a></p>
+    , .{ .feed_url = feed.feed_url });
+
+    try w.writeAll("<form method='POST'>");
+    // TODO: render feed edit stuff
+    // title
+    // feed_url - can't edit?
+    // page_url - might get overwritten during update 
+
+    const inputs_fmt = 
+    \\<label for="title">Feed title</label>
+    \\<input type="text" id="title" name="title" value="{[title]s}">
+    \\<label for="page_url">Page url</label>
+    \\<input type="text" id="page_url" name="page_url" value="{[page_url]s}">
+    \\<a href="{[page_url]s}">Go to page url</a>
+    ;
+    try w.print(inputs_fmt, .{
+        .title = feed.title, 
+        .page_url = feed.page_url orelse "",
+    });
+
+    // TODO: feed updating
+    // - update feed now?
+    //   - show time till next update?
+    // - allow changing update interval?
+
+    for (tags_all, 0..) |tag, i| {
+        const is_checked = blk: {
+            for (feed_tags) |f_tag| {
+                if (mem.eql(u8, tag, f_tag)) {
+                    break :blk "checked";
+                }
+            }
+            break :blk "";
+        };
+        try tag_input_render(w, .{
+            .tag = tag,
+            .tag_index = i,
+            .is_checked = is_checked,
+            .prefix = "tag-edit-",
+        });
+    }
+    try w.writeAll("<button>Save feed changes</button>");
+    try w.writeAll("</form>");
+
+    try w.writeAll("<ul>");
+    for (items) |item| {
+        try w.writeAll("<li>");
+        try item_render(w, item);
+        try w.writeAll("</li>");
+    }
+    try w.writeAll("</ul>");
+
+    try w.writeAll("</div>");
+    try w.writeAll(foot);
 }
 
 fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -236,7 +335,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
 fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     const edit_fmt = 
-    \\<a href="/feeds/{d}">Edit feed</a>
+    \\<a href="/feed/{d}">Edit feed</a>
     ;
     try w.print(edit_fmt, .{ feed_id });
 }
@@ -334,7 +433,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     try w.writeAll(
     \\<button aria-hidden="true" style="display: none">Default form action</button>
     );
-    try w.writeAll("<fieldset class='flow' style='--flow-space: 0.5em'>");
+    try w.writeAll("<fieldset class='tags flow' style='--flow-space: 0.5em'>");
     try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
     try w.writeAll("<h3 aria-hidden='true'>Tags</h3>");
 
@@ -401,7 +500,7 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
     \\<span class="tag">
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label class="visually-hidden" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
+    \\<label for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
     \\</span>
     ;
     try w.print(tag_fmt, args);
