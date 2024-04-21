@@ -329,16 +329,15 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     try w.writeAll("<h2>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/'>");
-    // This makes is the default action of form. For example used when pressing
-    // enter inside input text field.
+    // NOTE: don't want tags-only button to be the 'default' button. This is
+    // used when enter is pressed in input (text) field.
     try w.writeAll(
-    \\  <button style="display: none">Default form action</button>
+    \\<button aria-hidden="true" style="display: none">Default form action</button>
     );
-    try w.writeAll("<fieldset>");
+    try w.writeAll("<fieldset class='flow' style='--flow-space: 0.5em'>");
     try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
     try w.writeAll("<h3 aria-hidden='true'>Tags</h3>");
 
-    // TODO: pass has_untagged value
     try untagged_label_render(w, opts.has_untagged);
 
     for (tags, 0..) |tag, i| {

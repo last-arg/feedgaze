@@ -126,12 +126,19 @@ fieldset {
   margin-inline: 0;
 }
 
+a {
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}
+
 
 /* 
   Block styles 
 */
 .tag {
-  position: relative;
   background: var(--label-bg, oklch(94% 0 0));
 }
 
