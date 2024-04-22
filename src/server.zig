@@ -385,7 +385,7 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
     var date_buf: [date_len_max]u8 = undefined;
 
     const feed_link_fmt = 
-    \\<a href="{[page_url]s}">{[title]s}</a>
+    \\<a class="feed-link" href="{[page_url]s}">{[title]s}</a>
     \\<a href="{[feed_url]s}">Feed link</a>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
@@ -430,6 +430,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
       \\<a href="/tags">Tags</a>
     );
 
+    try w.writeAll("<div class='filter-wrapper'>");
     try w.writeAll("<h2>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/'>");
@@ -459,6 +460,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     , .{ opts.search });
 
     try w.writeAll("</form>");
+    try w.writeAll("</div>");
     try w.writeAll("</header>");
 }
 
