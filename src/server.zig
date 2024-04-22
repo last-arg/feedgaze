@@ -484,6 +484,7 @@ fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][
         .tag = tag,
         .tag_index = index,
         .is_checked = is_checked,
+        .label_class = "visually-hidden",
     });
     try tag_link_print(w, tag);
     try w.writeAll("</div>");
@@ -494,13 +495,14 @@ const InputRenderArgs = struct{
     tag_index: usize, 
     is_checked: []const u8,
     prefix: []const u8 = "tag-id-",
+    label_class: []const u8 = &.{},
 };
 
 fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
     \\<span class="tag">
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
+    \\<label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
     \\</span>
     ;
     try w.print(tag_fmt, args);

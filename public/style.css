@@ -135,23 +135,15 @@ a:hover {
 }
 
 
+time {
+  font-family: monospace;
+  font-size: 16px;
+}
+
+
 /* 
   Block styles 
 */
-
-.tags label {
-  /* Visually hidden */
-  border: 0;
-  clip: rect(0 0 0 0);
-  height: 0;
-  margin: 0;
-  overflow: hidden;
-  padding: 0;
-  position: absolute;
-  width: 1px;
-  white-space: nowrap;
-  
-}
 
 .tag {
   background: var(--label-bg, oklch(94% 0 0));
@@ -197,8 +189,6 @@ a:hover {
   Don't forget to handle future dates.
 */
 .feed-item time {
-  font-family: monospace;
-  font-size: 16px;
   background: oklch(90% 0 0);
   align-self: self-start;
   margin-inline-start: 2px;
