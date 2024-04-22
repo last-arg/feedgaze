@@ -47,7 +47,7 @@ fn start_server() !void {
     router.get("/", root_get);
     router.get("/tags", tags_get);
     router.get("/feed/:id", feed_get);
-    router.get("/style.css", style_get);
+    router.get("/public/*", style_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
@@ -153,7 +153,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
 fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     resp.content_type = .CSS;
-    const file = try std.fs.cwd().openFile("./public/style.css", .{});
+    const path = if (req.url.path[0] == '/') req.url.path[1..] else req.url.path;
+    const file = std.fs.cwd().openFile(path, .{}) catch {
+        resp.status = 404;
+        resp.body = "File not found";
+        return;
+    };
     defer file.close();
 
     resp.body = try file.readToEndAlloc(req.arena, std.math.maxInt(u32));
