@@ -100,14 +100,14 @@ textarea:not([rows]) {
 */
 
 :root {
-  --step--2: clamp(0.7813rem, 0.7747rem + 0.0326vi, 0.8rem);
-  --step--1: clamp(0.9375rem, 0.9158rem + 0.1087vi, 1rem);
-  --step-0: clamp(1.125rem, 1.0815rem + 0.2174vi, 1.25rem);
-  --step-1: clamp(1.35rem, 1.2761rem + 0.3696vi, 1.5625rem);
-  --step-2: clamp(1.62rem, 1.5041rem + 0.5793vi, 1.9531rem);
-  --step-3: clamp(1.944rem, 1.771rem + 0.8651vi, 2.4414rem);
-  --step-4: clamp(2.3328rem, 2.0827rem + 1.2504vi, 3.0518rem);
-  --step-5: clamp(2.7994rem, 2.4462rem + 1.7658vi, 3.8147rem);
+  --step--2: clamp(0.6944rem, 0.6856rem + 0.0444vi, 0.72rem);
+  --step--1: clamp(0.8333rem, 0.8101rem + 0.1159vi, 0.9rem);
+  --step-0: clamp(1rem, 0.9565rem + 0.2174vi, 1.125rem);
+  --step-1: clamp(1.2rem, 1.1283rem + 0.3587vi, 1.4063rem);
+  --step-2: clamp(1.44rem, 1.3295rem + 0.5527vi, 1.7578rem);
+  --step-3: clamp(1.728rem, 1.5648rem + 0.8161vi, 2.1973rem);
+  --step-4: clamp(2.0736rem, 1.8395rem + 1.1704vi, 2.7466rem);
+  --step-5: clamp(2.4883rem, 2.1597rem + 1.6433vi, 3.4332rem);
 
   --space-3xs: clamp(0.3125rem, 0.3125rem + 0vi, 0.3125rem);
   --space-2xs: clamp(0.5625rem, 0.5408rem + 0.1087vi, 0.625rem);
@@ -133,8 +133,8 @@ textarea:not([rows]) {
   --space-s-l: clamp(1.125rem, 0.6467rem + 2.3913vi, 2.5rem);
 }
 
-
 :root {
+  --font-base: Arial;
   --gutter: var(--space-s-l);
   --transition-base: 250ms ease;
   --transition-movement: 200ms linear;
@@ -146,7 +146,7 @@ textarea:not([rows]) {
 body {
   background: var(--color-light);
   color: var(--color-dark);
-  font-size: var(--size-step-0);
+  font-size: var(--step-0);
   font-family: var(--font-base);
   line-height: var(--leading-standard);
 }  
@@ -163,17 +163,19 @@ fieldset {
 }
 
 a {
+  color: var(--gray-12);
   text-decoration: none;
 }
 
 a:hover {
   text-decoration: underline;
+  text-decoration-color: var(--teal-4);
 }
 
 
 time {
   font-family: monospace;
-  font-size: 16px;
+  font-size: var(--step--1);
 }
 
 
@@ -182,17 +184,17 @@ time {
 */
 
 .tag {
-  background: var(--label-bg, oklch(94% 0 0));
+  background: var(--label-bg, var(--gray-2));
 }
 
 /* When new tag is added */
 .tag:has(input[type="checkbox"]:checked:not(:default)) {
-  --label-bg: green;
+  --label-bg: var(--green-3);
 }
 
 /* When tag is removed */
 .tag:has(input[type="checkbox"]:default:not(:checked)) {
-  --label-bg: red;
+  --label-bg: var(--red-3);
 }
 
 .sidebar header {
@@ -200,15 +202,31 @@ time {
 }
 
 .feed {
-  background: oklch(86% 0 0);
+  background: var(--gray-4);
 }
 
-.feed-header {
+.feed-tags {
+  display: flex;
+  flex-flow: flex-wrap;
+  gap: var(--space-2xs);
+}
+
+.feed-tags a {
+  font-size: var(--step--1);
+  text-decoration: none;
+  background: var(--stone-3);
+  line-height: 1;
+  padding: 2px 4px 1px 4px;
+  border-bottom: 2px solid transparent;
+}
+
+.feed-tags a:hover {
+  border-bottom-color: var(--teal-4);
 }
 
 .feed-link {
   font-weight: bold;
-  background: oklch(92% 0 0);
+  background: var(--teal-0);
 }
 
 .feed-item {
@@ -218,7 +236,7 @@ time {
 
 .feed-item a,
 .feed-item p {
-  background: oklch(95% 0 0);
+  background: var(--gray-0);
   flex-grow: 1;
 }
 
@@ -229,7 +247,7 @@ time {
   Don't forget to handle future dates.
 */
 .feed-item time {
-  background: oklch(90% 0 0);
+  background: var(--gray-3);
   align-self: self-start;
   margin-inline-start: 2px;
   text-align: end;

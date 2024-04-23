@@ -313,7 +313,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
-            try w.writeAll("<div>");
+            try w.writeAll("<div class='feed-tags'>");
             for (tags) |tag| {
                 try tag_link_print(w, tag);
             }
@@ -386,13 +386,11 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
 
     const feed_link_fmt = 
     \\<a class="feed-link" href="{[page_url]s}">{[title]s}</a>
-    \\<a href="{[feed_url]s}">Feed link</a>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
     const feed_title_fmt =
     \\<p>{[title]s}</p>
-    \\<a href="{[feed_url]s}">Feed link</a>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
@@ -402,14 +400,12 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
         try w.print(feed_link_fmt, .{
             .page_url = page_url,
             .title = title,
-            .feed_url = feed.feed_url,
             .date = timestampToString(&date_buf, feed.updated_timestamp),
             .date_display = date_display_val,
         });
     } else {
         try w.print(feed_title_fmt, .{
             .title = title,
-            .feed_url = feed.feed_url,
             .date = timestampToString(&date_buf, feed.updated_timestamp),
             .date_display = date_display_val,
         });
