@@ -1,4 +1,7 @@
 # Initial
+[ ] Logo ideas
+keywords: feed, gaze, rss, atom, links
+- Something with gaze and atoms?
 [ ] Feeds
   [ ] Github
       - https://github.community/t/rss-feeds-for-github-projects/292
@@ -44,13 +47,12 @@ appear in the file.
   will used newest (first) feed item.
 Web page
   [ ] Design
-    - I think it would be better to make navigation area into sidebar. Will give
-    more vertical space to display more feeds and items. And usually don't 
-    want text to go too wide. And tag list can grow big, would be harder to 
-    mitigate it when navigation it horizontal area on top.
     - If feed + item area goes to wide have two choices
       - Make feeds into columns. Latest feeds' would go from left to right.
       - Make items into columns. Latest items' would go top to bottom.
+    - Don't all feed items. 
+      - For simpler implementation start with updated_timestamp
+      - Show items based on feed item's added date
   [ ] Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
 [ ] Database (sqlite)
   [ ] look into creating indices

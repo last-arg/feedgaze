@@ -304,6 +304,9 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
+    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    const date_3days_ago = date_in_sec - (std.time.s_per_day * 3);
+
     try w.writeAll("<ul class='flow' role='list'>");
     for (feeds) |feed| {
         try w.writeAll("<li class='feed'>");
@@ -326,8 +329,16 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             continue;
         }
         try w.writeAll("<ul class='feed-item-list flow'>");
-        for (items) |item| {
-            try w.writeAll("<li class='feed-item'>");
+        for (items, 0..) |item, i| {
+            var hidden: []const u8 = "";
+            if (i > 0) {
+                if (item.updated_timestamp) |updated_timestamp| {
+                    if (updated_timestamp < date_3days_ago) {
+                        hidden = "hidden";
+                    }
+                }
+            }
+            try w.print("<li class='feed-item {s}'>", .{hidden});
             try item_render(w, item);
             try w.writeAll("</li>");
         }
