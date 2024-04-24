@@ -352,7 +352,10 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         const aria_expanded = if (hide_index_start > 0) "false" else "true";
         try w.print(
             \\<div>
-            \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">Open/Close all</button>
+            \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">
+            \\    <span class="toggle-expand">Expand</span>
+            \\    <span class="toggle-collapse">Collapse</span>
+            \\</button>
             \\</div>
         , .{aria_expanded});
 

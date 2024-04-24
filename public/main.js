@@ -2,6 +2,8 @@ document.addEventListener("DOMContentLoaded", function() {
     startup();
 });
 
+// TODO: toggle all feeds and their items
+
 function startup() {
     document.addEventListener("click", function(e) {
         const toggle_btn = e.target.closest(".js-feed-item-toggle");

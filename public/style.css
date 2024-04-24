@@ -209,6 +209,11 @@ time {
   display: none;
 }
 
+.feed-item-toggle[aria-expanded=false] .toggle-collapse,
+.feed-item-toggle[aria-expanded=true] .toggle-expand {
+  display: none;
+}
+
 .feed-tags {
   display: flex;
   flex-flow: flex-wrap;
