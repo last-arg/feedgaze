@@ -304,9 +304,6 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
-    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-    const date_3days_ago = date_in_sec - (std.time.s_per_day * 3);
-
     try w.writeAll("<ul class='flow' role='list'>");
     for (feeds) |feed| {
         try w.writeAll("<li class='feed'>");
@@ -328,21 +325,36 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         if (items.len == 0) {
             continue;
         }
-        try w.writeAll("<ul class='feed-item-list flow'>");
-        for (items, 0..) |item, i| {
-            var hidden: []const u8 = "";
-            if (i > 0) {
-                if (item.updated_timestamp) |updated_timestamp| {
-                    if (updated_timestamp < date_3days_ago) {
-                        hidden = "hidden";
-                    }
+
+        const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const date_3days_ago = date_in_sec - (std.time.s_per_day * 3);
+
+        var hide_index_start: usize = 0;
+
+        for (items[1..], 1..) |item, i| {
+            if (item.updated_timestamp) |updated_timestamp| {
+                if (updated_timestamp < date_3days_ago) {
+                    hide_index_start = i;
+                    break;
                 }
             }
+        }
+                
+        const item_list_class = if (hide_index_start > 0) "partial-open" else "";
+        try w.print("<ul class='feed-item-list flow {s}' style='--flow-space: var(--space-xs)'>", .{item_list_class});
+        for (items, 0..) |item, i| {
+            const hidden: []const u8 = if (hide_index_start > 0 and i >= hide_index_start) "hidden" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
             try item_render(w, item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
+        const aria_expanded = if (hide_index_start > 0) "false" else "true";
+        try w.print(
+            \\<div>
+            \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">Open/Close all</button>
+            \\</div>
+        , .{aria_expanded});
 
         try w.writeAll("</li>");
     }
@@ -446,7 +458,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     try w.writeAll(
     \\<button aria-hidden="true" style="display: none">Default form action</button>
     );
-    try w.writeAll("<fieldset class='tags flow' style='--flow-space: 0.5em'>");
+    try w.writeAll("<fieldset class='tags flow' style='--flow-space: var(--space-2xs)'>");
     try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
     try w.writeAll("<h3 aria-hidden='true'>Tags</h3>");
 

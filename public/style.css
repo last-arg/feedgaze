@@ -140,7 +140,7 @@ textarea:not([rows]) {
   --transition-movement: 200ms linear;
   --transition-fade: 300ms ease;
   --transition-bounce: 500ms cubic-bezier(0.5, 0.05, 0.2, 1.5);
-  --leading-standard: 1.5;
+  --leading-standard: 1.4;
 }
 
 body {
@@ -205,6 +205,10 @@ time {
   background: var(--gray-4);
 }
 
+.feed:has(.feed-item-toggle[aria-expanded=false]) :not(.partial-open) .feed-item:nth-child(n+2) {
+  display: none;
+}
+
 .feed-tags {
   display: flex;
   flex-flow: flex-wrap;
@@ -238,6 +242,7 @@ time {
 .feed-item p {
   background: var(--gray-0);
   flex-grow: 1;
+  padding-inline: var(--space-2xs);
 }
 
 /* 
@@ -338,3 +343,7 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
   white-space: nowrap;
 }
 
+
+.hidden {
+  display: none;
+}
