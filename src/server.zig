@@ -152,7 +152,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    resp.content_type = .CSS;
     const path = if (req.url.path[0] == '/') req.url.path[1..] else req.url.path;
     const file = std.fs.cwd().openFile(path, .{}) catch {
         resp.status = 404;
@@ -160,6 +159,12 @@ fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         return;
     };
     defer file.close();
+    
+    if (mem.endsWith(u8, path, ".js")) {
+        resp.content_type = .JS;
+    } else if (mem.endsWith(u8, path, ".css")) {
+        resp.content_type = .CSS;
+    }
 
     resp.body = try file.readToEndAlloc(req.arena, std.math.maxInt(u32));
 }
