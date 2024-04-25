@@ -265,6 +265,12 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     try w.writeAll("<main>");
+    try w.writeAll(
+        \\<div>
+        \\  <button class="js-expand-all">Expand all</button>
+        \\  <button class="js-collapse-all">Collapse all</button>
+        \\</div>
+    );
     if (feeds.len > 0) {
         try feeds_and_items_print(w, req.arena, db, feeds);
         if (feeds.len == config.query_feed_limit) {
@@ -340,6 +346,8 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
         }
                 
+        // TODO?: could also just pass hide_index as html attribute and let
+        // js deal with hiding elements
         const item_list_class = if (hide_index_start > 0) "partial-open" else "";
         try w.print("<ul class='feed-item-list flow {s}' style='--flow-space: var(--space-xs)'>", .{item_list_class});
         for (items, 0..) |item, i| {
