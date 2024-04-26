@@ -201,7 +201,15 @@ time {
 }
 
 .sidebar header {
-  --sidebar-target-width: 10rem;
+  /* 
+    TODO: have to figure out what todo do on smaller screens.
+    Take advantage of horizontal space.
+  */
+  --sidebar-target-width: min-content;
+  height: 100vh;
+  overflow-y: scroll;
+  position: sticky;
+  top: 0;
 }
 
 .feed {
