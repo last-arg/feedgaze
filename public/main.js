@@ -1,5 +1,7 @@
 document.addEventListener("DOMContentLoaded", startup);
 
+let has_partial_open = true;
+
 function startup() {
     document.addEventListener("click", function(e) {
         const elem = e.target;
@@ -21,9 +23,7 @@ function startup() {
 
         match_elem = elem.closest(".js-expand-all");
         if (match_elem) {
-            for (const partial of document.querySelectorAll(".hide-after")) {
-                partial.classList.remove("hide-after");
-            }
+            remove_partial_open();
 
             for (const toggle_btn of document.querySelectorAll(".js-feed-item-toggle[aria-expanded=false]")) {
                 toggle_btn.setAttribute("aria-expanded", "true");
@@ -32,13 +32,21 @@ function startup() {
 
         match_elem = elem.closest(".js-collapse-all");
         if (match_elem) {
-            for (const partial of document.querySelectorAll(".hide-after")) {
-                partial.classList.remove("hide-after");
-            }
+            remove_partial_open();
 
             for (const toggle_btn of document.querySelectorAll(".js-feed-item-toggle[aria-expanded=true]")) {
                 toggle_btn.setAttribute("aria-expanded", "false");
             }            
         }
     })
+}
+
+function remove_partial_open() {
+    if (!has_partial_open) {
+        return;
+    }
+    for (const partial of document.querySelectorAll(".hide-after")) {
+        partial.classList.remove("hide-after");
+    }
+    has_partial_open = false;
 }
