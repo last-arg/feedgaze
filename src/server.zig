@@ -353,10 +353,9 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
                 
         // TODO?: could also just pass hide_index as html attribute and let
         // js deal with hiding elements
-        const item_list_class = if (hide_index_start > 0) "partial-open" else "";
-        try w.print("<ul class='feed-item-list flow {s}' style='--flow-space: var(--space-xs)'>", .{item_list_class});
+        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-xs)'>");
         for (items, 0..) |item, i| {
-            const hidden: []const u8 = if (hide_index_start > 0 and i >= hide_index_start) "hidden" else "";
+            const hidden: []const u8 = if (hide_index_start > 0 and i == hide_index_start) "hide-after" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
             try item_render(w, item);
             try w.writeAll("</li>");

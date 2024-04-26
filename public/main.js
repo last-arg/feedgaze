@@ -14,12 +14,9 @@ function startup() {
                 match_elem.setAttribute("aria-expanded", "false");
             } else if (expanded === "false") {
                 const item_list = match_elem.closest(".feed");
-                const partial_open = item_list.querySelector(".partial-open");
+                const partial_open = item_list.querySelector(".hide-after");
                 if (partial_open) {
-                    partial_open.classList.remove("partial-open");
-                    for (const item of partial_open.querySelectorAll(".feed-item")) {
-                        item.classList.remove("hidden");
-                    }
+                    partial_open.classList.remove("hide-after");
                 }
                 match_elem.setAttribute("aria-expanded", "true");
             }
@@ -28,11 +25,8 @@ function startup() {
 
         match_elem = elem.closest(".js-expand-all");
         if (match_elem) {
-            for (const partial of document.querySelectorAll(".partial-open")) {
-                partial.classList.remove("partial-open");
-                for (const item of partial.querySelectorAll(".feed-item")) {
-                    item.classList.remove("hidden");
-                }
+            for (const partial of document.querySelectorAll(".hide-after")) {
+                partial.classList.remove("hide-after");
             }
             for (const toggle_btn of document.querySelectorAll(".js-feed-item-toggle[aria-expanded=false]")) {
                 toggle_btn.setAttribute("aria-expanded", "true");

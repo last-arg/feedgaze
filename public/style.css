@@ -208,7 +208,11 @@ time {
   background: var(--gray-4);
 }
 
-.feed:has(.feed-item-toggle[aria-expanded=false]) :not(.partial-open) .feed-item:nth-child(n+2) {
+.feed:not(:has(.hide-after)):has(.feed-item-toggle[aria-expanded=false]) .feed-item:nth-child(n+2) {
+  display: none;
+}
+
+.hide-after ~ .feed-item {
   display: none;
 }
 
