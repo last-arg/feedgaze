@@ -1,8 +1,4 @@
-document.addEventListener("DOMContentLoaded", function() {
-    startup();
-});
-
-// TODO: toggle all feeds and their items
+document.addEventListener("DOMContentLoaded", startup);
 
 function startup() {
     document.addEventListener("click", function(e) {
@@ -28,6 +24,7 @@ function startup() {
             for (const partial of document.querySelectorAll(".hide-after")) {
                 partial.classList.remove("hide-after");
             }
+
             for (const toggle_btn of document.querySelectorAll(".js-feed-item-toggle[aria-expanded=false]")) {
                 toggle_btn.setAttribute("aria-expanded", "true");
             }            
@@ -35,6 +32,10 @@ function startup() {
 
         match_elem = elem.closest(".js-collapse-all");
         if (match_elem) {
+            for (const partial of document.querySelectorAll(".hide-after")) {
+                partial.classList.remove("hide-after");
+            }
+
             for (const toggle_btn of document.querySelectorAll(".js-feed-item-toggle[aria-expanded=true]")) {
                 toggle_btn.setAttribute("aria-expanded", "false");
             }            
