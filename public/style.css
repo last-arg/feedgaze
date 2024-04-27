@@ -131,6 +131,26 @@ textarea:not([rows]) {
 
   /* Custom pairs */
   --space-s-l: clamp(1.125rem, 0.6467rem + 2.3913vi, 2.5rem);
+
+  --white: rgba(255, 255, 255, 1);
+  --black: rgba(0, 0, 0, 1);
+
+  --grey-1: rgba(251, 251, 251, 1);
+  --grey-2: rgba(232, 232, 232, 1);
+  --grey-3: rgba(214, 214, 214, 1);
+  --grey-4: rgba(196, 196, 196, 1);
+  --grey-5: rgba(178, 178, 178, 1);
+  --grey-6: rgba(161, 161, 161, 1);
+  --grey-7: rgba(144, 144, 144, 1);
+  --grey-8: rgba(127, 127, 127, 1);
+  --grey-9: rgba(111, 111, 111, 1);
+  --grey-10: rgba(95, 95, 95, 1);
+  --grey-11: rgba(79, 79, 79, 1);
+  --grey-12: rgba(64, 64, 64, 1);
+  --grey-13: rgba(50, 50, 50, 1);
+  --grey-14: rgba(36, 36, 36, 1);
+  --grey-15: rgba(23, 23, 23, 1);
+  --grey-16: rgba(5, 5, 5, 1);
 }
 
 :root {
@@ -141,9 +161,12 @@ textarea:not([rows]) {
   --transition-fade: 300ms ease;
   --transition-bounce: 500ms cubic-bezier(0.5, 0.05, 0.2, 1.5);
   --leading-standard: 1.4;
+  --tracking: .02em;
 
-  --text-1: var(--gray-12);
-  --surface-1: var(--gray-0);
+  --text-1: var(--grey-16);
+  --surface-0: var(--white);
+  --surface-1: var(--grey-1);
+  --surface-2: var(--grey-2);
 }
 
 body {
@@ -152,7 +175,13 @@ body {
   font-size: var(--step-0);
   font-family: var(--font-base);
   line-height: var(--leading-standard);
+  letter-spacing: var(--tracking);
+  margin: 0;
 }  
+
+main {
+  background: var(--surface-0);
+}
 
 ul {
   margin-block-start: 0;
@@ -172,9 +201,7 @@ a {
 
 a:hover {
   text-decoration: underline;
-  text-decoration-color: var(--teal-4);
 }
-
 
 time {
   font-family: monospace;
@@ -210,10 +237,17 @@ time {
   overflow-y: scroll;
   position: sticky;
   top: 0;
+  border-inline-end: 1px solid var(--surface-2);
+}
+
+.feed-header {
+  margin-inline-start: calc(var(--space-xl) + 6px);
+  margin-block-end: var(--space-m);
 }
 
 .feed {
-  background: var(--gray-4);
+  border-block-start: 1px solid var(--surface-2);
+  padding-block: var(--space-l);
 }
 
 .feed:not(:has(.hide-after)):has(.feed-item-toggle[aria-expanded=false]) .feed-item:nth-child(n+2) {
@@ -244,25 +278,25 @@ time {
   border-bottom: 2px solid transparent;
 }
 
-.feed-tags a:hover {
-  border-bottom-color: var(--teal-4);
-}
-
 .feed-link {
   font-weight: bold;
-  background: var(--teal-0);
 }
 
 .feed-item {
-  max-width: 50ch;
   display: flex;
 }
 
 .feed-item a,
 .feed-item p {
-  background: var(--gray-0);
+  max-width: 50ch;
   flex-grow: 1;
-  padding-inline: var(--space-2xs);
+  padding-inline-start: var(--space-m);
+}
+
+.time-wrapper {
+  /* make same height as text for vertical alignment */
+  height: calc(var(--step-0) * var(--leading-standard));
+  display: flex;
 }
 
 /* 
@@ -272,15 +306,15 @@ time {
   Don't forget to handle future dates.
 */
 .feed-item time {
+  margin-block: auto;
+  display: block;
   background: var(--gray-3);
   align-self: self-start;
-  margin-inline-start: 2px;
   text-align: end;
   line-height: 1;
-  padding: 4px 6px;
-  min-width: calc(3ch + (2 * 6px));
-  /* When date, month, year is displayed. Happens when date is in the future. */
-  width: min-content;
+  --_box-padding: 5px;
+  padding: 3px var(--_box-padding);
+  min-width: calc(3ch + (2 * var(--_box-padding)));
 }
 
 

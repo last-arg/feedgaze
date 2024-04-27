@@ -353,7 +353,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
                 
         // TODO?: could also just pass hide_index as html attribute and let
         // js deal with hiding elements
-        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-xs)'>");
+        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
         for (items, 0..) |item, i| {
             const hidden: []const u8 = if (hide_index_start > 0 and i == hide_index_start) "hide-after" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
@@ -389,13 +389,13 @@ fn item_render(w: anytype, item: FeedItemRender) !void {
     var date_buf: [date_len_max]u8 = undefined;
 
     const item_link_fmt =
+    \\<div class="time-wrapper"><time datetime="{[date]s}">{[date_display]s}</time></div>
     \\<a href="{[link]s}" class="truncate" title="{[title]s}">{[title]s}</a>
-    \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
     const item_title_fmt =
-    \\<p class="truncate" title="{[title]s}">{[title]s}</p>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
+    \\<p class="truncate" title="{[title]s}">{[title]s}</p>
     ;
                 
     const item_title = if (item.title.len > 0) item.title else title_placeholder;
