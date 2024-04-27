@@ -338,25 +338,41 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         }
 
         const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-        const date_3days_ago = date_in_sec - (std.time.s_per_day * 3);
+        const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
 
         var hide_index_start: usize = 0;
 
         for (items[1..], 1..) |item, i| {
             if (item.updated_timestamp) |updated_timestamp| {
-                if (updated_timestamp < date_3days_ago) {
+                if (updated_timestamp < age_3days_ago) {
                     hide_index_start = i;
                     break;
                 }
             }
         }
+
+        const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
                 
         // TODO?: could also just pass hide_index as html attribute and let
         // js deal with hiding elements
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
         for (items, 0..) |item, i| {
             const hidden: []const u8 = if (hide_index_start > 0 and i == hide_index_start) "hide-after" else "";
-            try w.print("<li class='feed-item {s}'>", .{hidden});
+            const age_class = blk: {
+                if (item.updated_timestamp) |updated_timestamp| {
+                    // TODO: date might be in the future?
+                    if (updated_timestamp > age_3days_ago) {
+                        break :blk "age-newest";
+                    } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
+                        break :blk "age-less-month";
+                    } else if (updated_timestamp < age_30days_ago) {
+                        break :blk "age-more-month";
+                    }
+                }
+                break :blk "";
+            };
+
+            try w.print("<li class='feed-item {s} {s}'>", .{hidden, age_class});
             try item_render(w, item);
             try w.writeAll("</li>");
         }

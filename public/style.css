@@ -304,18 +304,32 @@ time {
   Can visually find/identify new items faster.
   Server side probably generates some class or attribute.
   Don't forget to handle future dates.
+  TODO: handle items without dates
 */
 .feed-item time {
   margin-block: auto;
   display: block;
-  background: var(--gray-3);
+  color: var(--grey-1);
   align-self: self-start;
   text-align: end;
   line-height: 1;
-  --_box-padding: 5px;
-  padding: 3px var(--_box-padding);
+  --_box-padding: 3px;
+  padding: 2px var(--_box-padding);
   min-width: calc(3ch + (2 * var(--_box-padding)));
 }
+
+.feed-item.age-newest time {
+  background: var(--grey-13);
+}
+
+.feed-item.age-less-month time {
+  background: var(--grey-11);
+}
+
+.feed-item.age-more-month time {
+  background: var(--grey-9);
+}
+
 
 
 /* 
