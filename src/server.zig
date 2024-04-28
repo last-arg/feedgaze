@@ -271,7 +271,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<main>");
     try w.writeAll(
-        \\<div>
+        \\<div class="main-header">
         \\  <button class="js-expand-all">Expand all</button>
         \\  <button class="js-collapse-all">Collapse all</button>
         \\</div>
@@ -379,7 +379,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("</ul>");
         const aria_expanded = if (hide_index_start > 0) "false" else "true";
         try w.print(
-            \\<div>
+            \\<div class="feed-footer">
             \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">
             \\    <span class="toggle-expand">Expand</span>
             \\    <span class="toggle-collapse">Collapse</span>
