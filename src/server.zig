@@ -315,7 +315,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
-    try w.writeAll("<ul class='flow' role='list'>");
+    try w.writeAll("<ul role='list'>");
     for (feeds) |feed| {
         try w.writeAll("<li class='feed'>");
         try w.writeAll("<div class='feed-header'>");
