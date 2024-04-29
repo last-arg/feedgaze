@@ -340,9 +340,11 @@ time {
 }
 
 .time-wrapper {
-  /* make same height as text for vertical alignment */
-  height: calc(var(--step-0) * var(--leading-standard));
-  display: flex;
+  align-self: center;
+  /* align date text with item text */
+  margin-block: calc(
+    (var(--step-0) * var(--leading-standard) - var(--step-0)) / 2
+  );
 }
 
 /* 
@@ -353,15 +355,14 @@ time {
   TODO: handle items without dates
 */
 .feed-item time {
-  margin-block: auto;
   display: block;
   color: var(--grey-1);
-  align-self: self-start;
   text-align: end;
   line-height: 1;
   --_box-padding: 3px;
   padding: 2px var(--_box-padding);
   min-width: calc(3ch + (2 * var(--_box-padding)));
+  width: min-content;
 }
 
 .feed-item.age-newest time {
