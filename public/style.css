@@ -340,7 +340,7 @@ time {
 }
 
 .time-wrapper {
-  align-self: center;
+  align-self: start;
   /* align date text with item text */
   margin-block: calc(
     (var(--step-0) * var(--leading-standard) - var(--step-0)) / 2
