@@ -97,14 +97,16 @@ pub const TmpStr = struct {
                 }
             },
             .codepoint => |cp| {
-                if (tmp_str.is_prev_amp) {
-                    tmp_str.append('&');
-                    tmp_str.is_prev_amp = false;
-                }
+                if (state == .text) {
+                    if (tmp_str.is_prev_amp) {
+                        tmp_str.append('&');
+                        tmp_str.is_prev_amp = false;
+                    }
 
-                var buf: [4]u8 = undefined;
-                const len = try std.unicode.utf8Encode(cp, &buf);
-                tmp_str.appendSlice(buf[0..len]);
+                    var buf: [4]u8 = undefined;
+                    const len = try std.unicode.utf8Encode(cp, &buf);
+                    tmp_str.appendSlice(buf[0..len]);
+                }
             },
             .entity => |ent| entity_to_str(tmp_str, ent),
         }
@@ -828,21 +830,6 @@ pub fn main() !void {
     const content = @embedFile("tmp_file");
     const feed = try parseRss(alloc, content);
     print("\n==========> START {d}\n", .{feed.items.len});
-    for (feed.items) |item| {
-        print("title: |{s}|\n", .{item.title});
-        print("link: |{?s}|\n", .{item.link});
-        // print("date: {?d}\n", .{item.updated_timestamp});
-        print("\n", .{});
-    }
-}
-
-test "tmp" {
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-
-    const feed = try parseRss(alloc, @embedFile("tmp_file"));
-    print("\nSTART {d}\n", .{feed.items.len});
     for (feed.items) |item| {
         print("title: |{s}|\n", .{item.title});
         print("link: |{?s}|\n", .{item.link});
