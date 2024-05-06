@@ -256,6 +256,7 @@ pub const FeedItemRender = struct {
     title: []const u8,
     link: ?[]const u8,
     updated_timestamp: ?i64,
+    created_timestamp: i64,
 };
 
 pub const FeedRender = struct {

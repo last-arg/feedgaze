@@ -338,19 +338,20 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         }
 
         const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-        const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
 
         var hide_index_start: usize = 0;
+        const age_1day_ago = date_in_sec - std.time.s_per_day;
 
         for (items[1..], 1..) |item, i| {
             if (item.updated_timestamp) |updated_timestamp| {
-                if (updated_timestamp < age_3days_ago) {
+                if (updated_timestamp < age_1day_ago) {
                     hide_index_start = i;
                     break;
                 }
             }
         }
 
+        const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
         const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
                 
         // TODO?: could also just pass hide_index as html attribute and let

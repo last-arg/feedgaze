@@ -435,6 +435,8 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
+        // TODO?: change where conditions:
+        // - (updated_timestamp IS NOT NULL AND updated_timestamp != excluded.updated_timestamp)
         const query_with_id =
             \\INSERT INTO item (feed_id, title, link, id, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_timestamp, @position)
@@ -442,8 +444,7 @@ pub const Storage = struct {
             \\  title = excluded.title,
             \\  link = excluded.link,
             \\  updated_timestamp = excluded.updated_timestamp,
-            \\  position = excluded.position,
-            \\  last_modified = strftime('%s', 'now')
+            \\  position = excluded.position
             \\WHERE updated_timestamp IS NULL 
             \\  OR updated_timestamp != excluded.updated_timestamp 
             \\  OR position != excluded.position
@@ -451,8 +452,7 @@ pub const Storage = struct {
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  updated_timestamp = excluded.updated_timestamp,
-            \\  position = excluded.position,
-            \\  last_modified = strftime('%s', 'now')
+            \\  position = excluded.position
             \\WHERE updated_timestamp IS NULL 
             \\  OR updated_timestamp != excluded.updated_timestamp 
             \\  OR position != excluded.position
@@ -462,8 +462,7 @@ pub const Storage = struct {
         const query_without_id =
             \\update item set 
             \\  title = @u_title,
-            \\  updated_timestamp = @u_timestamp,
-            \\  last_modified = strftime('%s', 'now')
+            \\  updated_timestamp = @u_timestamp
             \\where feed_id = @u_feed_id and position = @u_position;
             \\INSERT INTO item (feed_id, title, updated_timestamp, position)
             \\select @feed_id, @title, @updated_timestamp, @position where (select changes() = 0)
@@ -501,7 +500,7 @@ pub const Storage = struct {
         const del_query =
             \\DELETE FROM item WHERE feed_id = ? AND 
             \\  (position > ? OR
-            \\   last_modified < (SELECT last_modified FROM item where feed_id = ? AND position = ? order by last_modified DESC limit 1));
+            \\   created_timestamp < (SELECT created_timestamp FROM item where feed_id = ? AND position = ? limit 1));
         ;
         try self.sql_db.exec(del_query, .{}, .{ feed_id, last_pos, feed_id, last_pos });
     }
@@ -513,7 +512,7 @@ pub const Storage = struct {
 
     pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
         const query_item =
-            \\select title, link, updated_timestamp 
+            \\select title, link, updated_timestamp, created_timestamp
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
         ;
         return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
@@ -907,7 +906,7 @@ const tables = &[_][]const u8{
     \\  id TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER DEFAULT NULL,
     \\  position INTEGER NOT NULL DEFAULT 0,
-    \\  last_modified INTEGER DEFAULT (strftime('%s', 'now')),
+    \\  created_timestamp INTEGER DEFAULT (strftime('%s', 'now')),
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
