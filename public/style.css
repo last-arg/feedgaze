@@ -79,6 +79,15 @@ button,
 textarea,
 select {
   font: inherit;
+  letter-spacing: inherit;
+  word-spacing: inherit;
+}
+
+/* https://adrianroselli.com/2019/09/under-engineered-text-boxen.html */
+textarea,
+input:not([type="checkbox"]):not([type="file"]):not([type="image"]):not([type="radio"]):not([type="range"]) {
+  border: 0.1em solid;
+  padding: 0 0.2em;
 }
 
 /* Make sure textareas without a rows attribute are not tiny */
@@ -262,6 +271,13 @@ time {
   border-inline-end: 1px solid var(--surface-2);
 }
 
+.form-heading {
+  text-transform: uppercase;
+  font-weight: normal;
+  font-size: var(--step--1);
+  letter-spacing: .09em;
+}
+
 .feed-header {
   margin-inline-start: calc(var(--space-xl) + 2px);
   margin-block-end: var(--space-m);
@@ -335,7 +351,6 @@ time {
 .feed-item a,
 .feed-item p {
   max-width: 50ch;
-  flex-grow: 1;
   padding-inline-start: var(--space-m);
 }
 
