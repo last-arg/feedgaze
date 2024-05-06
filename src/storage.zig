@@ -435,8 +435,6 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
 
-        // TODO?: change where conditions:
-        // - (updated_timestamp IS NOT NULL AND updated_timestamp != excluded.updated_timestamp)
         const query_with_id =
             \\INSERT INTO item (feed_id, title, link, id, updated_timestamp, position)
             \\VALUES (@feed_id, @title, @link, @id, @updated_timestamp, @position)
@@ -445,16 +443,16 @@ pub const Storage = struct {
             \\  link = excluded.link,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE updated_timestamp IS NULL 
-            \\  OR updated_timestamp != excluded.updated_timestamp 
+            \\WHERE 
+            \\  updated_timestamp != excluded.updated_timestamp 
             \\  OR position != excluded.position
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE updated_timestamp IS NULL 
-            \\  OR updated_timestamp != excluded.updated_timestamp 
+            \\WHERE
+            \\  updated_timestamp != excluded.updated_timestamp 
             \\  OR position != excluded.position
             \\;
         ;
