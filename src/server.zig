@@ -94,7 +94,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<div>");
     try w.writeAll("<h2>Edit feed</h2>");
     try w.print(
-        \\<p>Feed url: <a href="">{[feed_url]s}</a></p>
+        \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
 
     try w.writeAll("<form method='POST'>");
@@ -491,7 +491,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
     );
     try w.writeAll("<fieldset class='tags flow' style='--flow-space: var(--space-2xs)'>");
     try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
-    try w.writeAll("<h3 aria-hidden='true'>Tags</h3>");
+    try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
 
     try untagged_label_render(w, opts.has_untagged);
 
@@ -503,7 +503,7 @@ fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts
 
     try w.print(
     \\<p>
-    \\  <label for="search_value">Filter term</label>
+    \\  <label class="form-heading" for="search_value">Filter term</label>
     \\  <input type="search" name="search" id="search_value" value="{s}">
     \\  <button>Filter</button>
     \\</p>
