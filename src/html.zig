@@ -271,14 +271,10 @@ const encode_chars = "<>\"'/";
 
 pub fn encode_chars_count(input: []const u8) usize {
     var result: usize = 0;
-    var str = input;
-    while (std.mem.indexOfAny(u8, str, encode_chars)) |index| {
+    var start_index: usize = 0;
+    while (std.mem.indexOfAnyPos(u8, input, start_index, encode_chars)) |index| {
         result += 1;
-        const start_next = index + 1;
-        if (start_next >= str.len) {
-            break;
-        }
-        str = str[start_next..];
+        start_index = index + 1;
     }
     return result;
 }
@@ -302,11 +298,9 @@ pub fn encode(allocator: Allocator, input: []const u8) ![]const u8 {
         buf_arr.writer().print("&#{d};", .{value_decoded}) catch unreachable;
 
         const start_next = index + 1;
-        if (start_next >= str.len) {
-            break;
-        }
         str = str[start_next..];
     }
+    buf_arr.appendSliceAssumeCapacity(str);
     return buf_arr.toOwnedSlice();
 }
 
