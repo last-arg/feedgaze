@@ -502,19 +502,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .description => if (current_item.title.len == 0) {
                             try tmp_str.content_to_str(elem_content);
                         },
-                        .link, .guid => switch (elem_content) {
-                            .text => |text| tmp_str.appendSlice(text),
-                            .codepoint => |cp| {
-                                var buf: [4]u8 = undefined;
-                                const len = try std.unicode.utf8Encode(cp, &buf);
-                                tmp_str.appendSlice(buf[0..len]);
-                            },
-                            .entity => |ent| {
-                                tmp_str.append('&');
-                                tmp_str.appendSlice(ent);
-                                tmp_str.append(';');
-                            },
-                        },
+                        .link, .guid => try tmp_str.content_to_str(elem_content),
                         .pubDate => {
                             if (RssDateTime.parse(elem_content.text) catch 
                                 AtomDateTime.parse(elem_content.text) catch null) |ts| {

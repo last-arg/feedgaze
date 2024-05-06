@@ -44,12 +44,6 @@ pub const RuleWithHost = struct {
     }
 };
 
-pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
-    return switch (uri_comp) {
-        .raw, .percent_encoded => |val| val,
-    };
-}
-
 pub fn find_rule_match(uri: std.Uri, rules: []RuleWithHost) !?RuleWithHost {
     var uri_path_iter = mem.splitScalar(u8, uri_component_val(uri.path), '/');
     outer: for (rules) |rule| {
@@ -186,5 +180,11 @@ pub fn set_uri_component(uri_comp: *std.Uri.Component, val: []const u8) void {
     switch(uri_comp.*) {
         .raw, .percent_encoded => |*field| field.* = val,
     }
+}
+
+pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
+    return switch (uri_comp) {
+        .raw, .percent_encoded => |val| val,
+    };
 }
 
