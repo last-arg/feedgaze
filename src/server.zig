@@ -142,7 +142,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<ul>");
     for (items) |item| {
         try w.writeAll("<li>");
-        try item_render(w, item);
+        try item_render(w, req.arena, item);
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
@@ -373,7 +373,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             };
 
             try w.print("<li class='feed-item {s} {s}'>", .{hidden, age_class});
-            try item_render(w, item);
+            try item_render(w, allocator, item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -399,7 +399,7 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     try w.print(edit_fmt, .{ feed_id });
 }
 
-fn item_render(w: anytype, item: FeedItemRender) !void {
+fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !void {
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
     var date_display_buf: [16]u8 = undefined;
     var date_buf: [date_len_max]u8 = undefined;
@@ -414,7 +414,7 @@ fn item_render(w: anytype, item: FeedItemRender) !void {
     \\<p class="truncate" title="{[title]s}">{[title]s}</p>
     ;
                 
-    const item_title = if (item.title.len > 0) item.title else title_placeholder;
+    const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
     const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
 
     if (item.link) |link| {
@@ -629,3 +629,4 @@ const types = @import("./feed_types.zig");
 const Datetime = @import("zig-datetime").datetime.Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
+const html = @import("./html.zig");

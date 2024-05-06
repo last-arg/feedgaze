@@ -267,28 +267,55 @@ pub fn html_text(html: []const u8) HtmlTextIter() {
     return .{ .buffer = html, .index = 0 };
 }
 
-pub fn html_remove_tags(input: []const u8) void {
-    var iter = html_text(input);
-    while (iter.next()) |value| {
-        print("\ntext: |{s}|\n", .{value});
-    }
+const encode_chars = "<>\"'/";
 
-    const raw = 
-        \\<h1 id="me" class="first" style=bold>Your text goes here!</h1>  
-        \\<p>Hello 
-        \\    <span>world</span>  big</p>
-    ;
-    var iter_1 = html_text(raw);
-    while (iter_1.next()) |value| {
-        print("\ntext: |{s}|\n", .{value});
+pub fn encode_chars_count(input: []const u8) usize {
+    var result: usize = 0;
+    var str = input;
+    while (std.mem.indexOfAny(u8, str, encode_chars)) |index| {
+        result += 1;
+        const start_next = index + 1;
+        if (start_next >= str.len) {
+            break;
+        }
+        str = str[start_next..];
     }
-
-    
+    return result;
 }
 
-pub fn main() void {
-    const html_raw = \\&lt;p&gt;ZSF is launching a fundraiser today. As part of it, I put together some charts along with a 2023 financial report that I think you will find interesting:&lt;/p&gt;&lt;p&gt;&lt;a href="https://ziglang.org/news/2024-financials/#2024-financial-report-and-fundraiser" target="_blank" rel="nofollow noopener noreferrer" translate="no"&gt;&lt;span class="invisible"&gt;https://&lt;/span&gt;&lt;span class="ellipsis"&gt;ziglang.org/news/2024-financia&lt;/span&gt;&lt;span class="invisible"&gt;ls/#2024-financial-report-and-fundraiser&lt;/span&gt;&lt;/a&gt;&lt;/p&gt;
+// Caller owns the memory if there is something to encode.
+// There will be no allocation if there are no characters to encode. Not 
+// good solution if caller wants to free memory. Currently don't indicate 
+// any way if returned value is allocated or not. 
+pub fn encode(allocator: Allocator, input: []const u8) ![]const u8 {
+    const count = encode_chars_count(input);
+    if (count == 0) {
+        return input;
+    }
+    const capacity = (input.len - count) + (5 * count);
+    var buf_arr = try std.ArrayList(u8).initCapacity(allocator, capacity);
+    defer buf_arr.deinit();
+    var str = input;
+    while (std.mem.indexOfAny(u8, str, encode_chars)) |index| {
+        buf_arr.appendSliceAssumeCapacity(str[0..index]);
+        const value_decoded = try std.unicode.utf8Decode(&[_]u8{str[index]});
+        buf_arr.writer().print("&#{d};", .{value_decoded}) catch unreachable;
+
+        const start_next = index + 1;
+        if (start_next >= str.len) {
+            break;
+        }
+        str = str[start_next..];
+    }
+    return buf_arr.toOwnedSlice();
+}
+
+pub fn main() !void {
+    const input = 
+        \\"This is a 'quote"&<>\"'/
     ;
-    html_remove_tags(html_raw);
+    const r = try encode(std.heap.c_allocator, input);
+    defer std.heap.c_allocator.free(r);
+    print("result: |{s}|\n", .{r});
 }
 
