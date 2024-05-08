@@ -495,8 +495,8 @@ pub const Storage = struct {
 
     pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize) !void {
         const del_query =
-            \\DELETE FROM item WHERE feed_id IN 
-            \\  (SELECT feed_id FROM item WHERE feed_id = ? ORDER BY created_timestamp DESC, position LIMIT -1 OFFSET ?)
+            \\DELETE FROM item WHERE item_id IN 
+            \\  (SELECT item_id FROM item WHERE feed_id = ? ORDER BY created_timestamp DESC, position LIMIT -1 OFFSET ?)
         ;
         try self.sql_db.exec(del_query, .{}, .{ feed_id, items_len });
     }
