@@ -454,9 +454,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             for (feed_updates) |f_update| {
                 _ = item_arena.reset(.retain_capacity);
-                std.log.info("Updating feed '{s}'", .{f_update.feed_url});
                 var req = http_client.init(item_arena.allocator()) catch |err| {
-                    std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
+                    std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 }; 
                 defer req.deinit();
@@ -465,28 +464,29 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 }) catch |err| {
-                    std.log.err("Failed to fetch feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
+                    std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };
                 defer resp.deinit();
 
-                if (resp.status_code == 304) {
+                if (resp.status_code >= 400 and resp.status_code < 600) {
+                    std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
+                    continue;
+                } else if (resp.status_code == 304) {
                     try self.storage.updateLastUpdate(f_update.feed_id);
-                    std.log.info("Nothing to update in '{s}'\n", .{f_update.feed_url});
                     continue;
                 }
 
                 self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| switch (err) {
                     error.NoHtmlParse => {
-                        std.log.err("Failed to update feed '{s}'. Update should not return html file.\n", .{f_update.feed_url});
+                        std.log.err("Failed to update feed '{s}'. Update should not return html file", .{f_update.feed_url});
                         continue;
                     },
                     else => {
-                        std.log.err("Failed to update feed '{s}'. Error: {}\n", .{f_update.feed_url, err});
+                        std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
                         continue;
                     }
                 };
-                std.log.info("Updated feed '{s}'\n", .{f_update.feed_url});
             }
         }
 
