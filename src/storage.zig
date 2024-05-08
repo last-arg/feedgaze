@@ -494,13 +494,11 @@ pub const Storage = struct {
     }
 
     pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize) !void {
-        const last_pos = items_len - 1;
         const del_query =
-            \\DELETE FROM item WHERE feed_id = ? AND 
-            \\  (position > ? OR
-            \\   created_timestamp < (SELECT created_timestamp FROM item where feed_id = ? AND position = ? limit 1));
+            \\DELETE FROM item WHERE feed_id IN 
+            \\  (SELECT feed_id FROM item WHERE feed_id = ? ORDER BY created_timestamp DESC, position LIMIT -1 OFFSET ?)
         ;
-        try self.sql_db.exec(del_query, .{}, .{ feed_id, last_pos, feed_id, last_pos });
+        try self.sql_db.exec(del_query, .{}, .{ feed_id, items_len });
     }
 
     pub fn getSmallestCountdown(self: *Self) !?i64 {
