@@ -89,7 +89,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll(head);
 
-    try body_head_render(req.arena, db, w, .{});
+    try body_head_render(req, db, w, .{});
 
     try w.writeAll("<div>");
     try w.writeAll("<h2>Edit feed</h2>");
@@ -180,7 +180,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll(head);
 
-    try body_head_render(req.arena, db, w, .{});
+    try body_head_render(req, db, w, .{});
 
     const tags = try db.tags_all_with_ids(req.arena);
     try w.writeAll("<div>");
@@ -230,7 +230,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    try body_head_render(req.arena, db, w, .{ 
+    try body_head_render(req, db, w, .{ 
         .search = search_value orelse "", 
         .tags_checked = tags_active.items, 
         .has_untagged = query.get("untagged") != null,
@@ -473,13 +473,26 @@ const HeadOptions = struct {
     has_untagged: bool = false,
 };
 
-fn body_head_render(allocator: std.mem.Allocator, db: *Storage, w: anytype, opts: HeadOptions) !void {
+fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []const u8) !void {
+    if (mem.eql(u8, path, curr_path)) {
+        const fmt = 
+        \\<a href="{s}" aria-current="page">{s}</a>
+        ;
+        try w.print(fmt, .{path, name});
+    } else {
+        const fmt = 
+        \\<a href="{s}">{s}</a>
+        ;
+        try w.print(fmt, .{path, name});
+    }
+}
+
+fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOptions) !void {
+    const allocator = req.arena;
     try w.writeAll("<header>");
     try w.writeAll("<h1>feedgaze</h1>");
-    try w.writeAll(
-      \\<a href="/">Home/Feeds</a>
-      \\<a href="/tags">Tags</a>
-    );
+    try nav_link_render("/", "Home/Feeds", w, req.url.path);
+    try nav_link_render("/tags", "Tags", w, req.url.path);
 
     try w.writeAll("<div class='filter-wrapper'>");
     try w.writeAll("<h2>Filter feeds</h2>");
