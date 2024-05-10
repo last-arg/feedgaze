@@ -300,9 +300,12 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
                 break :blk new_url_arr.items;
             };
+
+            try w.writeAll("<footer class='main-footer'>");
             try w.print(
                 \\<a href="{s}">Next</a>
             , .{href_next});
+            try w.writeAll("</footer>");
         }
     } else {
         try w.writeAll(

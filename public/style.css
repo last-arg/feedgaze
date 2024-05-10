@@ -244,6 +244,11 @@ time {
   --_border-color: var(--grey-11);
 }
 
+.main-footer {
+  border-block-start: 1px solid var(--surface-2);
+  padding: var(--space-xs);
+}
+
 .tag {
   display: flex;
   gap: 2px;
