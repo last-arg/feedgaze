@@ -245,7 +245,32 @@ time {
 }
 
 .tag {
+  display: flex;
+  gap: 2px;
+  margin-inline: calc(-1 * var(--space-2xs));
+}
+
+.tag-checkbox {
+  display: flex;
   background: var(--label-bg, var(--gray-2));
+  padding-inline-start: var(--space-2xs);
+  padding-inline-end: calc((1em * 1.5 - 0.9em) / 2);
+}
+
+.tag input {
+  margin: auto;
+  height: .9em;
+  width: .9em;
+}
+
+.tag a {
+  width: 100%;
+  padding-inline-start: var(--space-2xs);
+}
+
+.tag a:focus,
+.tag a:hover {
+  background: var(--gray-2);
 }
 
 /* When new tag is added */
@@ -264,6 +289,7 @@ time {
     Take advantage of horizontal space?
   */
   --sidebar-target-width: min-content;
+  --flow-space: 2em;
   height: 100vh;
   overflow-y: scroll;
   position: sticky;
@@ -274,9 +300,25 @@ time {
   padding-inline: var(--space-2xs);
 }
 
-h1 {
-  margin-top: 0;
+.sidebar nav {
+  margin-block-start: var(--space-2xs);
+}
+
+
+.sidebar-heading {
   font-size: var(--step-0);
+  background: var(--grey-13);
+  color: var(--grey-1);
+  margin-inline-start: calc(-1 * var(--space-2xs));
+  padding-inline-start: var(--space-2xs);
+  padding-inline-end: var(--space-2xs);
+  padding-block: 1px;
+  display: inline-block;
+  margin-top: 0;
+}
+
+.filter-wrapper {
+  margin-block-start: var(--space-m);
 }
 
 .form-heading {

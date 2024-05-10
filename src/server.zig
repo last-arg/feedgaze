@@ -489,13 +489,18 @@ fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []
 
 fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOptions) !void {
     const allocator = req.arena;
-    try w.writeAll("<header>");
-    try w.writeAll("<h1>feedgaze</h1>");
+    try w.writeAll("<header class='flow'>");
+
+    try w.writeAll("<div>");
+    try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
+    try w.writeAll("<nav>");
     try nav_link_render("/", "Home/Feeds", w, req.url.path);
     try nav_link_render("/tags", "Tags", w, req.url.path);
+    try w.writeAll("</nav>");
+    try w.writeAll("</div>");
 
     try w.writeAll("<div class='filter-wrapper'>");
-    try w.writeAll("<h2>Filter feeds</h2>");
+    try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
     try w.writeAll("<form action='/'>");
     // NOTE: don't want tags-only button to be the 'default' button. This is
@@ -529,10 +534,10 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
 }
 
 fn untagged_label_render(w: anytype, has_untagged: bool) !void {
-    try w.writeAll("<div>");
+    try w.writeAll("<div class='tag'>");
     const is_checked: []const u8 = if (has_untagged) "checked" else "";
     const tag_fmt = 
-    \\<span class="tag">
+    \\<span class="tag-checkbox">
     \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
     \\<label class="visually-hidden" for="untagged">{[value]s}</label>
     \\</span>
@@ -543,7 +548,7 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
 }
 
 fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
-    try w.writeAll("<div>");
+    try w.writeAll("<div class='tag'>");
     var is_checked: []const u8 = "";
     for (tags_checked) |tag_checked| {
         if (mem.eql(u8, tag, tag_checked)) {
@@ -571,7 +576,7 @@ const InputRenderArgs = struct{
 
 fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
-    \\<span class="tag">
+    \\<span class="tag-checkbox">
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
     \\<label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
     \\</span>
