@@ -342,13 +342,13 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
-        var hide_index_start: usize = 0;
+        var hide_index_start: ?usize = null;
         const age_1day_ago = date_in_sec - std.time.s_per_day;
 
         for (items[1..], 1..) |item, i| {
             if (item.updated_timestamp) |updated_timestamp| {
                 if (updated_timestamp < age_1day_ago) {
-                    hide_index_start = i;
+                    hide_index_start = @max(1, i - 1);
                     break;
                 }
             }
@@ -361,7 +361,14 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         // js deal with hiding elements
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
         for (items, 0..) |item, i| {
-            const hidden: []const u8 = if (hide_index_start > 0 and i == hide_index_start) "hide-after" else "";
+            const hidden: []const u8 = blk: {
+                if (hide_index_start) |index| {
+                    if (index == i) {
+                        break :blk "hide-after";
+                    }
+                }
+                break :blk "";
+            };
             const age_class = blk: {
                 if (item.updated_timestamp) |updated_timestamp| {
                     // TODO: date might be in the future?
@@ -381,7 +388,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
-        const aria_expanded = if (hide_index_start > 0) "false" else "true";
+        const aria_expanded = if (hide_index_start != null) "false" else "true";
         try w.print(
             \\<div class="feed-footer">
             \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">
