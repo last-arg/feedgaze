@@ -271,10 +271,10 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<main>");
     try w.writeAll(
-        \\<div class="main-header">
+        \\<header class="main-header">
         \\  <button class="js-expand-all">Expand all</button>
         \\  <button class="js-collapse-all">Collapse all</button>
-        \\</div>
+        \\</header>
     );
     if (feeds.len > 0) {
         try feeds_and_items_print(w, req.arena, db, feeds);
@@ -318,10 +318,10 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
-    try w.writeAll("<ul role='list'>");
+    try w.writeAll("<div>");
     for (feeds) |feed| {
-        try w.writeAll("<li class='feed'>");
-        try w.writeAll("<div class='feed-header'>");
+        try w.writeAll("<article class='feed'>");
+        try w.writeAll("<header class='feed-header'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
 
@@ -333,7 +333,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
-        try w.writeAll("</div>");
+        try w.writeAll("</header>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
         if (items.len == 0) {
@@ -390,17 +390,17 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("</ul>");
         const aria_expanded = if (hide_index_start != null) "false" else "true";
         try w.print(
-            \\<div class="feed-footer">
+            \\<footer class="feed-footer">
             \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">
             \\    <span class="toggle-expand">Expand</span>
             \\    <span class="toggle-collapse">Collapse</span>
             \\</button>
-            \\</div>
+            \\</footer>
         , .{aria_expanded});
 
-        try w.writeAll("</li>");
+        try w.writeAll("</article>");
     }
-    try w.writeAll("</ul>");
+    try w.writeAll("</div>");
 }
 
 fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
@@ -499,7 +499,7 @@ fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []
 
 fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOptions) !void {
     const allocator = req.arena;
-    try w.writeAll("<header class='flow'>");
+    try w.writeAll("<header class='body-header flow'>");
 
     try w.writeAll("<div>");
     try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
