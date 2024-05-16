@@ -236,6 +236,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .has_untagged = query.get("untagged") != null,
     });
 
+    // TODO: implement querying 'untagged' feeds
     const feeds = blk: {
         const after = after: {
             if (query.get("after")) |value| {

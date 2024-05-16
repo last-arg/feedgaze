@@ -314,6 +314,11 @@ button {
   margin-block-start: var(--space-2xs);
 }
 
+.sidebar nav a:first-child:after {
+  content: "|";
+  color: var(--grey-6);
+  margin-inline: var(--space-2xs);
+}
 
 .sidebar-heading {
   font-size: var(--step-0);

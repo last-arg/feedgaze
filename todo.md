@@ -3,6 +3,10 @@
 keywords: feed, gaze, rss, atom, links
 - Something with gaze and atoms?
 [ ] Feeds
+  [ ] Get favicons
+    - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
+      And mark them in DB somehow. Rest would get full path. NULL for feeds
+      that don't have favicon?
   [ ] Github
       - https://github.community/t/rss-feeds-for-github-projects/292
       - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
