@@ -534,7 +534,7 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     \\<p>
     \\  <label class="form-heading" for="search_value">Filter term</label>
     \\  <input type="search" name="search" id="search_value" value="{s}">
-    \\  <button>Filter</button>
+    \\  <button class="form-submit">Filter</button>
     \\</p>
     , .{ opts.search });
 

@@ -173,6 +173,7 @@ textarea:not([rows]) {
   --tracking: .02em;
 
   --text-1: var(--grey-16);
+  --text-2: var(--grey-1);
   --surface-0: var(--white);
   --surface-1: var(--grey-1);
   --surface-2: var(--grey-2);
@@ -215,6 +216,10 @@ a:hover {
 time {
   font-family: monospace;
   font-size: var(--step--1);
+}
+
+button {
+  cursor: pointer;
 }
 
 /* 
@@ -325,6 +330,35 @@ time {
 .filter-wrapper {
   margin-block-start: var(--space-m);
 }
+
+.filter-wrapper button {
+  border: 1px solid var(--grey-3);
+  background: var(--grey-2);
+  padding: var(--space-3xs) var(--space-2xs);
+  min-width: 6rem;
+  margin-top: var(--space-xs);
+}
+
+.form-submit {
+  font-weight: bold;
+}
+
+.filter-wrapper button:hover {
+  text-decoration: underline;
+}
+
+
+/* .filter-wrapper button::after {
+  content: "";
+  display: block;
+  height: 1px;
+  position: absolute;
+  bottom: 2px;
+  left: 0;
+  right: 0;
+  background: white;
+} */
+
 
 .form-heading {
   text-transform: uppercase;
