@@ -540,10 +540,6 @@ pub const Storage = struct {
         }
     }
 
-    pub fn feeds_search(self: *Self, alloc: Allocator, search_term: []const u8, after: ?After) ![]types.FeedRender {
-        return try self.feeds_search_complex(alloc, .{.search = search_term, .after = after});
-    }
-    
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
         const query = "SELECT name FROM tag ORDER BY name ASC;";
         return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
@@ -634,11 +630,6 @@ pub const Storage = struct {
         for (tag_ids) |tag_id| {
             try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
         }
-    }
-
-    pub fn feeds_with_tags(self: *Self, allocator: Allocator, tags: [][]const u8, after: ?After) ![]types.FeedRender {
-        if (tags.len == 0) { return &.{}; }
-        return try self.feeds_search_complex(allocator, .{.tags = tags, .after = after});
     }
 
     pub const After = usize;
@@ -777,16 +768,6 @@ pub const Storage = struct {
     \\AND ((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
     \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
     ;
-
-    pub fn feeds_search_with_tags(self: *Self, allocator: Allocator, search_value: []const u8, tags: [][]const u8, after: ?After) ![]types.FeedRender {
-        assert(search_value.len > 0);
-        assert(tags.len > 0);
-        return try self.feeds_search_complex(allocator, .{
-            .tags = tags,
-            .after = after,
-            .search = search_value,
-        });
-    }
 
     pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
         const query_fmt = 

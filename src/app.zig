@@ -137,7 +137,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
 
                     if (opts.feed) |input| {
-                        const feeds = try self.storage.feeds_search(arena.allocator(), input, null);
+                        const feeds = try self.storage.feeds_search_complex(arena.allocator(), .{ .search = input });
                         if (feeds.len > 0) {
                             if (!opts.remove) {
                                 // TODO: validate tags

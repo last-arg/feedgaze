@@ -250,19 +250,14 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
         const is_tags_only = query.get("tags-only") != null;
         if (tags_active.items.len > 0) {
-            if (!is_tags_only and search_value != null and search_value.?.len > 0) {
-                const value = search_value.?;
-                break :blk try db.feeds_search_with_tags(req.arena, value, tags_active.items, after);
-            } else {
-                break :blk try db.feeds_with_tags(req.arena, tags_active.items, after);
-            }
+            break :blk try db.feeds_search_complex(req.arena, .{ .search = search_value, .tags = tags_active.items, .after = after });
         }
 
         if (!is_tags_only) {
             if (search_value) |term| {
                 const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
                 if (trimmed.len > 0) {
-                    break :blk try db.feeds_search(req.arena, trimmed, after);
+                    break :blk try db.feeds_search_complex(req.arena, .{ .search = trimmed, .after = after });
                 }
             }
         }
