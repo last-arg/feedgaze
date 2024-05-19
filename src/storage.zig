@@ -710,27 +710,28 @@ pub const Storage = struct {
         
         if (args.search) |value| {
             const value_trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-            std.debug.assert(value_trimmed.len > 0);
-            const search_fmt =
-                \\(
-                \\  feed.title LIKE '%' || {[search_value]s} || '%' OR
-                \\  feed.page_url LIKE '%' || {[search_value]s} || '%' OR
-                \\  feed.feed_url LIKE '%' || {[search_value]s} || '%' 
-                \\) 
-            ;
+            if (value_trimmed.len > 0) {
+                const search_fmt =
+                    \\(
+                    \\  feed.title LIKE '%' || {[search_value]s} || '%' OR
+                    \\  feed.page_url LIKE '%' || {[search_value]s} || '%' OR
+                    \\  feed.feed_url LIKE '%' || {[search_value]s} || '%' 
+                    \\) 
+                ;
 
-            if (has_prev_cond) {
-                try where_writer.writeAll(" AND ");
-            } else {
-                try where_writer.writeAll("WHERE ");
+                if (has_prev_cond) {
+                    try where_writer.writeAll(" AND ");
+                } else {
+                    try where_writer.writeAll("WHERE ");
+                }
+
+                const value_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{value_trimmed});
+                const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value_cstr.ptr);
+                const search = mem.sliceTo(c_str, 0);
+
+                try where_writer.print(search_fmt, .{.search_value = search });
+                has_prev_cond = true;
             }
-
-            const value_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{value});
-            const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value_cstr.ptr);
-            const search = mem.sliceTo(c_str, 0);
-
-            try where_writer.print(search_fmt, .{.search_value = search });
-            has_prev_cond = true;
         }
 
         const query_fmt = 
