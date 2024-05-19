@@ -523,23 +523,6 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
     }
 
-    pub fn feeds_page(self: *Self, alloc: Allocator, after: ?After) ![]types.FeedRender {
-        if (after) |feed_id| {
-            const query = comptimePrint(
-                \\select * from feed 
-                \\where (updated_timestamp < (select updated_timestamp from feed where feed_id = ?) AND feed_id < ?)
-                \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = ?) 
-                \\order by updated_timestamp DESC, feed_id DESC limit {d};
-            , .{app_config.query_feed_limit});
-            const args = .{feed_id, feed_id, feed_id};
-            return try selectAll(&self.sql_db, alloc, types.FeedRender, query, args);
-        } else {
-            const query =
-                "select * from feed order by updated_timestamp DESC, feed_id DESC LIMIT " ++ comptimePrint("{d}", .{app_config.query_feed_limit});
-            return try selectAll(&self.sql_db, alloc, types.FeedRender, query, .{});
-        }
-    }
-
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
         const query = "SELECT name FROM tag ORDER BY name ASC;";
         return try selectAll(&self.sql_db, alloc, []const u8, query, .{});

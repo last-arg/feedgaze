@@ -230,10 +230,11 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
+    const has_untagged = query.get("untagged") != null;
     try body_head_render(req, db, w, .{ 
         .search = search_value orelse "", 
         .tags_checked = tags_active.items, 
-        .has_untagged = query.get("untagged") != null,
+        .has_untagged = has_untagged,
     });
 
     // TODO: implement querying 'untagged' feeds
@@ -249,20 +250,23 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         };
 
         const is_tags_only = query.get("tags-only") != null;
-        if (tags_active.items.len > 0) {
-            break :blk try db.feeds_search_complex(req.arena, .{ .search = search_value, .tags = tags_active.items, .after = after });
-        }
-
-        if (!is_tags_only) {
-            if (search_value) |term| {
-                const trimmed = std.mem.trim(u8, term, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :blk try db.feeds_search_complex(req.arena, .{ .search = trimmed, .after = after });
+        const trimmed = trimmed: {
+            if (!is_tags_only) {
+                if (search_value) |term| {
+                    const val = std.mem.trim(u8, term, &std.ascii.whitespace);
+                    if (val.len > 0) {
+                        break :trimmed val;
+                    }
                 }
             }
-        }
-
-        break :blk try db.feeds_page(req.arena, after);
+            break :trimmed null;
+        };
+        break :blk try db.feeds_search_complex(req.arena, .{ 
+            .search = trimmed, 
+            .tags = tags_active.items, 
+            .after = after, 
+            .has_untagged = has_untagged,
+        });
     };
 
     try w.writeAll("<main>");
