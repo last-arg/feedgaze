@@ -139,9 +139,27 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<button>Save feed changes</button>");
     try w.writeAll("</form>");
 
-    try w.writeAll("<ul>");
+    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
+    const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
+
+    try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
-        try w.writeAll("<li>");
+        const age_class = blk: {
+            if (item.updated_timestamp) |updated_timestamp| {
+                // TODO: date might be in the future?
+                if (updated_timestamp > age_3days_ago) {
+                    break :blk "age-newest";
+                } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
+                    break :blk "age-less-month";
+                } else if (updated_timestamp < age_30days_ago) {
+                    break :blk "age-more-month";
+                }
+            }
+            break :blk "";
+        };
+
+        try w.print("<li class='feed-item {s} {s}'>", .{"", age_class});
         try item_render(w, req.arena, item);
         try w.writeAll("</li>");
     }
