@@ -222,6 +222,11 @@ button {
   cursor: pointer;
 }
 
+input[type=text] {
+  width: 100%;
+  max-width: 40ch;
+}
+
 /* 
   Block styles 
 */
@@ -267,7 +272,7 @@ button {
   padding-inline-end: calc((1em * 1.5 - 0.9em) / 2);
 }
 
-.tag input {
+.tag input[type=checkbox] {
   margin: auto;
   height: .9em;
   width: .9em;
@@ -570,4 +575,8 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
 
 .hidden {
   display: none;
+}
+
+.inline-block {
+  display: inline-block;
 }

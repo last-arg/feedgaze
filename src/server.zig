@@ -91,24 +91,28 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try body_head_render(req, db, w, .{});
 
-    try w.writeAll("<div>");
-    try w.writeAll("<h2>Edit feed</h2>");
+    try w.writeAll("<main>");
+    try w.print("<h2>Edit feed - {s}</h2>", .{if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url});
     try w.print(
         \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
 
-    try w.writeAll("<form method='POST'>");
+    try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='POST'>");
     // TODO: render feed edit stuff
     // title
     // feed_url - can't edit?
     // page_url - might get overwritten during update 
 
     const inputs_fmt = 
-    \\<label for="title">Feed title</label>
-    \\<input type="text" id="title" name="title" value="{[title]s}">
-    \\<label for="page_url">Page url</label>
-    \\<input type="text" id="page_url" name="page_url" value="{[page_url]s}">
-    \\<a href="{[page_url]s}">Go to page url</a>
+    \\<div>
+    \\  <p><label for="title">Feed title</label></p>
+    \\  <input type="text" id="title" name="title" value="{[title]s}">
+    \\</div>
+    \\<div>
+    \\  <p><label for="page_url">Page url</label></p>
+    \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
+    \\  <a href="{[page_url]s}" class="inline-block">Go to page url</a>
+    \\</div>
     ;
     try w.print(inputs_fmt, .{
         .title = feed.title, 
@@ -120,6 +124,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     //   - show time till next update?
     // - allow changing update interval?
 
+    try w.writeAll("<fieldset>");
+    try w.writeAll("<legend>Tags</legend>");
+    try w.writeAll("<div>");
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -136,6 +143,17 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             .prefix = "tag-edit-",
         });
     }
+    try w.writeAll("</div>");
+    try w.writeAll("</fieldset>");
+    try w.writeAll(
+        \\<div>
+        \\  <p><label for="new_tags">New tags</label></p>
+        \\  <p>Tags are comma separated</p>
+        \\  <input type="text" id="new_tags" name="new_tags">
+        \\</div>
+    );
+
+
     try w.writeAll("<button>Save feed changes</button>");
     try w.writeAll("</form>");
 
@@ -143,6 +161,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
     const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
 
+    try w.writeAll("<h3>Feed items</h3>");
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         const age_class = blk: {
@@ -165,7 +184,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     try w.writeAll("</ul>");
 
-    try w.writeAll("</div>");
+    try w.writeAll("</main>");
     try w.writeAll(foot);
 }
 
