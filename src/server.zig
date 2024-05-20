@@ -364,11 +364,9 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         const age_1day_ago = date_in_sec - std.time.s_per_day;
 
         for (items[1..], 1..) |item, i| {
-            if (item.updated_timestamp) |updated_timestamp| {
-                if (updated_timestamp < age_1day_ago) {
-                    hide_index_start = @max(1, i - 1);
-                    break;
-                }
+            if (item.created_timestamp < age_1day_ago) {
+                hide_index_start = i - 1;
+                break;
             }
         }
 
