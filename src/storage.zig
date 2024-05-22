@@ -279,6 +279,75 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, values);
     }
 
+    const FeedFields = struct {
+        feed_id: usize,
+        title: []const u8,
+        page_url: []const u8,
+        tags: [][]const u8,
+    };
+
+    pub fn update_feed_fields(self: *Self, allocator: Allocator, fields: FeedFields) !void {
+        var savepoint = try self.sql_db.savepoint("update_feed_fields");
+        defer savepoint.rollback();
+
+        // Remove tags that aren't part of .tags 
+        var buf: [1024]u8 = undefined;
+        var buf_cstr: [256]u8 = undefined;
+
+        if (fields.tags.len > 0) {
+            var tags_str = std.ArrayList(u8).init(allocator);
+            defer tags_str.deinit();
+
+            {
+                const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{fields.tags[0]});
+                const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
+                const tag_slice = mem.sliceTo(c_str, 0x0);
+                try tags_str.appendSlice(tag_slice);
+            }
+
+            for (fields.tags[1..]) |tag| {
+                const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
+                const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
+                const tag_slice = mem.sliceTo(c_str, 0);
+                try tags_str.append(',');
+                try tags_str.appendSlice(tag_slice);
+            }
+
+            const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in (select tag_id from tag where name in (?))";
+            try self.sql_db.exec(query_fmt, .{}, .{ fields.feed_id, tags_str.items });
+        } else {
+            const query = "DELETE FROM feed_tag WHERE feed_id = ?";
+            try self.sql_db.exec(query, .{}, .{fields.feed_id});
+        }
+
+        // Make sure all tags exist
+        try self.tags_add(fields.tags);
+        for (fields.tags) |tag| {
+            const query = 
+            \\insert into feed_tag (feed_id, tag_id) values 
+            \\  (?, (select tag_id from tag where name = ? limit 1)) ON CONFLICT DO NOTHING
+            ;
+            try self.sql_db.exec(query, .{}, .{
+                fields.feed_id,
+                tag,
+            });
+        }
+
+        // Update feed_title and page_url
+        const query = 
+        \\UPDATE feed 
+        \\SET title = ?, page_url = ?
+        \\WHERE feed_id = ?
+        ;
+        try self.sql_db.exec(query, .{}, .{
+            fields.title,
+            fields.page_url,
+            fields.feed_id,
+        });
+
+        savepoint.commit();
+    }
+
     pub fn hasFeedWithId(self: *Self, feed_id: usize) !bool {
         const exists_query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
         return (try one(&self.sql_db, bool, exists_query, .{feed_id})).?;
@@ -887,14 +956,6 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS tag(
     \\  tag_id INTEGER PRIMARY KEY,
     \\  name TEXT UNIQUE NOT NULL
-    \\)
-    ,
-    \\CREATE TABLE IF NOT EXISTS feed_tag(
-    \\  tag_id INTEGER NOT NULL,
-    \\  feed_id INTEGER NOT NULL,
-    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
-    \\  FOREIGN KEY(tag_id) REFERENCES tag(tag_id) ON DELETE CASCADE,
-    \\  UNIQUE(tag_id, feed_id)
     \\)
     ,
     \\CREATE TABLE IF NOT EXISTS feed_tag(

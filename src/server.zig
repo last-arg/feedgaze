@@ -32,7 +32,13 @@ fn start_server() !void {
     const allocator = gpa.allocator();
 
     var global = try Global.init();
-    var server = try httpz.ServerCtx(*Global, *Global).init(allocator, .{.port = 5882}, &global);
+    const server_config = .{
+        .port = 5882,  
+        .request = .{
+            .max_form_count = 10,
+        }
+    };
+    var server = try httpz.ServerCtx(*Global, *Global).init(allocator, server_config, &global);
     
     // overwrite the default notFound handler
     // server.notFound(notFound);
@@ -47,12 +53,52 @@ fn start_server() !void {
     router.get("/", root_get);
     router.get("/tags", tags_get);
     router.get("/feed/:id", feed_get);
+    router.post("/feed/:id", feed_post);
     router.get("/public/*", style_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
 }
 
+fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
+
+    const form_data = try req.formData();
+    const title = form_data.get("title") orelse return error.MissingFormFieldPageTitle;
+    const page_url = form_data.get("page_url") orelse return error.MissingFormFieldPageUrl;
+
+    var tags = std.ArrayList([]const u8).init(req.arena);
+    defer tags.deinit();
+    for (form_data.keys[0..form_data.len], form_data.values[0..form_data.len]) |key, value| {
+        if (mem.eql(u8, "tag", key)) {
+            try tags.append(value);
+        }
+    }
+
+    const new_tags = form_data.get("new_tags") orelse return error.MissingFormFieldNewTags;
+    var tags_iter = mem.splitScalar(u8, new_tags, ',');
+    while (tags_iter.next()) |tag_raw| {
+        const tag = mem.trim(u8, tag_raw, &std.ascii.whitespace);
+        if (tag.len > 0) {
+            try tags.append(tag);
+        }
+    }
+
+    const fields = .{
+        .feed_id = feed_id,
+        .title = title,
+        .page_url = page_url,
+        .tags = tags.items,
+    };
+    const db = &global.storage;
+    try db.update_feed_fields(req.arena, fields);
+
+    // TODO: success redirect
+    // TODO: failure redirect
+
+    resp.body = "feed post";
+}
 
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
