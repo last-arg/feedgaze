@@ -85,6 +85,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
     }
 
+    resp.status = 301;
     const fields = .{
         .feed_id = feed_id,
         .title = title,
@@ -92,12 +93,14 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .tags = tags.items,
     };
     const db = &global.storage;
-    try db.update_feed_fields(req.arena, fields);
+    db.update_feed_fields(req.arena, fields) catch {
+        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=", .{req.url.path});
+        resp.header("Location", url_redirect);
+        return;
+    };
 
-    // TODO: success redirect
-    // TODO: failure redirect
-
-    resp.body = "feed post";
+    const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?success=", .{req.url.path});
+    resp.header("Location", url_redirect);
 }
 
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -143,11 +146,18 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
 
+    const query_kv = try req.query();
+    if (query_kv.get("success")) |_| {
+        try w.writeAll("<p>Feed changes saved</p>");
+    }
+
+    if (query_kv.get("error")) |_| {
+        try w.writeAll("<p>Failed to save feed changes</p>");
+        // TODO: list errors?
+        // TODO: show errors near input fields?
+    }
+    
     try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='POST'>");
-    // TODO: render feed edit stuff
-    // title
-    // feed_url - can't edit?
-    // page_url - might get overwritten during update 
 
     const inputs_fmt = 
     \\<div>
@@ -207,7 +217,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
     const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
 
-    try w.writeAll("<h3>Feed items</h3>");
+    try w.writeAll("<h2>Feed items</h2>");
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         const age_class = blk: {
