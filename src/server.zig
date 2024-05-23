@@ -1,13 +1,14 @@
 // Date for machine "2011-11-18T14:54:39.929Z". For <time datetime="...">.
 const date_fmt = "{[year]d}-{[month]d:0>2}-{[day]d:0>2}T{[hour]d:0>2}:{[minute]d:0>2}:{[second]d:0>2}.000Z";
-const date_len_max = std.fmt.comptimePrint(date_fmt, .{
+const date_len_max = std.fmt.count(date_fmt, .{
     .year = 2222,
     .month = 3,
     .day = 2,
     .hour = 2,
     .minute = 2,
     .second = 2,
-}).len;
+});
+
 const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
 
