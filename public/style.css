@@ -378,8 +378,16 @@ input[type=text] {
 }
 
 .feed-header {
-  margin-inline-start: calc(var(--space-xl) + 2px);
   margin-block-end: var(--space-m);
+}
+
+/** NOTE: need this to get right character width that is used in <time> */
+.feed-header::before {
+  content: "";
+  --_box-padding: 3px;
+  font-family: monospace;
+  font-size: var(--step--1);
+  margin-inline-start: calc(3ch + (2 * var(--_box-padding)) + var(--space-m));
 }
 
 .feed {
@@ -453,14 +461,6 @@ input[type=text] {
   padding-inline-start: var(--space-m);
 }
 
-.time-wrapper {
-  align-self: start;
-  /* align date text with item text */
-  margin-block: calc(
-    (var(--step-0) * var(--leading-standard) - var(--step-0)) / 2
-  );
-}
-
 /* 
   TODO: change colors based on color unit used. Like in fraidycat. 
   Can visually find/identify new items faster.
@@ -469,7 +469,7 @@ input[type=text] {
   TODO: handle items without dates
 */
 .feed-item time {
-  display: block;
+  align-self: self-start;
   color: var(--grey-1);
   text-align: end;
   line-height: 1;
@@ -477,6 +477,9 @@ input[type=text] {
   padding: 2px var(--_box-padding);
   min-width: calc(3ch + (2 * var(--_box-padding)));
   width: min-content;
+  margin-block-start: calc(
+    (var(--step-0) * var(--leading-standard) - var(--step-0)) / 2
+  );
 }
 
 .feed-item.age-newest time {

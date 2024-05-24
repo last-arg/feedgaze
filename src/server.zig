@@ -443,6 +443,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
         try w.writeAll("<header class='feed-header'>");
+        try w.writeAll("<div class='inline-block'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
 
@@ -454,6 +455,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
+        try w.writeAll("</div>");
         try w.writeAll("</header>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
@@ -535,7 +537,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
     var date_buf: [date_len_max]u8 = undefined;
 
     const item_link_fmt =
-    \\<div class="time-wrapper"><time datetime="{[date]s}">{[date_display]s}</time></div>
+    \\<time datetime="{[date]s}">{[date_display]s}</time>
     \\<a href="{[link]s}" class="truncate" title="{[title]s}">{[title]s}</a>
     ;
 
