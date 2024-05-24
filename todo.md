@@ -7,15 +7,6 @@ keywords: feed, gaze, rss, atom, links
     - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
       And mark them in DB somehow. Rest would get full path. NULL for feeds
       that don't have favicon?
-  [ ] Github
-      - https://github.community/t/rss-feeds-for-github-projects/292
-      - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
-  [ ] Reddit
-      - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
-  [ ] Url rules to transform them into feed urls
-    [ ] On some sites have to figure out where to find the feed (reddit, pinboard)
-    [ ] Some sites might have and url to rss feed, but page's HTML doesn't contain
-        any rss url. Create somekind of rule?
   [ ] HTML page into feed
     - Use CSS selector to find:
       - titles
@@ -32,13 +23,6 @@ keywords: feed, gaze, rss, atom, links
     - more than 1 year = several days?
     - more than 1 month = 1 day or more?
 [ ] Decode/encode HTML characters
-[ ] Atom parsing:
-  [ ] see if I need to handle xhtml encoding for <title>
-    https://validator.w3.org/feed/docs/atom.html#text
-    <title> can have attribute type which tells how content is encoded.
-    Encodings: text (default), html, xhtml
-    I think function content_to_str() hadles text and html encodings
-    in some very general way.
 [ ] Maybe I should add field 'items' to Feed struct?
   - I am using Feed in sqlite db request, which makes the request fail.
     Have separate type for db results?
@@ -49,14 +33,12 @@ appear in the file.
   - If there is not feed date, what to use? 
   [ ] If implemented have to change how feed.updated_timestamp is updated. Currently
   will used newest (first) feed item.
+
 Web page
   [ ] Design
     - If feed + item area goes to wide have two choices
       - Make feeds into columns. Latest feeds' would go from left to right.
       - Make items into columns. Latest items' would go top to bottom.
-    - Don't all feed items. 
-      - For simpler implementation start with updated_timestamp
-      - Show items based on feed item's added date
   [ ] Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
 [ ] Database (sqlite)
   [ ] look into creating indices
@@ -89,4 +71,19 @@ Tried this and liked it. But I think I can just go with a server.
 [ ] HTML templating
   - https://github.com/nektro/zig-pek
   - https://github.com/jacksonsalopek/ztl
+[ ] Github
+    - https://vilcins.medium.com/rss-feeds-for-your-github-releases-tags-and-activity-cbda2c51373
+[ ] Reddit
+    - https://old.reddit.com/r/pathogendavid/comments/tv8m9/pathogendavids_guide_to_rss_and_reddit/
+[ ] Url rules to transform them into feed urls
+  [ ] On some sites have to figure out where to find the feed (reddit, pinboard)
+  [ ] Some sites might have and url to rss feed, but page's HTML doesn't contain
+      any rss url. Create somekind of rule?
+[ ] Atom parsing:
+  [ ] see if I need to handle xhtml encoding for <title>
+    https://validator.w3.org/feed/docs/atom.html#text
+    <title> can have attribute type which tells how content is encoded.
+    Encodings: text (default), html, xhtml
+    I think function content_to_str() handles text and html encodings
+    in some very general way.
 
