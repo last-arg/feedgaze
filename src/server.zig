@@ -331,13 +331,24 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .has_untagged = has_untagged,
     });
 
-    // TODO: implement querying 'untagged' feeds
     const feeds = blk: {
-        const after = after: {
-            if (query.get("after")) |value| {
+        const before = before: {
+            if (query.get("before")) |value| {
                 const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                 if (trimmed.len > 0) {
-                    break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+                    break :before std.fmt.parseInt(usize, trimmed, 10) catch null;
+                }
+            }
+            break :before null;
+        };
+
+        const after = after: {
+            if (before == null) {
+                if (query.get("after")) |value| {
+                    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+                    if (trimmed.len > 0) {
+                        break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+                    }
                 }
             }
             break :after null;
@@ -358,6 +369,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk try db.feeds_search_complex(req.arena, .{ 
             .search = trimmed, 
             .tags = tags_active.items, 
+            .before = before,
             .after = after, 
             .has_untagged = has_untagged,
         });
@@ -376,17 +388,35 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
             defer new_url_arr.deinit();
             new_url_arr.appendSliceAssumeCapacity("/?");
-            const href_next = blk: {
-                for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
-                    if (mem.eql(u8, "after", key)) {
-                        continue;
-                    }
-                    try new_url_arr.appendSlice(key);
-                    try new_url_arr.append('=');
-                    try new_url_arr.appendSlice(value);
-                    try new_url_arr.append('&');
+            for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
+                if (mem.eql(u8, "after", key)) {
+                    continue;
                 }
+                try new_url_arr.appendSlice(key);
+                try new_url_arr.append('=');
+                try new_url_arr.appendSlice(value);
+                try new_url_arr.append('&');
+            }
+            const current_path_len = new_url_arr.items.len;
 
+            try w.writeAll("<footer class='main-footer'>");
+
+            const href_prev = blk: {
+                try new_url_arr.appendSlice("before");
+                try new_url_arr.append('=');
+                const id_first = feeds[0].feed_id;
+                try new_url_arr.writer().print("{d}", .{id_first});
+
+                break :blk new_url_arr.items;
+            };
+
+            // TODO: first page won't have previous link
+            try w.print("<a href=\"{s}\">Previous</a>", .{href_prev});
+
+            // This is a little bit naughty
+            // reusing memory that was used by 'href_prev'
+            new_url_arr.items.len = current_path_len;
+            const href_next = blk: {
                 try new_url_arr.appendSlice("after");
                 try new_url_arr.append('=');
                 const id_last = feeds[feeds.len - 1].feed_id;
@@ -394,11 +424,8 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
                 break :blk new_url_arr.items;
             };
+            try w.print("<a href=\"{s}\">Next</a>", .{href_next});
 
-            try w.writeAll("<footer class='main-footer'>");
-            try w.print(
-                \\<a href="{s}">Next</a>
-            , .{href_next});
             try w.writeAll("</footer>");
         }
     } else {

@@ -685,14 +685,21 @@ pub const Storage = struct {
     }
 
     pub const After = usize;
+    pub const Before = usize;
     const FeedSearchArgs = struct {
         tags: [][]const u8 = &.{},
         search: ?[]const u8 = null,
         after: ?After = null,
+        before: ?Before = null,
         has_untagged: bool = false,
     };
 
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+        assert(
+            (args.before == null and args.after == null) or
+            (args.before != null and args.after == null) or
+            (args.before == null and args.after != null)
+        );
         var savepoint = try self.sql_db.savepoint("search_complex");
         defer savepoint.rollback();
 
@@ -704,17 +711,27 @@ pub const Storage = struct {
 
         var has_prev_cond = false;
 
-        if (args.after) |after| {
+        if (args.before) |before| {
             const after_fmt =
-            \\((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
-            \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}))
+            \\((updated_timestamp > (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
+            \\      OR updated_timestamp > (select updated_timestamp from feed where feed_id = {[id]d}))
             ;
 
             try where_writer.writeAll("WHERE ");
-            try where_writer.print(after_fmt, .{.id = after });
+            try where_writer.print(after_fmt, .{.id = before });
             has_prev_cond = true;
-        }
+        } else {
+            if (args.after) |after| {
+                const after_fmt =
+                \\((updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}) AND feed_id < {[id]d})
+                \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d}))
+                ;
 
+                try where_writer.writeAll("WHERE ");
+                try where_writer.print(after_fmt, .{.id = after });
+                has_prev_cond = true;
+            }
+        }
         
         const ids_tag = blk: {
             if (args.tags.len > 0) {
