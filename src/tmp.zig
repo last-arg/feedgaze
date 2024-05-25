@@ -7,8 +7,33 @@ const print = std.debug.print;
 pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
-    try run_add_new_feed();
+    // try run_add_new_feed();
     // try run_parse_atom();
+    try test_allocating();
+}
+
+// Trying to see how freeing slice works. Want to know if I can free part 
+// of allocated slice. Doesn't seem to be possible.
+pub fn test_allocating() !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer {
+        const has_leaked = gpa.detectLeaks();
+        std.log.debug("Has leaked: {}\n", .{has_leaked});
+    }
+
+    const alloc = gpa.allocator();
+    var arr = try alloc.alloc(u8, 2);
+    arr[0] = 0;
+    arr[1] = 1;
+    
+    // const n = arr[1..];
+    print("arr[0]: {d}\n", .{arr[0]});
+    print("arr[1]: {d}\n", .{arr[1]});
+    alloc.free(arr[0..]);
+    // print("n: {any}\n", .{n});
+    // alloc.destroy(&arr[0]);
+    // alloc.destroy(&arr[1]);
+
 }
 
 fn run_parse_atom() !void {
