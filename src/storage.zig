@@ -694,15 +694,12 @@ pub const Storage = struct {
         has_untagged: bool = false,
     };
 
-    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+    fn search_query_where(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]const u8 {
         assert(
             (args.before == null and args.after == null) or
             (args.before != null and args.after == null) or
             (args.before == null and args.after != null)
         );
-        var savepoint = try self.sql_db.savepoint("search_complex");
-        defer savepoint.rollback();
-
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
         var query_where = try ArrayList(u8).initCapacity(allocator, 1024);
@@ -819,18 +816,50 @@ pub const Storage = struct {
                 has_prev_cond = true;
             }
         }
+        
+        return query_where.toOwnedSlice();
+    }
 
+    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+        assert(
+            (args.before == null and args.after == null) or
+            (args.before != null and args.after == null) or
+            (args.before == null and args.after != null)
+        );
+        var savepoint = try self.sql_db.savepoint("search_complex");
+        defer savepoint.rollback();
+
+
+        const query_where = try self.search_query_where(allocator, args);
+        defer allocator.free(query_where);
         const query_fmt = 
         \\SELECT * FROM feed {s}
         \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         const result =  try stmt.all(types.FeedRender, allocator, .{}, .{});
         savepoint.commit();
         return result;
+    }
+
+    pub fn feeds_search_has_previous(self: *Self, allocator: Allocator, args: FeedSearchArgs) !bool {
+        assert(args.before != null);
+
+        const query_where = try self.search_query_where(allocator, args);
+        defer allocator.free(query_where);
+        const query_fmt = 
+        \\SELECT 1 FROM feed {s}
+        \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT 1
+        ;
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
+        defer allocator.free(query);
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+        const result =  try stmt.one(bool, .{}, .{});
+        return result orelse false;
     }
     
     const after_cond_raw =

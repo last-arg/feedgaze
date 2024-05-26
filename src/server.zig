@@ -327,17 +327,30 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .has_untagged = has_untagged,
     });
 
-    const feeds = blk: {
-        const before = before: {
-            if (query.get("before")) |value| {
-                const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-                if (trimmed.len > 0) {
-                    break :before std.fmt.parseInt(usize, trimmed, 10) catch null;
+    const before = before: {
+        if (query.get("before")) |value| {
+            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :before std.fmt.parseInt(usize, trimmed, 10) catch null;
+            }
+        }
+        break :before null;
+    };
+
+    const is_tags_only = query.get("tags-only") != null;
+    const feed_search_value = trimmed: {
+        if (!is_tags_only) {
+            if (search_value) |term| {
+                const val = std.mem.trim(u8, term, &std.ascii.whitespace);
+                if (val.len > 0) {
+                    break :trimmed val;
                 }
             }
-            break :before null;
-        };
-
+        }
+        break :trimmed null;
+    };
+    
+    const feeds = blk: {
         const after = after: {
             if (before == null) {
                 if (query.get("after")) |value| {
@@ -350,20 +363,8 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             break :after null;
         };
 
-        const is_tags_only = query.get("tags-only") != null;
-        const trimmed = trimmed: {
-            if (!is_tags_only) {
-                if (search_value) |term| {
-                    const val = std.mem.trim(u8, term, &std.ascii.whitespace);
-                    if (val.len > 0) {
-                        break :trimmed val;
-                    }
-                }
-            }
-            break :trimmed null;
-        };
         break :blk try db.feeds_search_complex(req.arena, .{ 
-            .search = trimmed, 
+            .search = search_value, 
             .tags = tags_active.items, 
             .before = before,
             .after = after, 
@@ -397,17 +398,25 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
             try w.writeAll("<footer class='main-footer'>");
 
-            const href_prev = blk: {
-                try new_url_arr.appendSlice("before");
-                try new_url_arr.append('=');
-                const id_first = feeds[0].feed_id;
-                try new_url_arr.writer().print("{d}", .{id_first});
+            const has_prev = try db.feeds_search_has_previous(req.arena, .{ 
+                .search = feed_search_value, 
+                .tags = tags_active.items, 
+                .before = feeds[0].feed_id,
+                .after = null, 
+                .has_untagged = has_untagged,
+            });
+            if (has_prev) {
+                const href_prev = blk: {
+                    try new_url_arr.appendSlice("before");
+                    try new_url_arr.append('=');
+                    const id_first = feeds[0].feed_id;
+                    try new_url_arr.writer().print("{d}", .{id_first});
 
-                break :blk new_url_arr.items;
-            };
+                    break :blk new_url_arr.items;
+                };
 
-            // TODO: first page won't have previous link
-            try w.print("<a href=\"{s}\">Previous</a>", .{href_prev});
+                try w.print("<a href=\"{s}\">Previous</a>", .{href_prev});
+            }
 
             // This is a little bit naughty
             // reusing memory that was used by 'href_prev'
