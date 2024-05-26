@@ -357,7 +357,6 @@ input[type=text] {
   text-decoration: underline;
 }
 
-
 /* .filter-wrapper button::after {
   content: "";
   display: block;
@@ -369,7 +368,6 @@ input[type=text] {
   background: white;
 } */
 
-
 .form-heading {
   text-transform: uppercase;
   font-weight: normal;
@@ -379,11 +377,20 @@ input[type=text] {
 
 .feed-header {
   margin-block-end: var(--space-m);
+  margin-inline-start: var(--space-m);
+}
+
+.feed-header-top {
+  display: flex;
+  align-items: center;
+}
+
+.feed-edit {
+  flex-shrink: 0;
 }
 
 /** NOTE: need this to get right character width that is used in <time> */
-.feed-header::before {
-  content: "";
+.fake-time {
   --_box-padding: 3px;
   font-family: monospace;
   font-size: var(--step--1);
@@ -552,7 +559,14 @@ Info about this implementation: https://piccalil.li/quick-tip/flow-utility/
   Utility styles 
 */
 
-.truncate {
+.truncate-1 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  overflow: hidden;
+}
+
+.truncate-2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;

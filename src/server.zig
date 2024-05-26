@@ -439,9 +439,10 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
         try w.writeAll("<header class='feed-header'>");
-        try w.writeAll("<div class='inline-block'>");
+        try w.writeAll("<div class='feed-header-top'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
+        try w.writeAll("</div>");
 
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
@@ -451,7 +452,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
-        try w.writeAll("</div>");
         try w.writeAll("</header>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
@@ -522,7 +522,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
 fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     const edit_fmt = 
-    \\<a href="/feed/{d}">Edit feed</a>
+    \\<a class="feed-edit" href="/feed/{d}">Edit feed</a>
     ;
     try w.print(edit_fmt, .{ feed_id });
 }
@@ -534,12 +534,12 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
 
     const item_link_fmt =
     \\<time datetime="{[date]s}">{[date_display]s}</time>
-    \\<a href="{[link]s}" class="truncate" title="{[title]s}">{[title]s}</a>
+    \\<a href="{[link]s}" class="truncate-2" title="{[title]s}">{[title]s}</a>
     ;
 
     const item_title_fmt =
     \\<time datetime="{[date]s}">{[date_display]s}</time>
-    \\<p class="truncate" title="{[title]s}">{[title]s}</p>
+    \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
     ;
                 
     const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
@@ -567,12 +567,12 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
     var date_buf: [date_len_max]u8 = undefined;
 
     const feed_link_fmt = 
-    \\<a class="feed-link" href="{[page_url]s}">{[title]s}</a>
+    \\<a class="feed-link truncate-1" href="{[page_url]s}">{[title]s}</a>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
     const feed_title_fmt =
-    \\<p>{[title]s}</p>
+    \\<p class="truncate-1">{[title]s}</p>
     \\<time datetime="{[date]s}">{[date_display]s}</time>
     ;
 
