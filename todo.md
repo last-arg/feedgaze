@@ -14,6 +14,12 @@ keywords: feed, gaze, rss, atom, links
     - Use page title as feed title
     - check https://github.com/chadwain/rem
 [ ] add transactions
+[ ] validate feed tags where needed
+  - Need to figure out rules for valid tags
+  - Valid tag symbols?:
+    - A-z, 0-9
+    - no space
+
 [ ] Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.

@@ -305,8 +305,6 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const query = try req.query();
     const search_value = query.get("search");
-    // TODO?: redirect if there search_value is empty?
-    print("search: {?s}\ng", .{search_value});
 
     var tags_active = try std.ArrayList([]const u8).initCapacity(req.arena, query.len);
     defer tags_active.deinit();

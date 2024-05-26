@@ -2,8 +2,6 @@ const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
 
-// TODO: cli, web test rules
-
 pub const AddRule = @This();
 
 rules: []Rule = &.{},

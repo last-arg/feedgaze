@@ -37,8 +37,6 @@ const CliVerb = union(enum) {
     server: void,
     tag: TagOptions,
     add: feed_types.AddOptions,
-    // TODO: generate html file
-    // html: void,
 };
 
 const CliGlobal = struct {
@@ -140,7 +138,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         const feeds = try self.storage.feeds_search_complex(arena.allocator(), .{ .search = input });
                         if (feeds.len > 0) {
                             if (!opts.remove) {
-                                // TODO: validate tags
                                 try self.storage.tags_add(tags_arr.items);
                             }
                             const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
@@ -168,15 +165,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         return;
                     }
 
-                    // TODO: validate tags
-                    // Validate after remove? Because there might be some
-                    // invalid tags in storage. Might have invalid tags
-                    // because might have changed what is valid and what not.
-                    //
-                    // Valid tag symbols:
-                    // - A-z, 0-9
-                    // - no space
-                    
                     try self.storage.tags_add(tags_arr.items);
                 },
                 .add => |opts| {
@@ -188,7 +176,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
                     defer arena.deinit();
                     
-                    // TODO: search more than one value?
                     var tags_ids: []usize = &.{};
 
                     if (opts.tags) |tags_raw| {

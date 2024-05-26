@@ -468,13 +468,6 @@ input[type=text] {
   padding-inline-start: var(--space-m);
 }
 
-/* 
-  TODO: change colors based on color unit used. Like in fraidycat. 
-  Can visually find/identify new items faster.
-  Server side probably generates some class or attribute.
-  Don't forget to handle future dates.
-  TODO: handle items without dates
-*/
 .feed-item time {
   align-self: self-start;
   color: var(--grey-1);

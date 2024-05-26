@@ -150,9 +150,6 @@ pub const TmpStr = struct {
         };
     }
 
-    // TODO: Add three dots (...) if all content doesn't fit in buffer
-    // Or do it after checking self.is_full?
-    // Or do it inside catch?
     // TODO?: add space when block (<p>) element?
     fn appendSlice(self: *Self, items: []const u8) void {
         if (self.is_full) {

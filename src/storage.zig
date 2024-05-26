@@ -83,7 +83,6 @@ pub const Storage = struct {
         }
     }
 
-    // TODO: use feed_opts.feed_url
     pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) {
@@ -263,6 +262,8 @@ pub const Storage = struct {
             return Error.FeedNotFound;
         }
         // TODO: should I set feed_url also? In case feed_url has changed?
+        // Maybe better to just make user aware that feed_url has changed.
+        // Let user make the decision.
         const query =
             \\UPDATE feed SET
             \\  title = @title,
@@ -581,15 +582,6 @@ pub const Storage = struct {
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
         ;
         return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
-    }
-
-    // TODO: implement pagination (After)
-    pub fn feeds_all(self: *Self, alloc: Allocator) ![]types.FeedRender {
-        const query_feed =
-            \\SELECT * FROM feed ORDER BY updated_timestamp DESC
-            ++ comptimePrint(" LIMIT {d}", .{app_config.query_feed_limit})
-        ;
-        return try selectAll(&self.sql_db, alloc, types.FeedRender, query_feed, .{});
     }
 
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
