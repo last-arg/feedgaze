@@ -826,7 +826,6 @@ pub const Storage = struct {
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where.items});
-        print("query: {s}\n", .{query});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         const result =  try stmt.all(types.FeedRender, allocator, .{}, .{});

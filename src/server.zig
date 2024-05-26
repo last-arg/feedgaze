@@ -20,19 +20,15 @@ pub fn main() !void {
 
 const Global = struct {
     storage: Storage, 
-
-    pub fn init() !@This() {
-        return .{
-            .storage = try Storage.init("./tmp/feeds.db"),
-        };
-    }
 };
 
 fn start_server() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var global = try Global.init();
+    var global = .{
+        .storage = try Storage.init("./tmp/feeds.db"),
+    };
     const server_config = .{
         .port = 5882,  
         .request = .{
