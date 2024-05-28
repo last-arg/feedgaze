@@ -494,6 +494,13 @@ input[type=text] {
   background: var(--grey-9);
 }
 
+.message {
+  background: var(--surface-1);
+}
+
+.message p {
+  margin-block-start: 0;
+}
 
 
 /* 

@@ -51,10 +51,27 @@ fn start_server() !void {
     router.get("/tags", tags_get);
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
+    router.post("/feed/:id/delete", feed_delete);
     router.get("/public/*", style_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
+}
+
+fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
+
+    const db = &global.storage;
+    resp.status = 301;
+    db.deleteFeed(feed_id) catch {
+        // On failure redirect to feed page. Display error message
+        const url_redirect = try std.fmt.allocPrint(req.arena, "/feed/{d}/?error=delete", .{feed_id});
+        resp.header("Location", url_redirect);
+        return;
+    };
+
+    resp.header("Location", "/?msg=delete");
 }
 
 fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -148,10 +165,14 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<p>Feed changes saved</p>");
     }
 
-    if (query_kv.get("error")) |_| {
-        try w.writeAll("<p>Failed to save feed changes</p>");
-        // TODO: list errors?
-        // TODO: show errors near input fields?
+    if (query_kv.get("error")) |error_value| {
+        if (mem.eql(u8, "delete", error_value)) {
+            try w.writeAll("<p>Failed to delete feed</p>");
+        } else {
+            try w.writeAll("<p>Failed to save feed changes</p>");
+            // TODO: list errors?
+            // TODO: show errors near input fields?
+        }
     }
     
     try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='POST'>");
@@ -208,6 +229,14 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
 
     try w.writeAll("<button>Save feed changes</button>");
+    try w.writeAll("</form>");
+
+    var path = req.url.path;
+    if (path[path.len - 1] == '/') {
+        path = path[0.. path.len - 1];
+    }
+    try w.print("<form action='{s}/delete' method='POST'>", .{path});
+    try w.writeAll("<button>Delete feed</button>");
     try w.writeAll("</form>");
 
     const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
@@ -371,6 +400,17 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     try w.writeAll("<main>");
+    if (query.get("msg")) |value| {
+        if (mem.eql(u8, "delete", value)) {
+            try w.writeAll(
+                \\<div class='message'>
+                \\<p>Feed deleted</p>
+                \\<a href='/'>Close message</a>
+                \\</div>
+            );
+        }
+    }
+
     try w.writeAll(
         \\<header class="main-header">
         \\  <button class="js-expand-all">Expand all</button>
