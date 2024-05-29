@@ -313,18 +313,20 @@ pub const FeedUpdate = struct {
             update_interval = null;
         }
 
-        if (easy.getHeader("expires")) |header| {
-            if (header) |h| {
-                const value = RssDateTime.parse(h.get()) catch null;
-                if (value) |v| {
-                    const interval = v - std.time.timestamp();
-                    // Favour cache-control value over expires
-                    if (interval > 0 and update_interval == null) {
-                        update_interval = interval;
+        if (update_interval == null) {
+            if (easy.getHeader("expires")) |header| {
+                if (header) |h| {
+                    const value = RssDateTime.parse(h.get()) catch null;
+                    if (value) |v| {
+                        const interval = v - std.time.timestamp();
+                        // Favour cache-control value over expires
+                        if (interval > 0) {
+                            update_interval = interval;
+                        }
                     }
                 }
-            }
-        } else |_| {}
+            } else |_| {}
+        }
 
         if (update_interval) |value| {
             feed_update.update_interval = value;

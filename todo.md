@@ -1,4 +1,6 @@
 # Initial
+[ ] http header 'retry-after'
+  - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
 [ ] Logo ideas
 keywords: feed, gaze, rss, atom, links
 - Something with gaze and atoms?
