@@ -296,9 +296,13 @@ pub const FeedUpdate = struct {
                     var pair_iter = std.mem.split(u8, key_value, "=");
                     var key = pair_iter.next() orelse continue;
                     key = std.mem.trim(u8, key, &std.ascii.whitespace);
+                    if (std.mem.eql(u8, "no-cache", key)) {
+                        update_interval = null;
+                        break;
+                    }
                     var iter_value = pair_iter.next() orelse continue;
                     iter_value = std.mem.trim(u8, iter_value, &std.ascii.whitespace);
-                    // TODO: look more into how 'cache-control' works
+
                     if (std.mem.eql(u8, "max-age", key)) {
                         update_interval = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
                     } else if (std.mem.eql(u8, "s-maxage", value)) {
