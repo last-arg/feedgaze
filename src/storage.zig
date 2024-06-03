@@ -421,29 +421,6 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, item);
     }
 
-    pub fn insertFeedUpdate(self: *Self, feed_update: FeedUpdate) !void {
-        if (feed_update.feed_id == null) {
-            return error.FeedIdNull;
-        }
-        const query =
-            \\INSERT INTO feed_update
-            \\  (feed_id, cache_control_max_age, expires_utc, last_modified_utc, etag)
-            \\VALUES (
-            \\  @feed_id,
-            \\  @cache_control_max_age,
-            \\  @expires_utc,
-            \\  @last_modified_utc,
-            \\  @etag
-            \\) ON CONFLICT(feed_id) DO UPDATE SET
-            \\  cache_control_max_age = excluded.cache_control_max_age,
-            \\  expires_utc = excluded.expires_utc,
-            \\  last_modified_utc = excluded.last_modified_utc,
-            \\  etag = excluded.etag,
-            \\  last_update = (strftime('%s', 'now'));
-        ;
-        try self.sql_db.exec(query, .{}, feed_update);
-    }
-
     // Update every update_countdown value
     pub fn updateCountdowns(self: *Self) !void {
         const query =
