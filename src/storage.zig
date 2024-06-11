@@ -18,6 +18,15 @@ const UpdateOptions = types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 const app_config = @import("app_config.zig");
 
+const seconds_in_1_day = std.time.s_per_day;
+const seconds_in_12_hours = std.time.s_per_hour * 12;
+const seconds_in_2_days = seconds_in_1_day * 2;
+const seconds_in_3_days = seconds_in_1_day * 3;
+const seconds_in_5_days = seconds_in_1_day * 5;
+const seconds_in_7_days = seconds_in_1_day * 7;
+const seconds_in_10_days = seconds_in_1_day * 10;
+const seconds_in_30_days = seconds_in_1_day * 30;
+
 pub const Storage = struct {
     const Self = @This();
     sql_db: sql.Db,
@@ -930,6 +939,76 @@ pub const Storage = struct {
         print("path: {s}\n", .{tmp_path});
         return try oneAlloc(&self.sql_db, allocator, Rule, query, .{host_id, host_id, host_id, tmp_path});
     }
+
+    pub fn update_item_intervals(self: *Self) !void {
+        // Maybe can change query using sqlite fn nth_value(), first_value(), lead(), lag()?
+        const query = comptimePrint(
+            \\with temp_table as (
+            \\	select coalesce(max(item.updated_timestamp) - 
+            \\		(select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), {d}
+            \\	) item_interval
+            \\	from feed 
+            \\	left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
+            \\	group by item.feed_id
+            \\)    
+            \\update feed_update set item_interval = (
+            \\CASE
+            \\  when item_interval < {d} then {d}
+            \\  when item_interval < {d} then {d}
+            \\  when item_interval < {d} then {d}
+            \\  when item_interval < {d} then {d}
+            \\  else {d}
+            \\end
+            \\) from temp_table where feed_update.feed_id = temp_table.feed_id;
+        , .{
+            // In case item count is 0 or 1 make sure case expressions else branch
+            // is hit.
+            seconds_in_30_days, 
+
+            // else case with item_interval
+            seconds_in_1_day, seconds_in_12_hours,
+            seconds_in_2_days, seconds_in_1_day,
+            seconds_in_7_days, seconds_in_3_days,
+            seconds_in_30_days, seconds_in_5_days,
+            seconds_in_10_days,
+        });
+        try self.sql_db.exec(query, .{}, .{});
+    }
+
+    // TODO?: take slice of ids?
+    pub fn update_item_interval(self: *Self, feed_id: usize) !void {
+        const query = comptimePrint(
+            \\update feed_update set item_interval = (select CASE
+            \\	when temp_table.item_interval < {d} then {d}
+            \\	when temp_table.item_interval < {d} then {d}
+            \\	when temp_table.item_interval < {d} then {d}
+            \\	when temp_table.item_interval < {d} then {d}
+            \\	else {d}
+            \\end
+            \\	from (select coalesce(updated_timestamp - lead(updated_timestamp) over (order by updated_timestamp DESC), {d}) item_interval
+            \\		from item 
+            \\		where item.feed_id = {d} and item.updated_timestamp is not null
+            \\		order by updated_timestamp DESC 
+            \\		limit 1
+            \\	) temp_table
+            \\)
+            \\where feed_update.feed_id = {d} 
+            , .{
+            // else case with item_interval
+            seconds_in_1_day, seconds_in_12_hours,
+            seconds_in_2_days, seconds_in_1_day,
+            seconds_in_7_days, seconds_in_3_days,
+            seconds_in_30_days, seconds_in_5_days,
+            seconds_in_10_days,
+
+            // In case item count is 0 or 1 make sure case expressions else branch
+            // is hit.
+            seconds_in_30_days, 
+
+            feed_id, feed_id,
+        });
+        try self.sql_db.exec(query, .{}, .{});
+    }
 };
 
 // TODO: feed.title default value should be null
@@ -959,14 +1038,15 @@ const tables = &[_][]const u8{
     comptimePrint(
         \\CREATE TABLE IF NOT EXISTS feed_update (
         \\  feed_id INTEGER UNIQUE NOT NULL,
-        \\  update_countdown INTEGER DEFAULT 0,
-        \\  update_interval INTEGER DEFAULT {d},
-        \\  last_update INTEGER DEFAULT (strftime('%s', 'now')),
+        \\  update_countdown INTEGER NOT NULL DEFAULT 0,
+        \\  update_interval INTEGER NOT NULL DEFAULT {d},
+        \\  item_interval INTEGER NOT NULL DEFAULT {d},
+        \\  last_update INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
         \\  last_modified_utc INTEGER DEFAULT NULL,
         \\  etag TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
         \\);
-    , .{ .update_interval = app_config.update_interval }),
+    , .{ app_config.update_interval, seconds_in_10_days }),
     \\CREATE TABLE IF NOT EXISTS tag(
     \\  tag_id INTEGER PRIMARY KEY,
     \\  name TEXT UNIQUE NOT NULL
