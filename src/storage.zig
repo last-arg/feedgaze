@@ -461,6 +461,8 @@ pub const Storage = struct {
             .u_last_modified_utc = feed_update.last_modified_utc,
             .u_etag = feed_update.etag,
         });
+        // TODO: instead of doing db call. Use feed.items to calculate item_interval value
+        try self.update_item_interval(feed_id);
     }
 
     pub fn updateLastUpdate(self: *Self, feed_id: usize) !void {
@@ -987,12 +989,12 @@ pub const Storage = struct {
             \\end
             \\	from (select coalesce(updated_timestamp - lead(updated_timestamp) over (order by updated_timestamp DESC), {d}) item_interval
             \\		from item 
-            \\		where item.feed_id = {d} and item.updated_timestamp is not null
+            \\		where item.feed_id = ? and item.updated_timestamp is not null
             \\		order by updated_timestamp DESC 
             \\		limit 1
             \\	) temp_table
             \\)
-            \\where feed_update.feed_id = {d} 
+            \\where feed_update.feed_id = ?
             , .{
             // else case with item_interval
             seconds_in_1_day, seconds_in_12_hours,
@@ -1004,10 +1006,8 @@ pub const Storage = struct {
             // In case item count is 0 or 1 make sure case expressions else branch
             // is hit.
             seconds_in_30_days, 
-
-            feed_id, feed_id,
         });
-        try self.sql_db.exec(query, .{}, .{});
+        try self.sql_db.exec(query, .{}, .{feed_id, feed_id});
     }
 };
 

@@ -9,7 +9,13 @@ pub fn main() !void {
     // try run_rule_transform();
     // try run_add_new_feed();
     // try run_parse_atom();
-    try test_allocating();
+    // try test_allocating();
+    try storage_item_interval();
+}
+
+pub fn storage_item_interval() !void {
+    var storage = try Storage.init("./tmp/feeds.db");
+    try storage.update_item_interval(1);
 }
 
 // Trying to see how freeing slice works. Want to know if I can free part 

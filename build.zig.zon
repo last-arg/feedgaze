@@ -28,6 +28,8 @@
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
             .hash = "1220f70ac854b59315a8512861e039648d677feb4f9677bd873d6b9b7074a5906485",
         },
+        // NOTE: httz lib is modified to make it work with zig new backend
+        // Disabled @Vector code in src/url.zig isValid function 
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
             .hash = "12206d8d2a7f2535a7d48872eaf43911ead71ba05456f97363ae25e4f057a985975f",
