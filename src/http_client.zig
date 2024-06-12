@@ -22,7 +22,7 @@ headers: curl.Easy.Headers,
 client: curl.Easy,
 
 pub fn init(allocator: Allocator) !@This() {
-    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 10000});
+    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 10000, .ca_bundle = try curl.allocCABundle(allocator)});
     errdefer easy.deinit();
 
     var headers = try easy.createHeaders();
@@ -62,8 +62,6 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try self.client.setHeaders(self.headers);
     try self.client.setMaxRedirects(5);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
-    // TODO: using 0 value is not good. Remove/fix it in future 
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_SSL_VERIFYPEER, @as(c_long, 0)));
     const user_agent = "feedgaze/" ++ config.version;
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
