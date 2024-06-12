@@ -6,13 +6,13 @@ pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
-    .{.name = "tmp_file", .path="./tmp/tmp.xml"},
-    .{.name = "atom.atom", .path="./test/atom.atom"},
-    .{.name = "atom.xml", .path="./test/atom.xml"},
-    .{.name = "rss2.xml", .path="./test/rss2.xml"},
-    .{.name = "json_feed.json", .path="./test/json_feed.json"},
-    .{.name = "many-links.html", .path="./test/many-links.html"},
-    .{.name = "baldurbjarnason.com.html", .path="./tmp/baldurbjarnason.com.html"},
+    .{ .name = "tmp_file", .path = "./tmp/tmp.xml" },
+    .{ .name = "atom.atom", .path = "./test/atom.atom" },
+    .{ .name = "atom.xml", .path = "./test/atom.xml" },
+    .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
+    .{ .name = "json_feed.json", .path = "./test/json_feed.json" },
+    .{ .name = "many-links.html", .path = "./test/many-links.html" },
+    .{ .name = "baldurbjarnason.com.html", .path = "./tmp/baldurbjarnason.com.html" },
 };
 
 pub fn build(b: *Build) !void {
@@ -36,11 +36,11 @@ pub fn build(b: *Build) !void {
 
     const exe = b.addExecutable(.{
         .name = "feedgaze",
-        .root_source_file = .{ .path = source_file },
+        .root_source_file = b.path(source_file),
         .target = target,
         .optimize = optimize,
         .use_llvm = use_llvm,
-        .use_lld = false,
+        .use_lld = use_llvm,
     });
 
     // This declares intent for the executable to be installed into the
@@ -55,10 +55,10 @@ pub fn build(b: *Build) !void {
 
     const tmp_file = anon_modules[0];
     exe.root_module.addAnonymousImport(tmp_file.name, .{
-        .root_source_file = .{ .path = tmp_file.path },
+        .root_source_file = b.path(tmp_file.path),
     });
 
-    commonModules(b, exe, .{.target = target, .optimize = optimize});
+    commonModules(b, exe, .{ .target = target, .optimize = optimize });
 
     // By making the run step depend on the install step, it will be run from the
     // installation directory rather than directly from within the cache directory.
@@ -90,7 +90,7 @@ pub fn build(b: *Build) !void {
         }
     }
     var test_cmd = b.addTest(.{
-        .root_source_file = .{ .path = test_source },
+        .root_source_file = b.path(test_source),
         .target = target,
         .optimize = optimize,
         .filter = filter,
@@ -101,11 +101,11 @@ pub fn build(b: *Build) !void {
 
     inline for (anon_modules) |file| {
         test_cmd.root_module.addAnonymousImport(file.name, .{
-            .root_source_file = .{ .path = file.path },
+            .root_source_file = b.path(file.path),
         });
     }
 
-    commonModules(b, test_cmd, .{.target = target, .optimize = optimize});
+    commonModules(b, test_cmd, .{ .target = target, .optimize = optimize });
 
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");

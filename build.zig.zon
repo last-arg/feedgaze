@@ -10,27 +10,27 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "12200f05fa91c8b6d6fa931f850d4702efc376b2cc04c0e63f009881a575ef1f69a2",
+            .hash = "1220ba277845cb3cece7a7a1f929b920c97e9085bb644471c5dc8c72571f1485c75f",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "12208a1de366740d11de525db7289345949f5fd46527db3f89eecc7bb49b012c0732",
+            .hash = "1220fe6ae56b668cc4a033282b5f227bfbb46a67ede6d84e9f9493fea9de339b5f37",
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
-            .hash = "122038b4b5df08d2af6daf81e5f18d4c244d807c9323224db826cc107ce3894f6fa9",
+            .hash = "1220f7f4a9210f6ce3949446276566b0a22775e85dc6b81daf7aae55e0ec5588f4dc",
         },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
-            .hash = "12203dc7f1f6362f4bd5dd196d7f1de1e1c4f27da4bc87a40624eec05574c622e66c",
+            .hash = "1220fcb9b8da8bcfdaa18c81678c6b5cf41d63a2bf9fde7551b4390279cc473a2520",
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "1220f2f863742c19fec9381537083da27519a7e638ce690973b34faf89f8f2b32729",
+            .hash = "1220f70ac854b59315a8512861e039648d677feb4f9677bd873d6b9b7074a5906485",
         },
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "1220833d40f1767fa46b0efc4ae1af9bd5880a8e6fe7a66ee0215be916263f149e40",
+            .hash = "12206d8d2a7f2535a7d48872eaf43911ead71ba05456f97363ae25e4f057a985975f",
         },
     },
 }

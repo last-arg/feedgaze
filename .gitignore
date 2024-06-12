@@ -1,5 +1,6 @@
 tmp/
 zig-out/
+.zig-cache/
 zig-cache/
 *.wip
 *-shm
