@@ -92,7 +92,7 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: FeedOptions) !usize {
+    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: *FeedOptions) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) {
             parsed.feed.title = feed_opts.title orelse "";
@@ -103,6 +103,7 @@ pub const Storage = struct {
         parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator());
         _ = try self.insertFeedItems(parsed.items);
+        feed_opts.feed_updates.set_item_interval(parsed.items);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
         return feed_id;
     }
@@ -130,7 +131,9 @@ pub const Storage = struct {
         try self.updateAndRemoveFeedItems(parsed.items);
 
         // Update feed_update
-        try self.updateFeedUpdate(feed_info.feed_id, FeedUpdate.fromCurlHeaders(resp));
+        var feed_update = FeedUpdate.fromCurlHeaders(resp);
+        feed_update.set_item_interval(parsed.items);
+        try self.updateFeedUpdate(feed_info.feed_id, feed_update);
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -442,13 +445,14 @@ pub const Storage = struct {
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
             \\INSERT INTO feed_update 
-            \\  (feed_id, update_interval, last_modified_utc, etag)
+            \\  (feed_id, update_interval, last_modified_utc, etag, item_interval)
             \\VALUES 
-            \\  (@feed_id, @update_interval, @last_modified_utc, @etag)
+            \\  (@feed_id, @update_interval, @last_modified_utc, @etag, @item_interval)
             \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = @u_update_interval,
             \\  last_modified_utc = @u_last_modified_utc,
             \\  etag = @u_etag,
+            \\  item_interval = @u_item_interval,
             \\  last_update = strftime('%s', 'now')
             \\;
         ;
@@ -457,12 +461,12 @@ pub const Storage = struct {
             .update_interval = feed_update.update_interval,
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
+            .item_interval = feed_update.item_interval,
             .u_update_interval = feed_update.update_interval,
             .u_last_modified_utc = feed_update.last_modified_utc,
             .u_etag = feed_update.etag,
+            .u_item_interval = feed_update.item_interval,
         });
-        // TODO: instead of doing db call. Use feed.items to calculate item_interval value
-        try self.update_item_interval(feed_id);
     }
 
     pub fn updateLastUpdate(self: *Self, feed_id: usize) !void {
@@ -975,39 +979,6 @@ pub const Storage = struct {
             seconds_in_10_days,
         });
         try self.sql_db.exec(query, .{}, .{});
-    }
-
-    // TODO?: take slice of ids?
-    pub fn update_item_interval(self: *Self, feed_id: usize) !void {
-        const query = comptimePrint(
-            \\update feed_update set item_interval = (select CASE
-            \\	when temp_table.item_interval < {d} then {d}
-            \\	when temp_table.item_interval < {d} then {d}
-            \\	when temp_table.item_interval < {d} then {d}
-            \\	when temp_table.item_interval < {d} then {d}
-            \\	else {d}
-            \\end
-            \\	from (select coalesce(updated_timestamp - lead(updated_timestamp) over (order by updated_timestamp DESC), {d}) item_interval
-            \\		from item 
-            \\		where item.feed_id = ? and item.updated_timestamp is not null
-            \\		order by updated_timestamp DESC 
-            \\		limit 1
-            \\	) temp_table
-            \\)
-            \\where feed_update.feed_id = ?
-            , .{
-            // else case with item_interval
-            seconds_in_1_day, seconds_in_12_hours,
-            seconds_in_2_days, seconds_in_1_day,
-            seconds_in_7_days, seconds_in_3_days,
-            seconds_in_30_days, seconds_in_5_days,
-            seconds_in_10_days,
-
-            // In case item count is 0 or 1 make sure case expressions else branch
-            // is hit.
-            seconds_in_30_days, 
-        });
-        try self.sql_db.exec(query, .{}, .{feed_id, feed_id});
     }
 };
 

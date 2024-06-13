@@ -3,6 +3,15 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const curl = @import("curl");
 
+const seconds_in_1_day = std.time.s_per_day;
+const seconds_in_12_hours = std.time.s_per_hour * 12;
+const seconds_in_2_days = seconds_in_1_day * 2;
+const seconds_in_3_days = seconds_in_1_day * 3;
+const seconds_in_5_days = seconds_in_1_day * 5;
+const seconds_in_7_days = seconds_in_1_day * 7;
+const seconds_in_10_days = seconds_in_1_day * 10;
+const seconds_in_30_days = seconds_in_1_day * 30;
+
 pub const FetchHeaderOptions = struct {
     etag: ?[]const u8 = null,
     last_modified_utc: ?i64 = null,
@@ -271,6 +280,7 @@ pub const FeedUpdate = struct {
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
+    item_interval: i64 = seconds_in_10_days,
 
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
@@ -382,6 +392,38 @@ pub const FeedUpdate = struct {
             .last_modified_utc = last_modified,
             .etag = headers.getFirstValue("etag"),
         };
+    }
+
+    // Assumes items is ordered by updated_timestamp DESC
+    pub fn set_item_interval(self: *@This(), items: []FeedItem) void {
+        var first: ?i64 = null;
+        var second: ?i64 = null;
+        for (items) |item| {
+            if (item.updated_timestamp) |ts| {
+                if (first == null) {
+                    first = ts;
+                } else if (second == null) {
+                    second = ts;
+                    break;
+                }
+            }
+        }
+
+        if (first != null and second != null) {
+            const result = first.? - second.?;
+            // TODO: maybe minimum (0) item_interval should be larger than 0?
+            if (result > 0) {
+                if (result < seconds_in_1_day) {
+                    self.item_interval = seconds_in_12_hours;
+                } else if (result < seconds_in_2_days) {
+                    self.item_interval = seconds_in_1_day;
+                } else if (result < seconds_in_7_days) {
+                    self.item_interval = seconds_in_3_days;
+                } else if (result < seconds_in_30_days) {
+                    self.item_interval = seconds_in_5_days;
+                }
+            }
+        }
     }
 };
 

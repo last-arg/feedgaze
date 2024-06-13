@@ -391,10 +391,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
                 feed_options.feed_url = try req.get_url(arena.allocator());
                 feed_options.title = link.title;
-                return try self.storage.addFeed(&arena, feed_options);
+                return try self.storage.addFeed(&arena, &feed_options);
             } else {
                 feed_options.feed_url = try req.get_url(arena.allocator());
-                return try self.storage.addFeed(&arena, feed_options);
+                return try self.storage.addFeed(&arena, &feed_options);
             }
         }
 
