@@ -966,6 +966,15 @@ pub const Storage = struct {
         });
         try self.sql_db.exec(query, .{}, .{});
     }
+
+    // Negative numbers means can be updated right now
+    // Positive number is countdown till update
+    pub fn next_update_countdown(self: *Self) !?i64 {
+        const query = 
+        \\select min((last_update + item_interval) - strftime('%s', 'now')) from feed_update
+        ;
+        return try one(&self.sql_db, i64, query, .{});
+    }
 };
 
 // TODO: feed.title default value should be null

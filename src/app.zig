@@ -94,16 +94,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 },
                 .run => {
                     try self.out.print("Running in foreground\n", .{});
-                    // TODO: redo getting smallest interval value. update_countdown
-                    // column was removed
-                    // while (true) {
-                    //     const smallest = (try self.storage.getSmallestCountdown()) orelse 1;
-                    //     if (smallest > 0) {
-                    //         std.time.sleep(@intCast(smallest * std.time.ns_per_s));
-                    //         continue;
-                    //     }
-                    //     try self.update(null, .{});
-                    // }
+                    while (true) {
+                        if (try self.storage.next_update_countdown()) |countdown| {
+                            if (countdown > 0) {
+                                std.time.sleep(@intCast(countdown * std.time.ns_per_s));
+                                continue;
+                            }
+                        }
+                        try self.update(null, .{});
+                    }
                 },
                 .tag => |opts| {
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
