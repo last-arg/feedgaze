@@ -19,6 +19,9 @@ pub fn storage_feeds_to_update() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
     var storage = try Storage.init("./tmp/feeds.db");
+    // try storage.update_item_intervals();
+    const next = try storage.next_update_countdown();
+    print("next: {?d}\n", .{next});
     const r = try storage.getFeedsToUpdate(alloc, null, .{});
     print("len: {d}\n", .{r.len});
     for (r) |item| {

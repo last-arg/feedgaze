@@ -936,7 +936,7 @@ pub const Storage = struct {
         // Maybe can change query using sqlite fn nth_value(), first_value(), lead(), lag()?
         const query = comptimePrint(
             \\with temp_table as (
-            \\	select coalesce(max(item.updated_timestamp) - 
+            \\	select feed.feed_id, coalesce(max(item.updated_timestamp) - 
             \\		(select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), {d}
             \\	) item_interval
             \\	from feed 
@@ -945,10 +945,10 @@ pub const Storage = struct {
             \\)    
             \\update feed_update set item_interval = (
             \\CASE
-            \\  when item_interval < {d} then {d}
-            \\  when item_interval < {d} then {d}
-            \\  when item_interval < {d} then {d}
-            \\  when item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
             \\  else {d}
             \\end
             \\) from temp_table where feed_update.feed_id = temp_table.feed_id;
