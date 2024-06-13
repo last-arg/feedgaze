@@ -234,7 +234,7 @@ pub const Storage = struct {
         if (!options.force) {
             storage_arr.appendAssumeCapacity(' ');
             storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendSliceAssumeCapacity(" (update_countdown < 0 OR update_countdown IS NULL)");
+            storage_arr.appendSliceAssumeCapacity(" strftime('%s', 'now') - last_update > item_interval");
             prefix = "AND";
         }
 
@@ -433,15 +433,6 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, item);
     }
 
-    // Update every update_countdown value
-    pub fn updateCountdowns(self: *Self) !void {
-        const query =
-            \\UPDATE feed_update SET 
-            \\  update_countdown = (last_update + update_interval) - strftime('%s', 'now')
-        ;
-        try self.sql_db.exec(query, .{}, .{});
-    }
-
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
             \\INSERT INTO feed_update 
@@ -561,11 +552,6 @@ pub const Storage = struct {
             \\  (SELECT item_id FROM item WHERE feed_id = ? ORDER BY created_timestamp DESC, position LIMIT -1 OFFSET ?)
         ;
         try self.sql_db.exec(del_query, .{}, .{ feed_id, items_len });
-    }
-
-    pub fn getSmallestCountdown(self: *Self) !?i64 {
-        const query = "SELECT update_countdown FROM feed_update ORDER BY update_countdown ASC LIMIT 1;";
-        return try one(&self.sql_db, i64, query, .{});
     }
 
     pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
@@ -1009,7 +995,6 @@ const tables = &[_][]const u8{
     comptimePrint(
         \\CREATE TABLE IF NOT EXISTS feed_update (
         \\  feed_id INTEGER UNIQUE NOT NULL,
-        \\  update_countdown INTEGER NOT NULL DEFAULT 0,
         \\  update_interval INTEGER NOT NULL DEFAULT {d},
         \\  item_interval INTEGER NOT NULL DEFAULT {d},
         \\  last_update INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),

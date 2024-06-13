@@ -94,14 +94,16 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 },
                 .run => {
                     try self.out.print("Running in foreground\n", .{});
-                    while (true) {
-                        const smallest = (try self.storage.getSmallestCountdown()) orelse 1;
-                        if (smallest > 0) {
-                            std.time.sleep(@intCast(smallest * std.time.ns_per_s));
-                            continue;
-                        }
-                        try self.update(null, .{});
-                    }
+                    // TODO: redo getting smallest interval value. update_countdown
+                    // column was removed
+                    // while (true) {
+                    //     const smallest = (try self.storage.getSmallestCountdown()) orelse 1;
+                    //     if (smallest > 0) {
+                    //         std.time.sleep(@intCast(smallest * std.time.ns_per_s));
+                    //         continue;
+                    //     }
+                    //     try self.update(null, .{});
+                    // }
                 },
                 .tag => |opts| {
                     var arena = std.heap.ArenaAllocator.init(self.allocator);
@@ -424,16 +426,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
-            if (input == null) {
-                std.log.info("Updating all feeds", .{});
-            }
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            if (!options.force) {
-                try self.storage.updateCountdowns();
-            }
             const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
+            if (feed_updates.len == 0) {
+                std.log.info("No feeds to update", .{});
+                return;
+            }
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             var item_arena = std.heap.ArenaAllocator.init(self.allocator);

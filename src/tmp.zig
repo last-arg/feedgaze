@@ -10,7 +10,20 @@ pub fn main() !void {
     // try run_add_new_feed();
     // try run_parse_atom();
     // try test_allocating();
-    try storage_item_interval();
+    // try storage_item_interval();
+    try storage_feeds_to_update();
+}
+
+pub fn storage_feeds_to_update() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+    var storage = try Storage.init("./tmp/feeds.db");
+    const r = try storage.getFeedsToUpdate(alloc, null, .{});
+    print("len: {d}\n", .{r.len});
+    for (r) |item| {
+        print("url: |{s}|\n", .{item.feed_url});
+    }
 }
 
 pub fn storage_item_interval() !void {
