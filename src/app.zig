@@ -93,10 +93,26 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try self.update(input, opts);
                 },
                 .run => {
-                    try self.out.print("Running in foreground\n", .{});
+                    std.log.info("Running in foreground", .{});
+                    // TODO: loop could end up in a situation where update() is
+                    // called but there is nothing to update?
                     while (true) {
                         if (try self.storage.next_update_countdown()) |countdown| {
                             if (countdown > 0) {
+                                const countdown_ts = std.time.timestamp() + countdown;
+                                const Datetime = @import("zig-datetime").datetime.Datetime;
+                                var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
+                                date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
+
+                                std.log.info("Next update's date and time {d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}", .{
+                                    date.time.hour,
+                                    date.time.minute,
+                                    date.date.day,
+                                    date.date.month,
+                                    date.date.year,
+                                });
+
+                                std.log.info("{d} seconds until next update", .{countdown});
                                 std.time.sleep(@intCast(countdown * std.time.ns_per_s));
                                 continue;
                             }

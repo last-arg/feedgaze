@@ -234,7 +234,7 @@ pub const Storage = struct {
         if (!options.force) {
             storage_arr.appendAssumeCapacity(' ');
             storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendSliceAssumeCapacity(" strftime('%s', 'now') - last_update > item_interval");
+            storage_arr.appendSliceAssumeCapacity(" strftime('%s', 'now') - last_update >= item_interval");
             prefix = "AND";
         }
 

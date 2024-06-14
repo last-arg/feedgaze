@@ -1,36 +1,4 @@
 # Initial
-
-[ ] Reduce how often feed update http request are made
-  - increase update interval base on when last update was
-    - more than 1 year = several days?
-    - more than 1 month = 1 day or more?
-
-feed.updated_timestamp? - is feed element/tag date field or latest (newest) item.updated_timestamp
-feed_update.last_update - last time http request was made for feed (200 or 304)
-feed_update.update_interval - value from http cache-control or expires. If no value default is used.
-item.updated_timestamp? - item's publish date
-item.created_timestamp - when item was added
-item.item_interval - diff between first and second newest items. Otherwise fallback to default value.
-
-with temp_table as (
-	select feed.feed_id, coalesce(max(item.updated_timestamp) - 
-		(select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), "month"
-	) item_interval
-	from feed 
-	left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
-	group by item.feed_id
-)
-update feed_update set item_interval = (
-CASE
-	when temp_table.item_interval < 86400 then 43200
-	when temp_table.item_interval < 172800 then 86400
-	when temp_table.item_interval < 604800 then 259200
-	when temp_table.item_interval < 2592000 then 432000
-	else 864000
-end
-)
-from temp_table where feed_update.feed_id = temp_table.feed_id;
-
 [ ] cli: feed update counter
 [ ] http header 'retry-after'
   - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
@@ -124,4 +92,35 @@ Tried this and liked it. But I think I can just go with a server.
     Encodings: text (default), html, xhtml
     I think function content_to_str() handles text and html encodings
     in some very general way.
+[ ] Reduce how often feed update http request are made
+  - increase update interval base on when last update was
+    - more than 1 year = several days?
+    - more than 1 month = 1 day or more?
 
+feed.updated_timestamp? - is feed element/tag date field or latest (newest) item.updated_timestamp
+feed_update.last_update - last time http request was made for feed (200 or 304)
+feed_update.update_interval - value from http cache-control or expires. If no value default is used.
+item.updated_timestamp? - item's publish date
+item.created_timestamp - when item was added
+item.item_interval - diff between first and second newest items. Otherwise fallback to default value.
+
+```
+with temp_table as (
+	select feed.feed_id, coalesce(max(item.updated_timestamp) - 
+		(select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), "month"
+	) item_interval
+	from feed 
+	left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
+	group by item.feed_id
+)
+update feed_update set item_interval = (
+CASE
+	when temp_table.item_interval < 86400 then 43200
+	when temp_table.item_interval < 172800 then 86400
+	when temp_table.item_interval < 604800 then 259200
+	when temp_table.item_interval < 2592000 then 432000
+	else 864000
+end
+)
+from temp_table where feed_update.feed_id = temp_table.feed_id;
+```
