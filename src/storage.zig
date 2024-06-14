@@ -273,9 +273,7 @@ pub const Storage = struct {
         if (!try self.hasFeedWithId(feed.feed_id)) {
             return Error.FeedNotFound;
         }
-        // TODO: should I set feed_url also? In case feed_url has changed?
-        // Maybe better to just make user aware that feed_url has changed.
-        // Let user make the decision.
+
         const query =
             \\UPDATE feed SET
             \\  title = @title,
