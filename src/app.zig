@@ -94,9 +94,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 },
                 .run => {
                     std.log.info("Running in foreground", .{});
+                    const loop_limit = 5;
+                    var loop_count: u16 = 0;
                     // TODO: loop could end up in a situation where update() is
                     // called but there is nothing to update?
-                    while (true) {
+                    while (loop_count < loop_limit) {
                         if (try self.storage.next_update_countdown()) |countdown| {
                             if (countdown > 0) {
                                 const countdown_ts = std.time.timestamp() + countdown;
@@ -112,12 +114,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                     date.date.year,
                                 });
 
+                                loop_count = 0;
                                 std.log.info("{d} seconds until next update", .{countdown});
                                 std.time.sleep(@intCast(countdown * std.time.ns_per_s));
                                 continue;
                             }
                         }
                         try self.update(null, .{});
+                        loop_count += 1;
+                    }
+                    if (loop_count >= loop_limit) {
+                        std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
                     }
                 },
                 .tag => |opts| {
