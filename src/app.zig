@@ -471,11 +471,32 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
                 defer resp.deinit();
 
-                if (resp.status_code >= 400 and resp.status_code < 600) {
-                    std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
-                    continue;
-                } else if (resp.status_code == 304) {
+                if (resp.status_code == 304) {
+                    // Resource hasn't been modified
                     try self.storage.updateLastUpdate(f_update.feed_id);
+                    continue;
+                } else if (resp.status_code == 429) {
+                    std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
+                    const now_utc_sec = std.time.timestamp();
+                    const retry_reset = blk: {
+                        if (try resp.getHeader("retry-after") orelse 
+                            try resp.getHeader("x-ratelimit-reset")) |header| {
+                                const raw = header.get();
+                                if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
+                                    break :blk now_utc_sec + nr;
+                                } else |_| {}
+
+                                if (feed_types.RssDateTime.parse(raw)) |date_utc| {
+                                    break :blk date_utc;
+                                } else |_| {}
+                        }
+                        // Set fallback rate limit to 1 hour
+                        break :blk now_utc_sec + 3600;
+                    };
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
+                    continue;
+                } else if (resp.status_code >= 400 and resp.status_code < 600) {
+                    std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
                     continue;
                 }
 

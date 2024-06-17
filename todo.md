@@ -1,11 +1,18 @@
 # Initial
 [ ] cli: feed update counter
-[ ] http header 'retry-after'
-  - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+[ ] 429 - Rate limit
+  - 'retry-after'
+    - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+    - date or seconds
+      - date format: <day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
+        - date example: Wed, 21 Oct 2015 07:28:00 GMT
+      - seconds is just a number
+  - x-ratelimit-* info: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
 [ ] Logo ideas
 keywords: feed, gaze, rss, atom, links
 - Something with gaze and atoms?
 [ ] Feeds
+  - third party service: https://openrss.org/
   [ ] Get favicons
     - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
       And mark them in DB somehow. Rest would get full path. NULL for feeds

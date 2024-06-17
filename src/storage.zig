@@ -134,6 +134,15 @@ pub const Storage = struct {
         var feed_update = FeedUpdate.fromCurlHeaders(resp);
         feed_update.set_item_interval(parsed.items);
         try self.updateFeedUpdate(feed_info.feed_id, feed_update);
+        try self.rate_limit_remove(feed_info.feed_id);
+    }
+
+    pub fn rate_limit_remove(self: *Self, feed_id: usize) !void {
+        try self.sql_db.exec("DELETE FROM rate_limit WHERE feed_id = ?", .{}, .{feed_id});
+    }
+
+    pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
+        try self.sql_db.exec("INSERT INTO OR IGNORE rate_limit (feed_id, utc_sec) VALUES (?, ?)", .{}, .{feed_id, utc_sec});
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -224,26 +233,20 @@ pub const Storage = struct {
             \\  feed_update.etag 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
+            \\WHERE (select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id)
             \\
         ;
 
-        var prefix: []const u8 = "WHERE";
         storage_arr.resize(0) catch unreachable;
         storage_arr.appendSliceAssumeCapacity(query);
 
         if (!options.force) {
-            storage_arr.appendAssumeCapacity(' ');
-            storage_arr.appendSliceAssumeCapacity(prefix);
-            storage_arr.appendSliceAssumeCapacity(" strftime('%s', 'now') - last_update >= item_interval");
-            prefix = "AND";
+            storage_arr.appendSliceAssumeCapacity(" AND strftime('%s', 'now') - last_update >= item_interval");
         }
 
         if (search_term) |term| {
             if (term.len > 0) {
-                storage_arr.appendAssumeCapacity(' ');
-                storage_arr.appendSliceAssumeCapacity(prefix);
-                storage_arr.appendAssumeCapacity(' ');
-                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
+                storage_arr.appendSliceAssumeCapacity(" AND (feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
                 var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
                 defer stmt.deinit();
                 return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
@@ -968,6 +971,7 @@ pub const Storage = struct {
     // Negative numbers means can be updated right now
     // Positive number is countdown till update
     pub fn next_update_countdown(self: *Self) !?i64 {
+        // TODO: take rate limit into account
         const query = 
         \\select min((last_update + item_interval) - strftime('%s', 'now')) from feed_update
         ;
@@ -1037,6 +1041,12 @@ const tables = &[_][]const u8{
     \\  FOREIGN KEY(match_host_id) REFERENCES add_rule_host(host_id),
     \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id),
     \\  UNIQUE(match_host_id, match_path)
+    \\)
+    ,
+    \\CREATE TABLE IF NOT EXISTS rate_limit(
+    \\  feed_id INTEGER UNIQUE NOT NULL,
+    \\  utc_sec INTEGER NOT NULL DEFAULT 3600,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id)
     \\)
 };
 
