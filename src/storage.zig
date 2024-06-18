@@ -233,7 +233,7 @@ pub const Storage = struct {
             \\  feed_update.etag 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-            \\WHERE (select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id)
+            \\WHERE ifnull((select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id), true)
             \\
         ;
 

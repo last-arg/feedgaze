@@ -1,13 +1,10 @@
 # Initial
+[ ] some feed item links just contain url path only
+  - get items that start with slash (/): select * from item where link like '/%' order by feed_id
+  - if there is only path I should be able to construct full url from feed.feed_url
+  - or do I store all feeds with full url?
+[ ] website: make feed items into 2 columns on wider screens
 [ ] cli: feed update counter
-[ ] 429 - Rate limit
-  - 'retry-after'
-    - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
-    - date or seconds
-      - date format: <day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
-        - date example: Wed, 21 Oct 2015 07:28:00 GMT
-      - seconds is just a number
-  - x-ratelimit-* info: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
 [ ] Logo ideas
 keywords: feed, gaze, rss, atom, links
 - Something with gaze and atoms?
@@ -131,3 +128,12 @@ end
 )
 from temp_table where feed_update.feed_id = temp_table.feed_id;
 ```
+[ ] 429 - Rate limit
+  - 'retry-after'
+    - https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Retry-After
+    - date or seconds
+      - date format: <day-name>, <day> <month> <year> <hour>:<minute>:<second> GMT
+        - date example: Wed, 21 Oct 2015 07:28:00 GMT
+      - seconds is just a number
+  - x-ratelimit-* info: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
+
