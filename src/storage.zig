@@ -241,7 +241,7 @@ pub const Storage = struct {
         storage_arr.appendSliceAssumeCapacity(query);
 
         if (!options.force) {
-            storage_arr.appendSliceAssumeCapacity(" AND strftime('%s', 'now') - last_update >= item_interval");
+            storage_arr.appendSliceAssumeCapacity(" OR strftime('%s', 'now') - last_update >= item_interval");
         }
 
         if (search_term) |term| {
@@ -971,9 +971,11 @@ pub const Storage = struct {
     // Negative numbers means can be updated right now
     // Positive number is countdown till update
     pub fn next_update_countdown(self: *Self) !?i64 {
-        // TODO: take rate limit into account
         const query = 
-        \\select min((last_update + item_interval) - strftime('%s', 'now')) from feed_update
+        \\select min(
+        \\	min((last_update + item_interval) - strftime('%s', 'now')), 
+        \\	coalesce((select min(utc_sec) - strftime('%s', 'now') from rate_limit), 3600)
+        \\) from feed_update;
         ;
         return try one(&self.sql_db, i64, query, .{});
     }
