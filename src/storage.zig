@@ -241,7 +241,7 @@ pub const Storage = struct {
         storage_arr.appendSliceAssumeCapacity(query);
 
         if (!options.force) {
-            storage_arr.appendSliceAssumeCapacity(" OR strftime('%s', 'now') - last_update >= item_interval");
+            storage_arr.appendSliceAssumeCapacity(" AND strftime('%s', 'now') - last_update >= item_interval");
         }
 
         if (search_term) |term| {
