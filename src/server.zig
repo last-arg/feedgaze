@@ -239,28 +239,10 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<button>Delete feed</button>");
     try w.writeAll("</form>");
 
-    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-    const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
-    const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
-
     try w.writeAll("<h2>Feed items</h2>");
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
-        const age_class = blk: {
-            if (item.updated_timestamp) |updated_timestamp| {
-                // TODO: date might be in the future?
-                if (updated_timestamp > age_3days_ago) {
-                    break :blk "age-newest";
-                } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
-                    break :blk "age-less-month";
-                } else if (updated_timestamp < age_30days_ago) {
-                    break :blk "age-more-month";
-                }
-            }
-            break :blk "";
-        };
-
-        try w.print("<li class='feed-item {s} {s}'>", .{"", age_class});
+        try w.print("<li class='feed-item {s}'>", .{""});
         try item_render(w, req.arena, item);
         try w.writeAll("</li>");
     }
@@ -518,9 +500,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
         }
 
-        const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
-        const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
-                
         // TODO?: could also just pass hide_index as html attribute and let
         // js deal with hiding elements
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
@@ -533,21 +512,8 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
                 }
                 break :blk "";
             };
-            const age_class = blk: {
-                if (item.updated_timestamp) |updated_timestamp| {
-                    // TODO: date might be in the future?
-                    if (updated_timestamp > age_3days_ago) {
-                        break :blk "age-newest";
-                    } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
-                        break :blk "age-less-month";
-                    } else if (updated_timestamp < age_30days_ago) {
-                        break :blk "age-more-month";
-                    }
-                }
-                break :blk "";
-            };
 
-            try w.print("<li class='feed-item {s} {s}'>", .{hidden, age_class});
+            try w.print("<li class='feed-item {s}'>", .{hidden});
             try item_render(w, allocator, item);
             try w.writeAll("</li>");
         }
@@ -567,6 +533,24 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     try w.writeAll("</div>");
 }
 
+fn age_class_from_time(time: ?i64) []const u8 {
+    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
+    const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
+            
+    if (time) |updated_timestamp| {
+        // TODO: date might be in the future?
+        if (updated_timestamp > age_3days_ago) {
+            return "age-newest";
+        } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
+            return "age-less-month";
+        } else if (updated_timestamp < age_30days_ago) {
+            return "age-more-month";
+        }
+    }
+    return "";
+}
+
 fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     const edit_fmt = 
     \\<a class="feed-edit" href="/feed/{d}">Edit feed</a>
@@ -580,17 +564,19 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
     var date_buf: [date_len_max]u8 = undefined;
 
     const item_link_fmt =
-    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
     \\<a href="{[link]s}" class="truncate-2" title="{[title]s}">{[title]s}</a>
     ;
 
     const item_title_fmt =
-    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
     \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
     ;
                 
     const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
     const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
+
+    const age_class = age_class_from_time(item.updated_timestamp);
 
     if (item.link) |link| {
         try w.print(item_link_fmt, .{
@@ -598,12 +584,14 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
             .link = link,
             .date = timestampToString(&date_buf, item.updated_timestamp),
             .date_display = item_date_display_val,
+            .age_class = age_class,
         });
     } else {
         try w.print(item_title_fmt, .{
             .title = item_title,
             .date = timestampToString(&date_buf, item.updated_timestamp),
             .date_display = item_date_display_val,
+            .age_class = age_class,
         });
     }
 }
@@ -615,13 +603,15 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
 
     const feed_link_fmt = 
     \\<a class="feed-link truncate-1" href="{[page_url]s}">{[title]s}</a>
-    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
     ;
 
     const feed_title_fmt =
     \\<p class="truncate-1">{[title]s}</p>
-    \\<time datetime="{[date]s}">{[date_display]s}</time>
+    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
     ;
+
+    const age_class = age_class_from_time(feed.updated_timestamp);
 
     const title = if (feed.title.len > 0) feed.title else title_placeholder;
     const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
@@ -631,12 +621,14 @@ fn feed_render(w: anytype, feed: types.FeedRender) !void {
             .title = title,
             .date = timestampToString(&date_buf, feed.updated_timestamp),
             .date_display = date_display_val,
+            .age_class = age_class,
         });
     } else {
         try w.print(feed_title_fmt, .{
             .title = title,
             .date = timestampToString(&date_buf, feed.updated_timestamp),
             .date_display = date_display_val,
+            .age_class = age_class,
         });
     }
 }

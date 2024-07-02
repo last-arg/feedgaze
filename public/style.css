@@ -385,16 +385,20 @@ input[type=text] {
   align-items: center;
 }
 
-.feed-edit {
-  flex-shrink: 0;
+time {
+  color: var(--grey-1);
+  background: var(--grey-16);
+  line-height: 1;
+  --_box-padding: 3px;
+  padding: 2px var(--_box-padding) 1px;
 }
 
-/** NOTE: need this to get right character width that is used in <time> */
-.fake-time {
-  --_box-padding: 3px;
-  font-family: monospace;
-  font-size: var(--step--1);
-  margin-inline-start: calc(3ch + (2 * var(--_box-padding)) + var(--space-m));
+.feed-header-top time {
+  margin-inline: var(--space-3xs);
+}
+
+.feed-edit {
+  flex-shrink: 0;
 }
 
 .feed {
@@ -470,11 +474,7 @@ input[type=text] {
 
 .feed-item time {
   align-self: self-start;
-  color: var(--grey-1);
   text-align: end;
-  line-height: 1;
-  --_box-padding: 3px;
-  padding: 2px var(--_box-padding);
   min-width: calc(3ch + (2 * var(--_box-padding)));
   width: min-content;
   margin-block-start: calc(
@@ -482,15 +482,15 @@ input[type=text] {
   );
 }
 
-.feed-item.age-newest time {
+.age-newest {
   background: var(--grey-13);
 }
 
-.feed-item.age-less-month time {
+.age-less-month {
   background: var(--grey-11);
 }
 
-.feed-item.age-more-month time {
+.age-more-month {
   background: var(--grey-9);
 }
 
