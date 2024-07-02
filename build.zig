@@ -34,19 +34,27 @@ pub fn build(b: *Build) !void {
         }
     }
 
-    const exe = b.addExecutable(.{
+    const opts_exe = .{
         .name = "feedgaze",
         .root_source_file = b.path(source_file),
         .target = target,
         .optimize = optimize,
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
-    });
+    };
+    const exe = b.addExecutable(opts_exe);
 
     // This declares intent for the executable to be installed into the
     // standard location when the user invokes the "install" step (the default
     // step when running `zig build`).
     b.installArtifact(exe);
+
+    const exe_check = b.addExecutable(opts_exe);
+
+    // These two lines you might want to copy
+    // (make sure to rename 'exe_check')
+    const check = b.step("check", "Check if foo compiles");
+    check.dependOn(&exe_check.step);
 
     // This *creates* a RunStep in the build graph, to be executed when another
     // step is evaluated that depends on it. The next line below will establish
