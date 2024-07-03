@@ -301,9 +301,9 @@ pub const FeedUpdate = struct {
         if (easy.getHeader("cache-control")) |header| {
             if (header) |h| {
                 const value = h.get();
-                var iter = std.mem.split(u8, value, ",");
+                var iter = std.mem.splitScalar(u8, value, ',');
                 while (iter.next()) |key_value| {
-                    var pair_iter = std.mem.split(u8, key_value, "=");
+                    var pair_iter = std.mem.splitScalar(u8, key_value, '=');
                     var key = pair_iter.next() orelse continue;
                     key = std.mem.trim(u8, key, &std.ascii.whitespace);
                     if (std.mem.eql(u8, "no-cache", key)) {
@@ -369,9 +369,9 @@ pub const FeedUpdate = struct {
         const cache_control = blk: {
             var result: ?u32 = null;
             if (headers.getFirstValue("cache-control")) |value| {
-                var iter = std.mem.split(u8, value, ",");
+                var iter = std.mem.splitScalar(u8, value, ',');
                 while (iter.next()) |key_value| {
-                    var pair_iter = std.mem.split(u8, key_value, "=");
+                    var pair_iter = std.mem.splitScalar(u8, key_value, '=');
                     const key = pair_iter.next() orelse continue;
                     const iter_value = pair_iter.next() orelse continue;
                     if (std.mem.eql(u8, "max-age", key)) {

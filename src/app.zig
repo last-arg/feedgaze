@@ -608,7 +608,7 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
         }
 
         if (fs.path.dirname(db_path)) |db_dir| {
-            var path_buf: [fs.MAX_PATH_BYTES]u8 = undefined;
+            var path_buf: [fs.max_path_bytes]u8 = undefined;
             _ = fs.cwd().realpath(db_dir, &path_buf) catch |err| switch (err) {
                 error.FileNotFound => {
                     try fs.cwd().makePath(db_dir);
