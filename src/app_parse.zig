@@ -451,8 +451,6 @@ const RssParseTag = enum {
     }
 };
 
-// Feed https://frontenddogma.com/posts/feed/ items' pubDate is inside comments
-// <!-- <pubDate>Thu, 15 Feb 2024 00:00:00 +0100</pubDate> -->
 pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var tmp_str = TmpStr.init();
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
@@ -588,18 +586,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
             .xml_declaration,
             .pi_start, .pi_content,
             .comment_start => {}, 
-            .comment_content => {
-                // Special case for https://frontenddogma.com/ which has dates inside comments
-                if (state == .item and current_item.updated_timestamp == null) {
-                    var str = token_reader.fullToken(token).comment_content.content;
-                    const start_tag = "<pubDate>";
-                    var index = std.mem.indexOf(u8, str, start_tag) orelse continue;
-                    str = str[index + start_tag.len ..];
-                    index = std.mem.indexOf(u8, str, "</pubDate>") orelse continue;
-                    str = str[0..index];
-                    current_item.updated_timestamp = RssDateTime.parse(str) catch null;
-                }
-            },
+            .comment_content => {},
         }
     }
 
