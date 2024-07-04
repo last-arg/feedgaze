@@ -243,7 +243,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         try w.print("<li class='feed-item {s}'>", .{""});
-        try item_render(w, req.arena, item);
+        try item_render(w, req.arena, item, feed.feed_url);
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
@@ -514,7 +514,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             };
 
             try w.print("<li class='feed-item {s}'>", .{hidden});
-            try item_render(w, allocator, item);
+            try item_render(w, allocator, item, feed.feed_url);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -558,7 +558,7 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     try w.print(edit_fmt, .{ feed_id });
 }
 
-fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !void {
+fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
     var date_display_buf: [16]u8 = undefined;
     var date_buf: [date_len_max]u8 = undefined;
@@ -578,7 +578,17 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
 
     const age_class = age_class_from_time(item.updated_timestamp);
 
-    if (item.link) |link| {
+    if (item.link) |link_or_path| {
+        var buf: [1024]u8 = undefined;
+        const link = blk: {
+            if (link_or_path.len > 0 and link_or_path[0] == '/') {
+                var url = try std.Uri.parse(feed_url);
+                url.path = .{ .raw = link_or_path };
+                const result = try std.fmt.bufPrint(&buf, "{}", .{url});
+                break :blk result;
+            }
+            break :blk link_or_path;
+        };
         try w.print(item_link_fmt, .{
             .title = item_title,
             .link = link,

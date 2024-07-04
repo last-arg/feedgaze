@@ -1,8 +1,6 @@
 # Initial
-[ ] some feed item links just contain url path only
-  - get items that start with slash (/): select * from item where link like '/%' order by feed_id
-  - if there is only path I should be able to construct full url from feed.feed_url
-  - or do I store all feeds with full url?
+[ ] web page: what to display if items have no date?
+  - frontenddogma.com
 [ ] website: make feed items into 2 columns on wider screens
 [ ] cli: feed update counter
 [ ] Logo ideas
@@ -71,7 +69,7 @@ Web page
   [ ] TUI - NotCurses
     * Example: https://github.com/dundalek/notcurses-zig-example
 
-# Old 
+# Old, done, abandoned
 [ ] UI with [zig-webui](https://github.com/webui-dev/zig-webui)
 Tried this and liked it. But I think I can just go with a server. 
 [ ] Add http server
@@ -136,4 +134,9 @@ from temp_table where feed_update.feed_id = temp_table.feed_id;
         - date example: Wed, 21 Oct 2015 07:28:00 GMT
       - seconds is just a number
   - x-ratelimit-* info: https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api?apiVersion=2022-11-28#checking-the-status-of-your-rate-limit
+
+[ ] some feed item links just contain url path only
+  - get items that start with slash (/): select * from item where link like '/%' order by feed_id
+  - if there is only path I should be able to construct full url from feed.feed_url
+  - or do I store all feeds with full url?
 
