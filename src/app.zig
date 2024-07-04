@@ -522,6 +522,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         pub fn server() !void {
             print("Start server\n", .{});
+            try @import("server.zig").start_server();
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {

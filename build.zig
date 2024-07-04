@@ -50,6 +50,7 @@ pub fn build(b: *Build) !void {
     b.installArtifact(exe);
 
     const exe_check = b.addExecutable(opts_exe);
+    commonModules(b, exe_check, .{ .target = target, .optimize = optimize });
 
     // These two lines you might want to copy
     // (make sure to rename 'exe_check')

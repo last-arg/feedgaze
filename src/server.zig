@@ -22,7 +22,7 @@ const Global = struct {
     storage: Storage, 
 };
 
-fn start_server() !void {
+pub fn start_server() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
