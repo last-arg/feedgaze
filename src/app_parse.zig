@@ -15,17 +15,21 @@ pub const FeedAndItems = struct {
     feed: Feed,
     items: []FeedItem,
 
-    pub fn feed_updated_timestamp(self: *FeedAndItems) void {
-        if (self.items.len > 0) {
+    pub fn feed_updated_timestamp(self: *FeedAndItems, fallback_timestamp: ?i64) void {
+        if (self.items.len > 0 and self.items[0].updated_timestamp != null) {
             // make feed date newest item date
-            self.feed.updated_timestamp = self.items[0].updated_timestamp orelse null;
+            self.feed.updated_timestamp = self.items[0].updated_timestamp;
+        } else if (fallback_timestamp != null) {
+            self.feed.updated_timestamp = fallback_timestamp;
+        } else {
+            self.feed.updated_timestamp = std.time.timestamp();
         }
     }
 
-    pub fn prepareAndValidate(self: *FeedAndItems, alloc: std.mem.Allocator) !void {
+    pub fn prepareAndValidate(self: *FeedAndItems, alloc: std.mem.Allocator, fallback_timestamp: ?i64) !void {
         try self.feed.prepareAndValidate(alloc);
         if (self.items.len > 0) {
-            self.feed_updated_timestamp();
+            self.feed_updated_timestamp(fallback_timestamp);
 
             const item_first = self.items[0];
             // Set all items ids
@@ -599,6 +603,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
 // Sorting item.updated_timestamp
 // 1) if all values are null, no sorting
 // 2) if mix of nulls and values push nulls to the bottom
+// TODO: instead of pushing nulls to bottom keep null where the are if mix 
+// of null and values?
+
 fn sortItems(items: []FeedItem) void {
     var has_date = false;
 
