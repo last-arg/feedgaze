@@ -213,9 +213,17 @@ a:hover {
   text-decoration: underline;
 }
 
-time {
+time,
+.no-date {
   font-family: monospace;
   font-size: var(--step--1);
+  color: var(--grey-1);
+  background: var(--grey-16);
+  line-height: 1;
+  --_box-padding: 3px;
+  padding: 2px var(--_box-padding) 1px;
+  /* If there is not date */
+  min-height: calc(var(--step--1) + 2px + 1px);
 }
 
 button {
@@ -385,14 +393,6 @@ input[type=text] {
   align-items: center;
 }
 
-time {
-  color: var(--grey-1);
-  background: var(--grey-16);
-  line-height: 1;
-  --_box-padding: 3px;
-  padding: 2px var(--_box-padding) 1px;
-}
-
 .feed-header-top time {
   margin-inline: var(--space-3xs);
 }
@@ -472,7 +472,8 @@ time {
   padding-inline-start: var(--space-m);
 }
 
-.feed-item time {
+.feed-item time,
+.feed-item .no-date {
   align-self: self-start;
   text-align: end;
   min-width: calc(3ch + (2 * var(--_box-padding)));

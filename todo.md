@@ -1,6 +1,12 @@
 # Initial
-[ ] web page: what to display if items have no date?
-  - frontenddogma.com
+[ ] db schema: change feed.updated_timestamp to not null and default value now()?
+[ ] website: display time till next update
+  [ ] on edit page
+  [ ] also root (list) page?
+[ ] website: might have to encode urls.
+This should actually be done for all data that I don't input. Anything can 
+contain malicious scripts in title, description etc.
+
 [ ] website: make feed items into 2 columns on wider screens
 [ ] cli: feed update counter
 [ ] Logo ideas
@@ -139,4 +145,8 @@ from temp_table where feed_update.feed_id = temp_table.feed_id;
   - get items that start with slash (/): select * from item where link like '/%' order by feed_id
   - if there is only path I should be able to construct full url from feed.feed_url
   - or do I store all feeds with full url?
+[ ] website: what to display if items have no date?
+  [ ] also feed date
+  - frontenddogma.com
+  - can use http header last-modified value
 

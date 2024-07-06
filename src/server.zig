@@ -559,27 +559,36 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
 }
 
 fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
-    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-    var date_display_buf: [16]u8 = undefined;
-    var date_buf: [date_len_max]u8 = undefined;
+    if (item.updated_timestamp) |ts| {
+        var date_display_buf: [16]u8 = undefined;
+        var date_buf: [date_len_max]u8 = undefined;
 
-    const item_link_fmt =
-    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-    \\<a href="{[link]s}" class="truncate-2" title="{[title]s}">{[title]s}</a>
-    ;
-
-    const item_title_fmt =
-    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-    \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
-    ;
+        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const date_display_value = try date_display(&date_display_buf, now_sec, ts);
+        const time_fmt = 
+            \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
+        ;
+        const age_class = age_class_from_time(ts);
+        try w.print(time_fmt, .{
+            .date = timestampToString(&date_buf, ts),
+            .date_display = date_display_value,
+            .age_class = age_class,
+        });
+    } else {
+        const no_date_fmt = 
+            \\<span class="no-date">&#8212;</span>
+        ;
+        try w.print(no_date_fmt, .{});
+    }
                 
     const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
-    const item_date_display_val = if (item.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-
-    const age_class = age_class_from_time(item.updated_timestamp);
 
     if (item.link) |link_or_path| {
         var buf: [1024]u8 = undefined;
+        const item_link_fmt =
+            \\<a href="{[link]s}" class="truncate-2" title="{[title]s}">{[title]s}</a>
+        ;
+
         const link = blk: {
             if (link_or_path.len > 0 and link_or_path[0] == '/') {
                 var url = try std.Uri.parse(feed_url);
@@ -589,20 +598,12 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, f
             }
             break :blk link_or_path;
         };
-        try w.print(item_link_fmt, .{
-            .title = item_title,
-            .link = link,
-            .date = timestampToString(&date_buf, item.updated_timestamp),
-            .date_display = item_date_display_val,
-            .age_class = age_class,
-        });
+        try w.print(item_link_fmt, .{ .title = item_title, .link = link });
     } else {
-        try w.print(item_title_fmt, .{
-            .title = item_title,
-            .date = timestampToString(&date_buf, item.updated_timestamp),
-            .date_display = item_date_display_val,
-            .age_class = age_class,
-        });
+        const item_title_fmt =
+            \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
+        ;
+        try w.print(item_title_fmt, .{ .title = item_title });
     }
 }
 
