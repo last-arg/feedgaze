@@ -15,14 +15,14 @@ const untagged = "[untagged]";
 // For fast compiling and testing
 pub fn main() !void {
     std.debug.print("RUN SERVER\n", .{});
-    try start_server();
+    try start_server(.{});
 }
 
 const Global = struct {
     storage: Storage, 
 };
 
-pub fn start_server() !void {
+pub fn start_server(opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
@@ -30,7 +30,7 @@ pub fn start_server() !void {
         .storage = try Storage.init("./tmp/feeds.db"),
     };
     const server_config = .{
-        .port = 5882,  
+        .port = opts.port,  
         .request = .{
             .max_form_count = 10,
         }

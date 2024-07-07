@@ -42,6 +42,15 @@ pub const UpdateOptions = struct {
     force: bool = false,
 };
 
+pub const ServerOptions = struct {
+    // Will ignore 'feed_update.update_countdown'
+    port: u16 = 1222,
+
+    pub const shorthands = .{
+        .p = "port",
+    };
+};
+
 pub const Feed = struct {
     const Self = @This();
     feed_id: usize = 0,

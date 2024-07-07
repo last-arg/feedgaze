@@ -17,6 +17,7 @@ const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
 const TagOptions = feed_types.TagOptions;
+const ServerOptions = feed_types.ServerOptions;
 const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
@@ -34,7 +35,7 @@ const CliVerb = union(enum) {
     show: ShowOptions,
     update: UpdateOptions,
     run: void,
-    server: void,
+    server: ServerOptions,
     tag: TagOptions,
     add: feed_types.AddOptions,
 };
@@ -240,7 +241,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.storage.tags_feed_add(feed_id, tags_ids);
                     }
                 },
-                .server => try server(),
+                .server => |opts| try server(opts),
             }
         }
 
@@ -520,9 +521,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn server() !void {
+        pub fn server(opts: ServerOptions) !void {
             print("Start server\n", .{});
-            try @import("server.zig").start_server();
+            try @import("server.zig").start_server(opts);
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {
