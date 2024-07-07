@@ -256,6 +256,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  update    Update feed(s)
                 \\  run       Run update in foreground
                 \\  show      Print feeds' items
+                \\  server    Start server
                 \\  help      Print this help and exit
                 \\
                 \\General options:
@@ -303,6 +304,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Auto update feeds in the foreground. 
                     \\
                     \\Options:
+                    \\  -p, --port    Server port (default: 1222)
                     \\  -h, --help    Print this help and exit
                     ,
                     .server => 
@@ -324,7 +326,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .add => 
                     \\Usage: feedgaze add [options] <input>
                     \\
-                    \\  Add, modify feeds
+                    \\  Add feed(s)
                     \\
                     \\Options:
                     \\  -h, --help    Print this help and exit
