@@ -244,6 +244,7 @@ input[type=text] {
   padding-block-start: var(--space-2xs);
   display: flex;
   gap: var(--space-xs);
+  border-block-end: 1px solid var(--surface-2);
 }
 
 .main-header button {
@@ -402,7 +403,7 @@ input[type=text] {
 }
 
 .feed {
-  border-block-start: 1px solid var(--surface-2);
+  border-block-end: 1px solid var(--surface-2);
   padding-block-start: var(--space-l);
 }
 
