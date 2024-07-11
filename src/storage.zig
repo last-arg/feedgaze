@@ -990,6 +990,10 @@ pub const Storage = struct {
         const countdown_fallback = std.time.s_per_day;
         return try one(&self.sql_db, i64, query, .{countdown_fallback, feed_id});
     }
+
+    pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
+        return try one(&self.sql_db, i64, "select last_update from feed_update where feed_id = ?", .{feed_id});
+    }
 };
 
 // TODO: feed.title default value should be null

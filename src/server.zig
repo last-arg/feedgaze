@@ -160,16 +160,22 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
 
-    if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
-        var date_buf: [date_len_max]u8 = undefined;
-        var relative_buf: [32]u8 = undefined;
+    var date_buf: [date_len_max]u8 = undefined;
+    var relative_buf: [32]u8 = undefined;
+    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
-        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    if (try db.feed_last_update(feed.feed_id)) |last_update| {
+        const seconds = now_sec - last_update;
+        try w.print(
+            \\<p>Last update was <time datetime="{s}">{s}</time> ago</p>
+        , .{ timestampToString(&date_buf, last_update), try relative_time_from_seconds(&relative_buf, seconds)});
+    }
+
+    if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
         const ts = now_sec + utc_sec;
         try w.print(
             \\<p>Next update in <time datetime="{s}">{s}</time></p>
-        , .{ timestampToString(&date_buf, ts),
-            try relative_time_from_seconds(&relative_buf, utc_sec)});
+        , .{ timestampToString(&date_buf, ts), try relative_time_from_seconds(&relative_buf, utc_sec)});
     } else {
         try w.writeAll(
             \\<p>Next update unknown</p>

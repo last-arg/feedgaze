@@ -1,8 +1,7 @@
 # Initial
 [ ] db schema: change feed.updated_timestamp to not null and default value now()?
-[ ] website: display time till next update
-  [ ] on edit page
-  [ ] also root (list) page?
+[ ] website: 
+  - feed page: can trigger update
 [ ] website: might have to encode urls.
 This should actually be done for all data that I don't input. Anything can 
 contain malicious scripts in title, description etc.
