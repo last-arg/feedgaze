@@ -160,6 +160,23 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
 
+    if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
+        var date_buf: [date_len_max]u8 = undefined;
+        var relative_buf: [32]u8 = undefined;
+
+        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const ts = now_sec + utc_sec;
+        try w.print(
+            \\<p>Next update in <time datetime="{s}">{s}</time></p>
+        , .{ timestampToString(&date_buf, ts),
+            try relative_time_from_seconds(&relative_buf, utc_sec)});
+    } else {
+        try w.writeAll(
+            \\<p>Next update unknown</p>
+        );
+    }
+
+
     const query_kv = try req.query();
     if (query_kv.get("success")) |_| {
         try w.writeAll("<p>Feed changes saved</p>");
@@ -250,6 +267,25 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("</main>");
     try w.writeAll(foot);
+}
+
+fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
+    // TODO: 1 and more outputs (1 minute, 34 minutes)
+    if (seconds < 0) {
+        return try std.fmt.bufPrint(buf, "now", .{});
+    } else if (seconds == 0) {
+        return try std.fmt.bufPrint(buf, "1 second", .{});
+    } else if (seconds < std.time.s_per_min) {
+        return try std.fmt.bufPrint(buf, "{d} seconds", .{seconds});
+    } else if (seconds < std.time.s_per_hour) {
+        return try std.fmt.bufPrint(buf, "{d} minutes", .{@divFloor(seconds, std.time.s_per_min)});
+    } else if (seconds < std.time.s_per_day) {
+        return try std.fmt.bufPrint(buf, "{d} hours", .{@divFloor(seconds, std.time.s_per_hour)});
+    } else if (seconds < std.time.s_per_week) {
+        return try std.fmt.bufPrint(buf, "{d} days", .{@divFloor(seconds, std.time.s_per_day)});
+    }
+
+    return try std.fmt.bufPrint(buf, "{d} weeks", .{@divFloor(seconds, std.time.s_per_week)});
 }
 
 fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
