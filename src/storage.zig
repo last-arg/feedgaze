@@ -1003,7 +1003,7 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  feed_url TEXT NOT NULL UNIQUE,
     \\  page_url TEXT DEFAULT NULL,
-    \\  updated_timestamp INTEGER DEFAULT NULL
+    \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\);
     ,
     \\CREATE TABLE IF NOT EXISTS item(

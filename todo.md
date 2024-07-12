@@ -1,5 +1,4 @@
 # Initial
-[ ] db schema: change feed.updated_timestamp to not null and default value now()?
 [ ] website: 
   - feed page: can trigger update
 [ ] website: might have to encode urls.
