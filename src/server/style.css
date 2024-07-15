@@ -446,7 +446,7 @@ input[type=text] {
 
 .feed-tags {
   display: flex;
-  flex-flow: flex-wrap;
+  flex-wrap: wrap;
   gap: var(--space-2xs);
 }
 

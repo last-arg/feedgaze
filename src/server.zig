@@ -15,7 +15,8 @@ const untagged = "[untagged]";
 // For fast compiling and testing
 pub fn main() !void {
     std.debug.print("RUN SERVER\n", .{});
-    try start_server(.{});
+    const storage = try Storage.init("tmp/feeds.db");
+    try start_server(storage, .{});
 }
 
 const Global = struct {
@@ -50,7 +51,8 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
     router.post("/feed/:id/delete", feed_delete);
-    router.get("/public/*", style_get);
+    router.get("/public/*", public_get);
+    router.get("/favicon.ico", favicon_get);
 
     // start the server in the current thread, blocking.
     try server.listen(); 
@@ -292,22 +294,24 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{d} weeks", .{@divFloor(seconds, std.time.s_per_week)});
 }
 
-fn style_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const path = if (req.url.path[0] == '/') req.url.path[1..] else req.url.path;
-    const file = std.fs.cwd().openFile(path, .{}) catch {
-        resp.status = 404;
-        resp.body = "File not found";
-        return;
-    };
-    defer file.close();
-    
-    if (mem.endsWith(u8, path, ".js")) {
+fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    if (mem.endsWith(u8, req.url.path, "main.js")) {
         resp.content_type = .JS;
-    } else if (mem.endsWith(u8, path, ".css")) {
+        resp.body = @embedFile("server/main.js");
+    } else if (mem.endsWith(u8, req.url.path, "style.css")) {
         resp.content_type = .CSS;
+        resp.body = @embedFile("server/style.css");
+    } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
+        resp.content_type = .CSS;
+        resp.body = @embedFile("server/open-props-colors.css");
     }
+}
 
-    resp.body = try file.readToEndAlloc(req.arena, std.math.maxInt(u32));
+// TODO: add favicon
+fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
+    resp.status = 404;
+    // resp.content_type = .ICO;
+    // resp.body = @embedFile("server/favicon.ico");
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
