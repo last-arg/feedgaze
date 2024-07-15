@@ -239,7 +239,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.storage.tags_feed_add(feed_id, tags_ids);
                     }
                 },
-                .server => |opts| try server(opts),
+                .server => |opts| try self.server(opts),
             }
         }
 
@@ -521,9 +521,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
         }
 
-        pub fn server(opts: ServerOptions) !void {
+        pub fn server(self: *Self, opts: ServerOptions) !void {
             print("Start server\n", .{});
-            try @import("server.zig").start_server(opts);
+            try @import("server.zig").start_server(self.storage, opts);
         }
 
         pub fn remove(self: *Self, url: []const u8) !void {

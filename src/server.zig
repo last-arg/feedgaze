@@ -22,13 +22,11 @@ const Global = struct {
     storage: Storage, 
 };
 
-pub fn start_server(opts: types.ServerOptions) !void {
+pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var global = .{
-        .storage = try Storage.init("./tmp/feeds.db"),
-    };
+    var global = .{ .storage = storage };
     const server_config = .{
         .port = opts.port,  
         .request = .{
