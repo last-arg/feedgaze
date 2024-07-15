@@ -50,8 +50,6 @@ const CliGlobal = struct {
     };
 };
 
-const default_db_path: [:0]const u8 = "tmp/db_feedgaze.sqlite";
-// const default_db_path: [:0]const u8 = "~/.config/feedgaze/database.sqlite";
 pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         allocator: Allocator,
@@ -599,8 +597,18 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 }
 
 pub fn connectDatabase(path: ?[:0]const u8) !Storage {
+    var buf: [8 * 1024]u8 = undefined;
+    var fixed_alloc = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fixed_alloc.allocator();
+
     const db_path = blk: {
-        const db_path = path orelse default_db_path;
+        const db_path = path orelse db_path: {
+            const kf = @import("known-folders");
+            const data_dir = try kf.getPath(alloc, .data) orelse unreachable;
+            const file_path = try std.fs.path.joinZ(alloc, &.{data_dir, "feedgaze",  "feedgaze.sqlite"});
+
+            break :db_path file_path;
+        };
         if (db_path.len == 0) {
             std.log.err("'--database' requires filepath input.", .{});
         }

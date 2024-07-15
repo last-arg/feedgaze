@@ -134,6 +134,9 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const datetime = b.dependency("zig-datetime", dep_args);
     step.root_module.addImport("zig-datetime", datetime.module("zig-datetime"));
 
+    const known_folders = b.dependency("known-folders", .{});
+    step.root_module.addImport("known-folders", known_folders.module("known-folders"));
+
     const xml = b.dependency("xml", dep_args);
     step.root_module.addImport("xml", xml.module("xml"));
 

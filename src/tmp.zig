@@ -3,6 +3,7 @@ const AddRule = @import("add_rule.zig");
 const create_rule = AddRule.create_rule;
 const Storage = @import("storage.zig").Storage;
 const print = std.debug.print;
+const kf = @import("known-folders");
 
 pub fn main() !void {
     // try run_storage_rule_add();
@@ -11,7 +12,19 @@ pub fn main() !void {
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
-    try storage_feeds_to_update();
+    // try storage_feeds_to_update();
+    try find_dir();
+}
+
+pub fn find_dir() !void {
+    var buf: [8 * 1024]u8 = undefined;
+    var fixed_alloc = std.heap.FixedBufferAllocator.init(&buf);
+    const alloc = fixed_alloc.allocator();
+
+    const data_dir = try kf.getPath(alloc, .data) orelse unreachable;
+    const file_path = try std.fs.path.join(alloc, &.{data_dir, "feedgaze",  "feedgaze.sqlite"});
+
+    print("{s}\n", .{file_path});
 }
 
 pub fn storage_feeds_to_update() !void {
