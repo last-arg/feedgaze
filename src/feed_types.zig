@@ -43,7 +43,6 @@ pub const UpdateOptions = struct {
 };
 
 pub const ServerOptions = struct {
-    // Will ignore 'feed_update.update_countdown'
     port: u16 = 1222,
 
     pub const shorthands = .{

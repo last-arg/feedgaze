@@ -1,6 +1,6 @@
 # Initial
 [ ] website: 
-  - feed page: can trigger update
+  - feed page: <a> to trigger update
 [ ] website: might have to encode urls.
 This should actually be done for all data that I don't input. Anything can 
 contain malicious scripts in title, description etc.
