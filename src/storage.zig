@@ -141,7 +141,7 @@ pub const Storage = struct {
     }
 
     pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
-        try self.sql_db.exec("INSERT OR IGNORE INTO rate_limit (feed_id, utc_sec) VALUES (?, ?)", .{}, .{feed_id, utc_sec});
+        try self.sql_db.exec("INSERT OR REPLACE INTO rate_limit (feed_id, utc_sec) VALUES (?, ?)", .{}, .{feed_id, utc_sec});
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
