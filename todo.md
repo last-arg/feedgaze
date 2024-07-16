@@ -1,4 +1,6 @@
 # Initial
+[ ] minify html
+[ ] purge and minify css
 [ ] website: 
   - feed page: <a> to trigger update
 [ ] website: might have to encode urls.

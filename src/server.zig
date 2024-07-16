@@ -14,9 +14,9 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    std.debug.print("RUN SERVER\n", .{});
+    std.debug.print("RUN SERVER as main\n", .{});
     const storage = try Storage.init("tmp/feeds.db");
-    try start_server(storage, .{});
+    try start_server(storage, .{.port = 5882 });
 }
 
 const Global = struct {
@@ -294,16 +294,27 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{d} weeks", .{@divFloor(seconds, std.time.s_per_week)});
 }
 
+// TODO: can I do compression during comptime
+// TODO: Make sure client can handle gzip compression
 fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    var src: ?[]const u8 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
+        src = @embedFile("server/main.js");
         resp.content_type = .JS;
-        resp.body = @embedFile("server/main.js");
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
+        src = @embedFile("server/style.css");
         resp.content_type = .CSS;
-        resp.body = @embedFile("server/style.css");
     } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
+        src = @embedFile("server/open-props-colors.css");
         resp.content_type = .CSS;
-        resp.body = @embedFile("server/open-props-colors.css");
+    }
+
+    if (src) |body| {
+        var al = std.ArrayList(u8).init(req.arena);
+        var fbs = std.io.fixedBufferStream(body);
+        try std.compress.gzip.compress(fbs.reader(), al.writer(), .{});
+        resp.header("content-encoding", "gzip");
+        resp.body = al.items;
     }
 }
 
