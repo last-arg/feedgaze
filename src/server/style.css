@@ -470,7 +470,7 @@ input[type=text] {
 .feed-item a,
 .feed-item p {
   max-width: 50ch;
-  padding-inline-start: var(--space-m);
+  margin-inline-start: var(--space-m);
 }
 
 .feed-item time,
