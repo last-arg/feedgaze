@@ -14,7 +14,6 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    std.debug.print("RUN SERVER as main\n", .{});
     const storage = try Storage.init("tmp/feeds.db");
     try start_server(storage, .{.port = 5882 });
 }
@@ -54,6 +53,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/public/*", public_get);
     router.get("/favicon.ico", favicon_get);
 
+    std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
     // start the server in the current thread, blocking.
     try server.listen(); 
 }
