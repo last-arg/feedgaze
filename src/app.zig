@@ -106,12 +106,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
                                 date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
 
-                                std.log.info("Next update's date and time {d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}", .{
-                                    date.time.hour,
-                                    date.time.minute,
+                                std.log.info("Next update in {d} second(s) [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
+                                    countdown,
                                     date.date.day,
                                     date.date.month,
                                     date.date.year,
+                                    date.time.hour,
+                                    date.time.minute,
                                 });
 
                                 loop_count = 0;
