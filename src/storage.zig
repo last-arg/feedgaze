@@ -973,7 +973,7 @@ pub const Storage = struct {
         const query = 
         \\select min(
         \\	min((last_update + item_interval) - strftime('%s', 'now')), 
-        \\	coalesce((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
+        \\	ifnull((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
         \\) from feed_update;
         ;
         const countdown_fallback = std.time.s_per_day;

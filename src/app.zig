@@ -89,14 +89,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 },
                 .update => |opts| {
                     const input = if (args.positionals.len > 0) args.positionals[0] else null;
-                    try self.update(input, opts);
+                    _ = try self.update(input, opts);
                 },
                 .run => {
                     std.log.info("Running in foreground", .{});
                     const loop_limit = 5;
                     var loop_count: u16 = 0;
-                    // TODO: loop could end up in a situation where update() is
-                    // called but there is nothing to update?
                     var last_update_start_time_ms = std.time.milliTimestamp();
                     while (loop_count < loop_limit) {
                         if (try self.storage.next_update_countdown()) |countdown| {
@@ -127,8 +125,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                             }
                         }
                         last_update_start_time_ms = std.time.milliTimestamp();
-                        try self.update(null, .{});
-                        loop_count += 1;
+                        if (try self.update(null, .{})) {
+                            loop_count = 0;
+                        } else {
+                            loop_count += 1;
+                        }
                     }
                     if (loop_count >= loop_limit) {
                         std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
@@ -456,14 +457,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             return index - 1;
         }
 
-        pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
+        pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !bool {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
             const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
             if (feed_updates.len == 0) {
                 std.log.info("No feeds to update", .{});
-                return;
+                return false;
             }
             std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
@@ -527,6 +528,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 };
             }
+            return true;
         }
 
         pub fn server(self: *Self, opts: ServerOptions) !void {
