@@ -97,6 +97,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     var loop_count: u16 = 0;
                     // TODO: loop could end up in a situation where update() is
                     // called but there is nothing to update?
+                    var last_update_start_time_ms = std.time.milliTimestamp();
                     while (loop_count < loop_limit) {
                         if (try self.storage.next_update_countdown()) |countdown| {
                             if (countdown > 0) {
@@ -117,8 +118,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 std.log.info("{d} seconds until next update", .{countdown});
                                 std.time.sleep(@intCast(countdown * std.time.ns_per_s));
                                 continue;
+                            } else {
+                                const diff = last_update_start_time_ms - std.time.milliTimestamp();
+                                if (diff <= countdown) {
+                                    loop_count = 0;
+                                }
                             }
                         }
+                        last_update_start_time_ms = std.time.milliTimestamp();
                         try self.update(null, .{});
                         loop_count += 1;
                     }
