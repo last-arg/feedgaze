@@ -114,7 +114,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 });
 
                                 loop_count = 0;
-                                std.log.info("{d} seconds until next update", .{countdown});
                                 std.time.sleep(@intCast(countdown * std.time.ns_per_s));
                                 continue;
                             } else {
