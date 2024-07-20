@@ -1,17 +1,22 @@
 # Initial
-[ ] minify html
-[ ] purge and minify css
-[ ] website: 
-  - feed page: <a> to trigger update
-[ ] website: might have to encode urls.
-This should actually be done for all data that I don't input. Anything can 
-contain malicious scripts in title, description etc.
+- website:
+  - allow chaging update interval?
+  - make feed items into 2 columns on wider screens
+  - encoding output text.
+    This should actually be done for all data that I don't input. Anything can 
+    contain malicious scripts in title, description etc.
+  - encode urls?
+  - can trigger feed update?
+  - change page title on different pages
+  - minify html
+  - purge and minify css
 
-[ ] website: make feed items into 2 columns on wider screens
+- frontenddogma.com update interval too big because items don't have update time
+
 [ ] cli: feed update counter
-[ ] Logo ideas
-keywords: feed, gaze, rss, atom, links
-- Something with gaze and atoms?
+- Logo ideas
+  - keywords: feed, gaze, rss, atom, links
+  - Something with gaze and atoms?
 [ ] Feeds
   - third party service: https://openrss.org/
   [ ] Get favicons
