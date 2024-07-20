@@ -261,7 +261,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\</div>
     );
 
-
     try w.writeAll("<button>Save feed changes</button>");
     try w.writeAll("</form>");
 
@@ -306,18 +305,31 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
     return try std.fmt.bufPrint(buf, "{d} weeks", .{@divFloor(seconds, std.time.s_per_week)});
 }
 
+
+fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
+    const builtin = @import("builtin");
+    if (builtin.mode == .Debug) {
+        var buf: [256]u8 = undefined;
+        const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
+        const file = try std.fs.cwd().openFile(p, .{});
+        defer file.close();
+        return try file.readToEndAlloc(allocator, std.math.maxInt(u32));
+    } else {
+        return @embedFile(path);
+    }
+}
 // TODO: can I do compression during comptime
 // TODO: Make sure client can handle gzip compression
 fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
-        src = @embedFile("server/main.js");
+        src = try get_file(req.arena, "server/main.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
-        src = @embedFile("server/style.css");
+        src = try get_file(req.arena, "server/style.css");
         resp.content_type = .CSS;
     } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
-        src = @embedFile("server/open-props-colors.css");
+        src = try get_file(req.arena, "server/open-props-colors.css");
         resp.content_type = .CSS;
     }
 
