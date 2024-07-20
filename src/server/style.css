@@ -407,6 +407,22 @@ input[type=text] {
   text-decoration-style: solid;
 }
 
+.btn {
+  color: var(--text-1);
+  background: var(--surface-0);
+  border: 3px solid var(--text-1);
+  padding: var(--space-3xs) var(--space-2xs);
+}
+
+.btn:hover {
+  text-decoration: underline;
+}
+
+.btn-secondary {
+  border-inline-color: transparent;
+  border-block-start-color: transparent;
+}
+
 .feed-header {
   margin-block-end: var(--space-m);
   margin-inline-start: var(--space-m);

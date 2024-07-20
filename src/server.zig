@@ -261,7 +261,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\</div>
     );
 
-    try w.writeAll("<button>Save feed changes</button>");
+    try w.writeAll("<button class='btn btn-primary'>Save feed changes</button>");
     try w.writeAll("</form>");
 
     var path = req.url.path;
@@ -269,7 +269,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         path = path[0.. path.len - 1];
     }
     try w.print("<form action='{s}/delete' method='POST'>", .{path});
-    try w.writeAll("<button>Delete feed</button>");
+    try w.writeAll("<button class='btn btn-secondary'>Delete feed</button>");
     try w.writeAll("</form>");
     try w.writeAll("</div>");
 
