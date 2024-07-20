@@ -155,7 +155,18 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try body_head_render(req, db, w, .{});
 
     try w.writeAll("<main>");
-    try w.print("<h2>Edit feed - {s}</h2>", .{if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url});
+    try w.writeAll("<div class='feed-info'>");
+    try w.print("<h2>{s}</h2>", .{if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url});
+    try w.writeAll("<p>Page url: ");
+    if (feed.page_url) |page_url| {
+        try w.print(
+        \\<a href="{s}" class="inline-block">{s}</a>
+        , .{page_url, page_url});
+    } else {
+        try w.writeAll("no url");
+    }
+    try w.writeAll("</p>");
+
     try w.print(
         \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
     , .{ .feed_url = feed.feed_url });
@@ -198,6 +209,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
     
+    try w.writeAll("<h2>Edit feed</h2>");
     try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='POST'>");
 
     const inputs_fmt = 
@@ -208,7 +220,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\<div>
     \\  <p><label for="page_url">Page url</label></p>
     \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
-    \\  <a href="{[page_url]s}" class="inline-block">Go to page url</a>
     \\</div>
     ;
     try w.print(inputs_fmt, .{
@@ -243,9 +254,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</div>");
     try w.writeAll("</fieldset>");
     try w.writeAll(
-        \\<div>
+        \\<div class="form-input">
         \\  <p><label for="new_tags">New tags</label></p>
-        \\  <p>Tags are comma separated</p>
+        \\  <p class="input-desc">Tags are comma separated</p>
         \\  <input type="text" id="new_tags" name="new_tags">
         \\</div>
     );
@@ -261,6 +272,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.print("<form action='{s}/delete' method='POST'>", .{path});
     try w.writeAll("<button>Delete feed</button>");
     try w.writeAll("</form>");
+    try w.writeAll("</div>");
 
     try w.writeAll("<h2>Feed items</h2>");
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
@@ -278,7 +290,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
     // TODO: 1 and more outputs (1 minute, 34 minutes)
     if (seconds < 0) {
-        return try std.fmt.bufPrint(buf, "now", .{});
+        return try std.fmt.bufPrint(buf, "0 seconds", .{});
     } else if (seconds == 0) {
         return try std.fmt.bufPrint(buf, "1 second", .{});
     } else if (seconds < std.time.s_per_min) {

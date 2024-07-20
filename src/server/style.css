@@ -362,6 +362,15 @@ input[type=text] {
   font-weight: bold;
 }
 
+.form-input {
+  
+}
+
+.input-desc {
+  font-size: var(--step--1);
+  margin-block-start: 0;
+}
+
 .filter-wrapper button:hover {
   text-decoration: underline;
 }
@@ -382,6 +391,20 @@ input[type=text] {
   font-weight: normal;
   font-size: var(--step--1);
   letter-spacing: .09em;
+}
+
+.feed-info {
+  padding-inline: var(--space-m);
+}
+
+.feed-info a {
+  font-style: italic;
+  text-decoration: underline dotted;
+}
+
+.feed-info a:hover {
+  color: black;
+  text-decoration-style: solid;
 }
 
 .feed-header {

@@ -531,7 +531,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn server(self: *Self, opts: ServerOptions) !void {
-            print("Start server\n", .{});
             try @import("server.zig").start_server(self.storage, opts);
         }
 
