@@ -410,17 +410,18 @@ pub const FeedUpdate = struct {
             if (item.updated_timestamp) |ts| {
                 if (first == null) {
                     first = ts;
-                } else if (second == null) {
+                } else {
                     second = ts;
-                    break;
+                    if (first.? != second.?) {
+                        break;
+                    }
                 }
             }
         }
 
         if (first != null and second != null) {
             const result = first.? - second.?;
-            // TODO: maybe minimum (0) item_interval should be larger than 0?
-            if (result > 0) {
+            if (result >= 0) {
                 if (result < seconds_in_1_day) {
                     self.item_interval = seconds_in_12_hours;
                 } else if (result < seconds_in_2_days) {
