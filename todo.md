@@ -1,6 +1,6 @@
 # Initial
 - website:
-  - allow chaging update interval?
+  - allow changing update interval?
   - make feed items into 2 columns on wider screens
   - encoding output text.
     This should actually be done for all data that I don't input. Anything can 
@@ -11,7 +11,8 @@
   - minify html
   - purge and minify css
 
-- frontenddogma.com update interval too big because items don't have update time
+- Setting feed_update.item_interval when all items are null (or same if 
+  feed items are validated)?
 
 [ ] cli: feed update counter
 - Logo ideas

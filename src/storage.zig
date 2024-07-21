@@ -484,8 +484,25 @@ pub const Storage = struct {
         if (inserts.len == 0) {
             return;
         }
-        if (!try self.hasFeedWithId(inserts[0].feed_id)) {
+        const feed_id = inserts[0].feed_id;
+        if (!try self.hasFeedWithId(feed_id)) {
             return Error.FeedNotFound;
+        }
+
+        var len = inserts.len;
+        const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
+        if (try one(&self.sql_db, i64, query_item_timestamp, .{feed_id})) |timestamp_max| {
+            for (inserts, 0..) |item, i| {
+                const item_timestamp = item.updated_timestamp orelse continue;
+                if (item_timestamp <= timestamp_max) {
+                    len = i;
+                    break;
+                }
+            }
+        }
+
+        if (len == 0) {
+            return;
         }
 
         const query_with_id =
@@ -520,7 +537,7 @@ pub const Storage = struct {
             \\;
         ;
         
-        for (inserts, 0..) |item, i| {
+        for (inserts[0..len], 0..) |item, i| {
             if (item.id != null or item.link != null) {
                 try self.sql_db.exec(query_with_id, .{}, .{
                     .feed_id = item.feed_id,
