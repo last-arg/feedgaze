@@ -951,7 +951,8 @@ pub const Storage = struct {
             \\  when temp_table.item_interval < {d} then {d}
             \\  else {d}
             \\end
-            \\) from temp_table where feed_update.feed_id = temp_table.feed_id;
+            \\) from temp_table where feed_update.feed_id = temp_table.feed_id
+            \\AND feed_update.item_interval != temp_table.item_interval;
         , .{
             // In case item count is 0 or 1 make sure case expressions else branch
             // is hit.
