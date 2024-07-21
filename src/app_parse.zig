@@ -38,7 +38,13 @@ pub const FeedAndItems = struct {
                     item.*.feed_id = self.feed.feed_id;
                 }
             }
-            
+
+            // Set item dates to now if missing
+            // Set null values to current time until non-null value
+            const now = @divFloor(std.time.milliTimestamp(), 1000);
+            for (self.items) |*item| {
+                item.*.updated_timestamp = now;
+            }
         }
     }
 };
