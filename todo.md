@@ -10,9 +10,15 @@
   - change page title on different pages
   - minify html
   - purge and minify css
+  - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
 
 - Setting feed_update.item_interval when all items are null (or same if 
-  feed items are validated)?
+  feed items are validated)? Would have to make db request to get 
+  max(item.updated_timestamp) value. Currently feed_update.item_interval
+  is calculated from parsed items.
+- Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
+    '.percent_encoded' probably better option. Currently just get/set whatever
+    is there.
 
 [ ] cli: feed update counter
 - Logo ideas
@@ -38,9 +44,6 @@
     - no space
   - length limit?
 
-[ ] Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
-    '.percent_encoded' probably better option. Currently just get/set whatever
-    is there.
 [ ] Can disable updating for feeds?
 [ ] Decode/encode HTML characters
 [ ] Maybe I should add field 'items' to Feed struct?
@@ -53,15 +56,6 @@ appear in the file.
   - If there is not feed date, what to use? 
   [ ] If implemented have to change how feed.updated_timestamp is updated. Currently
   will used newest (first) feed item.
-
-Web page
-  [ ] Design
-    - If feed + item area goes to wide have two choices
-      - Make feeds into columns. Latest feeds' would go from left to right.
-      - Make items into columns. Latest items' would go top to bottom.
-  [ ] Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
-[ ] Database (sqlite)
-  [ ] look into creating indices
 
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
