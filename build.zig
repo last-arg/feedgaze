@@ -44,9 +44,6 @@ pub fn build(b: *Build) !void {
     };
     const exe = b.addExecutable(opts_exe);
 
-    // This declares intent for the executable to be installed into the
-    // standard location when the user invokes the "install" step (the default
-    // step when running `zig build`).
     b.installArtifact(exe);
 
     const exe_check = b.addExecutable(opts_exe);
@@ -57,9 +54,6 @@ pub fn build(b: *Build) !void {
     const check = b.step("check", "Check if foo compiles");
     check.dependOn(&exe_check.step);
 
-    // This *creates* a RunStep in the build graph, to be executed when another
-    // step is evaluated that depends on it. The next line below will establish
-    // such a dependency.
     const run_cmd = b.addRunArtifact(exe);
 
     const tmp_file = anon_modules[0];
@@ -69,10 +63,6 @@ pub fn build(b: *Build) !void {
 
     commonModules(b, exe, .{ .target = target, .optimize = optimize });
 
-    // By making the run step depend on the install step, it will be run from the
-    // installation directory rather than directly from within the cache directory.
-    // This is not necessary, however, if the application depends on other installed
-    // files, this ensures they will be present and in the expected location.
     run_cmd.step.dependOn(b.getInstallStep());
 
     // This allows the user to pass arguments to the application in the build
@@ -106,7 +96,6 @@ pub fn build(b: *Build) !void {
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     });
-    test_cmd.setExecCmd(cmds);
 
     inline for (anon_modules) |file| {
         test_cmd.root_module.addAnonymousImport(file.name, .{
