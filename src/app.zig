@@ -95,7 +95,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.info("Running in foreground", .{});
                     const loop_limit = 5;
                     var loop_count: u16 = 0;
-                    var last_update_start_time_ms = std.time.milliTimestamp();
                     while (loop_count < loop_limit) {
                         if (try self.storage.next_update_countdown()) |countdown| {
                             if (countdown > 0) {
@@ -116,14 +115,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 loop_count = 0;
                                 std.time.sleep(@intCast(countdown * std.time.ns_per_s));
                                 continue;
-                            } else {
-                                const diff = last_update_start_time_ms - std.time.milliTimestamp();
-                                if (diff <= countdown) {
-                                    loop_count = 0;
-                                }
                             }
                         }
-                        last_update_start_time_ms = std.time.milliTimestamp();
                         if (try self.update(null, .{})) {
                             loop_count = 0;
                         } else {
