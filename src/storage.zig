@@ -19,6 +19,8 @@ const parse = @import("./app_parse.zig");
 const app_config = @import("app_config.zig");
 
 const seconds_in_1_day = std.time.s_per_day;
+const seconds_in_3_hours = std.time.s_per_hour * 3;
+const seconds_in_6_hours = std.time.s_per_hour * 6;
 const seconds_in_12_hours = std.time.s_per_hour * 12;
 const seconds_in_2_days = seconds_in_1_day * 2;
 const seconds_in_3_days = seconds_in_1_day * 3;
@@ -973,6 +975,8 @@ pub const Storage = struct {
             \\  when temp_table.item_interval < {d} then {d}
             \\  when temp_table.item_interval < {d} then {d}
             \\  when temp_table.item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
+            \\  when temp_table.item_interval < {d} then {d}
             \\  else {d}
             \\end
             \\) from temp_table where feed_update.feed_id = temp_table.feed_id
@@ -983,6 +987,8 @@ pub const Storage = struct {
             seconds_in_30_days, 
 
             // else case with item_interval
+            seconds_in_6_hours, seconds_in_3_hours,
+            seconds_in_12_hours, seconds_in_6_hours,
             seconds_in_1_day, seconds_in_12_hours,
             seconds_in_2_days, seconds_in_1_day,
             seconds_in_7_days, seconds_in_3_days,
