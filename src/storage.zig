@@ -232,20 +232,27 @@ pub const Storage = struct {
             \\  feed_update.etag 
             \\FROM feed 
             \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-            \\WHERE ifnull((select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id), false)
             \\
         ;
 
         storage_arr.resize(0) catch unreachable;
         storage_arr.appendSliceAssumeCapacity(query);
 
+        var has_where = false;
+
         if (!options.force) {
-            storage_arr.appendSliceAssumeCapacity(" OR strftime('%s', 'now') - last_update >= item_interval");
+            has_where = true;
+            storage_arr.appendSliceAssumeCapacity( 
+                \\WHERE ifnull((select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id), false)
+                \\OR strftime('%s', 'now') - last_update >= item_interval
+            );
         }
 
         if (search_term) |term| {
             if (term.len > 0) {
-                storage_arr.appendSliceAssumeCapacity(" AND (feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
+                const cond_start = if (!has_where) " WHERE " else " AND ";
+                storage_arr.appendSliceAssumeCapacity(cond_start);
+                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
                 var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
                 defer stmt.deinit();
                 return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
