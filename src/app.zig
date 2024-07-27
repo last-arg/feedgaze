@@ -488,9 +488,23 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
                     const now_utc_sec = std.time.timestamp();
                     const retry_reset = blk: {
+                        if (try resp.getHeader("x-ratelimit-remaining")) |remaining| {
+                            const raw = remaining.get();
+                            std.debug.assert(raw.len > 0);
+                            const value = try std.fmt.parseFloat(f32, raw);
+                            if (value == 0.0) {
+                                if (try resp.getHeader("x-ratelimit-reset")) |header| {
+                                    if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
+                                        break :blk now_utc_sec + nr;
+                                    } else |_| {}
+                                }
+                            }
+                        }
+
                         if (try resp.getHeader("retry-after") orelse 
                             try resp.getHeader("x-ratelimit-reset")) |header| {
                                 const raw = header.get();
+                                std.log.debug("header rate-limit: {s}", .{raw});
                                 if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
                                     break :blk now_utc_sec + nr;
                                 } else |_| {}
@@ -499,9 +513,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                     break :blk date_utc;
                                 } else |_| {}
                         }
-                        // Set fallback rate limit to 1 hour
-                        break :blk now_utc_sec + 3600;
+                        break :blk now_utc_sec + std.time.s_per_hour;
                     };
+                    print("retry_reset: {d}\n", .{retry_reset});
                     try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
                     continue;
                 } else if (resp.status_code >= 400 and resp.status_code < 600) {
