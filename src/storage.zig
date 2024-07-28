@@ -1025,6 +1025,14 @@ pub const Storage = struct {
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
         return try one(&self.sql_db, i64, "select last_update from feed_update where feed_id = ?", .{feed_id});
     }
+
+    pub fn get_items_latest_added(self: *Self, allocator: Allocator) ![]FeedItemRender {
+        const query = 
+        \\SELECT title, link, updated_timestamp, created_timestamp
+        \\FROM item WHERE created_timestamp > strftime("%s", "now", "-3 days") ORDER BY created_timestamp DESC
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
+    }
 };
 
 // TODO: feed.title default value should be null

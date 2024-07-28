@@ -328,7 +328,7 @@ input[type=text] {
   margin-block-start: var(--space-2xs);
 }
 
-.sidebar nav a:first-child:after {
+.sidebar nav a:not(:last-child):after {
   content: "|";
   color: var(--grey-6);
   margin-inline: var(--space-2xs);
@@ -502,25 +502,40 @@ input[type=text] {
   font-weight: bold;
 }
 
-.feed-item {
-  display: flex;
+.feed-item-list {
+  margin-block-start: var(--space-s);
 }
 
-.feed-item a,
+.content-latest h2 {
+  margin-inline-start: var(--space-m);
+}
+
+.feed-item {
+  display: flex;
+  align-items: baseline;
+}
+
+.item-link,
 .feed-item p {
   max-width: 50ch;
   margin-inline-start: var(--space-m);
+  width: 100%;
+}
+
+.item-extra {
+  font-size: var(--step--1);
+  color: var(--grey-10);
+  margin-inline-start: var(--space-m);
+  display: flex;
+  flex-direction: column;
+  line-height: calc(var(--leading-standard) * var(--step-0));
 }
 
 .feed-item time,
 .feed-item .no-date {
-  align-self: self-start;
   text-align: end;
   min-width: calc(3ch + (2 * var(--_box-padding)));
   width: min-content;
-  margin-block-start: calc(
-    (var(--step-0) * var(--leading-standard) - var(--step-0)) / 2
-  );
 }
 
 .age-newest {

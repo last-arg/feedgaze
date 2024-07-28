@@ -47,6 +47,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     // you can also use "all" to attach to all methods
     router.get("/", root_get);
     router.get("/tags", tags_get);
+    router.get("/latest_added", latest_added_get);
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
     router.post("/feed/:id/delete", feed_delete);
@@ -349,6 +350,76 @@ fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
     // resp.body = @embedFile("server/favicon.ico");
 }
 
+fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+    resp.content_type = .HTML;
+
+    const w = resp.writer(); 
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req, db, w, .{});
+
+    try w.writeAll("<main class='content-latest'>");
+    try w.writeAll("<h2>Latest (added)</h2>");
+    const items = try db.get_items_latest_added(req.arena);
+    try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-s)'>");
+    for (items) |item| {
+        try w.writeAll("<li class='feed-item'>");
+        // TODO: fix last arg for links with only paths
+        try item_latest_render(w, req.arena, item, "");
+        try w.writeAll("</li>");
+    }
+    try w.writeAll("</ul>");
+    try w.writeAll("</main>");
+
+    try w.writeAll(foot);
+}
+
+fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
+    try item_render(w, allocator, item, feed_url);
+
+    // TODO: should I render feed host url instead?
+    if (item.link) |link| if (link.len > 0 and link[0] != '/') {
+        const url = try std.Uri.parse(link);
+        // TODO: feed page link (need feed_id)
+        // TODO: add title to feed page (need feed title)
+        try w.print(
+            \\<div class="item-extra">
+            \\<a href="#" title="TODO">Go to feed page</a>
+            \\<a href="{;+}">{+}</a>
+            \\</div>
+        , .{url, url});
+    };
+}
+
+fn timestamp_render(w: anytype, timestamp: ?i64) !void {
+    if (timestamp) |ts| {
+        var date_display_buf: [16]u8 = undefined;
+        var date_buf: [date_len_max]u8 = undefined;
+
+        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const date_display_value = try date_display(&date_display_buf, now_sec, ts);
+        const time_fmt = 
+            \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
+        ;
+        const age_class = age_class_from_time(ts);
+        try w.print(time_fmt, .{
+            .date = timestampToString(&date_buf, ts),
+            .date_display = date_display_value,
+            .age_class = age_class,
+        });
+    } else {
+        const no_date_fmt = 
+            \\<span class="no-date">&#8212;</span>
+        ;
+        try w.print(no_date_fmt, .{});
+    }
+}
+
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
     resp.content_type = .HTML;
@@ -638,34 +709,14 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
 }
 
 fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
-    if (item.updated_timestamp) |ts| {
-        var date_display_buf: [16]u8 = undefined;
-        var date_buf: [date_len_max]u8 = undefined;
+    try timestamp_render(w, item.updated_timestamp);
 
-        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
-        const date_display_value = try date_display(&date_display_buf, now_sec, ts);
-        const time_fmt = 
-            \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-        ;
-        const age_class = age_class_from_time(ts);
-        try w.print(time_fmt, .{
-            .date = timestampToString(&date_buf, ts),
-            .date_display = date_display_value,
-            .age_class = age_class,
-        });
-    } else {
-        const no_date_fmt = 
-            \\<span class="no-date">&#8212;</span>
-        ;
-        try w.print(no_date_fmt, .{});
-    }
-                
     const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
 
     if (item.link) |link_or_path| {
         var buf: [1024]u8 = undefined;
         const item_link_fmt =
-            \\<a href="{[link]s}" class="truncate-2" title="{[title]s}">{[title]s}</a>
+            \\<a href="{[link]s}" class="item-link truncate-2" title="{[title]s}">{[title]s}</a>
         ;
 
         const link = blk: {
@@ -752,6 +803,7 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<nav>");
     try nav_link_render("/", "Home/Feeds", w, req.url.path);
     try nav_link_render("/tags", "Tags", w, req.url.path);
+    try nav_link_render("/latest_added", "Latest (added)", w, req.url.path);
     try w.writeAll("</nav>");
     try w.writeAll("</div>");
 
