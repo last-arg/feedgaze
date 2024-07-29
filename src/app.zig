@@ -495,7 +495,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                             if (value == 0.0) {
                                 if (try resp.getHeader("x-ratelimit-reset")) |header| {
                                     if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
-                                        break :blk now_utc_sec + nr;
+                                        std.log.debug("x-ratelimit-reset", .{});
+                                        break :blk now_utc_sec + nr + 1;
                                     } else |_| {}
                                 }
                             }
@@ -506,7 +507,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 const raw = header.get();
                                 std.log.debug("header rate-limit: {s}", .{raw});
                                 if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
-                                    break :blk now_utc_sec + nr;
+                                    break :blk now_utc_sec + nr + 1;
                                 } else |_| {}
 
                                 if (feed_types.RssDateTime.parse(raw)) |date_utc| {
