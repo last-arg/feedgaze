@@ -45,9 +45,9 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     // use get/post/put/head/patch/options/delete
     // you can also use "all" to attach to all methods
-    router.get("/", root_get);
+    router.get("/", latest_added_get);
+    router.get("/feeds", feeds_get);
     router.get("/tags", tags_get);
-    router.get("/latest_added", latest_added_get);
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
     router.post("/feed/:id/delete", feed_delete);
@@ -452,7 +452,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 // TODO: try to split base to head and foot during comptime
 const base_layout = @embedFile("./layouts/base.html");
 
-fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
     resp.content_type = .HTML;
@@ -554,7 +554,7 @@ fn root_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         if (feeds.len == config.query_feed_limit) {
             var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
             defer new_url_arr.deinit();
-            new_url_arr.appendSliceAssumeCapacity("/?");
+            new_url_arr.appendSliceAssumeCapacity("/feeds?");
             for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
                 if (mem.eql(u8, "after", key)) {
                     continue;
@@ -801,9 +801,9 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<div>");
     try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
     try w.writeAll("<nav>");
-    try nav_link_render("/", "Home/Feeds", w, req.url.path);
+    try nav_link_render("/", "Home", w, req.url.path);
+    try nav_link_render("/feeds", "Feeds", w, req.url.path);
     try nav_link_render("/tags", "Tags", w, req.url.path);
-    try nav_link_render("/latest_added", "Latest (added)", w, req.url.path);
     try w.writeAll("</nav>");
     try w.writeAll("</div>");
 
