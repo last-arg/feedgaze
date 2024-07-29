@@ -270,6 +270,7 @@ pub const FeedItem = struct {
 };
 
 pub const FeedItemRender = struct {
+    feed_id: usize,
     title: []const u8,
     link: ?[]const u8,
     updated_timestamp: ?i64,

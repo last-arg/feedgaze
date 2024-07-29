@@ -366,33 +366,47 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.writeAll("<main class='content-latest'>");
     try w.writeAll("<h2>Latest (added)</h2>");
     const items = try db.get_items_latest_added(req.arena);
-    try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-s)'>");
-    for (items) |item| {
-        try w.writeAll("<li class='feed-item'>");
-        // TODO: fix last arg for links with only paths
-        try item_latest_render(w, req.arena, item, "");
-        try w.writeAll("</li>");
+    if (items.len > 0) {
+        var ids_al = try std.ArrayList(usize).initCapacity(req.arena, items.len);
+        defer ids_al.deinit();
+        for (items) |item| { ids_al.appendAssumeCapacity(item.feed_id); }
+        const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
+        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-s)'>");
+        for (items) |item| {
+            try w.writeAll("<li class='feed-item'>");
+            const feed = blk: {
+                for (feeds) |feed| {
+                    if (feed.feed_id == item.feed_id) {
+                        break :blk feed;
+                    }
+                }
+                unreachable;
+            };
+            try item_latest_render(w, req.arena, item, feed);
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+    } else {
+        // TODO: display older items?
+        try w.writeAll("<p>No feeds have been added in the previous 3 days</p>");
     }
-    try w.writeAll("</ul>");
     try w.writeAll("</main>");
 
     try w.writeAll(foot);
 }
 
-fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
-    try item_render(w, allocator, item, feed_url);
+fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed) !void {
+    try item_render(w, allocator, item, feed.feed_url);
 
-    // TODO: should I render feed host url instead?
+    const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
     if (item.link) |link| if (link.len > 0 and link[0] != '/') {
-        const url = try std.Uri.parse(link);
-        // TODO: feed page link (need feed_id)
-        // TODO: add title to feed page (need feed title)
+        const title = feed.title orelse "";
         try w.print(
             \\<div class="item-extra">
-            \\<a href="#" title="TODO">Go to feed page</a>
-            \\<a href="{;+}">{+}</a>
+            \\<a href="/feed/{d}" class="truncate-1" title="{s}">{s}</a>
+            \\<a href="{}">{+}</a>
             \\</div>
-        , .{url, url});
+        , .{feed.feed_id, title, title, url, url });
     };
 }
 

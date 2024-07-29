@@ -582,7 +582,7 @@ pub const Storage = struct {
 
     pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
         const query_item =
-            \\select title, link, updated_timestamp, created_timestamp
+            \\select feed_id, title, link, updated_timestamp, created_timestamp
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
         ;
         return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
@@ -1028,10 +1028,31 @@ pub const Storage = struct {
 
     pub fn get_items_latest_added(self: *Self, allocator: Allocator) ![]FeedItemRender {
         const query = 
-        \\SELECT title, link, updated_timestamp, created_timestamp
+        \\SELECT feed_id, title, link, updated_timestamp, created_timestamp
         \\FROM item WHERE created_timestamp > strftime("%s", "now", "-3 days") ORDER BY created_timestamp DESC
         ;
         return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
+    }
+
+    pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const usize) ![]types.Feed {
+        std.debug.assert(ids.len > 0);
+        var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
+        query_al.appendSliceAssumeCapacity(
+            \\select feed_id, title, feed_url, page_url, updated_timestamp from feed where feed_id in (
+        );
+        // u64 numbers max length
+        var buf: [20]u8 = undefined;
+        var id_str = try std.fmt.bufPrint(&buf, "{d}", .{ids[0]});
+        try query_al.appendSlice(id_str);
+        for (ids[1..]) |id| {
+            id_str = try std.fmt.bufPrint(&buf, ",{d}", .{id});
+            try query_al.appendSlice(id_str);
+        }
+        try query_al.append(')');
+
+        var stmt = try self.sql_db.prepareDynamic(query_al.items);
+        defer stmt.deinit();
+        return try stmt.all(types.Feed, allocator, .{}, .{});
     }
 };
 

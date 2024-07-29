@@ -524,11 +524,14 @@ input[type=text] {
 
 .item-extra {
   font-size: var(--step--1);
-  color: var(--grey-10);
   margin-inline-start: var(--space-m);
   display: flex;
   flex-direction: column;
   line-height: calc(var(--leading-standard) * var(--step-0));
+}
+
+.item-extra a {
+  color: var(--grey-10);
 }
 
 .feed-item time,
