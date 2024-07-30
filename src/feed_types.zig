@@ -3,8 +3,10 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const curl = @import("curl");
 
-const seconds_in_1_day = std.time.s_per_day;
+const seconds_in_3_hours = std.time.s_per_hour * 3;
+const seconds_in_6_hours = std.time.s_per_hour * 6;
 const seconds_in_12_hours = std.time.s_per_hour * 12;
+const seconds_in_1_day = std.time.s_per_day;
 const seconds_in_2_days = seconds_in_1_day * 2;
 const seconds_in_3_days = seconds_in_1_day * 3;
 const seconds_in_5_days = seconds_in_1_day * 5;
@@ -423,7 +425,11 @@ pub const FeedUpdate = struct {
         if (first != null and second != null) {
             const result = first.? - second.?;
             if (result >= 0) {
-                if (result < seconds_in_1_day) {
+                if (result < seconds_in_6_hours) {
+                    self.item_interval = seconds_in_3_hours;
+                } else if (result < seconds_in_12_hours) {
+                    self.item_interval = seconds_in_6_hours;
+                } else if (result < seconds_in_1_day) {
                     self.item_interval = seconds_in_12_hours;
                 } else if (result < seconds_in_2_days) {
                     self.item_interval = seconds_in_1_day;
