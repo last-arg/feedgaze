@@ -19,6 +19,7 @@
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
+- favicon urls
 
 [ ] cli: feed update counter
 - Logo ideas
@@ -26,7 +27,6 @@
   - Something with gaze and atoms?
 [ ] Feeds
   - third party service: https://openrss.org/
-  [ ] Get favicons
     - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
       And mark them in DB somehow. Rest would get full path. NULL for feeds
       that don't have favicon?

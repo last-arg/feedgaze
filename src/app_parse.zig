@@ -51,6 +51,13 @@ pub const FeedAndItems = struct {
                     }
                 }
             }
+
+            const feed_uri = try std.Uri.parse(self.feed.feed_url);
+            for (self.items) |*item| {
+                if (item.link) |*link| if (link.len > 0 and link.*[0] == '/') {
+                    link.* = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, link.*});
+                };
+            }
         }
     }
 };

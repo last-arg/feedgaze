@@ -278,7 +278,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         try w.print("<li class='feed-item {s}'>", .{""});
-        try item_render(w, req.arena, item, feed.feed_url);
+        try item_render(w, req.arena, item);
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
@@ -396,18 +396,16 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 }
 
 fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed) !void {
-    try item_render(w, allocator, item, feed.feed_url);
+    try item_render(w, allocator, item);
 
     const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
-    if (item.link) |link| if (link.len > 0 and link[0] != '/') {
-        const title = feed.title orelse "";
-        try w.print(
-            \\<div class="item-extra">
-            \\<a href="/feed/{d}" class="truncate-1" title="{s}">{s}</a>
-            \\<a href="{}">{+}</a>
-            \\</div>
-        , .{feed.feed_id, title, title, url, url });
-    };
+    const title = feed.title orelse "";
+    try w.print(
+        \\<div class="item-extra">
+        \\<a href="/feed/{d}" class="truncate-1" title="{s}">{s}</a>
+        \\<a href="{}">{+}</a>
+        \\</div>
+    , .{feed.feed_id, title, title, url, url });
 }
 
 fn timestamp_render(w: anytype, timestamp: ?i64) !void {
@@ -678,7 +676,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             };
 
             try w.print("<li class='feed-item {s}'>", .{hidden});
-            try item_render(w, allocator, item, feed.feed_url);
+            try item_render(w, allocator, item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -722,26 +720,15 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     try w.print(edit_fmt, .{ feed_id });
 }
 
-fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed_url: []const u8) !void {
+fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !void {
     try timestamp_render(w, item.updated_timestamp);
 
     const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
 
-    if (item.link) |link_or_path| {
-        var buf: [1024]u8 = undefined;
+    if (item.link) |link| {
         const item_link_fmt =
             \\<a href="{[link]s}" class="item-link truncate-2" title="{[title]s}">{[title]s}</a>
         ;
-
-        const link = blk: {
-            if (link_or_path.len > 0 and link_or_path[0] == '/') {
-                var url = try std.Uri.parse(feed_url);
-                url.path = .{ .raw = link_or_path };
-                const result = try std.fmt.bufPrint(&buf, "{}", .{url});
-                break :blk result;
-            }
-            break :blk link_or_path;
-        };
         try w.print(item_link_fmt, .{ .title = item_title, .link = link });
     } else {
         const item_title_fmt =
