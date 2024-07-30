@@ -11,6 +11,11 @@ pub const FeedLink = struct {
     title: ?[]const u8 = null,
 };
 
+pub const HtmlParsed = struct {
+    favicon_path: ?[]const u8 = null,
+    links: []FeedLink = &.{},
+};
+
 const FeedLinkArray = std.ArrayList(FeedLink);
 // Resources:
 // https://jackevansevo.github.io/the-struggles-of-building-a-feed-reader.html
@@ -48,7 +53,8 @@ fn isValidTag(content: []const u8, tag: []const u8) bool {
     return false;
 }
 
-pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLink {
+pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
+    var result: HtmlParsed = .{};
     var feed_arr = FeedLinkArray.init(allocator);
     var content = input;
     while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
@@ -107,10 +113,11 @@ pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLin
             }
         }
 
-        if (rel != null and link != null and link_type != null and
-            std.ascii.eqlIgnoreCase(rel.?, "alternate") and
-            !isDuplicate(feed_arr.items, link.?))
-        {
+        if (rel == null and link == null and link_type == null) {
+            continue;
+        }
+
+        if (std.ascii.eqlIgnoreCase(rel.?, "alternate") and !isDuplicate(feed_arr.items, link.?)) {
             if (ContentType.fromString(link_type.?)) |valid_type| {
                 try feed_arr.append(.{
                     .title = if (title) |t| try allocator.dupe(u8, t) else null,
@@ -119,8 +126,25 @@ pub fn parseHtmlForFeedLinks(allocator: Allocator, input: []const u8) ![]FeedLin
                 });
             }
         }
+
+        // Find first favicon
+        if (is_favicon(rel.?) and result.favicon_path == null) {
+            result.favicon_path = link.?;
+        }
     }
-    return feed_arr.items;
+
+    result.links = feed_arr.items;
+    return result;
+}
+
+fn is_favicon(rel: []const u8) bool {
+    var iter = mem.splitScalar(u8, rel, ' ');
+    while (iter.next()) |val| {
+        if (std.ascii.eqlIgnoreCase(val, "icon")) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn isDuplicate(items: []FeedLink, link: []const u8) bool {
@@ -303,13 +327,3 @@ pub fn encode(allocator: Allocator, input: []const u8) ![]const u8 {
     buf_arr.appendSliceAssumeCapacity(str);
     return buf_arr.toOwnedSlice();
 }
-
-pub fn main() !void {
-    const input = 
-        \\"This is a 'quote"&<>\"'/
-    ;
-    const r = try encode(std.heap.c_allocator, input);
-    defer std.heap.c_allocator.free(r);
-    print("result: |{s}|\n", .{r});
-}
-

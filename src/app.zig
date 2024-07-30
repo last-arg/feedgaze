@@ -375,7 +375,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
             }
             if (feed_options.content_type == .html) {
-                const links = try html.parseHtmlForFeedLinks(arena.allocator(), feed_options.body);
+                const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
+                const links = html_parsed.links;
                 if (links.len == 0) {
                     std.log.info("Found no feed links", .{});
                     return error.NoFeedLinksInHtml;
