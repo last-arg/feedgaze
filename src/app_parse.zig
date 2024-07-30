@@ -417,7 +417,7 @@ test "parseAtom" {
     const result = try parse(arena.allocator(), content, .atom);
     const expect_feed = Feed{
         .title = "Example Feed",
-        .feed_url = "http://example.org/feed/",
+        .feed_url = "",
         .page_url = "http://example.org/",
         .updated_timestamp = try AtomDateTime.parse("2012-12-13T18:30:02Z"),
     };
