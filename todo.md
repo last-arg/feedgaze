@@ -20,23 +20,18 @@
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
 - favicon urls
-  - atom: <icon>
-  - atom: <logo> seems wrong because it requires width to be 2x of height
-  - to check if file exists use HEAD request
-    - check https://curl.se/libcurl/c/CURLOPT_NOBODY.html
-  - html: https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs
-    <link rel="icon" href="/favicon.ico" sizes="32x32">
-    <link rel="icon" href="/icon.svg" type="image/svg+xml">
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png"><!-- 180×180 -->
-    <link rel="manifest" href="/manifest.webmanifest">
-  - sequence
-    - html page: find it there
-      - <link rel="icon" href="/favicon.ico" />
-    - feed page: see if there is element that might contain it
-      - atom: <icon>
-      - rss: <image>
-    - try '/favicon.ico'
-      - other popular filename + file extension?
+  + html page: find it there
+    - html: https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs
+      <link rel="icon" href="/favicon.ico" sizes="32x32">
+      <link rel="icon" href="/icon.svg" type="image/svg+xml">
+      <link rel="apple-touch-icon" href="/apple-touch-icon.png"><!-- 180×180 -->
+      <link rel="manifest" href="/manifest.webmanifest">
+  + feed page: see if there is element that might contain it
+    - atom: <icon>
+    - rss: <image>
+  - try requesting '/favicon.ico' or some other (popular) paths
+    - to check if file exists use HEAD request
+      - check https://curl.se/libcurl/c/CURLOPT_NOBODY.html
 
 [ ] cli: feed update counter
 - Logo ideas
