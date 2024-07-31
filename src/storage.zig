@@ -149,11 +149,12 @@ pub const Storage = struct {
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
         const query =
-            \\INSERT INTO feed (title, feed_url, page_url, updated_timestamp)
+            \\INSERT INTO feed (title, feed_url, page_url, icon_url, updated_timestamp)
             \\VALUES (
             \\  @title,
             \\  @feed_url,
             \\  @page_url,
+            \\  @icon_url,
             \\  @updated_timestamp
             \\) ON CONFLICT(feed_url) DO NOTHING
             \\RETURNING feed_id;
@@ -162,6 +163,7 @@ pub const Storage = struct {
             .title = feed.title orelse "",
             .feed_url = feed.feed_url,
             .page_url = feed.page_url,
+            .icon_url = feed.icon_url,
             .updated_timestamp = feed.updated_timestamp,
         });
         return feed_id orelse Error.FeedExists;
