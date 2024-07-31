@@ -58,8 +58,8 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
-    updated_timestamp: ?i64 = null,
     icon_url: ?[]const u8 = null,
+    updated_timestamp: ?i64 = null,
 
     pub const Error = error{
         InvalidUri,
@@ -74,7 +74,9 @@ pub const Feed = struct {
         }
 
         if (self.icon_url) |icon_url| {
-            if (icon_url[0] == '/' or icon_url[0] == '.') {
+            if (icon_url.len >= 2 and icon_url[0] == '/' or icon_url[1] == '/') {
+                self.*.icon_url = try std.fmt.allocPrint(alloc, "https:{s}", .{icon_url});
+            } else if (icon_url.len >= 1 and icon_url[0] == '/' or icon_url[0] == '.') {
                 const page_uri = try Uri.parse(self.page_url orelse self.feed_url);
                 self.*.icon_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{page_uri, icon_url});
             }
