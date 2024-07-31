@@ -378,8 +378,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
                 if (links.len == 0) {
-                    std.log.info("Found no feed links", .{});
-                    return error.NoFeedLinksInHtml;
+                    std.log.info("Found no feed links in HTML", .{});
+                    return 0;
                 }
 
                 const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
