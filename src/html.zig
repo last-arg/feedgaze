@@ -12,7 +12,7 @@ pub const FeedLink = struct {
 };
 
 pub const HtmlParsed = struct {
-    favicon_path: ?[]const u8 = null,
+    icon_url: ?[]const u8 = null,
     links: []FeedLink = &.{},
 };
 
@@ -113,23 +113,23 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
             }
         }
 
-        if (rel == null and link == null and link_type == null) {
-            continue;
-        }
+        const rel_value = rel orelse continue;
+        const link_value = link orelse continue;
 
-        if (std.ascii.eqlIgnoreCase(rel.?, "alternate") and !isDuplicate(feed_arr.items, link.?)) {
+        if (link_type != null and
+            std.ascii.eqlIgnoreCase(rel_value, "alternate") and !isDuplicate(feed_arr.items, link_value)) {
             if (ContentType.fromString(link_type.?)) |valid_type| {
                 try feed_arr.append(.{
                     .title = if (title) |t| try allocator.dupe(u8, t) else null,
-                    .link = try allocator.dupe(u8, link.?),
+                    .link = try allocator.dupe(u8, link_value),
                     .type = valid_type,
                 });
             }
         }
 
         // Find first favicon
-        if (is_favicon(rel.?) and result.favicon_path == null) {
-            result.favicon_path = link.?;
+        if (is_favicon(rel_value) and result.icon_url == null) {
+            result.icon_url = link_value;
         }
     }
 

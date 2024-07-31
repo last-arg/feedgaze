@@ -96,9 +96,14 @@ pub const Storage = struct {
 
     pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: *FeedOptions) !usize {
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
-        if (parsed.feed.title == null) {
-            parsed.feed.title = feed_opts.title orelse "";
+        if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
+            parsed.feed.title = new_title;
+        };
+        // Faviour favicon from html over rss/atom contents
+        if (feed_opts.icon_url) |icon_url| {
+            parsed.feed.icon_url = icon_url;
         }
+
         parsed.feed.feed_url = feed_opts.feed_url;
         parsed.feed_updated_timestamp(feed_opts.feed_updates.last_modified_utc);
         try parsed.feed.prepareAndValidate(arena.allocator());

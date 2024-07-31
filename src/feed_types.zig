@@ -72,6 +72,13 @@ pub const Feed = struct {
                 self.*.page_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, page_url});
             }
         }
+
+        if (self.icon_url) |icon_url| {
+            if (icon_url[0] == '/' or icon_url[0] == '.') {
+                const page_uri = try Uri.parse(self.page_url orelse self.feed_url);
+                self.*.icon_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{page_uri, icon_url});
+            }
+        }
     }
 };
 
@@ -503,6 +510,7 @@ pub const FeedOptions = struct {
     feed_updates: FeedUpdate = .{},
     feed_url: []const u8 = "",
     title: ?[]const u8 = null,
+    icon_url: ?[]const u8 = null,
 
     pub fn fromResponse(resp: curl.Easy.Response) @This() {
         const header_value = resp.getHeader("content-type") catch null;

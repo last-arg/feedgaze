@@ -418,6 +418,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
                 feed_options.feed_url = try req.get_url(arena.allocator());
                 feed_options.title = link.title;
+                feed_options.icon_url = html_parsed.icon_url;
                 return try self.storage.addFeed(&arena, &feed_options);
             } else {
                 feed_options.feed_url = try req.get_url(arena.allocator());
