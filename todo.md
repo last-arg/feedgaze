@@ -34,7 +34,7 @@
       - <link rel="icon" href="/favicon.ico" />
     - feed page: see if there is element that might contain it
       - atom: <icon>
-      - rss: ???
+      - rss: <image>
     - try '/favicon.ico'
       - other popular filename + file extension?
 

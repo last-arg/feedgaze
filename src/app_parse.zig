@@ -231,6 +231,7 @@ const AtomParseTag = enum {
     updated,
     published,
     id,
+    icon,
 
     const Self = @This();
 
@@ -284,6 +285,11 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .id => {},
                         .updated => feed.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null,
                         .published => {},
+                        .icon => {
+                            if (feed.icon_url == null) {
+                                feed.icon_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace));
+                            }
+                        }
                     },
                     .entry => switch (tag) {
                         .title => try tmp_str.content_to_str(elem_content),
@@ -301,7 +307,8 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             if (AtomDateTime.parse(elem_content.text) catch null) |ts| {
                                 current_entry.updated_timestamp = ts;
                             }
-                        }
+                        },
+                        .icon => {}
                     },
                 }
             },
@@ -320,7 +327,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
                         },
-                        .id, .updated, .link, .published => {},
+                        .id, .updated, .link, .published, .icon => {},
                     },
                     .entry => {
                         switch (tag) {
@@ -328,7 +335,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 current_entry.title = try allocator.dupe(u8, tmp_str.slice());
                                 tmp_str.reset();
                             },
-                            .id, .updated, .link, .published => {},
+                            .id, .updated, .link, .published, .icon => {},
                         }
                     },
                 }
@@ -349,7 +356,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             link_href = null;
                             link_rel = "alternate";
                         },
-                        .title, .id, .updated, .published => {},
+                        .title, .id, .updated, .published, .icon => {},
                     },
                     .entry => {
                         switch (tag) {
@@ -362,7 +369,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 link_href = null;
                                 link_rel = "alternate";
                             },
-                            .title, .id, .updated, .published => {},
+                            .title, .id, .updated, .published, .icon => {},
                         }
                     },
                 }
@@ -400,7 +407,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                             .rel => link_rel = try allocator.dupe(u8, attr_value),
                         }
                     },
-                    .title, .id, .updated, .published => {},
+                    .title, .id, .updated, .published, .icon => {},
                 }
 
             },
@@ -451,6 +458,7 @@ test "parseAtom" {
 const RssParseState = enum {
     channel,
     item,
+    image,
 
     const Self = @This();
 
@@ -466,6 +474,8 @@ const RssParseTag = enum {
     pubDate,
     @"dc:date",
     guid,
+    image,
+    url,
 
     const Self = @This();
 
@@ -513,7 +523,15 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .@"dc:date" => {
                             feed.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null;
                         },
-                        .guid, .description => {},
+                        .guid, .description, .url, .image => {},
+                    },
+                    .image => switch (tag){
+                        .url => {
+                            if (feed.icon_url == null) {
+                                feed.icon_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace));
+                            }
+                        },
+                        .title, .description, .link, .guid, .pubDate, .@"dc:date", .image => {}
                     },
                     .item => switch (tag) {
                         .title => try tmp_str.content_to_str(elem_content),
@@ -530,6 +548,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                         .@"dc:date" => {
                             current_item.updated_timestamp = AtomDateTime.parse(elem_content.text) catch null;
                         },
+                        .url, .image => {}
                     },
                 }
             },
@@ -538,6 +557,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                 if (mem.eql(u8, "item", tag_str)) {
                     add_or_replace_item(&entries, current_item);
                     current_item = .{ .title = "" };
+                    state = .channel;
+                    continue;
+                } else if (mem.eql(u8, "image", tag_str)) {
                     state = .channel;
                     continue;
                 }
@@ -550,7 +572,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             feed.title = try allocator.dupe(u8, tmp_str.slice());
                             tmp_str.reset();
                         },
-                        .link, .guid, .pubDate, .@"dc:date", .description => {},
+                        .link, .guid, .pubDate, .@"dc:date", .description, .url, .image => {},
                     },
                     .item => {
                         switch (tag) {
@@ -580,9 +602,10 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 }
                                 tmp_str.reset();
                             }, 
-                            .pubDate, .@"dc:date" => {},
+                            .pubDate, .@"dc:date", .url, .image => {},
                         }
                     },
+                    .image => {}
                 }
                 current_tag = null;
             },
@@ -828,8 +851,10 @@ pub fn main() !void {
     const content = @embedFile("tmp_file");
     const feed = try parseRss(alloc, content);
     print("\n==========> START {d}\n", .{feed.items.len});
+    print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
     for (feed.items) |item| {
         print("title: |{s}|\n", .{item.title});
+        print("link: |{?s}|\n", .{item.link});
         print("link: |{?s}|\n", .{item.link});
         // print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});

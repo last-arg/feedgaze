@@ -59,6 +59,7 @@ pub const Feed = struct {
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
+    icon_url: ?[]const u8 = null,
 
     pub const Error = error{
         InvalidUri,
