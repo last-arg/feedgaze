@@ -822,7 +822,7 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<div class='filter-wrapper'>");
     try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
-    try w.writeAll("<form action='/'>");
+    try w.writeAll("<form action='/feeds'>");
     // NOTE: don't want tags-only button to be the 'default' button. This is
     // used when enter is pressed in input (text) field.
     try w.writeAll(
