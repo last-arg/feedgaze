@@ -403,9 +403,20 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     try w.print(
         \\<div class="item-extra">
         \\<a href="/feed/{d}" class="truncate-1" title="{s}">{s}</a>
+        \\<span class="feed-external-url">
+    , .{ feed.feed_id, title, title });
+
+    if (feed.icon_url) |icon_url| {
+        try w.print(
+            \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+        , .{icon_url});
+    }
+
+    try w.print(
         \\<a href="{}">{+}</a>
+        \\</span>
         \\</div>
-    , .{feed.feed_id, title, title, url, url });
+    , .{ url, url });
 }
 
 fn timestamp_render(w: anytype, timestamp: ?i64) !void {
