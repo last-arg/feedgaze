@@ -10,15 +10,15 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "1220ba277845cb3cece7a7a1f929b920c97e9085bb644471c5dc8c72571f1485c75f",
+            .hash = "1220940ae067451e7e6824e9b92baceac93b0bd6fa9ffd315179cc9a7ce5430a46ac",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "1220fe6ae56b668cc4a033282b5f227bfbb46a67ede6d84e9f9493fea9de339b5f37",
+            .hash = "1220904d2fdcd970dd0d216211d092eb3ef6da01117163cc9393ab845a1d66c029d9",
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.tar.gz",
-            .hash = "1220f7f4a9210f6ce3949446276566b0a22775e85dc6b81daf7aae55e0ec5588f4dc",
+            .hash = "122077215ce36e125a490e59ec1748ffd4f6ba00d4d14f7308978e5360711d72d77f",
         },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
@@ -26,13 +26,13 @@
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "1220f70ac854b59315a8512861e039648d677feb4f9677bd873d6b9b7074a5906485",
+            .hash = "1220204a66c6ae12c5688edfa74091532b4a5243cb13c9bf5eca72b1d34ae511cd16",
         },
         // NOTE: httz lib is modified to make it work with zig's new backend
         // Disabled @Vector code in src/url.zig isValid function
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "12206d8d2a7f2535a7d48872eaf43911ead71ba05456f97363ae25e4f057a985975f",
+            .hash = "122000d1c2e1149553489cb81a31156c07067b1e2dbae939e20f5c9d533dccee78cd",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
