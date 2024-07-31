@@ -169,7 +169,7 @@ pub const Storage = struct {
 
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -177,7 +177,7 @@ pub const Storage = struct {
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
         const query_start =
-            \\SELECT feed_id, title, feed_url, page_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
             \\FROM feed 
         ;
 
@@ -1039,7 +1039,7 @@ pub const Storage = struct {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
-            \\select feed_id, title, feed_url, page_url, updated_timestamp from feed where feed_id in (
+            \\select feed_id, title, feed_url, page_url, icon_url, updated_timestamp from feed where feed_id in (
         );
         // u64 numbers max length
         var buf: [20]u8 = undefined;
@@ -1064,6 +1064,7 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  feed_url TEXT NOT NULL UNIQUE,
     \\  page_url TEXT DEFAULT NULL,
+    \\  icon_url TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\);
     ,
