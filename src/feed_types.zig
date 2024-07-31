@@ -290,6 +290,7 @@ pub const FeedRender = struct {
     feed_url: []const u8,
     page_url: ?[]const u8,
     updated_timestamp: ?i64,
+    icon_url: ?[]const u8,
 };
 
 pub const FeedUpdate = struct {
