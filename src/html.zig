@@ -113,24 +113,23 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
             }
         }
 
-        const rel_value = rel orelse continue;
-        const link_value = link orelse continue;
-
-        if (link_type != null and
-            std.ascii.eqlIgnoreCase(rel_value, "alternate") and !isDuplicate(feed_arr.items, link_value)) {
-            if (ContentType.fromString(link_type.?)) |valid_type| {
-                try feed_arr.append(.{
-                    .title = if (title) |t| try allocator.dupe(u8, t) else null,
-                    .link = try allocator.dupe(u8, link_value),
-                    .type = valid_type,
-                });
+        if (rel) |rel_value| if (link) |link_value| {
+            if (link_type != null and
+                std.ascii.eqlIgnoreCase(rel_value, "alternate") and !isDuplicate(feed_arr.items, link_value)) {
+                if (ContentType.fromString(link_type.?)) |valid_type| {
+                    try feed_arr.append(.{
+                        .title = if (title) |t| try allocator.dupe(u8, t) else null,
+                        .link = try allocator.dupe(u8, link_value),
+                        .type = valid_type,
+                    });
+                }
             }
-        }
 
-        // Find first favicon
-        if (is_favicon(rel_value) and result.icon_url == null) {
-            result.icon_url = link_value;
-        }
+            // Find first favicon
+            if (is_favicon(rel_value) and result.icon_url == null) {
+                result.icon_url = link_value;
+            }
+        };
     }
 
     result.links = feed_arr.items;
