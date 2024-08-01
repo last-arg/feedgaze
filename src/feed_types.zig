@@ -74,15 +74,20 @@ pub const Feed = struct {
         }
 
         if (self.icon_url) |icon_url| {
-            if (icon_url.len >= 2 and icon_url[0] == '/' or icon_url[1] == '/') {
-                self.*.icon_url = try std.fmt.allocPrint(alloc, "https:{s}", .{icon_url});
-            } else if (icon_url.len >= 1 and icon_url[0] == '/' or icon_url[0] == '.') {
-                const page_uri = try Uri.parse(self.page_url orelse self.feed_url);
-                self.*.icon_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{page_uri, icon_url});
-            }
+            const uri = try Uri.parse(self.page_url orelse self.feed_url);
+            self.*.icon_url = try url_create(alloc, icon_url, uri);
         }
     }
 };
+
+pub fn url_create(alloc: std.mem.Allocator, input: []const u8, base_url: Uri) ![]const u8 {
+    if (input.len >= 2 and input[0] == '/' and input[1] == '/') {
+        return try std.fmt.allocPrint(alloc, "https:{s}", .{input});
+    } else if (input.len >= 1 and input[0] == '/' or input[0] == '.') {
+        return try std.fmt.allocPrint(alloc, "{;+}{s}", .{base_url, input});
+    }
+    return input;
+}
 
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3
 pub const AtomDateTime = struct {
