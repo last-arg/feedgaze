@@ -2,6 +2,7 @@ const std = @import("std");
 const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const curl = @import("curl");
+const mem = std.mem;
 
 const seconds_in_3_hours = std.time.s_per_hour * 3;
 const seconds_in_6_hours = std.time.s_per_hour * 6;
@@ -37,6 +38,11 @@ pub const TagOptions = struct {
 
 pub const AddOptions = struct {
     tags: ?[]const u8 = null
+};
+
+pub const BatchOptions = struct {
+    @"check-all-icons": bool = false,
+    @"check-missing-icons": bool = false,
 };
 
 pub const UpdateOptions = struct {
@@ -81,12 +87,13 @@ pub const Feed = struct {
 };
 
 pub fn url_create(alloc: std.mem.Allocator, input: []const u8, base_url: Uri) ![]const u8 {
-    if (input.len >= 2 and input[0] == '/' and input[1] == '/') {
+    if (mem.startsWith(u8, input, "http")) {
+        return input;
+    } else if (mem.startsWith(u8, input, "//")) {
         return try std.fmt.allocPrint(alloc, "https:{s}", .{input});
-    } else if (input.len >= 1 and input[0] == '/' or input[0] == '.') {
-        return try std.fmt.allocPrint(alloc, "{;+}{s}", .{base_url, input});
     }
-    return input;
+    const slash_or_empty = if (input.len > 0 and input[0] == '/') "" else "/";
+    return try std.fmt.allocPrint(alloc, "{;+}{s}{s}", .{base_url, slash_or_empty, input});
 }
 
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3

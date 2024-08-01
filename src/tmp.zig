@@ -12,8 +12,8 @@ pub fn main() !void {
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
-    // try storage_feeds_to_update();
-    try find_dir();
+    try storage_test();
+    // try find_dir();
 }
 
 pub fn find_dir() !void {
@@ -27,18 +27,18 @@ pub fn find_dir() !void {
     print("{s}\n", .{file_path});
 }
 
-pub fn storage_feeds_to_update() !void {
+pub fn storage_test() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
     var storage = try Storage.init("./tmp/feeds.db");
-    // try storage.update_item_intervals();
-    const next = try storage.next_update_countdown();
-    print("next: {?d}\n", .{next});
-    const r = try storage.getFeedsToUpdate(alloc, null, .{});
-    print("len: {d}\n", .{r.len});
-    for (r) |item| {
-        print("url: |{s}|\n", .{item.feed_url});
+    {
+        const feeds = try storage.feed_icons_missing(alloc);
+        print("len: {d}\n", .{feeds.len});
+    }
+    {
+        const feeds = try storage.feed_icons_all(alloc);
+        print("len: {d}\n", .{feeds.len});
     }
 }
 

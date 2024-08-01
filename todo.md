@@ -11,6 +11,7 @@
   - minify html
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
+  - fix nav style: separation bars (|) should not be part of the link (<a>)
 
 - Setting feed_update.item_interval when all items are null (or same if 
   feed items are validated)? Would have to make db request to get 

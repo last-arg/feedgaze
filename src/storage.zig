@@ -1062,6 +1062,36 @@ pub const Storage = struct {
         defer stmt.deinit();
         return try stmt.all(types.Feed, allocator, .{}, .{});
     }
+
+    pub const FeedIcon = struct {
+        feed_id: usize,
+        page_url: []const u8,
+    };
+
+    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
+        const query =
+        \\SELECT feed_id, page_url 
+        \\FROM feed
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+    }
+
+    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedIcon {
+        const query =
+        \\SELECT feed_id, page_url 
+        \\FROM feed WHERE icon_url IS NULL AND page_url IS NOT NULL
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+    }
+
+    pub fn feed_icon_update(self: *Self, feed_id: usize, icon_url: []const u8) !void {
+        const query = 
+        \\UPDATE feed SET
+        \\  icon_url = ?
+        \\WHERE feed_id = ?;
+        ;
+        try self.sql_db.exec(query, .{}, .{icon_url, feed_id});
+    }
 };
 
 // TODO: feed.title default value should be null
