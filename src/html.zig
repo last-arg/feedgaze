@@ -57,13 +57,18 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
     var result: HtmlParsed = .{};
     var feed_arr = FeedLinkArray.init(allocator);
     var content = input;
+    const a_tag = "a";
+    const link_tag = "link";
     while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
         content = content[start_index + 1 ..];
+        // skip closing tag
         if (content[0] == '/') {
+            const end_index = std.mem.indexOfScalar(u8, content, '>') orelse break;
+            content = content[end_index..];
             continue;
         }
-        const is_a = isValidTag(content, "a");
-        const is_link = isValidTag(content, "link");
+        const is_a = isValidTag(content, a_tag);
+        const is_link = isValidTag(content, link_tag);
         if (!is_a and !is_link) {
             if (std.mem.startsWith(u8, content, "!--")) {
                 // Is a comment. Skip comment.
@@ -74,33 +79,48 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
             }
             continue;
         }
-        var end_index = std.mem.indexOfScalar(u8, content, '>') orelse break;
-        if (is_link and content[end_index - 1] == '/') {
-            end_index -= 1;
-        }
-        const new_start: usize = if (is_a) 2 else 5;
-        var attrs_raw = content[new_start..end_index];
-        content = content[end_index..];
+
+        const index = if (is_a) a_tag.len else link_tag.len;
+        content = content[index..];
+        content = skip_whitespace(content);
+        content = content[tag_end_index(content)..];
 
         var rel: ?[]const u8 = null;
         var title: ?[]const u8 = null;
         var link: ?[]const u8 = null;
         var link_type: ?[]const u8 = null;
 
-        while (mem.indexOfScalar(u8, attrs_raw, '=')) |eql_index| {
-            const name = std.mem.trimLeft(u8, attrs_raw[0..eql_index], &std.ascii.whitespace);
-            attrs_raw = attrs_raw[eql_index + 1 ..];
-            var sep: u8 = ' ';
-            const first = attrs_raw[0];
-            if (first == '\'' or first == '"') {
-                sep = first;
-                attrs_raw = attrs_raw[1..];
+
+        while (mem.indexOfAny(u8, content, "= >")) |attr_index| {
+            const token = content[attr_index];
+            if (token == '>') {
+                content = content[attr_index..];
+                break;
+            } else if (token == ' ') {
+                // not looking for attribute 'flags' (no value)
+                content = skip_whitespace(content[attr_index + 1..]);
+                continue;
             }
-            const attr_end = mem.indexOfScalar(u8, attrs_raw, sep) orelse attrs_raw.len;
-            const value = attrs_raw[0..attr_end];
-            if (attr_end != attrs_raw.len) {
-                attrs_raw = attrs_raw[attr_end + 1 ..];
-            }
+            const name = content[0..attr_index];
+            content = content[attr_index+1..];
+            const value = blk: {
+                const first = content[0];
+                if (first == '"' or first == '\'') {
+                    content = content[1..];
+                    if (mem.indexOfScalar(u8, content, first)) |value_index| {
+                       const value = content[0..value_index];
+                       content = content[value_index + 1 ..];
+                       break :blk value;
+                    }
+                } else {
+                    if (mem.indexOfAny(u8, content, " >")) |value_index| {
+                       const value = content[0..value_index];
+                       content = content[value_index ..];
+                       break :blk value;
+                    }
+                }
+                @panic("Parsing html attribute failed. Failed to find end of attribute value.");
+            };
 
             if (std.ascii.eqlIgnoreCase(name, "type")) {
                 link_type = value;
@@ -134,6 +154,24 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
 
     result.links = feed_arr.items;
     return result;
+}
+
+fn tag_end_index(content: []const u8) usize {
+    if (content[0] == '>') {
+        return 1;
+    } else if (content[0] == '/' and content[1] == '>') {
+        return 2;
+    }
+    return 0;
+}
+
+fn skip_whitespace(content: []const u8) []const u8 {
+    for (content, 0..) |char, i| {
+        if (!std.ascii.isWhitespace(char)) {
+            return content[i..];
+        } 
+    }
+    return content;
 }
 
 fn is_favicon(rel: []const u8) bool {
