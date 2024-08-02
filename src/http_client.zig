@@ -61,7 +61,7 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try self.client.setUrl(url_with_null);
     try self.client.setHeaders(self.headers);
     try self.client.setMaxRedirects(5);
-    // Need to unset this if same request is using HEAD and then GET http method
+    // Need to unset this if same request is using HEAD (head()) and then GET http method
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
     const user_agent = "feedgaze/" ++ config.version;
@@ -90,6 +90,7 @@ pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
     try self.client.setUrl(url_with_null);
     try self.client.setMaxRedirects(3);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 1)));
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
     const user_agent = "feedgaze/" ++ config.version;
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
