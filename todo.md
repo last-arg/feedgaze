@@ -11,7 +11,9 @@
   - minify html
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
+  - '/?msg=delete' show msg when feed is deleted and is redirected to home page
 
+- parsing rss/atom: trim urls
 - Setting feed_update.item_interval when all items are null (or same if 
   feed items are validated)? Would have to make db request to get 
   max(item.updated_timestamp) value. Currently feed_update.item_interval
