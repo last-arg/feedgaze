@@ -814,7 +814,9 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
     try w.writeAll("<nav>");
     try nav_link_render("/", "Home", w, req.url.path);
+    try w.writeAll("<span>|</span>");
     try nav_link_render("/feeds", "Feeds", w, req.url.path);
+    try w.writeAll("<span>|</span>");
     try nav_link_render("/tags", "Tags", w, req.url.path);
     try w.writeAll("</nav>");
     try w.writeAll("</div>");

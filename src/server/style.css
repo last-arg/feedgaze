@@ -328,8 +328,7 @@ input[type=text] {
   margin-block-start: var(--space-2xs);
 }
 
-.sidebar nav a:not(:last-child):after {
-  content: "|";
+.sidebar nav span {
   color: var(--grey-6);
   margin-inline: var(--space-2xs);
 }
