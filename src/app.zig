@@ -301,21 +301,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // TODO: replace this with function that only parses favicon
                     const html_parsed = try html.parse_html(arena.allocator(), body.items);
                     const icon_url = html_parsed.icon_url orelse continue;
-                    // TODO: handle href="data:..." for icons
-                    // https://thinkdobecreate.com
-                    // https://chriscoyier.net
-                    // select * from feed where icon_url not like "http%"
-                    // for now skip
-                    if (mem.startsWith(u8, icon_url, "data:")) {
-                        std.log.warn("Inline icons currently not supported. Skipping url '{s}'", .{url_root});
-                        continue;
-                    }
-                    // std.log.debug("before create icon_url {s} | uri: {any}", .{icon_url, uri});
-                    const url = try feed_types.url_create(arena.allocator(), icon_url, uri);
+
+                    const url_or_data = blk: {
+                        if (mem.startsWith(u8, icon_url, "data:")) {
+                            break :blk icon_url;
+                        }
+
+                        break :blk try feed_types.url_create(arena.allocator(), icon_url, uri);
+                    };
 
                     const key = try arena.allocator().dupe(u8, url_root);
-                    const value = try arena.allocator().dupe(u8, url);
-                    // std.log.debug("key: {s} | value: {s}", .{key, value});
+                    const value = try arena.allocator().dupe(u8, url_or_data);
                     try map.put(key, value);
                     try self.storage.feed_icon_update(feed.feed_id, value);
                 } else {
