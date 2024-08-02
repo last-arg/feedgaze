@@ -1071,7 +1071,7 @@ pub const Storage = struct {
     pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
         const query =
         \\SELECT feed_id, page_url 
-        \\FROM feed
+        \\FROM feed where page_url IS NOT NULL
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
@@ -1080,6 +1080,8 @@ pub const Storage = struct {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_url IS NULL AND page_url IS NOT NULL
+        // TODO: @debug
+        // \\and page_url like "https://chriscoyier.net" limit 1
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }

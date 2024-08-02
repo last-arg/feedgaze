@@ -12,8 +12,70 @@ pub fn main() !void {
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
-    try storage_test();
+    // try storage_test();
     // try find_dir();
+    try http_head();
+}
+
+pub fn http_head() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var storage = try Storage.init("./tmp/feeds.db");
+    const icons = try storage.feed_icons_all(arena.allocator());
+
+    // '/favicon.ico'
+    // debug: total: 277
+    // debug: found: 59
+    // debug: duplicate: 135
+    // debug: skipped (no page_url): 1
+
+    // '/favicon.png'
+    // debug: total: 277
+    // debug: found: 12
+    // debug: skipped (no page_url): 1
+
+    // '/favicon.ico' + '/favicon.png'
+    // debug: total: 277
+    // debug: found: 63
+    // debug: duplicate: 135
+    // debug: skipped (no page_url): 1    
+    
+    var map = std.StringArrayHashMap([]const u8).init(arena.allocator());
+    defer map.deinit();
+    var found: usize = 0;
+    var duplicate: usize = 0;
+    for (icons[0..1]) |icon| {
+        const types = @import("feed_types.zig");
+        const url = icon.page_url;
+        std.log.debug("url: {s}", .{url});
+        const uri = std.Uri.parse(std.mem.trim(u8, url, &std.ascii.whitespace)) catch |err| {
+            std.log.debug("invalid url: '{s}'", .{url});
+            return err;
+        };
+        const url_root = try std.fmt.allocPrint(arena.allocator(), "{;+}", .{uri});
+        if (map.get(url_root)) |value| {
+            if (value.len > 0) {
+                duplicate += 1;
+            }
+            continue;
+        }
+
+        const icon_path = "/favicon.ico";
+        const u = try types.url_create(arena.allocator(), icon_path, uri);
+        const http_client = @import("http_client.zig");
+        var req = try http_client.init(arena.allocator());
+        defer req.deinit();
+        if (try http_client.check_icon_path(&req, u)) {
+            try map.put(url_root, icon_path);
+            found += 1;
+            break;
+        } else {
+            try map.put(url_root, "");
+        }
+    }
+    std.log.debug("total: {}", .{icons.len});
+    std.log.debug("found: {}", .{found});
+    std.log.debug("duplicate: {}", .{duplicate});
 }
 
 pub fn find_dir() !void {

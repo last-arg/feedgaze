@@ -75,6 +75,33 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     return resp;
 }
 
+pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
+    const url_buf_len = 1024;
+    var url_buf: [url_buf_len]u8 = undefined;
+    std.debug.assert(url.len < url_buf_len);
+
+    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
+    try self.client.setUrl(url_with_null);
+    try self.client.setMaxRedirects(3);
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 1)));
+    const user_agent = "feedgaze/" ++ config.version;
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
+    // try self.client.setVerbose(true);
+
+    const resp = try self.client.perform();
+    return resp;
+}
+
+pub fn check_icon_path(self: *@This(), url_full: []const u8) !bool {
+    const resp = self.head(url_full) catch |err| {
+        std.log.err("Failed to make request to '{s}'", .{url_full});
+        return err;
+    };
+    resp.deinit();
+    
+    return resp.status_code == 200;
+}
+
 pub fn get_url(self: *@This(), allocator: Allocator) ![]const u8 {
     var cstr: [*c]const u8 = undefined;
     try checkCode(

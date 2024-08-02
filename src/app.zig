@@ -267,23 +267,35 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     print("err: {}", .{err});
                     return err;
                 };
-                const url_root_str = try std.fmt.bufPrint(&buf, "{;+}", .{uri});
-                if (map.get(url_root_str)) |value| {
+                const icon_path = "/favicon.ico";
+                const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
+                const url_root = url_request[0..url_request.len - icon_path.len];
+                if (map.get(url_request)) |value| {
                     try self.storage.feed_icon_update(feed.feed_id, value);
                     continue;
                 }
 
                 var req = try http_client.init(arena.allocator());
                 defer req.deinit();
-                var resp = req.fetch(url_root_str, .{}) catch |err| {
-                    std.log.err("Failed to fetch '{s}'", .{feed.page_url});
+
+                // Check domain's '/favicon.ico' path
+                if (try req.check_icon_path(url_request)) {
+                    const key = try arena.allocator().dupe(u8, url_root);
+                    const value = try arena.allocator().dupe(u8, url_request);
+                    try map.put(key, value);
+                    try self.storage.feed_icon_update(feed.feed_id, value);
+                    continue;
+                }
+
+                var resp = req.fetch(url_root, .{}) catch |err| {
+                    std.log.err("Failed to fetch '{s}'", .{url_root});
                     return err;
                 };
                 defer resp.deinit();
 
                 if (resp.status_code == 200) {
                     const body = resp.body orelse {
-                        std.log.warn("There is no body for '{s}'", .{url_root_str});
+                        std.log.warn("There is no body for '{s}'", .{url_root});
                         continue;
                     };
                     // TODO: replace this with function that only parses favicon
@@ -295,19 +307,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // select * from feed where icon_url not like "http%"
                     // for now skip
                     if (mem.startsWith(u8, icon_url, "data:")) {
-                        std.log.warn("Inline icons currently not supported. Failed page '{s}'", .{feed.page_url});
+                        std.log.warn("Inline icons currently not supported. Skipping url '{s}'", .{url_root});
                         continue;
                     }
                     // std.log.debug("before create icon_url {s} | uri: {any}", .{icon_url, uri});
                     const url = try feed_types.url_create(arena.allocator(), icon_url, uri);
 
-                    const key = try arena.allocator().dupe(u8, url_root_str);
+                    const key = try arena.allocator().dupe(u8, url_root);
                     const value = try arena.allocator().dupe(u8, url);
                     // std.log.debug("key: {s} | value: {s}", .{key, value});
                     try map.put(key, value);
                     try self.storage.feed_icon_update(feed.feed_id, value);
                 } else {
-                    std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root_str, resp.status_code});
+                    std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp.status_code});
                     continue;
                 }
             }
