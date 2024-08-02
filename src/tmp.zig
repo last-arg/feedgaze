@@ -20,8 +20,11 @@ pub fn main() !void {
 pub fn http_head() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var storage = try Storage.init("./tmp/feeds.db");
-    const icons = try storage.feed_icons_all(arena.allocator());
+    // var storage = try Storage.init("./tmp/feeds.db");
+    // const icons = try storage.feed_icons_all(arena.allocator());
+    const icons = [_]Storage.FeedIcon{
+        .{.feed_id = 99999, .page_url = "https://statmodeling.stat.columbia.edu"}
+    };
 
     // '/favicon.ico'
     // debug: total: 277

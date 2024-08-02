@@ -31,12 +31,18 @@
   + feed page: see if there is element that might contain it
     - atom: <icon>
     - rss: <image>
-  - try requesting '/favicon.ico' or some other (popular) paths
+  + try requesting '/favicon.ico' or some other (popular) paths
     - to check if file exists use HEAD request
       - check https://curl.se/libcurl/c/CURLOPT_NOBODY.html
-    - https://knowler.dev/
-  - when batch --check-missing-icons should I request html page first for
-    request check path '/favicon.ico'?
+  + make sure HEAD request return content-type that starts with "image/"
+  + when batch --check-missing-icons should I request html page first for
+    request check path '/favicon.ico'? Doing path '/favicon.ico' first
+  - save failed icon
+    - don't include them in missing request or all
+    - make new flag for failed icons requests '--check-failed-icons'
+  - check why 'https://www.foundmyfitness.com/' doesn't have favicon
+    - DB has page_url as 'http://www.foundmyfitness.com/' might be a problem with
+      redirect?
 
 [ ] cli: feed update counter
 - Logo ideas

@@ -82,6 +82,10 @@ pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
 
+    // NOTE: currently head() is only used to check if favicon.ico exists.
+    // If in the future am going to use it for something else need to change this.
+    try self.headers.add("Accept", "image/*");
+    
     const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
     try self.client.setUrl(url_with_null);
     try self.client.setMaxRedirects(3);
@@ -100,6 +104,13 @@ pub fn check_icon_path(self: *@This(), url_full: []const u8) !bool {
         return err;
     };
     resp.deinit();
+
+    if (try resp.getHeader("content-length")) |cl| {
+        const val = mem.trim(u8, cl.get(), &std.ascii.whitespace);
+        if (val.len == 1 and val[0] == '0') {
+            return false;
+        }
+    }
     
     return resp.status_code == 200;
 }
