@@ -364,6 +364,19 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try body_head_render(req, db, w, .{});
 
     try w.writeAll("<main class='content-latest'>");
+
+    const query = try req.query();
+    if (query.get("msg")) |value| {
+        if (mem.eql(u8, "delete", value)) {
+            try w.writeAll(
+                \\<div class='message'>
+                \\<p>Feed deleted</p>
+                \\<a href='/'>Close message</a>
+                \\</div>
+            );
+        }
+    }
+
     try w.writeAll("<h2>Latest (added)</h2>");
     const items = try db.get_items_latest_added(req.arena);
     if (items.len > 0) {
@@ -555,16 +568,6 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     };
 
     try w.writeAll("<main>");
-    if (query.get("msg")) |value| {
-        if (mem.eql(u8, "delete", value)) {
-            try w.writeAll(
-                \\<div class='message'>
-                \\<p>Feed deleted</p>
-                \\<a href='/'>Close message</a>
-                \\</div>
-            );
-        }
-    }
 
     try w.writeAll(
         \\<header class="main-header">
