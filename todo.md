@@ -12,8 +12,15 @@
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - '/?msg=delete' show msg when feed is deleted and is redirected to home page
+  - use feed icons in more places
+    - /feed/:id page
+    - /feeds page
 
-- parsing rss/atom: trim urls
+- if feed item's have not date use http last-modified?
+- currently item_interval is calculated from parsed items. Those items might
+not have dates which means my item_interval will be wrong. In database might 
+have item's with default date value (when item was added). Think how to
+calculate item_interval instead?
 - Setting feed_update.item_interval when all items are null (or same if 
   feed items are validated)? Would have to make db request to get 
   max(item.updated_timestamp) value. Currently feed_update.item_interval
