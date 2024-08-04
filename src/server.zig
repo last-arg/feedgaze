@@ -644,6 +644,14 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
         try w.writeAll("<header class='feed-header'>");
+
+        try w.writeAll("<div class='icon-wrapper'>");
+        if (feed.icon_url) |icon_url| {
+            try w.print("<img class='feed-icon' src='{s}'>", .{icon_url});
+        }
+        try w.writeAll("</div>");
+
+        try w.writeAll("<div class='feed-and-tags'>");
         try w.writeAll("<div class='feed-header-top'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
@@ -657,6 +665,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
+        try w.writeAll("</div>");
         try w.writeAll("</header>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
@@ -753,40 +762,34 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !
 }
 
 fn feed_render(w: anytype, feed: types.FeedRender) !void {
+    const title = if (feed.title.len > 0) feed.title else title_placeholder;
+
+    if (feed.page_url) |page_url| {
+        const feed_link_fmt = 
+        \\<a class="feed-title truncate-1" href="{[page_url]s}">{[title]s}</a>
+        ;
+        try w.print(feed_link_fmt, .{ .page_url = page_url, .title = title });
+    } else {
+        const feed_title_fmt =
+        \\<p class="feed-title truncate-1">{[title]s}</p>
+        ;
+        try w.print(feed_title_fmt, .{ .title = title });
+    }
+
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
     var date_display_buf: [16]u8 = undefined;
     var date_buf: [date_len_max]u8 = undefined;
 
-    const feed_link_fmt = 
-    \\<a class="feed-link truncate-1" href="{[page_url]s}">{[title]s}</a>
-    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-    ;
-
-    const feed_title_fmt =
-    \\<p class="truncate-1">{[title]s}</p>
-    \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-    ;
-
     const age_class = age_class_from_time(feed.updated_timestamp);
-
-    const title = if (feed.title.len > 0) feed.title else title_placeholder;
     const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-    if (feed.page_url) |page_url| {
-        try w.print(feed_link_fmt, .{
-            .page_url = page_url,
-            .title = title,
-            .date = timestampToString(&date_buf, feed.updated_timestamp),
-            .date_display = date_display_val,
-            .age_class = age_class,
-        });
-    } else {
-        try w.print(feed_title_fmt, .{
-            .title = title,
-            .date = timestampToString(&date_buf, feed.updated_timestamp),
-            .date_display = date_display_val,
-            .age_class = age_class,
-        });
-    }
+
+    try w.print( 
+        \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
+    , .{
+        .age_class = age_class,
+        .date = timestampToString(&date_buf, feed.updated_timestamp),
+        .date_display = date_display_val,
+    });
 }
 
 const HeadOptions = struct {
