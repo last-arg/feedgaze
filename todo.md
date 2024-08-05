@@ -11,9 +11,9 @@
   - minify html
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
-  - '/?msg=delete' show msg when feed is deleted and is redirected to home page
+  + '/?msg=delete' show msg when feed is deleted and is redirected to home page
   - use feed icons in more places
-    - /feed/:id page
+    + /feed/:id page
     - /feeds page
 
 - if feed item's have not date use http last-modified?
@@ -21,10 +21,15 @@
 not have dates which means my item_interval will be wrong. In database might 
 have item's with default date value (when item was added). Think how to
 calculate item_interval instead?
-- Setting feed_update.item_interval when all items are null (or same if 
-  feed items are validated)? Would have to make db request to get 
-  max(item.updated_timestamp) value. Currently feed_update.item_interval
-  is calculated from parsed items.
+- if items have no dates:
+  - get last added item's link and id
+  - still need to get max updated date
+  - use max date to calculate item interval
+  - use feed.updated for items.updated?
+  - Setting feed_update.item_interval when all items are null (or same if 
+    feed items are validated)? Would have to make db request to get 
+    max(item.updated_timestamp) value. Currently feed_update.item_interval
+    is calculated from parsed items.
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
@@ -44,7 +49,7 @@ calculate item_interval instead?
   + make sure HEAD request return content-type that starts with "image/"
   + when batch --check-missing-icons should I request html page first for
     request check path '/favicon.ico'? Doing path '/favicon.ico' first
-  - save failed icon
+  - save failed icon request
     - don't include them in missing request or all
     - make new flag for failed icons requests '--check-failed-icons'
   + check why 'https://www.foundmyfitness.com/' doesn't have favicon

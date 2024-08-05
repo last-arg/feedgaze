@@ -39,19 +39,6 @@ pub const FeedAndItems = struct {
                 }
             }
 
-            // Set item dates to now if missing
-            // Set null values to current time until non-null value
-            if (item_first.updated_timestamp == null) {
-                const now = @divFloor(std.time.milliTimestamp(), 1000);
-                for (self.items) |*item| {
-                    if (item.updated_timestamp == null) {
-                        item.*.updated_timestamp = now;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
             const feed_uri = try std.Uri.parse(self.feed.feed_url);
             for (self.items) |*item| {
                 if (item.link) |*link| if (link.len > 0 and link.*[0] == '/') {

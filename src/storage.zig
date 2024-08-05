@@ -136,7 +136,7 @@ pub const Storage = struct {
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
         try self.updateFeed(parsed.feed);
-        try self.updateAndRemoveFeedItems(parsed.items);
+        try self.updateAndRemoveFeedItems(arena.allocator(), parsed.items, parsed.feed.updated_timestamp);
 
         // Update feed_update
         feed_update.set_item_interval(parsed.items);
@@ -482,11 +482,11 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{.feed_id = feed_id});
     }
 
-    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
+    pub fn updateAndRemoveFeedItems(self: *Self, allocator: std.mem.Allocator, items: []FeedItem, fallback_timestamp: ?i64) !void {
         if (items.len == 0) {
             return;
         }
-        try self.upsertFeedItems(items);
+        try self.upsertFeedItems(allocator, items, fallback_timestamp);
         try self.cleanFeedItems(items[0].feed_id, items.len);
     }
 
@@ -497,7 +497,7 @@ pub const Storage = struct {
     // ...
     // 3 | Title 3 | 4
     // 4 | Title 4 | 3
-    pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
+    pub fn upsertFeedItems(self: *Self, allocator: std.mem.Allocator, inserts: []FeedItem, fallback_timestamp: ?i64) !void {
         if (inserts.len == 0) {
             return;
         }
@@ -507,14 +507,50 @@ pub const Storage = struct {
         }
 
         var len = inserts.len;
-        const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
-        if (try one(&self.sql_db, i64, query_item_timestamp, .{feed_id})) |timestamp_max| {
-            for (inserts, 0..) |item, i| {
-                const item_timestamp = item.updated_timestamp orelse continue;
-                if (item_timestamp <= timestamp_max) {
-                    len = i;
-                    break;
+        if (inserts[0].updated_timestamp != null) {
+            const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
+            if (try one(&self.sql_db, i64, query_item_timestamp, .{feed_id})) |timestamp_max| {
+                for (inserts, 0..) |item, i| {
+                    const item_timestamp = item.updated_timestamp orelse continue;
+                    if (item_timestamp <= timestamp_max) {
+                        len = i;
+                        break;
+                    }
                 }
+            }
+        } else {
+            const query = 
+            \\select id, link from item where feed_id = ? order by position limit 1
+            ;
+            const result_opt = try oneAlloc(&self.sql_db, allocator, struct{id: ?[]const u8, link: ?[]const u8}, query, .{feed_id});
+            if (result_opt) |result| {
+                if (result.id) |id| {
+                    defer allocator.free(id);
+                    for (inserts, 0..) |item, i| {
+                        const item_id = item.id orelse continue;
+                        if (mem.eql(u8, item_id, id)) {
+                            len = i;
+                            break;
+                        }
+                    }
+                }
+                if (result.link) |link| {
+                    defer allocator.free(link);
+                    if (result.id == null) {
+                        for (inserts, 0..) |item, i| {
+                            const item_link = item.link orelse continue;
+                            if (mem.eql(u8, item_link, link)) {
+                                len = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            const ts = fallback_timestamp orelse @divFloor(std.time.milliTimestamp(), 1000);
+            for (inserts[0..len]) |*item| {
+                item.*.updated_timestamp = ts;
             }
         }
 
