@@ -219,11 +219,10 @@ time,
   font-size: var(--step--1);
   color: var(--grey-1);
   background: var(--grey-16);
-  line-height: 1;
-  --_box-padding: 3px;
-  padding: 2px var(--_box-padding) 1px;
+  padding-inline: 3px;
   /* If there is not date */
-  min-height: calc(var(--step--1) + 2px + 1px);
+  /* TODO: still needs this? */
+  /* min-height: calc(var(--step--1) + 2px + 1px); */
 }
 
 button {
@@ -438,11 +437,10 @@ input[type=text] {
 }
 
 .icon-wrapper {
-  /* Calculate same width as itmes' <time> */
+  /* Calculate same width as items' <time> */
   font-family: monospace;
   font-size: var(--step--1);
-  min-width: calc(3ch + (2 * 3px));
-
+  width: calc(3ch + (2 * 3px));
   margin-top: 3px;
   display: flex;
   justify-content: flex-end;
@@ -558,9 +556,11 @@ input[type=text] {
 
 .feed-item time,
 .feed-item .no-date {
+  margin-block-start: 2px;
+  box-sizing: content-box;
+  align-self: flex-start;
   text-align: end;
-  min-width: calc(3ch + (2 * var(--_box-padding)));
-  width: min-content;
+  width: 3ch;
 }
 
 .age-newest {
