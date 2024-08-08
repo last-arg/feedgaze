@@ -11,50 +11,15 @@
   - minify html
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
-  + '/?msg=delete' show msg when feed is deleted and is redirected to home page
-  - use feed icons in more places
-    + /feed/:id page
-    - /feeds page
+  - Do I want list item link area to extend beyond text?
+  - feed page: add <input> for icon_url
 
-- if feed item's have not date use http last-modified?
-- currently item_interval is calculated from parsed items. Those items might
-not have dates which means my item_interval will be wrong. In database might 
-have item's with default date value (when item was added). Think how to
-calculate item_interval instead?
-- if items have no dates:
-  - get last added item's link and id
-  - still need to get max updated date
-  - use max date to calculate item interval
-  - use feed.updated for items.updated?
-  - Setting feed_update.item_interval when all items are null (or same if 
-    feed items are validated)? Would have to make db request to get 
-    max(item.updated_timestamp) value. Currently feed_update.item_interval
-    is calculated from parsed items.
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
-- favicon urls
-  + html page: find it there
-    + html: https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs
-      <link rel="icon" href="/favicon.ico" sizes="32x32">
-      <link rel="icon" href="/icon.svg" type="image/svg+xml">
-      <link rel="apple-touch-icon" href="/apple-touch-icon.png"><!-- 180×180 -->
-      <link rel="manifest" href="/manifest.webmanifest">
-  + feed page: see if there is element that might contain it
-    + atom: <icon>
-    + rss: <image>
-  + try requesting '/favicon.ico' or some other (popular) paths
-    + to check if file exists use HEAD request
-      + check https://curl.se/libcurl/c/CURLOPT_NOBODY.html
-  + make sure HEAD request return content-type that starts with "image/"
-  + when batch --check-missing-icons should I request html page first for
-    request check path '/favicon.ico'? Doing path '/favicon.ico' first
-  - save failed icon request
-    - don't include them in missing request or all
-    - make new flag for failed icons requests '--check-failed-icons'
-  + check why 'https://www.foundmyfitness.com/' doesn't have favicon
-    + DB has page_url as 'http://www.foundmyfitness.com/' might be a problem with
-      redirect?
+- save failed favicon requests
+  - don't include them in missing request or all
+  - make new flag for failed icons requests '--check-failed-icons'
 
 [ ] cli: feed update counter
 - Logo ideas
@@ -184,4 +149,24 @@ from temp_table where feed_update.feed_id = temp_table.feed_id;
   [ ] also feed date
   - frontenddogma.com
   - can use http header last-modified value
+
++ favicon urls
+  + html page: find it there
+    + html: https://evilmartians.com/chronicles/how-to-favicon-in-2021-six-files-that-fit-most-needs
+      <link rel="icon" href="/favicon.ico" sizes="32x32">
+      <link rel="icon" href="/icon.svg" type="image/svg+xml">
+      <link rel="apple-touch-icon" href="/apple-touch-icon.png"><!-- 180×180 -->
+      <link rel="manifest" href="/manifest.webmanifest">
+  + feed page: see if there is element that might contain it
+    + atom: <icon>
+    + rss: <image>
+  + try requesting '/favicon.ico' or some other (popular) paths
+    + to check if file exists use HEAD request
+      + check https://curl.se/libcurl/c/CURLOPT_NOBODY.html
+  + make sure HEAD request return content-type that starts with "image/"
+  + when batch --check-missing-icons should I request html page first for
+    request check path '/favicon.ico'? Doing path '/favicon.ico' first
+  + check why 'https://www.foundmyfitness.com/' doesn't have favicon
+    + DB has page_url as 'http://www.foundmyfitness.com/' might be a problem with
+      redirect?
 
