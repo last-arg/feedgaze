@@ -136,7 +136,7 @@ pub const Storage = struct {
         parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
-        try self.updateFeed(parsed.feed);
+        try self.update_feed_timestamp(parsed.feed);
         try self.updateFeedUpdate(feed_id, feed_update);
         try self.rate_limit_remove(feed_id);
 
@@ -324,6 +324,14 @@ pub const Storage = struct {
             .updated_timestamp = feed.updated_timestamp,
         };
         try self.sql_db.exec(query, .{}, values);
+    }
+
+    pub fn update_feed_timestamp(self: *Self, feed: Feed) !void {
+        const query =
+            \\UPDATE feed SET updated_timestamp = @updated_timestamp 
+            \\WHERE feed_id = @feed_id;
+        ;
+        try self.sql_db.exec(query, .{}, .{ .updated_timestamp = feed.updated_timestamp, });
     }
 
     const FeedFields = struct {
