@@ -137,6 +137,8 @@ pub const Storage = struct {
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
         try self.updateFeed(parsed.feed);
+        try self.updateFeedUpdate(feed_id, feed_update);
+        try self.rate_limit_remove(feed_id);
 
         const items_all = parsed.items;
         const timestamp_max = try self.get_timestamp_max(feed_id);
@@ -157,10 +159,6 @@ pub const Storage = struct {
         }
 
         try self.updateAndRemoveFeedItems(items);
-
-        // Update feed_update
-        try self.updateFeedUpdate(feed_id, feed_update);
-        try self.rate_limit_remove(feed_id);
     }
 
     pub fn rate_limit_remove(self: *Self, feed_id: usize) !void {
