@@ -401,6 +401,20 @@ input[type=text] {
   text-decoration-style: solid;
 }
 
+.feed-info h2 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2xs);
+}
+
+.feed-info img {
+  height: 1em;
+}
+
+.feed-heading img {
+  height: 1em;
+}
+
 .btn {
   color: var(--text-1);
   background: var(--surface-0);

@@ -157,7 +157,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<main>");
     try w.writeAll("<div class='feed-info'>");
-    try w.print("<h2>{s}</h2>", .{if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url});
+    try w.writeAll("<h2>");
+    if (feed.icon_url) |icon_url| {
+        try w.print("<img src='{s}'>", .{icon_url});
+    }
+    try w.writeAll(if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url);
+    try w.writeAll("</h2>");
     try w.writeAll("<p>Page url: ");
     if (feed.page_url) |page_url| {
         try w.print(
