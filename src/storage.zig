@@ -111,7 +111,7 @@ pub const Storage = struct {
         parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator(), feed_opts.feed_updates.last_modified_utc);
         _ = try self.insertFeedItems(parsed.items);
-        feed_opts.feed_updates.set_item_interval(parsed.items);
+        feed_opts.feed_updates.set_item_interval(parsed.items, null, parsed.feed.updated_timestamp);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
         return feed_id;
     }
@@ -130,18 +130,37 @@ pub const Storage = struct {
         };
         var feed_update = FeedUpdate.fromCurlHeaders(resp);
 
+        const feed_id = feed_info.feed_id;
         var parsed = try parse.parse(arena.allocator(), content, content_type);
         parsed.feed.feed_url = feed_info.feed_url;
-        parsed.feed.feed_id = feed_info.feed_id;
+        parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
         try self.updateFeed(parsed.feed);
-        try self.updateAndRemoveFeedItems(arena.allocator(), parsed.items, parsed.feed.updated_timestamp);
+
+        const items_all = parsed.items;
+        const timestamp_max = try self.get_timestamp_max(feed_id);
+        const id_and_link = blk: {
+            if (items_all[0].updated_timestamp == null) {
+                const query = "select id, link from item where feed_id = ? order by position limit 1";
+                break :blk try oneAlloc(&self.sql_db, arena.allocator(), IdAndLink, query, .{feed_id});
+            }
+
+            break :blk null;
+        };
+        const timestamp_fallback = parsed.feed.updated_timestamp;
+        feed_update.set_item_interval(parsed.items, timestamp_max, timestamp_fallback);
+
+        const items = try items_prepared(items_all, timestamp_max, id_and_link, timestamp_fallback);
+        if (items.len == 0) {
+            return;
+        }
+
+        try self.updateAndRemoveFeedItems(items);
 
         // Update feed_update
-        feed_update.set_item_interval(parsed.items);
-        try self.updateFeedUpdate(feed_info.feed_id, feed_update);
-        try self.rate_limit_remove(feed_info.feed_id);
+        try self.updateFeedUpdate(feed_id, feed_update);
+        try self.rate_limit_remove(feed_id);
     }
 
     pub fn rate_limit_remove(self: *Self, feed_id: usize) !void {
@@ -482,50 +501,36 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{.feed_id = feed_id});
     }
 
-    pub fn updateAndRemoveFeedItems(self: *Self, allocator: std.mem.Allocator, items: []FeedItem, fallback_timestamp: ?i64) !void {
-        if (items.len == 0) {
-            return;
-        }
-        try self.upsertFeedItems(allocator, items, fallback_timestamp);
+    const IdAndLink = struct {
+        id: ?[]const u8,
+        link: ?[]const u8,
+    };
+    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
+        assert(items.len > 0);
+        try self.upsertFeedItems(items);
         try self.cleanFeedItems(items[0].feed_id, items.len);
     }
 
-    // Initial item table state
-    // 1 | Title 1 | 2
-    // 2 | Title 2 | 1
-    // Update item table
-    // ...
-    // 3 | Title 3 | 4
-    // 4 | Title 4 | 3
-    pub fn upsertFeedItems(self: *Self, allocator: std.mem.Allocator, inserts: []FeedItem, fallback_timestamp: ?i64) !void {
-        if (inserts.len == 0) {
-            return;
-        }
-        const feed_id = inserts[0].feed_id;
-        if (!try self.hasFeedWithId(feed_id)) {
-            return Error.FeedNotFound;
-        }
+    pub fn get_timestamp_max(self: *Self, feed_id: usize) !?i64 {
+        const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
+        return try one(&self.sql_db, i64, query_item_timestamp, .{feed_id});
+    }
 
+    fn items_prepared(inserts: []FeedItem, timestamp_max: ?i64, id_and_link_opt: ?IdAndLink, fallback_timestamp: ?i64) ![]FeedItem {
+        assert(inserts.len > 0);
         var len = inserts.len;
-        if (inserts[0].updated_timestamp != null) {
-            const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
-            if (try one(&self.sql_db, i64, query_item_timestamp, .{feed_id})) |timestamp_max| {
-                for (inserts, 0..) |item, i| {
-                    const item_timestamp = item.updated_timestamp orelse continue;
-                    if (item_timestamp <= timestamp_max) {
-                        len = i;
-                        break;
-                    }
+
+        if (inserts[0].updated_timestamp) |_| if (timestamp_max) |timestamp| {
+            for (inserts, 0..) |item, i| {
+                const item_timestamp = item.updated_timestamp orelse continue;
+                if (item_timestamp <= timestamp) {
+                    len = i;
+                    break;
                 }
             }
         } else {
-            const query = 
-            \\select id, link from item where feed_id = ? order by position limit 1
-            ;
-            const result_opt = try oneAlloc(&self.sql_db, allocator, struct{id: ?[]const u8, link: ?[]const u8}, query, .{feed_id});
-            if (result_opt) |result| {
-                if (result.id) |id| {
-                    defer allocator.free(id);
+            if (id_and_link_opt) |id_and_link| {
+                if (id_and_link.id) |id| {
                     for (inserts, 0..) |item, i| {
                         const item_id = item.id orelse continue;
                         if (mem.eql(u8, item_id, id)) {
@@ -533,16 +538,12 @@ pub const Storage = struct {
                             break;
                         }
                     }
-                }
-                if (result.link) |link| {
-                    defer allocator.free(link);
-                    if (result.id == null) {
-                        for (inserts, 0..) |item, i| {
-                            const item_link = item.link orelse continue;
-                            if (mem.eql(u8, item_link, link)) {
-                                len = i;
-                                break;
-                            }
+                } else if (id_and_link.link) |link| {
+                    for (inserts, 0..) |item, i| {
+                        const item_link = item.link orelse continue;
+                        if (mem.eql(u8, item_link, link)) {
+                            len = i;
+                            break;
                         }
                     }
                 }
@@ -552,11 +553,20 @@ pub const Storage = struct {
             for (inserts[0..len]) |*item| {
                 item.*.updated_timestamp = ts;
             }
-        }
+        };
 
-        if (len == 0) {
-            return;
-        }
+        return inserts[0..len];
+    }
+
+    // Initial item table state
+    // 1 | Title 1 | 2
+    // 2 | Title 2 | 1
+    // Update item table
+    // ...
+    // 3 | Title 3 | 4
+    // 4 | Title 4 | 3
+    pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
+        assert(inserts.len > 0);
 
         const query_with_id =
             \\INSERT INTO item (feed_id, title, link, id, updated_timestamp, position)
@@ -590,7 +600,7 @@ pub const Storage = struct {
             \\;
         ;
         
-        for (inserts[0..len], 0..) |item, i| {
+        for (inserts, 0..) |item, i| {
             if (item.id != null or item.link != null) {
                 try self.sql_db.exec(query_with_id, .{}, .{
                     .feed_id = item.feed_id,

@@ -424,7 +424,7 @@ pub const FeedUpdate = struct {
     }
 
     // Assumes items is ordered by updated_timestamp DESC
-    pub fn set_item_interval(self: *@This(), items: []FeedItem) void {
+    pub fn set_item_interval(self: *@This(), items: []FeedItem, timestamp_max: ?i64, timestamp_fallback: ?i64) void {
         var first: ?i64 = null;
         var second: ?i64 = null;
         for (items) |item| {
@@ -440,8 +440,16 @@ pub const FeedUpdate = struct {
             }
         }
 
-        if (first != null and second != null) {
-            const result = first.? - second.?;
+        if (first == null) {
+            first = timestamp_fallback;
+        }
+
+        if (second == null) {
+            second = timestamp_max;
+        }
+
+        if (first) |a| if (second) |b| {
+            const result = a - b;
             if (result >= 0) {
                 if (result < seconds_in_6_hours) {
                     self.item_interval = seconds_in_3_hours;
@@ -457,7 +465,7 @@ pub const FeedUpdate = struct {
                     self.item_interval = seconds_in_5_days;
                 }
             }
-        }
+        };
     }
 };
 
