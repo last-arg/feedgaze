@@ -12,7 +12,6 @@
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
-  - feed page: add <input> for icon_url
 
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever

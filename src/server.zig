@@ -82,6 +82,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const form_data = try req.formData();
     const title = form_data.get("title") orelse return error.MissingFormFieldPageTitle;
     const page_url = form_data.get("page_url") orelse return error.MissingFormFieldPageUrl;
+    const icon_url = form_data.get("icon_url") orelse return error.MissingFormFieldIconUrl;
 
     var tags = std.ArrayList([]const u8).init(req.arena);
     defer tags.deinit();
@@ -105,6 +106,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .feed_id = feed_id,
         .title = title,
         .page_url = page_url,
+        .icon_url = icon_url,
         .tags = tags.items,
     };
     const db = &global.storage;
@@ -227,10 +229,15 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\  <p><label for="page_url">Page url</label></p>
     \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
     \\</div>
+    \\<div>
+    \\  <p><label for="icon_url">Icon url</label></p>
+    \\  <input type="text" id="icon_url" name="icon_url" value="{[icon_url]s}">
+    \\</div>
     ;
     try w.print(inputs_fmt, .{
         .title = feed.title, 
         .page_url = feed.page_url orelse "",
+        .icon_url = feed.icon_url orelse "",
     });
 
     // TODO: feed updating

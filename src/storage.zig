@@ -338,6 +338,7 @@ pub const Storage = struct {
         feed_id: usize,
         title: []const u8,
         page_url: []const u8,
+        icon_url: []const u8,
         tags: [][]const u8,
     };
 
@@ -388,15 +389,24 @@ pub const Storage = struct {
             });
         }
 
+        const icon_url = blk: {
+            const value = mem.trim(u8, fields.icon_url, &std.ascii.whitespace);
+            if (value.len == 0) {
+                break :blk null;
+            }
+            break :blk value;
+        };
+
         // Update feed_title and page_url
         const query = 
         \\UPDATE feed 
-        \\SET title = ?, page_url = ?
+        \\SET title = ?, page_url = ?, icon_url = ?
         \\WHERE feed_id = ?
         ;
         try self.sql_db.exec(query, .{}, .{
             fields.title,
             fields.page_url,
+            icon_url,
             fields.feed_id,
         });
 
