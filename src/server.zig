@@ -926,7 +926,7 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
 
 fn tag_link_print(w: anytype, tag: []const u8) !void {
     const tag_link_fmt = 
-    \\<a href="/?tag={[tag]s}">{[tag]s}</a>
+    \\<a href="/feeds?tag={[tag]s}">{[tag]s}</a>
     ;
     
     try w.print(tag_link_fmt, .{ .tag = tag });
