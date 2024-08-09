@@ -331,7 +331,7 @@ pub const Storage = struct {
             \\UPDATE feed SET updated_timestamp = @updated_timestamp 
             \\WHERE feed_id = @feed_id;
         ;
-        try self.sql_db.exec(query, .{}, .{ .updated_timestamp = feed.updated_timestamp, });
+        try self.sql_db.exec(query, .{}, .{ .updated_timestamp = feed.updated_timestamp, .feed_id = feed.feed_id });
     }
 
     const FeedFields = struct {
@@ -526,7 +526,8 @@ pub const Storage = struct {
         assert(inserts.len > 0);
         var len = inserts.len;
 
-        if (inserts[0].updated_timestamp) |_| if (timestamp_max) |timestamp| {
+        if (inserts[0].updated_timestamp != null and timestamp_max != null) {
+            const timestamp = timestamp_max.?;
             for (inserts, 0..) |item, i| {
                 const item_timestamp = item.updated_timestamp orelse continue;
                 if (item_timestamp <= timestamp) {
@@ -555,11 +556,11 @@ pub const Storage = struct {
                 }
             }
 
-            const ts = fallback_timestamp orelse @divFloor(std.time.milliTimestamp(), 1000);
+            const ts = fallback_timestamp orelse std.time.timestamp();
             for (inserts[0..len]) |*item| {
                 item.*.updated_timestamp = ts;
             }
-        };
+        }
 
         return inserts[0..len];
     }
