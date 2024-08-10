@@ -137,7 +137,6 @@ pub const Storage = struct {
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
         try self.update_feed_timestamp(parsed.feed);
-        try self.updateFeedUpdate(feed_id, feed_update);
         try self.rate_limit_remove(feed_id);
 
         const items_all = parsed.items;
@@ -152,6 +151,7 @@ pub const Storage = struct {
         };
         const timestamp_fallback = parsed.feed.updated_timestamp;
         feed_update.set_item_interval(parsed.items, timestamp_max, timestamp_fallback);
+        try self.updateFeedUpdate(feed_id, feed_update);
 
         const items = try items_prepared(items_all, timestamp_max, id_and_link, timestamp_fallback);
         if (items.len == 0) {
