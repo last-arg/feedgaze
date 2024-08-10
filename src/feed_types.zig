@@ -72,7 +72,9 @@ pub const Feed = struct {
     };
 
     pub fn prepareAndValidate(self: *Self, alloc: std.mem.Allocator) !void {
+        self.feed_url = std.Uri.percentDecodeInPlace(@constCast(self.feed_url));
         if (self.page_url) |page_url| {
+            self.page_url = std.Uri.percentDecodeInPlace(@constCast(page_url));
             if (page_url[0] == '/' or page_url[0] == '.') {
                 const feed_uri = try Uri.parse(self.feed_url);
                 self.*.page_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, page_url});
@@ -80,6 +82,7 @@ pub const Feed = struct {
         }
 
         if (self.icon_url) |icon_url| {
+            self.icon_url = std.Uri.percentDecodeInPlace(@constCast(icon_url));
             const uri = try Uri.parse(self.page_url orelse self.feed_url);
             self.*.icon_url = try url_create(alloc, icon_url, uri);
         }
