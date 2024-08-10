@@ -577,7 +577,15 @@ pub const Storage = struct {
             }
         }
 
-        return inserts[0..len];
+        const items = inserts[0..len];
+
+        for (items) |*item| {
+            if (item.link) |link| {
+                item.*.link = std.Uri.percentDecodeInPlace(@constCast(link));
+            }
+        }
+
+        return items;
     }
 
     // Initial item table state
