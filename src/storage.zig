@@ -523,8 +523,13 @@ pub const Storage = struct {
     };
     pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
         assert(items.len > 0);
+        const feed_id = items[0].feed_id;
+        {
+            const query = "update item set position = position + ? where feed_id = ?;";
+            try self.sql_db.exec(query, .{}, .{ items.len, feed_id});
+        }
         try self.upsertFeedItems(items);
-        try self.cleanFeedItems(items[0].feed_id, items.len);
+        try self.cleanFeedItems(feed_id);
     }
 
     pub fn get_timestamp_max(self: *Self, feed_id: usize) !?i64 {
@@ -643,12 +648,11 @@ pub const Storage = struct {
         }
     }
 
-    pub fn cleanFeedItems(self: *Self, feed_id: usize, items_len: usize) !void {
+    pub fn cleanFeedItems(self: *Self, feed_id: usize) !void {
         const del_query =
-            \\DELETE FROM item WHERE item_id IN 
-            \\  (SELECT item_id FROM item WHERE feed_id = ? ORDER BY created_timestamp DESC, position LIMIT -1 OFFSET ?)
+            \\DELETE FROM item WHERE feed_id = ? and position >= ?
         ;
-        try self.sql_db.exec(del_query, .{}, .{ feed_id, items_len });
+        try self.sql_db.exec(del_query, .{}, .{ feed_id, self.options.max_item_count });
     }
 
     pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
