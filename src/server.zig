@@ -389,7 +389,52 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
     }
 
+    try w.writeAll("<div class='root-heading'>");
     try w.writeAll("<h2>Latest (added)</h2>");
+
+    const CountdownDisplay = struct {
+        countdown: i64,
+
+        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
+            // NOTE: Might change in the future
+            std.debug.assert(self.countdown > 0);
+            const ct = self.countdown;
+            if (ct <= 60) {
+                try writer.print("{d} ", .{ct});
+                try writer.writeAll("second");
+                if (ct > 1) {
+                    try writer.writeAll("s");
+                }
+            } else {
+                const minutes = @divTrunc(ct, 60);
+                try writer.print("{d} ", .{minutes});
+                try writer.writeAll("minute");
+                if (minutes > 1) {
+                    try writer.writeAll("s");
+                }
+            }
+        }
+    };
+    if (try db.next_update_countdown()) |countdown| {
+        if (countdown > 0) {
+            const countdown_ts = std.time.timestamp() + countdown;
+            var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
+            date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
+
+            try w.print("<span>Next update in {} ({d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4})</span>", .{
+                CountdownDisplay{.countdown = countdown},
+                date.time.hour,
+                date.time.minute,
+                date.date.day,
+                date.date.month,
+                date.date.year,
+            });
+        } else if (countdown <= 0) {
+            try w.writeAll("<span>Updating now</span>");
+        }
+    }
+    try w.writeAll("</div>");
+    
     const items = try db.get_items_latest_added(req.arena);
     if (items.len > 0) {
         var ids_al = try std.ArrayList(usize).initCapacity(req.arena, items.len);

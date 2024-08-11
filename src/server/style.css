@@ -540,8 +540,14 @@ input[type=text] {
   margin-block-start: var(--space-s);
 }
 
-.content-latest h2 {
+.root-heading {
   margin-inline-start: var(--space-m);
+}
+
+.root-heading span {
+  font-style: italic;
+  color: var(--grey-10);
+  font-size: var(--step--1);
 }
 
 .feed-item {
