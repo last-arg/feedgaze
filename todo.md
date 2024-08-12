@@ -44,7 +44,6 @@
   - length limit?
 
 [ ] Can disable updating for feeds?
-[ ] Decode/encode HTML characters
 [ ] Maybe I should add field 'items' to Feed struct?
   - I am using Feed in sqlite db request, which makes the request fail.
     Have separate type for db results?

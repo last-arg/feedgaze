@@ -240,11 +240,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .icon_url = feed.icon_url orelse "",
     });
 
-    // TODO: feed updating
-    // - update feed now?
-    //   - show time till next update?
-    // - allow changing update interval?
-
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
     try w.writeAll("<div>");
@@ -331,8 +326,7 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
         return @embedFile(path);
     }
 }
-// TODO: can I do compression during comptime
-// TODO: Make sure client can handle gzip compression
+
 fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
@@ -355,7 +349,6 @@ fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 }
 
-// TODO: add favicon
 fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
     resp.status = 404;
     // resp.content_type = .ICO;
@@ -459,7 +452,6 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
         try w.writeAll("</ul>");
     } else {
-        // TODO: display older items?
         try w.writeAll("<p>No feeds have been added in the previous 3 days</p>");
     }
     try w.writeAll("</main>");
@@ -744,8 +736,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
         }
 
-        // TODO?: could also just pass hide_index as html attribute and let
-        // js deal with hiding elements
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
         for (items, 0..) |item, i| {
             const hidden: []const u8 = blk: {

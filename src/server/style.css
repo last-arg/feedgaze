@@ -220,9 +220,6 @@ time,
   color: var(--grey-1);
   background: var(--grey-16);
   padding-inline: 3px;
-  /* If there is not date */
-  /* TODO: still needs this? */
-  /* min-height: calc(var(--step--1) + 2px + 1px); */
 }
 
 button {
