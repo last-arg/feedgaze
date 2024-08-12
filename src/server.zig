@@ -400,17 +400,19 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             std.debug.assert(self.countdown > 0);
             const ct = self.countdown;
             if (ct <= 60) {
-                try writer.print("{d} ", .{ct});
-                try writer.writeAll("second");
+                try writer.print("{d} second", .{ct});
                 if (ct > 1) {
                     try writer.writeAll("s");
                 }
             } else {
                 const minutes = @divTrunc(ct, 60);
-                try writer.print("{d} ", .{minutes});
-                try writer.writeAll("minute");
-                if (minutes > 1) {
-                    try writer.writeAll("s");
+                const hours = @divTrunc(ct, 3600);
+                if (hours > 0) {
+                    try writer.print("{d} hour", .{hours});
+                    if (hours > 1 ) { try writer.writeAll("s"); }
+                } else {
+                    try writer.print("{d} mintue", .{minutes});
+                    if (minutes > 1 ) { try writer.writeAll("s"); }
                 }
             }
         }
