@@ -635,14 +635,15 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
 // Sorting item.updated_timestamp
 // 1) if all values are null, no sorting
 // 2) if mix of nulls and values push nulls to the bottom
-// TODO: instead of pushing nulls to bottom keep null where the are if mix 
-// of null and values?
 
 fn sortItems(items: []FeedItem) void {
     var has_date = false;
 
     for (items) |item| {
-        has_date = item.updated_timestamp != null or has_date;
+        if (item.updated_timestamp != null) {
+            has_date = true;
+            break;
+        }
     }
 
     if (has_date) {
