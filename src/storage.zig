@@ -249,7 +249,6 @@ pub const Storage = struct {
         return (try one(&self.sql_db, bool, query, .{url})) orelse false;
     }
 
-    // TODO: also add title to search from
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
         const query =
             \\SELECT 
@@ -279,7 +278,7 @@ pub const Storage = struct {
             if (term.len > 0) {
                 const cond_start = if (!has_where) " WHERE " else " AND ";
                 storage_arr.appendSliceAssumeCapacity(cond_start);
-                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%');");
+                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%');");
                 var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
                 defer stmt.deinit();
                 return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
