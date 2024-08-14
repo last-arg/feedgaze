@@ -574,6 +574,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // Resource hasn't been modified
                     try self.storage.updateLastUpdate(f_update.feed_id);
                     continue;
+                } else if (resp.status_code == 503) {
+                    const retry_ts = std.time.timestamp() + std.time.s_per_hour;
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+                    continue;
                 } else if (resp.status_code == 429) {
                     std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
                     const now_utc_sec = std.time.timestamp();
