@@ -447,28 +447,36 @@ pub const FeedUpdate = struct {
             first = timestamp_fallback;
         }
 
-        if (second == null) {
-            second = timestamp_max;
-        }
-
-        if (first) |a| if (second) |b| {
-            const result = a - b;
-            if (result >= 0) {
-                if (result < seconds_in_6_hours) {
-                    self.item_interval = seconds_in_3_hours;
-                } else if (result < seconds_in_12_hours) {
-                    self.item_interval = seconds_in_6_hours;
-                } else if (result < seconds_in_1_day) {
-                    self.item_interval = seconds_in_12_hours;
-                } else if (result < seconds_in_2_days) {
-                    self.item_interval = seconds_in_1_day;
-                } else if (result < seconds_in_7_days) {
-                    self.item_interval = seconds_in_3_days;
-                } else if (result < seconds_in_30_days) {
-                    self.item_interval = seconds_in_5_days;
+        if (first) |a_val| {
+            var a = a_val;
+            if (second == null) {
+                if (timestamp_max) |ts| {
+                    second = ts;
+                } else {
+                    second = a;
+                    a = std.time.timestamp();
                 }
             }
-        };
+
+            if (second) |b| {
+                const result = a - b;
+                if (result >= 0) {
+                    if (result < seconds_in_6_hours) {
+                        self.item_interval = seconds_in_3_hours;
+                    } else if (result < seconds_in_12_hours) {
+                        self.item_interval = seconds_in_6_hours;
+                    } else if (result < seconds_in_1_day) {
+                        self.item_interval = seconds_in_12_hours;
+                    } else if (result < seconds_in_2_days) {
+                        self.item_interval = seconds_in_1_day;
+                    } else if (result < seconds_in_7_days) {
+                        self.item_interval = seconds_in_3_days;
+                    } else if (result < seconds_in_30_days) {
+                        self.item_interval = seconds_in_5_days;
+                    }
+                }
+            }
+        }
     }
 };
 
