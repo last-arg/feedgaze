@@ -1,11 +1,10 @@
 # Initial
 - website:
-  - allow changing update interval?
   - make feed items into 2 columns on wider screens
   - encoding output text.
     This should actually be done for all data that I don't input. Anything can 
     contain malicious scripts in title, description etc.
-  - encode urls?
+  - escape urls?
   - can trigger feed update?
   - change page title on different pages
   - minify html
@@ -13,6 +12,9 @@
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
 
+- handle http 503 (Service unavailable)
+- cli: try https://github.com/n0s4/flags
+- can change update interval?
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
@@ -57,10 +59,6 @@ appear in the file.
 
 # Future (Maybe)
 [ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
-[ ] Image (icon/logo)
-  [ ] download or save
-  [ ] save: database or file or both
-  [ ] feed has no image, try html page
 [ ] (Popular) Sites that don't support feeds (twitter, instagram, soundcloud).
   [ ] Let user defined 'feed' area?
 [ ] Mark feeds to use OS notification system on new link(s)
