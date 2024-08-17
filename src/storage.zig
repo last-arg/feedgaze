@@ -948,7 +948,7 @@ pub const Storage = struct {
     pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
         const query_fmt = 
         \\select * from feed where feed_id not in (
-        \\	select distinct(feed_id) from feed_tag
+        \\  select distinct(feed_id) from feed_tag
         \\) order by updated_timestamp DESC;
         ;
         return try selectAll(&self.sql_db, allocator, types.FeedRender, query_fmt, .{});
@@ -1044,12 +1044,12 @@ pub const Storage = struct {
         // Maybe can change query using sqlite fn nth_value(), first_value(), lead(), lag()?
         const query = comptimePrint(
             \\with temp_table as (
-            \\	select feed.feed_id, coalesce(max(item.updated_timestamp) - 
-            \\		(select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), {d}
-            \\	) item_interval
-            \\	from feed 
-            \\	left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
-            \\	group by item.feed_id
+            \\  select feed.feed_id, coalesce(max(item.updated_timestamp) - 
+            \\    (select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), {d}
+            \\  ) item_interval
+            \\  from feed 
+            \\  left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
+            \\  group by item.feed_id
             \\)    
             \\update feed_update set item_interval = (
             \\CASE
@@ -1083,10 +1083,11 @@ pub const Storage = struct {
     // Negative numbers means can be updated right now
     // Positive number is countdown till update
     pub fn next_update_countdown(self: *Self) !?i64 {
+        // TODO: need to favour rate_limit value
         const query = 
         \\select min(
-        \\	min((last_update + item_interval) - strftime('%s', 'now')), 
-        \\	ifnull((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
+        \\  min((last_update + item_interval) - strftime('%s', 'now')), 
+        \\  ifnull((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
         \\) from feed_update;
         ;
         const countdown_fallback = std.time.s_per_day;
