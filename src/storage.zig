@@ -1095,10 +1095,12 @@ pub const Storage = struct {
 
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
         const query = 
-        \\select min(
-        \\	min((last_update + item_interval) - strftime('%s', 'now')), 
-        \\	coalesce((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
-        \\) from feed_update where feed_id = ?;
+        \\select 
+        \\  coalesce(
+        \\    (select utc_sec from rate_limit where feed_id = feed_update.feed_id), 
+        \\    last_update + item_interval
+        \\  ) - strftime('%s', 'now')
+        \\from feed_update where feed_update.feed_id = 1;
         ;
         const countdown_fallback = std.time.s_per_day;
         return try one(&self.sql_db, i64, query, .{countdown_fallback, feed_id});
