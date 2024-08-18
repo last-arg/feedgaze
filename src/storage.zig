@@ -1083,10 +1083,9 @@ pub const Storage = struct {
     // Negative numbers means can be updated right now
     // Positive number is countdown till update
     pub fn next_update_countdown(self: *Self) !?i64 {
-        // TODO: need to favour rate_limit value
         const query = 
         \\select min(
-        \\  (select min(utc_sec) from rate_limit),
+        \\  (select ifnull(min(utc_sec), 9223372036854775807) from rate_limit),
         \\  (select min(last_update + item_interval) from feed_update where feed_id not in (select feed_id from rate_limit))
         \\) - strftime('%s', 'now')
         ;
