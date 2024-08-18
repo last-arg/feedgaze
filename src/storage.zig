@@ -1086,12 +1086,11 @@ pub const Storage = struct {
         // TODO: need to favour rate_limit value
         const query = 
         \\select min(
-        \\  min((last_update + item_interval) - strftime('%s', 'now')), 
-        \\  ifnull((select min(utc_sec) - strftime('%s', 'now') from rate_limit), ?)
-        \\) from feed_update;
+        \\  (select min(utc_sec) from rate_limit),
+        \\  (select min(last_update + item_interval) from feed_update where feed_id not in (select feed_id from rate_limit))
+        \\) - strftime('%s', 'now')
         ;
-        const countdown_fallback = std.time.s_per_day;
-        return try one(&self.sql_db, i64, query, .{countdown_fallback});
+        return try one(&self.sql_db, i64, query, .{});
     }
 
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
@@ -1101,10 +1100,9 @@ pub const Storage = struct {
         \\    (select utc_sec from rate_limit where feed_id = feed_update.feed_id), 
         \\    last_update + item_interval
         \\  ) - strftime('%s', 'now')
-        \\from feed_update where feed_update.feed_id = 1;
+        \\from feed_update where feed_update.feed_id = ?;
         ;
-        const countdown_fallback = std.time.s_per_day;
-        return try one(&self.sql_db, i64, query, .{countdown_fallback, feed_id});
+        return try one(&self.sql_db, i64, query, .{feed_id});
     }
 
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
