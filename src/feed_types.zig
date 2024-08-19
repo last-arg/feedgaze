@@ -448,6 +448,8 @@ pub const FeedUpdate = struct {
         }
 
         if (first) |a_val| {
+            const now = std.time.timestamp();
+
             var a = a_val;
             if (second == null) {
                 if (timestamp_max) |ts| {
@@ -458,22 +460,23 @@ pub const FeedUpdate = struct {
                 }
             }
 
-            if (second) |b| {
-                const result = a - b;
-                if (result >= 0) {
-                    if (result < seconds_in_6_hours) {
-                        self.item_interval = seconds_in_3_hours;
-                    } else if (result < seconds_in_12_hours) {
-                        self.item_interval = seconds_in_6_hours;
-                    } else if (result < seconds_in_1_day) {
-                        self.item_interval = seconds_in_12_hours;
-                    } else if (result < seconds_in_2_days) {
-                        self.item_interval = seconds_in_1_day;
-                    } else if (result < seconds_in_7_days) {
-                        self.item_interval = seconds_in_3_days;
-                    } else if (result < seconds_in_30_days) {
-                        self.item_interval = seconds_in_5_days;
-                    }
+            const diff_now = now - a_val;
+            const diff_item = a - second.?;
+
+            const result = if (diff_now > diff_item) diff_now else diff_item;
+            if (result >= 0) {
+                if (result < seconds_in_6_hours) {
+                    self.item_interval = seconds_in_3_hours;
+                } else if (result < seconds_in_12_hours) {
+                    self.item_interval = seconds_in_6_hours;
+                } else if (result < seconds_in_1_day) {
+                    self.item_interval = seconds_in_12_hours;
+                } else if (result < seconds_in_2_days) {
+                    self.item_interval = seconds_in_1_day;
+                } else if (result < seconds_in_7_days) {
+                    self.item_interval = seconds_in_3_days;
+                } else if (result < seconds_in_30_days) {
+                    self.item_interval = seconds_in_5_days;
                 }
             }
         }

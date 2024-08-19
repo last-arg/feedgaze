@@ -1,5 +1,10 @@
 # Initial
 - website:
+  - way to add new feed
+  - tags page:
+    - edit (rename) tags
+    - remove tags
+    - better styling
   - make feed items into 2 columns on wider screens
   - encoding output text.
     This should actually be done for all data that I don't input. Anything can 
