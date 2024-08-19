@@ -404,7 +404,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                     try writer.print("{d} hour", .{hours});
                     if (hours > 1 ) { try writer.writeAll("s"); }
                 } else {
-                    try writer.print("{d} mintue", .{minutes});
+                    try writer.print("{d} minute", .{minutes});
                     if (minutes > 1 ) { try writer.writeAll("s"); }
                 }
             }
