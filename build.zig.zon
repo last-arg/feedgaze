@@ -32,11 +32,11 @@
         // Disabled @Vector code in src/url.zig isValid function
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "122000d1c2e1149553489cb81a31156c07067b1e2dbae939e20f5c9d533dccee78cd",
+            .hash = "122041ec7419e17de7badb4891830fbeae3c41bf2c960fe987ddab3682dd27782605",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
-            .hash = "12209d2738a2e1dbd3781c2e5f01a2ea877dcfeea53efdfa1913247297d328e6b207",
+            .hash = "12205f5e7505c96573f6fc5144592ec38942fb0a326d692f9cddc0c7dd38f9028f29",
         },
     },
 }

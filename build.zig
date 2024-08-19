@@ -16,7 +16,13 @@ const anon_modules = .{
 };
 
 pub fn build(b: *Build) !void {
-    const target = b.standardTargetOptions(.{});
+    // const features = std.Target.Query.parse(.{
+    //     // .cpu_features = "native-sse-sse2+soft_float",
+    //     .cpu_features = "native-mmx-sse-sse2-sse3-sse4_1-sse4_2",
+    // }) catch unreachable;
+    const target = b.standardTargetOptions(.{
+        // .default_target = features
+    });
     const optimize = b.standardOptimizeOption(.{});
 
     const use_llvm = blk: {

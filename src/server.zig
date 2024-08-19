@@ -33,7 +33,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
             .max_form_count = 10,
         }
     };
-    var server = try httpz.ServerCtx(*Global, *Global).init(allocator, server_config, &global);
+    var server = try httpz.Server(*Global).init(allocator, server_config, &global);
     
     // overwrite the default notFound handler
     // server.notFound(notFound);
