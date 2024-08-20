@@ -17,7 +17,6 @@
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
 
-- handle http 503 (Service unavailable)
 - cli: try https://github.com/n0s4/flags
 - can change update interval?
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
@@ -26,29 +25,27 @@
 - save failed favicon requests
   - don't include them in missing request or all
   - make new flag for failed icons requests '--check-failed-icons'
-
-[ ] cli: feed update counter
-- Logo ideas
-  - keywords: feed, gaze, rss, atom, links
-  - Something with gaze and atoms?
-[ ] Feeds
-  - third party service: https://openrss.org/
-    - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
-      And mark them in DB somehow. Rest would get full path. NULL for feeds
-      that don't have favicon?
-  [ ] HTML page into feed
-    - Use CSS selector to find:
-      - titles
-      - links
-    - Use page title as feed title
-    - check https://github.com/chadwain/rem
-[ ] add transactions
-[ ] validate feed tags where needed
+- add transactions
+- validate feed tags where needed
   - Need to figure out rules for valid tags
   - Valid tag symbols?:
     - A-z, 0-9
     - no space
   - length limit?
+- third party service: https://openrss.org/
+  - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
+    And mark them in DB somehow. Rest would get full path. NULL for feeds
+    that don't have favicon?
+- Turn HTML page into feed
+  - Use CSS selector to find:
+    - titles
+    - links
+  - Use page title as feed title
+  - check https://github.com/chadwain/rem
+- cli: feed update counter
+- Logo ideas
+  - keywords: feed, gaze, rss, atom, links
+  - Something with gaze and atoms?
 
 [ ] Can disable updating for feeds?
 [ ] Maybe I should add field 'items' to Feed struct?
