@@ -48,6 +48,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/", latest_added_get);
     router.get("/feeds", feeds_get);
     router.get("/tags", tags_get);
+    router.get("/feed/add", feed_add_get);
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
     router.post("/feed/:id/delete", feed_delete);
@@ -57,6 +58,43 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
     // start the server in the current thread, blocking.
     try server.listen(); 
+}
+
+// TODO
+// fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+// }
+
+fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+
+    const w = resp.writer();
+
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req, db, w, .{});
+
+    try w.writeAll("<main class='box'>");
+
+    try w.writeAll("<h2>Add feed</h2>");
+
+    try w.writeAll(
+        \\<form action="POST" class="flow" style="--flow-space(--space-m)">
+        \\<div>
+        \\<p><label for="feed-url">Feed or page url</label></p>
+        \\<input id="feed-url" name="feed-url">
+        \\</div>
+        \\<button class="btn btn-primary">Add new feed</button>
+        \\</form>
+    );
+
+    try w.writeAll("</main>");
+    try w.writeAll(foot);
+    
+    
 }
 
 fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -867,12 +905,22 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
 
     try w.writeAll("<div>");
     try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
+
+    const menu_items = [_]struct{path: []const u8, name: []const u8}{
+        .{.path = "/", .name = "Home"},
+        .{.path = "/feeds", .name = "Feeds"},
+        .{.path = "/Tags", .name = "Tags"},
+        .{.path = "/feed/add", .name = "Add feed"},
+    };
+
     try w.writeAll("<nav>");
-    try nav_link_render("/", "Home", w, req.url.path);
-    try w.writeAll("<span>|</span>");
-    try nav_link_render("/feeds", "Feeds", w, req.url.path);
-    try w.writeAll("<span>|</span>");
-    try nav_link_render("/tags", "Tags", w, req.url.path);
+    const first_item = menu_items[0];
+    try nav_link_render(first_item.path, first_item.name, w, req.url.path);
+
+    for (menu_items[1..]) |item| {
+        try w.writeAll("<span>|</span>");
+        try nav_link_render(item.path, item.name, w, req.url.path);
+    }
     try w.writeAll("</nav>");
     try w.writeAll("</div>");
 

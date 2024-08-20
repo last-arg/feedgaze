@@ -235,6 +235,11 @@ input[type=text] {
   Block styles 
 */
 
+#feed-url {
+  max-width: 50ch;
+  width: 100%;
+}
+
 .main-header {
   justify-content: right;
   padding-block-start: var(--space-2xs);
@@ -659,6 +664,10 @@ Info about this implementation: https://piccalil.li/quick-tip/flow-utility/
 */
 .flow > * + * {
   margin-top: var(--flow-space, 1em);
+}
+
+.box {
+  margin-inline-start: var(--space-m);
 }
 
 
