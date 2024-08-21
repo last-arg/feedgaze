@@ -245,8 +245,8 @@ pub const Storage = struct {
     }
 
     pub fn hasFeedWithFeedUrl(self: *Self, url: []const u8) !bool {
-        const query = "SELECT 1 from feed where feed_url = ?";
-        return (try one(&self.sql_db, bool, query, .{url})) orelse false;
+        const query = "SELECT 1 from feed where feed_url = ? OR page_url = ?";
+        return (try one(&self.sql_db, bool, query, .{url, url})) orelse false;
     }
 
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
