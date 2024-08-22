@@ -1,5 +1,6 @@
 # Initial
 - website:
+  - style aria-current page
   - way to add new feed
   - tags page:
     - edit (rename) tags

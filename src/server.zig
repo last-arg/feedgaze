@@ -49,6 +49,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/feeds", feeds_get);
     router.get("/tags", tags_get);
     router.get("/feed/add", feed_add_get);
+    router.post("/feed/add", feed_add_post);
     router.get("/feed/:id", feed_get);
     router.post("/feed/:id", feed_post);
     router.post("/feed/:id/delete", feed_delete);
@@ -60,9 +61,36 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     try server.listen(); 
 }
 
-// TODO
-// fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-// }
+fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+
+    resp.status = 303;
+
+    const form_data = try req.formData();
+    var feed_url = form_data.get("feed-url") orelse return error.MissingFormFieldFeedUrl;
+    feed_url = mem.trim(u8, feed_url, &std.ascii.whitespace);
+
+    _ = std.Uri.parse(feed_url) catch {
+        // TODO: need to pass url
+        resp.header("Location", "/feed/add?error=invalid-url");
+        return;
+    };
+
+    if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
+        var buf: [64]u8 = undefined;
+        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}", .{feed_id});
+        resp.header("Location", redirect);
+        return;
+    }
+
+    // try to add new feed
+
+    // TODO: outcomes
+    // - create feed. redirect to new feed page
+    // - failed. redirect to "/feed/add"
+
+    resp.header("Location", "/feed/add");
+}
 
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
@@ -81,20 +109,37 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try w.writeAll("<h2>Add feed</h2>");
 
-    try w.writeAll(
-        \\<form action="POST" class="flow" style="--flow-space(--space-m)">
+    const query = try req.query();
+    if (query.get("feed-exists")) |raw_value| {
+        const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
+        if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
+            try w.print(
+                \\<p>Feed already exists.
+                \\<a href="/feed/{d}">Got to feed page</a>.
+                \\</p>
+            , .{feed_id});
+        } else |_| {}
+    } else if (query.get("error")) |value| {
+        try w.writeAll("<p>Failed to add feed.");
+        if (mem.eql(u8, "invalid-url", value)) {
+            try w.writeAll(" Invalid url.");
+        }
+        try w.writeAll("</p>");
+    }
+
+    const url = "https://www.youtube.com/watch?v=Vxndk_1pcfY";
+    try w.print(
+        \\<form action="/feed/add" method="POST" class="flow" style="--flow-space(--space-m)">
         \\<div>
         \\<p><label for="feed-url">Feed or page url</label></p>
-        \\<input id="feed-url" name="feed-url">
+        \\<input id="feed-url" name="feed-url" value="{s}">
         \\</div>
         \\<button class="btn btn-primary">Add new feed</button>
         \\</form>
-    );
+    , .{url});
 
     try w.writeAll("</main>");
     try w.writeAll(foot);
-    
-    
 }
 
 fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -139,7 +184,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
     }
 
-    resp.status = 301;
+    resp.status = 303;
     const fields = .{
         .feed_id = feed_id,
         .title = title,

@@ -191,6 +191,21 @@ pub const Storage = struct {
         return feed_id orelse Error.FeedExists;
     }
 
+    pub fn get_feed_id_with_url(self: *Self, url: []const u8) !?usize {
+        const query =
+            \\SELECT feed_id FROM feed WHERE feed_url = ? OR page_url = ?;
+        ;
+        return try one(&self.sql_db, usize, query, .{ url, url });
+    }
+    
+    pub fn get_feed_with_url(self: *Self, allocator: Allocator, url: []const u8) !?Feed {
+        const query =
+            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
+            \\FROM feed WHERE feed_url = ? OR page_url = ?;
+        ;
+        return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
+    }
+
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
