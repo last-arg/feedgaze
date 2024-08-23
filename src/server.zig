@@ -62,6 +62,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 }
 
 fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    var buf: [1024]u8 = undefined;
     const db = &global.storage;
 
     resp.status = 303;
@@ -71,14 +72,15 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     feed_url = mem.trim(u8, feed_url, &std.ascii.whitespace);
 
     _ = std.Uri.parse(feed_url) catch {
-        // TODO: need to pass url
-        resp.header("Location", "/feed/add?error=invalid-url");
+        const c: std.Uri.Component = .{ .raw = feed_url };
+        const location = try std.fmt.bufPrint(&buf, "/feed/add?error=invalid-url&feed-url={%}", .{c});
+        resp.header("Location", location);
         return;
     };
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
-        var buf: [64]u8 = undefined;
-        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}", .{feed_id});
+        const c: std.Uri.Component = .{ .raw = feed_url };
+        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}&feed-url={%}", .{feed_id, c});
         resp.header("Location", redirect);
         return;
     }
@@ -109,7 +111,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try w.writeAll("<h2>Add feed</h2>");
 
-    const query = try req.query();
+    var query = try req.query();
     if (query.get("feed-exists")) |raw_value| {
         const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
         if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
@@ -127,7 +129,15 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         try w.writeAll("</p>");
     }
 
-    const url = "https://www.youtube.com/watch?v=Vxndk_1pcfY";
+    const url = blk: {
+        if (query.get("feed-url")) |url_raw| {
+            const url = std.Uri.percentDecodeInPlace(@constCast(url_raw[0..]));
+            break :blk url;
+        }
+        // break :blk "https://www.youtube.com/watch?v=Vxndk_1pcfY";
+        break :blk "alskdjf sakljdf";
+    };
+
     try w.print(
         \\<form action="/feed/add" method="POST" class="flow" style="--flow-space(--space-m)">
         \\<div>
