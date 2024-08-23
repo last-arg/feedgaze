@@ -29,17 +29,6 @@ pub fn main() !void {
 
 // Cause of long compile times? https://github.com/ziglang/zig/issues/15266
 // fn longCompileTime() !void {
-//     // {
-//     //     var gen = std.heap.GeneralPurposeAllocator(.{}){};
-//     //     var arena = std.heap.ArenaAllocator.init(gen.allocator());
-//     //     defer arena.deinit();
-//     //     const input = "http://github.com";
-//     //     const url = try std.Uri.parse(input);
-//     //     var client = std.http.Client{ .allocator = arena.allocator() };
-//     //     defer client.deinit();
-//     //     var req = try client.request(.GET, url, .{ .allocator = arena.allocator() }, .{});
-//     //     print("host:  {?s}\n", .{req.uri.host});
-//     // }
 
 //     // When I added std.http.Client.request function my compile times increased several fold from
 //     // ~1s to ~16s. After looking deeper found that is was caused by std.crypto.tls.Client.init

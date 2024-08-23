@@ -14,7 +14,36 @@ pub fn main() !void {
     // try storage_item_interval();
     // try storage_test();
     // try find_dir();
-    try http_head();
+    // try http_head();
+    try zig_http();
+}
+
+// pub const std_options: std.Options = .{
+//     .http_disable_tls = true,
+// };
+
+pub fn zig_http() !void {
+
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+    const input = "https://github.com";
+    const url = try std.Uri.parse(input);
+    var client = std.http.Client{ .allocator = arena.allocator() };
+    defer client.deinit();
+    var s = std.ArrayList(u8).init(arena.allocator());
+    var buf: [5 * 1024]u8 = undefined;
+
+    const opts: std.http.Client.FetchOptions = .{ 
+        .server_header_buffer = &buf,
+        .method = .GET, .location = .{ .uri = url },
+        .response_storage = .{ .dynamic = &s},
+    };
+    const resp = try client.fetch(opts);
+    print("headers: |{?s}|\n", .{opts.server_header_buffer});
+    print("headers: |{any}|\n", .{opts.headers.host});
+    print("host: {d}\n", .{opts.response_storage.dynamic.items.len});
+    print("host: {d}\n", .{resp.status});
 }
 
 pub fn http_head() !void {
