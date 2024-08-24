@@ -22,6 +22,7 @@ const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
 const html = @import("./html.zig");
+const AddRule = @import("add_rule.zig");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -225,7 +226,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                     for (args.positionals) |input| {
                         const feed_id = self.add(input) catch |err| switch (err) {
-                            error.InvalidUri => {
+                            error.InvalidUrl => {
                                 try self.out.print("Invalid input '{s}'\n", .{input});
                                 continue;
                             },
@@ -423,45 +424,27 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
-        const AddRule = @import("add_rule.zig");
-        pub fn add(self: *Self, url: []const u8) !usize {
-            const uri = std.Uri.parse(url) catch {
-                return error.InvalidUri;
-            };
+        pub fn add(self: *Self, url_raw: []const u8) !usize {
+            const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
             if (try self.storage.hasFeedWithFeedUrl(url)) {
                 return error.FeedExists;
             }
 
+            var app: App = .{ .storage = self.storage, .allocator = self.allocator };
+
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            var fetch_url = url;
+            var fetch = try app.fetch_response(&arena, url);
+            defer fetch.deinit();
 
-            if (uri.host) |host| {
-                const host_str = AddRule.uri_component_val(host);
-                const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
-                defer arena.allocator().free(rules);
-                if (try AddRule.find_rule_match(uri, rules)) |rule| {
-                    std.log.info("Found matching rule. Using rule to transform url.", .{});
-                    fetch_url = try AddRule.transform_rule_match(arena.allocator(), uri, rule);
-                }
-            }
-
-            // fetch url content
-            var req = try http_client.init(arena.allocator());
-            defer req.deinit();
-            var resp = try req.fetch(fetch_url, .{});
-            defer resp.deinit();
-
-            if (resp.body.?.items.len == 0) {
-                std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-                return error.EmptyBody;
-            }
+            const resp = fetch.resp;
 
             var feed_options = FeedOptions.fromResponse(resp);
             if (feed_options.content_type == .html) {
                 feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
             }
+
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
@@ -473,6 +456,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
                 const link = links[index];
 
+                var fetch_url = url;
+
                 if (!mem.startsWith(u8, link.link, "http")) {
                     var url_uri = try std.Uri.parse(url);
                     var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
@@ -483,16 +468,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 // Need to create new curl request
-                var req_2 = try http_client.init(arena.allocator());
-                defer req_2.deinit();
+                var fetch_2 = try app.fetch_response(&arena, fetch_url);
+                defer fetch_2.deinit();
 
-                var resp_2 = try req.fetch(fetch_url, .{});
-                defer resp_2.deinit();
-
-                if (resp_2.body.?.items.len == 0) {
-                    std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-                    return error.EmptyBody;
-                }
+                const req_2 = fetch_2.req;
+                const resp_2 = fetch_2.resp;
 
                 feed_options = FeedOptions.fromResponse(resp_2);
                 if (feed_options.content_type == .html) {
@@ -504,12 +484,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         return error.UnexpectedContentTypeHtml;
                     }
                 }
-                feed_options.feed_url = try req.get_url(arena.allocator());
+                feed_options.feed_url = try req_2.get_url_slice();
                 feed_options.title = link.title;
                 feed_options.icon_url = html_parsed.icon_url;
                 return try self.storage.addFeed(&arena, &feed_options);
             } else {
-                feed_options.feed_url = try req.get_url(arena.allocator());
+                feed_options.feed_url = try fetch.req.get_url_slice();
                 return try self.storage.addFeed(&arena, &feed_options);
             }
         }
@@ -822,3 +802,52 @@ test "feedgaze.show" {
     ;                                                                                                        
     try std.testing.expectEqualStrings(expect, output);  
 }
+
+const App = struct {
+    storage: Storage, 
+    allocator: Allocator,
+
+    const curl = @import("curl");
+    const RequestResponse = struct {
+        req: http_client,
+        resp: curl.Easy.Response,
+
+        pub fn deinit(self: *@This()) void {
+            self.resp.deinit();
+            self.req.deinit();
+        }
+    };
+
+    pub fn fetch_response(self: *@This(), arena: *std.heap.ArenaAllocator, input_url: []const u8) !RequestResponse {
+        const uri = std.Uri.parse(input_url) catch {
+            return error.InvalidUrl;
+        };
+
+        var fetch_url = input_url;
+
+        if (uri.host) |host| {
+            const host_str = AddRule.uri_component_val(host);
+            const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
+            defer arena.allocator().free(rules);
+            if (try AddRule.find_rule_match(uri, rules)) |rule| {
+                std.log.info("Found matching rule. Using rule to transform url.", .{});
+                fetch_url = try AddRule.transform_rule_match(arena.allocator(), uri, rule);
+            }
+        }
+
+        // fetch url content
+        var req = try http_client.init(arena.allocator());
+        const resp = try req.fetch(fetch_url, .{});
+
+        if (resp.body.?.items.len == 0) {
+            std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
+            return error.EmptyBody;
+        }
+
+        return .{
+            .req = req,
+            .resp = resp,
+        };
+    }
+
+};

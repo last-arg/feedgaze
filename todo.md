@@ -2,6 +2,7 @@
 - website:
   - style aria-current page
   - way to add new feed
+  - add feed: can add tags
   - tags page:
     - edit (rename) tags
     - remove tags

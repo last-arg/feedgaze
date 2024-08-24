@@ -116,13 +116,12 @@ pub fn check_icon_path(self: *@This(), url_full: []const u8) !bool {
     return resp.status_code == 200;
 }
 
-pub fn get_url(self: *@This(), allocator: Allocator) ![]const u8 {
+pub fn get_url_slice(self: *const @This()) ![]const u8 {
     var cstr: [*c]const u8 = undefined;
     try checkCode(
         curl.libcurl.curl_easy_getinfo(self.client.handle, curl.libcurl.CURLINFO_EFFECTIVE_URL, &cstr)
     );
-    const len = std.mem.len(cstr);
-    return try allocator.dupe(u8, cstr[0..len]);
+    return std.mem.span(cstr);
 }
 
 pub fn checkCode(code: curl.libcurl.CURLcode) !void {
