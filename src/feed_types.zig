@@ -355,7 +355,7 @@ pub const FeedUpdate = struct {
             }
         } else |_| {}
 
-        if (update_interval == 0) {
+        if (update_interval != null and update_interval.? == 0) {
             update_interval = null;
         }
 
