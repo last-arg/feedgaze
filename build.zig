@@ -135,8 +135,9 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const xml = b.dependency("xml", dep_args);
     step.root_module.addImport("xml", xml.module("xml"));
 
-    const curl = b.dependency("curl", dep_args);
+    const curl = b.dependency("curl", .{.link_vendor = false});
     step.root_module.addImport("curl", curl.module("curl"));
+    step.linkSystemLibrary("curl");
 
     const httpz = b.dependency("httpz", .{});
     step.root_module.addImport("httpz", httpz.module("httpz"));
