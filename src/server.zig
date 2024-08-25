@@ -68,24 +68,55 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     resp.status = 303;
 
     const form_data = try req.formData();
-    var feed_url = form_data.get("feed-url") orelse return error.MissingFormFieldFeedUrl;
+    var feed_url = form_data.get("input-url") orelse return error.MissingFormFieldFeedUrl;
     feed_url = mem.trim(u8, feed_url, &std.ascii.whitespace);
 
     _ = std.Uri.parse(feed_url) catch {
         const c: std.Uri.Component = .{ .raw = feed_url };
-        const location = try std.fmt.bufPrint(&buf, "/feed/add?error=invalid-url&feed-url={%}", .{c});
+        const location = try std.fmt.bufPrint(&buf, "/feed/add?error=invalid-url&input-url={%}", .{c});
         resp.header("Location", location);
         return;
     };
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const c: std.Uri.Component = .{ .raw = feed_url };
-        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}&feed-url={%}", .{feed_id, c});
+        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
         resp.header("Location", redirect);
         return;
     }
 
     // try to add new feed
+    const App = @import("app.zig").App;
+    var app = App{.storage = db.*, .allocator = req.arena};
+
+    var fetch = try app.fetch_response(req.arena, feed_url);
+    defer fetch.deinit();
+
+    var feed_options = FeedOptions.fromResponse(fetch.resp);
+    if (feed_options.content_type == .html) {
+        feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+    }
+
+    if (feed_options.content_type == .html) {
+        const c: std.Uri.Component = .{ .raw = feed_url };
+        var arr = try std.ArrayList(u8).initCapacity(req.arena, 256);
+        const writer_arr= arr.writer();
+        try writer_arr.print("/feed/add?input-url={%}", .{c});
+        const html_parsed = try html.parse_html(req.arena, feed_options.body);
+        if (html_parsed.links.len > 0) {
+            for (html_parsed.links) |link| {
+                const url_final = try fetch.req.get_url_slice();
+                const uri_final = try std.Uri.parse(url_final);
+                const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
+                const uri_component: std.Uri.Component = .{ .raw = url_str };
+                try writer_arr.print("&url={%}", .{uri_component});
+            }
+        } else {
+            try writer_arr.writeAll("&no-links=");
+        }
+        resp.header("Location", arr.items);
+        return;
+    }
 
     // TODO: outcomes
     // - create feed. redirect to new feed page
@@ -127,26 +158,48 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
             try w.writeAll(" Invalid url.");
         }
         try w.writeAll("</p>");
+    } else if (query.get("no-links")) |_| {
+        try w.writeAll("<p>Found no feed links in html page</p>");
     }
 
     const url = blk: {
-        if (query.get("feed-url")) |url_raw| {
+        if (query.get("input-url")) |url_raw| {
             const url = std.Uri.percentDecodeInPlace(@constCast(url_raw[0..]));
             break :blk url;
         }
-        // break :blk "https://www.youtube.com/watch?v=Vxndk_1pcfY";
-        break :blk "alskdjf sakljdf";
+        break :blk "https://lobste.rs";
     };
 
     try w.print(
         \\<form action="/feed/add" method="POST" class="flow" style="--flow-space(--space-m)">
         \\<div>
-        \\<p><label for="feed-url">Feed or page url</label></p>
-        \\<input id="feed-url" name="feed-url" value="{s}">
+        \\<p><label for="input-url">Feed or page url</label></p>
+        \\<input id="input-url" name="input-url" value="{s}">
         \\</div>
+    , .{url});
+
+    if (query.get("url")) |_| {
+        try w.writeAll("<fieldset>");
+        try w.writeAll("<legend>Pick feed(s) to add</legend>");
+        var iter = query.iterator();
+        var index: usize = 0;
+        while (iter.next()) |kv| : (index += 1) {
+            if (mem.eql(u8, "url", kv.key)) {
+                try w.writeAll("<p>");
+                try w.print(
+                    \\<input type="checkbox" id="url-{[index]d}" name="url-checkbox" value="{[value]s}"> 
+                    \\<label for="url-{[index]d}">{[value]s}</label>
+                , .{.index = index, .value = kv.value});
+                try w.writeAll("</p>");
+            }
+        }
+        try w.writeAll("</fieldset>");
+    }
+
+    try w.writeAll(
         \\<button class="btn btn-primary">Add new feed</button>
         \\</form>
-    , .{url});
+    );
 
     try w.writeAll("</main>");
     try w.writeAll(foot);
@@ -1129,3 +1182,6 @@ const Datetime = @import("zig-datetime").datetime.Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
 const html = @import("./html.zig");
+const feed_types = @import("./feed_types.zig");
+const FeedOptions = feed_types.FeedOptions;
+const parse = @import("./app_parse.zig");

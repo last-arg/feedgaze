@@ -435,7 +435,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            var fetch = try app.fetch_response(&arena, url);
+            var fetch = try app.fetch_response(arena.allocator(), url);
             defer fetch.deinit();
 
             const resp = fetch.resp;
@@ -468,7 +468,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 // Need to create new curl request
-                var fetch_2 = try app.fetch_response(&arena, fetch_url);
+                var fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
                 defer fetch_2.deinit();
 
                 const req_2 = fetch_2.req;
@@ -803,7 +803,7 @@ test "feedgaze.show" {
     try std.testing.expectEqualStrings(expect, output);  
 }
 
-const App = struct {
+pub const App = struct {
     storage: Storage, 
     allocator: Allocator,
 
@@ -818,7 +818,7 @@ const App = struct {
         }
     };
 
-    pub fn fetch_response(self: *@This(), arena: *std.heap.ArenaAllocator, input_url: []const u8) !RequestResponse {
+    pub fn fetch_response(self: *@This(), allocator: std.mem.Allocator, input_url: []const u8) !RequestResponse {
         const uri = std.Uri.parse(input_url) catch {
             return error.InvalidUrl;
         };
@@ -827,16 +827,16 @@ const App = struct {
 
         if (uri.host) |host| {
             const host_str = AddRule.uri_component_val(host);
-            const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
-            defer arena.allocator().free(rules);
+            const rules = try self.storage.get_rules_for_host(allocator, host_str);
+            defer allocator.free(rules);
             if (try AddRule.find_rule_match(uri, rules)) |rule| {
                 std.log.info("Found matching rule. Using rule to transform url.", .{});
-                fetch_url = try AddRule.transform_rule_match(arena.allocator(), uri, rule);
+                fetch_url = try AddRule.transform_rule_match(allocator, uri, rule);
             }
         }
 
         // fetch url content
-        var req = try http_client.init(arena.allocator());
+        var req = try http_client.init(allocator);
         const resp = try req.fetch(fetch_url, .{});
 
         if (resp.body.?.items.len == 0) {
