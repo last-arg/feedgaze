@@ -130,11 +130,11 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
 
-    // TODO: outcomes
-    // - create feed. redirect to new feed page
-    // - failed. redirect to "/feed/add"
+    feed_options.feed_url = try fetch.req.get_url_slice();
+    const feed_id = try db.addFeed(req.arena, &feed_options);
 
-    resp.header("Location", "/feed/add");
+    const redirect = try std.fmt.bufPrint(&buf, "/feed/add?success={d}", .{feed_id});
+    resp.header("Location", redirect);
 }
 
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -155,7 +155,17 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     try w.writeAll("<h2>Add feed</h2>");
 
     var query = try req.query();
-    if (query.get("feed-exists")) |raw_value| {
+    if (query.get("success")) |id_raw| {
+        if (std.fmt.parseUnsigned(usize, id_raw, 10)) |feed_id| {
+            try w.print(
+                \\<p>Feed added.
+                \\<a href="/feed/{d}">Got to feed page</a>.
+                \\</p>
+            , .{feed_id});
+        } else |_| {
+            try w.writeAll("<p>Failed to get added feed id.</p>");
+        }
+    } else if (query.get("feed-exists")) |raw_value| {
         const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
         if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
             try w.print(
@@ -163,7 +173,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
                 \\<a href="/feed/{d}">Got to feed page</a>.
                 \\</p>
             , .{feed_id});
-        } else |_| {}
+        } else |_| {
+            try w.writeAll("<p>Failed to get id for feed that already exists.</p>");
+        }
     } else if (query.get("error")) |value| {
         if (mem.eql(u8, "invalid-url", value)) {
             try w.writeAll("<p>Failed to add feed.");
@@ -181,7 +193,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
             const url = std.Uri.percentDecodeInPlace(@constCast(url_raw[0..]));
             break :blk url;
         }
-        break :blk "https://lobste.rs";
+        break :blk "";
     };
 
     try w.print(

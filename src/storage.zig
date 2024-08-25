@@ -94,7 +94,9 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, arena: *std.heap.ArenaAllocator, feed_opts: *FeedOptions) !usize {
+    pub fn addFeed(self: *Self, allocator: Allocator, feed_opts: *FeedOptions) !usize {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
         var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
         if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
             parsed.feed.title = new_title;

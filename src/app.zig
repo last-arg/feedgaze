@@ -487,10 +487,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 feed_options.feed_url = try req_2.get_url_slice();
                 feed_options.title = link.title;
                 feed_options.icon_url = html_parsed.icon_url;
-                return try self.storage.addFeed(&arena, &feed_options);
+                return try self.storage.addFeed(self.allocator, &feed_options);
             } else {
                 feed_options.feed_url = try fetch.req.get_url_slice();
-                return try self.storage.addFeed(&arena, &feed_options);
+                return try self.storage.addFeed(self.allocator, &feed_options);
             }
         }
 
