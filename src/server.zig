@@ -68,7 +68,19 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     resp.status = 303;
 
     const form_data = try req.formData();
-    var feed_url = form_data.get("input-url") orelse return error.MissingFormFieldFeedUrl;
+    const url_picked = form_data.get("url-picked");
+    const url_input = form_data.get("input-url");
+    var url_tmp = url_picked;
+    if (url_tmp == null or mem.eql(u8, "none", url_tmp.?)) {
+        url_tmp = url_input;
+    }
+
+    if (url_tmp == null or mem.trim(u8, url_tmp.?, &std.ascii.whitespace).len == 0) {
+        resp.header("Location", "/feed/add?error=url-missing");
+        return;
+    }
+
+    var feed_url = url_tmp.?;
     feed_url = mem.trim(u8, feed_url, &std.ascii.whitespace);
 
     _ = std.Uri.parse(feed_url) catch {
@@ -153,11 +165,13 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
             , .{feed_id});
         } else |_| {}
     } else if (query.get("error")) |value| {
-        try w.writeAll("<p>Failed to add feed.");
         if (mem.eql(u8, "invalid-url", value)) {
+            try w.writeAll("<p>Failed to add feed.");
             try w.writeAll(" Invalid url.");
+            try w.writeAll("</p>");
+        } else if (mem.eql(u8, "url-missing", value)) {
+            try w.writeAll("<p>Fill in feed/page url</p>");
         }
-        try w.writeAll("</p>");
     } else if (query.get("no-links")) |_| {
         try w.writeAll("<p>Found no feed links in html page</p>");
     }
@@ -187,12 +201,18 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
             if (mem.eql(u8, "url", kv.key)) {
                 try w.writeAll("<p>");
                 try w.print(
-                    \\<input type="checkbox" id="url-{[index]d}" name="url-checkbox" value="{[value]s}"> 
+                    \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
                     \\<label for="url-{[index]d}">{[value]s}</label>
                 , .{.index = index, .value = kv.value});
                 try w.writeAll("</p>");
             }
         }
+        try w.writeAll("<p>");
+        try w.writeAll(
+            \\<input type="radio" id="url-none" name="url-picked" value="none"> 
+            \\<label for="url-none">None</label>
+        );
+        try w.writeAll("</p>");
         try w.writeAll("</fieldset>");
     }
 
