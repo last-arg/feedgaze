@@ -209,6 +209,10 @@ a {
   text-decoration: none;
 }
 
+a[aria-current=page] {
+  text-decoration: underline var(--grey-4);
+}
+
 a:hover {
   text-decoration: underline;
 }
