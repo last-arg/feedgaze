@@ -1049,7 +1049,7 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     const menu_items = [_]struct{path: []const u8, name: []const u8}{
         .{.path = "/", .name = "Home"},
         .{.path = "/feeds", .name = "Feeds"},
-        .{.path = "/Tags", .name = "Tags"},
+        .{.path = "/tags", .name = "Tags"},
         .{.path = "/feed/add", .name = "Add feed"},
     };
 
