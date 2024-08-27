@@ -552,6 +552,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 if (resp.status_code == 304) {
                     // Resource hasn't been modified
                     try self.storage.updateLastUpdate(f_update.feed_id);
+                    try self.storage.rate_limit_remove(f_update.feed_id);
                     continue;
                 } else if (resp.status_code == 503) {
                     const retry_ts = std.time.timestamp() + std.time.s_per_hour;
@@ -584,7 +585,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 } else |_| {}
 
                                 if (feed_types.RssDateTime.parse(raw)) |date_utc| {
-                                    break :blk date_utc;
+                                    break :blk date_utc + 1;
                                 } else |_| {}
                         }
                         break :blk now_utc_sec + std.time.s_per_hour;

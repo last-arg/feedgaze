@@ -1,6 +1,5 @@
 # Initial
 - website:
-  - style aria-current page
   - add feed: can add tags
   - tags page:
     - edit (rename) tags
@@ -18,6 +17,7 @@
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
 
+- twitch integration
 - cli: try https://github.com/n0s4/flags
 - can change update interval?
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
