@@ -535,7 +535,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             for (feed_updates) |f_update| {
                 _ = item_arena.reset(.retain_capacity);
                 var req = http_client.init(item_arena.allocator()) catch |err| {
-                    std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_min * 20);
+                    std.log.err("Failed to start http request to '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 }; 
                 defer req.deinit();
@@ -544,6 +545,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 }) catch |err| {
+                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_min * 20);
                     std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };

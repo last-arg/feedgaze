@@ -533,6 +533,11 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{.feed_id = feed_id});
     }
 
+    pub fn add_to_last_update(self: *Self, feed_id: usize, sec: u64) !void {
+        const query = "update feed_update set last_update = last_update + ? where feed_id = ?;";
+        try self.sql_db.exec(query, .{}, .{sec, feed_id});
+    }
+
     const IdAndLink = struct {
         id: ?[]const u8,
         link: ?[]const u8,
