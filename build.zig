@@ -141,4 +141,7 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const httpz = b.dependency("httpz", .{});
     step.root_module.addImport("httpz", httpz.module("httpz"));
+
+    const superhtml = b.dependency("superhtml", .{});
+    step.root_module.addImport("superhtml", superhtml.module("superhtml"));
 }

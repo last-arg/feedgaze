@@ -15,7 +15,120 @@ pub fn main() !void {
     // try storage_test();
     // try find_dir();
     // try http_head();
-    try zig_http();
+    // try zig_http();
+    try superhtml();
+}
+
+pub const std_options: std.Options = .{
+    // This sets log level based on scope.
+    // This overrides global log_level
+    .log_scope_levels = &.{ 
+        .{.level = .err, .scope = .@"html/tokenizer"},
+        .{.level = .err, .scope = .@"html/ast"} 
+    },
+    // This set global log level
+    .log_level = .debug,
+};
+
+// html selectors for feed
+// title - ?optional. Can be title (hX) or description/text.
+// link - required. If no title selector provided take text from link as
+// title.
+
+pub fn superhtml() !void {
+    const super = @import("superhtml");
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+    const code = 
+    \\<!DOCTYPE html>
+    \\<html>
+    \\ <head>
+    \\  <title>Test this</title>
+    \\ </head>
+    \\ <body>
+    \\  <p class="foo bar" id="my-id">hello</p>
+    \\ </body>
+    \\</html>
+    ;
+    const ast = try super.html.Ast.init(arena.allocator(), code, .html);
+    print("nodes.len {}\n", .{ast.nodes.len});
+    // const last_selector = "p";
+    const last_selector = ".foo";
+    const is_last_elem_class = last_selector[0] == '.';
+    std.debug.assert(
+        (is_last_elem_class and last_selector.len > 1)
+        or last_selector.len > 0
+    );
+    var node_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
+    defer node_matches.deinit();
+
+    print("==> Find last selector matches\n", .{});
+    for (ast.nodes) |node| {
+        if (node.kind == .element or node.kind == .element_void or node.kind == .element_self_closing) {
+            if (is_last_elem_class) {
+                var iter = node.startTagIterator(code, .html);
+                while (iter.next(code)) |tag| {
+                    const name = tag.name.slice(code);
+                    if (!std.ascii.eqlIgnoreCase("class", name)) { continue; }
+
+                    if (tag.value) |value| {
+                        const expected_class_name = last_selector[1..];
+                        std.debug.assert(expected_class_name.len > 0);
+                        var token_iter = std.mem.tokenizeScalar(u8, value.span.slice(code), ' ');
+                        while (token_iter.next()) |class_name| {
+                            if (std.ascii.eqlIgnoreCase(expected_class_name, class_name)) {
+                                try node_matches.append(node);
+                            }
+                        }
+                    }
+                }
+            } else {
+                const span = node.open.getName(code, .html);
+                if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
+                    try node_matches.append(node);
+                }
+            }
+        }
+        
+    }
+    print("==> Selector matches: {d}\n", .{node_matches.items.len});
+    const current = ast.nodes[1];
+
+    while (true) {
+        switch (current.kind) {
+            .root => {
+                print("root\n", .{});
+            },
+            .doctype => {
+                print("doctype\n", .{});
+            },
+            .element => {
+                print("elem\n", .{});
+            },
+            .element_void => {
+                print("elem_void\n", .{});
+            },
+            .element_self_closing => {
+                print("elem_self_close\n", .{});
+            },
+            .comment => {
+                print("comment\n", .{});
+            },
+            .text => {
+                print("text\n", .{});
+            },
+        }
+        
+        break;
+    }
+
+    // _ = ast; // autofix
+    if (ast.errors.len > 0) {
+        ast.printErrors(code, "<STRING>");
+        std.process.exit(1);
+    }
+    ast.debug(code);
 }
 
 // pub const std_options: std.Options = .{
@@ -23,7 +136,6 @@ pub fn main() !void {
 // };
 
 pub fn zig_http() !void {
-
     var gen = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(gen.allocator());
     defer arena.deinit();

@@ -38,5 +38,9 @@
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
             .hash = "12205f5e7505c96573f6fc5144592ec38942fb0a326d692f9cddc0c7dd38f9028f29",
         },
+        .superhtml = .{
+            .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
+            .hash = "12205fb978583b0c0d6915a2763b01b7f9eaa7ffbea4afa1a68e80191622be09ea15",
+        },
     },
 }
