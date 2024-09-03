@@ -130,8 +130,9 @@ pub fn superhtml() !void {
     defer selector_matches.deinit();
 
     var selector_value = selector.next();
+    const has_multiple_selectors = selector_value == null;
 
-    if (selector_value != null) {
+    if (has_multiple_selectors) {
         for (last_matches.items) |last_node| {
             print("start node: |{}|\n", .{last_node});
             var parent_idx = last_node.parent_idx;
@@ -169,6 +170,9 @@ pub fn superhtml() !void {
         }
     }
     print("==> selector matches: {d}\n", .{selector_matches.items.len});
+
+    const matches = if (has_multiple_selectors) selector_matches else last_matches; 
+    print("==> matches: {d}\n", .{matches.items.len});
 
     // const current = ast.nodes[1];
     // while (true) {
