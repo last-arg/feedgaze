@@ -35,8 +35,29 @@ pub const std_options: std.Options = .{
 // link - required. If no title selector provided take text from link as
 // title.
 
+const super = @import("superhtml");
+
+pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const u8) bool {
+    var iter = node.startTagIterator(code, .html);
+    while (iter.next(code)) |tag| {
+        const name = tag.name.slice(code);
+        if (!std.ascii.eqlIgnoreCase("class", name)) { continue; }
+
+        if (tag.value) |value| {
+            const expected_class_name = selector[1..];
+            std.debug.assert(expected_class_name.len > 0);
+            var token_iter = std.mem.tokenizeScalar(u8, value.span.slice(code), ' ');
+            while (token_iter.next()) |class_name| {
+                if (std.ascii.eqlIgnoreCase(expected_class_name, class_name)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 pub fn superhtml() !void {
-    const super = @import("superhtml");
     var gen = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(gen.allocator());
     defer arena.deinit();
@@ -47,81 +68,136 @@ pub fn superhtml() !void {
     \\  <title>Test this</title>
     \\ </head>
     \\ <body>
-    \\  <p class="foo bar" id="my-id">hello</p>
+    \\  <div class="wrapper first">
+    \\   <p class="foo bar" id="my-id">hello</p>
+    \\  </div>
+    \\  <span class="wrapper">
+    \\   <p class="foo">world</p>
+    \\  </span>
     \\ </body>
     \\</html>
     ;
     const ast = try super.html.Ast.init(arena.allocator(), code, .html);
-    print("nodes.len {}\n", .{ast.nodes.len});
+    const Selector = struct {
+        iter: std.mem.SplitBackwardsIterator(u8, .scalar), 
+
+        pub fn init(input: []const u8) @This() {
+            return .{
+                .iter = std.mem.splitBackwardsScalar(u8, input, ' '),
+            };
+        }
+
+        pub fn next(self: *@This()) ?[]const u8 {
+            while (self.iter.next()) |val| {
+                if (val.len == 0) {
+                    continue;
+                }
+                return val;
+            }
+            return null;
+        }
+    };
+    var selector = Selector.init(".first p");
+    const last_selector = selector.next() orelse @panic("there should be CSS selector");
     // const last_selector = "p";
-    const last_selector = ".foo";
     const is_last_elem_class = last_selector[0] == '.';
     std.debug.assert(
         (is_last_elem_class and last_selector.len > 1)
         or last_selector.len > 0
     );
-    var node_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
-    defer node_matches.deinit();
+    var last_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
+    defer last_matches.deinit();
 
     print("==> Find last selector matches\n", .{});
     for (ast.nodes) |node| {
         if (node.kind == .element or node.kind == .element_void or node.kind == .element_self_closing) {
             if (is_last_elem_class) {
-                var iter = node.startTagIterator(code, .html);
-                while (iter.next(code)) |tag| {
-                    const name = tag.name.slice(code);
-                    if (!std.ascii.eqlIgnoreCase("class", name)) { continue; }
-
-                    if (tag.value) |value| {
-                        const expected_class_name = last_selector[1..];
-                        std.debug.assert(expected_class_name.len > 0);
-                        var token_iter = std.mem.tokenizeScalar(u8, value.span.slice(code), ' ');
-                        while (token_iter.next()) |class_name| {
-                            if (std.ascii.eqlIgnoreCase(expected_class_name, class_name)) {
-                                try node_matches.append(node);
-                            }
-                        }
-                    }
+                if (has_class(node, code, last_selector)) {
+                    try last_matches.append(node);
                 }
             } else {
                 const span = node.open.getName(code, .html);
                 if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
-                    try node_matches.append(node);
+                    try last_matches.append(node);
                 }
             }
         }
         
     }
-    print("==> Selector matches: {d}\n", .{node_matches.items.len});
-    const current = ast.nodes[1];
+    print("==> last selector matches: {d}\n", .{last_matches.items.len});
 
-    while (true) {
-        switch (current.kind) {
-            .root => {
-                print("root\n", .{});
-            },
-            .doctype => {
-                print("doctype\n", .{});
-            },
-            .element => {
-                print("elem\n", .{});
-            },
-            .element_void => {
-                print("elem_void\n", .{});
-            },
-            .element_self_closing => {
-                print("elem_self_close\n", .{});
-            },
-            .comment => {
-                print("comment\n", .{});
-            },
-            .text => {
-                print("text\n", .{});
-            },
+    var selector_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
+    defer selector_matches.deinit();
+
+    var selector_value = selector.next();
+
+    if (selector_value != null) {
+        for (last_matches.items) |last_node| {
+            print("start node: |{}|\n", .{last_node});
+            var parent_idx = last_node.parent_idx;
+            var selector_rest_iter = selector;
+
+            while (parent_idx != 0) {
+                std.debug.assert(selector_value != null);
+                const node = ast.nodes[parent_idx];
+                const span = node.open.getName(code, .html);
+                const is_class = selector_value.?[0] == '.';
+                if (is_class) {
+                    if (has_class(node, code, selector_value.?)) {
+                        if (selector_rest_iter.next()) |next| {
+                            selector_value = next;
+                        } else {
+                            // found selector match
+                            try selector_matches.append(last_node);
+                            break;
+                        }
+                    }
+                } else {
+                    if (std.ascii.eqlIgnoreCase(selector_value.?, span.slice(code))) {
+                        if (selector_rest_iter.next()) |next| {
+                            selector_value = next;
+                        } else {
+                            // found selector match
+                            try selector_matches.append(last_node);
+                            break;
+                        }
+                    }
+                }
+                print("parent_node {s}\n", .{span.slice(code)});
+                parent_idx = node.parent_idx;
+            }
         }
-        
-        break;
     }
+    print("==> selector matches: {d}\n", .{selector_matches.items.len});
+
+    // const current = ast.nodes[1];
+    // while (true) {
+    //     switch (current.kind) {
+    //         .root => {
+    //             print("root\n", .{});
+    //         },
+    //         .doctype => {
+    //             print("doctype\n", .{});
+    //         },
+    //         .element => {
+    //             print("elem\n", .{});
+    //         },
+    //         .element_void => {
+    //             print("elem_void\n", .{});
+    //         },
+    //         .element_self_closing => {
+    //             print("elem_self_close\n", .{});
+    //         },
+    //         .comment => {
+    //             print("comment\n", .{});
+    //         },
+    //         .text => {
+    //             print("text\n", .{});
+    //         },
+    //     }
+        
+    //     break;
+    // }
 
     // _ = ast; // autofix
     if (ast.errors.len > 0) {
