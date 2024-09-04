@@ -68,16 +68,31 @@ pub fn superhtml() !void {
     \\  <title>Test this</title>
     \\ </head>
     \\ <body>
-    \\  <div class="wrapper first">
-    \\   <p class="foo bar" id="my-id">hello</p>
+    \\  <div class="item wrapper first">
+    \\   <h2 class="foo bar" id="my-id"> item 1</h2>
+    \\  </div>
+    \\  <div class="item">
+    \\   <h2>make sure link is found</h2>
+    \\   <input type="text">
+    \\   <div>
+    \\    <a href="#item2">
+    \\      item 2
+    \\      multiline
+    \\    </a>
+    \\   </div>
     \\  </div>
     \\  <span class="wrapper">
-    \\   <p class="foo">world</p>
+    \\   <p class="foo">world world
+    \\   </p>
     \\  </span>
     \\ </body>
     \\</html>
     ;
     const ast = try super.html.Ast.init(arena.allocator(), code, .html);
+    if (ast.errors.len > 0) {
+        std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
+        // ast.printErrors(code, "<STRING>");
+    }
     const Selector = struct {
         iter: std.mem.SplitBackwardsIterator(u8, .scalar), 
 
@@ -97,7 +112,7 @@ pub fn superhtml() !void {
             return null;
         }
     };
-    var selector = Selector.init(".first p");
+    var selector = Selector.init("body .item");
     const last_selector = selector.next() orelse @panic("there should be CSS selector");
     // const last_selector = "p";
     const is_last_elem_class = last_selector[0] == '.';
@@ -174,41 +189,80 @@ pub fn superhtml() !void {
     const matches = if (has_multiple_selectors) selector_matches else last_matches; 
     print("==> matches: {d}\n", .{matches.items.len});
 
-    // const current = ast.nodes[1];
-    // while (true) {
-    //     switch (current.kind) {
-    //         .root => {
-    //             print("root\n", .{});
-    //         },
-    //         .doctype => {
-    //             print("doctype\n", .{});
-    //         },
-    //         .element => {
-    //             print("elem\n", .{});
-    //         },
-    //         .element_void => {
-    //             print("elem_void\n", .{});
-    //         },
-    //         .element_self_closing => {
-    //             print("elem_self_close\n", .{});
-    //         },
-    //         .comment => {
-    //             print("comment\n", .{});
-    //         },
-    //         .text => {
-    //             print("text\n", .{});
-    //         },
-    //     }
-        
-    //     break;
-    // }
+    // TODO: get feed items info from matches
+    // - item (container) selector - required
+    // - link selector - optional. there might not be link
+    //   - default is to find first link (<a>) inside item container
+    // - heading selector - optional
+    //   - if link take heading from link text
+    //   - otherwise look for first h1-h6 inside item container
+    //   - otherwise find first text node?
+    // - date selector - optional
+    //   - find first <time> element?
+    //   - date format - optional
 
-    // _ = ast; // autofix
-    if (ast.errors.len > 0) {
-        ast.printErrors(code, "<STRING>");
-        std.process.exit(1);
+    for (matches.items) |node| {
+        print("dir: {}\n", .{node.direction()});
+        const link_node = find_link_node(ast, code, node);
+        if (link_node) |n| {
+            print("link_node: {s}\n", .{n.open.slice(code)});
+        }
+        var attr_iter = node.startTagIterator(code, .html);
+        // print("node text_content: |{s}|\n", .{node.open.line(code).line});
+        while (attr_iter.next(code)) |attr| {
+            if (attr.value) |value| {
+                const name = attr.name.slice(code);
+                print("name: {s} | value: {s}\n", .{name, value.span.slice(code)});
+            }
+        }
+
+        const child = ast.nodes[node.first_child_idx];
+        const text_trimmed = std.mem.trim(u8, child.open.slice(code), &std.ascii.whitespace);
+        var text_tmp = try arena.allocator().dupe(u8, text_trimmed);
+        for ([_]u8{'\t', '\n', '\r'}) |c| {
+            std.mem.replaceScalar(u8, text_tmp, c, ' ');
+        }
+
+        // TODO: solve it with std.mem.indexOfScalar instead?
+        while (true) {
+            const count = std.mem.replace(u8, text_tmp, "  ", " ", text_tmp);
+            if (count == 0) {
+                break;
+            }
+            text_tmp = text_tmp[0..text_tmp.len - count];
+        }
+        print("text_content: |{s}|\n", .{text_tmp});
     }
-    ast.debug(code);
+
+    // ast.debug(code);
+}
+
+pub fn find_link_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
+    if (node.kind != .element) { return null; }
+    if (std.ascii.eqlIgnoreCase("a", node.open.getName(code, .html).slice(code))) {
+        return node;
+    }
+
+    if (node.first_child_idx != 0) {
+        if (find_link_node(ast, code, ast.nodes[node.first_child_idx])) |n| {
+            return n;
+        }
+    }
+
+    var next_idx = node.next_idx;
+    while (next_idx != 0) {
+        const next_node = ast.nodes[next_idx];
+        if (next_node.kind != .element) { 
+            next_idx = next_node.next_idx;
+            continue; 
+        }
+        if (find_link_node(ast, code, next_node)) |n| {
+            return n;
+        }
+        next_idx = next_node.next_idx;
+    }
+
+    return null;
 }
 
 // pub const std_options: std.Options = .{
