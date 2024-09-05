@@ -210,7 +210,7 @@ pub fn superhtml() !void {
         const node = ast.nodes[i];
         print("START ({d}): {s}\n", .{i, node.open.slice(code)});
 
-        const link_node = find_link_node(ast, code, node);
+        const link_node = find_node(ast, code, node, "a");
         if (link_node) |n| {
             var attr_iter = n.startTagIterator(code, .html);
             while (attr_iter.next(code)) |attr| {
@@ -384,21 +384,23 @@ const IteratorTextNode = struct {
     }
 };
 
-pub fn find_link_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
+pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
+    std.debug.assert(tag.len > 0);
     if (node.first_child_idx == 0) {
         return null;
     }
-    return find_link_node_rec(ast, code, ast.nodes[node.first_child_idx]);
+    return find_node_rec(ast, code, ast.nodes[node.first_child_idx], tag);
 }
 
-pub fn find_link_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
+pub fn find_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
+    std.debug.assert(tag.len > 0);
     if (node.kind != .element) { return null; }
-    if (std.ascii.eqlIgnoreCase("a", node.open.getName(code, .html).slice(code))) {
+    if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
         return node;
     }
 
     if (node.first_child_idx != 0) {
-        if (find_link_node(ast, code, ast.nodes[node.first_child_idx])) |n| {
+        if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
             return n;
         }
     }
@@ -407,7 +409,7 @@ pub fn find_link_node_rec(ast: super.html.Ast, code: []const u8, node: super.htm
     while (next_idx != 0) {
         const next_node = ast.nodes[next_idx];
         if (next_node.kind == .element) { 
-            if (find_link_node(ast, code, next_node)) |n| {
+            if (find_node(ast, code, next_node, tag)) |n| {
                 return n;
             }
         } 
