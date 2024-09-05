@@ -226,7 +226,6 @@ pub fn superhtml() !void {
                 item_title = text;
             }
         }
-        print("text: |{?s}|\n", .{item_title});
 
         if (item_title == null) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
@@ -239,22 +238,9 @@ pub fn superhtml() !void {
             }
         }
 
-        const child = ast.nodes[node.first_child_idx];
-        const text_trimmed = std.mem.trim(u8, child.open.slice(code), &std.ascii.whitespace);
-        var text_tmp = try arena.allocator().dupe(u8, text_trimmed);
-        for ([_]u8{'\t', '\n', '\r'}) |c| {
-            std.mem.replaceScalar(u8, text_tmp, c, ' ');
-        }
+        print("text: |{?s}|\n", .{item_title});
 
-        // TODO: solve it with std.mem.indexOfScalar instead?
-        while (true) {
-            const count = std.mem.replace(u8, text_tmp, "  ", " ", text_tmp);
-            if (count == 0) {
-                break;
-            }
-            text_tmp = text_tmp[0..text_tmp.len - count];
-        }
-        print("END ==> text_content: |{s}|\n", .{text_tmp});
+        // TODO: add items
     }
 
     // ast.debug(code);
@@ -308,7 +294,6 @@ const IteratorTextNode = struct {
     }
 
     pub fn next(self: *@This()) ?super.html.Ast.Node {
-        print("  NEXT sibling: {} | current: {}\n", .{self.current_sibling_index, self.current_index});
         if (self.current_sibling_index == 0) {
             return null;
         }
@@ -318,8 +303,6 @@ const IteratorTextNode = struct {
             if (self.next_rec(current)) |idx| {
                 const node = self.ast.nodes[idx];
                 self.current_index = next_index_node(node);
-                print("  next current {}\n", .{self.current_index});
-                print("  return from current\n", .{});
                 return node;
             }
             self.current_index = current.parent_idx;
@@ -332,8 +315,6 @@ const IteratorTextNode = struct {
             if (self.next_rec(current)) |idx| {
                 const node = self.ast.nodes[idx];
                 self.current_index = next_index_node(node);
-                print("  next current {}\n", .{self.current_index});
-                print("  return from sibling\n", .{});
                 return node;
             }
             self.current_index = next_index_node(current);
