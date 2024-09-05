@@ -146,7 +146,7 @@ pub fn superhtml() !void {
     defer selector_matches.deinit();
 
     var selector_value = selector.next();
-    const has_multiple_selectors = selector_value == null;
+    const has_multiple_selectors = selector_value != null;
 
     if (has_multiple_selectors) {
         for (last_matches.items) |i| {
