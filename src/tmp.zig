@@ -120,20 +120,20 @@ pub fn superhtml() !void {
         (is_last_elem_class and last_selector.len > 1)
         or last_selector.len > 0
     );
-    var last_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
+    var last_matches = try std.ArrayList(usize).initCapacity(arena.allocator(), 10);
     defer last_matches.deinit();
 
     print("==> Find last selector matches\n", .{});
-    for (ast.nodes) |node| {
+    for (ast.nodes, 0..) |node, i| {
         if (node.kind == .element or node.kind == .element_void or node.kind == .element_self_closing) {
             if (is_last_elem_class) {
                 if (has_class(node, code, last_selector)) {
-                    try last_matches.append(node);
+                    try last_matches.append(i);
                 }
             } else {
                 const span = node.open.getName(code, .html);
                 if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
-                    try last_matches.append(node);
+                    try last_matches.append(i);
                 }
             }
         }
@@ -141,14 +141,16 @@ pub fn superhtml() !void {
     }
     print("==> last selector matches: {d}\n", .{last_matches.items.len});
 
-    var selector_matches = try std.ArrayList(super.html.Ast.Node).initCapacity(arena.allocator(), 10);
+    // TODO: use last_matches.items.len?
+    var selector_matches = try std.ArrayList(usize).initCapacity(arena.allocator(), 10);
     defer selector_matches.deinit();
 
     var selector_value = selector.next();
     const has_multiple_selectors = selector_value == null;
 
     if (has_multiple_selectors) {
-        for (last_matches.items) |last_node| {
+        for (last_matches.items) |i| {
+            const last_node = ast.nodes[i];
             print("start node: |{}|\n", .{last_node});
             var parent_idx = last_node.parent_idx;
             var selector_rest_iter = selector;
@@ -164,7 +166,7 @@ pub fn superhtml() !void {
                             selector_value = next;
                         } else {
                             // found selector match
-                            try selector_matches.append(last_node);
+                            try selector_matches.append(i);
                             break;
                         }
                     }
@@ -174,7 +176,7 @@ pub fn superhtml() !void {
                             selector_value = next;
                         } else {
                             // found selector match
-                            try selector_matches.append(last_node);
+                            try selector_matches.append(i);
                             break;
                         }
                     }
@@ -201,7 +203,8 @@ pub fn superhtml() !void {
     //   - find first <time> element?
     //   - date format - optional
 
-    for (matches.items) |node| {
+    for (matches.items) |i| {
+        const node = ast.nodes[i];
         print("dir: {}\n", .{node.direction()});
         const link_node = find_link_node(ast, code, node);
         if (link_node) |n| {
