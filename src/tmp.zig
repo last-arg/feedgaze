@@ -203,16 +203,18 @@ pub fn superhtml() !void {
     //   - date format - optional
 
     for (matches.items) |i| {
+        var link_href: ?[]const u8 = null;
         const node = ast.nodes[i];
         print("START ({d}): {s}\n", .{i, node.open.slice(code)});
         const link_node = find_link_node(ast, code, node);
         if (link_node) |n| {
-            print("  link_node: |{s}|\n", .{n.open.slice(code)});
             var attr_iter = n.startTagIterator(code, .html);
             while (attr_iter.next(code)) |attr| {
                 if (attr.value) |value| {
                     const name = attr.name.slice(code);
-                    print("  name: {s} | value: {s}\n", .{name, value.span.slice(code)});
+                    if (std.ascii.eqlIgnoreCase("a", name)) {
+                        link_href = value.span.slice(code);
+                    }
                 }
             }
         }
