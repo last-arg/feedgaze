@@ -69,6 +69,7 @@ pub fn superhtml() !void {
     \\ </head>
     \\ <body>
     \\  <div class="item wrapper first">
+    // \\   <a>some link text</a>
     \\   <h2 class="foo bar" id="my-id"> item 1</h2>
     \\  </div>
     \\  <div class="item">
@@ -76,8 +77,9 @@ pub fn superhtml() !void {
     \\   <input type="text">
     \\   <div>
     \\    <a href="#item2">
-    \\      item 2
-    \\      multiline
+    \\      item 
+    \\      2
+    \\      <span>multiline</span>
     \\    </a>
     \\   </div>
     \\  </div>
@@ -206,8 +208,10 @@ pub fn superhtml() !void {
         var link_href: ?[]const u8 = null;
         const node = ast.nodes[i];
         print("START ({d}): {s}\n", .{i, node.open.slice(code)});
+
         const link_node = find_link_node(ast, code, node);
         if (link_node) |n| {
+            print("link: {s}\n", .{n.open.line(code).line});
             var attr_iter = n.startTagIterator(code, .html);
             while (attr_iter.next(code)) |attr| {
                 if (attr.value) |value| {
@@ -217,6 +221,16 @@ pub fn superhtml() !void {
                     }
                 }
             }
+
+            
+            
+            var iter_text_node = IteratorTextNode.init(ast, code, n);
+            print("ITER\n", .{});
+            while (iter_text_node.next()) |text_node| {
+                // print("  TEXT_NODE: {}\n", .{text_node});
+                print("  TEXT_NODE: |{s}|\n", .{text_node.open.slice(code)});
+            }
+            print("ITER END\n", .{});
         }
 
         const child = ast.nodes[node.first_child_idx];
@@ -239,6 +253,103 @@ pub fn superhtml() !void {
 
     // ast.debug(code);
 }
+
+const IteratorTextNode = struct {
+    current_sibling_index: usize,
+    ast: super.html.Ast,
+    code: []const u8,
+    current_index: usize,
+
+    pub fn init(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) @This() {
+        return .{
+            .ast = ast,
+            .code = code,
+            .current_sibling_index = node.first_child_idx,
+            .current_index = node.first_child_idx,
+        };
+    }
+
+    pub fn next(self: *@This()) ?super.html.Ast.Node {
+        print("  NEXT sibling: {} | current: {}\n", .{self.current_sibling_index, self.current_index});
+        if (self.current_sibling_index == 0) {
+            return null;
+        }
+
+        while (self.current_sibling_index != self.current_index and self.current_index != 0) {
+            const current = self.ast.nodes[self.current_index];
+            if (self.next_rec(current)) |idx| {
+                const node = self.ast.nodes[idx];
+                self.current_index = next_index_node(node);
+                print("  next current {}\n", .{self.current_index});
+                print("  return from current\n", .{});
+                return node;
+            }
+            self.current_index = current.parent_idx;
+        }
+
+        // - Need to continue going here until find text node or 
+        //   there are no more nodes to look.
+        while (self.current_index != 0) {
+            const current = self.ast.nodes[self.current_sibling_index];
+            if (self.next_rec(current)) |idx| {
+                const node = self.ast.nodes[idx];
+                self.current_index = next_index_node(node);
+                print("  next current {}\n", .{self.current_index});
+                print("  return from sibling\n", .{});
+                return node;
+            }
+            self.current_index = next_index_node(current);
+            self.current_sibling_index = current.next_idx;
+        }
+        return null;
+    }
+
+    fn next_index_node(node: super.html.Ast.Node) usize {
+        if (node.first_child_idx != 0) {
+            return node.first_child_idx;
+        } else if (node.next_idx != 0) {
+            return node.next_idx;
+        }
+        return 0;
+    }
+
+    fn next_rec(self: *@This(), node: super.html.Ast.Node) ?usize {
+        if (node.kind == .text) {
+            return self.ast.nodes[node.parent_idx].first_child_idx;
+        }
+
+        if (node.kind != .element) {
+            return null;
+        }
+
+        if (node.first_child_idx != 0) {
+            if (self.next_rec(self.ast.nodes[node.first_child_idx])) |idx| {
+                const n = self.ast.nodes[idx];
+                if (n.kind == .text) {
+                    return node.first_child_idx;
+                }
+            }
+        }
+
+        var next_index = node.next_idx;
+        while (next_index != 0) {
+            const current = self.ast.nodes[next_index];
+
+            if (current.kind != .text and current.kind != .element) {
+                next_index = current.next_idx;
+                continue;
+            }
+
+            if (self.next_rec(current)) |_| {
+                return node.first_child_idx;
+            }
+
+            next_index = current.next_idx;
+        }
+
+        return null;
+    }
+};
 
 pub fn find_link_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
     if (node.first_child_idx == 0) {
