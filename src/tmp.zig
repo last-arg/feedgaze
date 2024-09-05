@@ -229,9 +229,14 @@ pub fn superhtml() !void {
         print("text: |{?s}|\n", .{item_title});
 
         if (item_title == null) {
-            // TODO: find h1..h6 nodes
-            // TODO: extract text from first found match
-            // return if text isn't empty(null)
+            for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
+                if (find_node(ast, code, node, tag)) |node_match| {
+                    if (try text_from_node(arena.allocator(), ast, code, node_match)) |text| {
+                        item_title = text;
+                        break;
+                    }
+                }
+            }
         }
 
         const child = ast.nodes[node.first_child_idx];
