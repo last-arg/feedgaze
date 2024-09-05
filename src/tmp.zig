@@ -205,32 +205,33 @@ pub fn superhtml() !void {
     //   - date format - optional
 
     for (matches.items) |i| {
-        var link_href: ?[]const u8 = null;
+        var item_href: ?[]const u8 = null;
+        var item_title: ?[]const u8 = null;
         const node = ast.nodes[i];
         print("START ({d}): {s}\n", .{i, node.open.slice(code)});
 
         const link_node = find_link_node(ast, code, node);
         if (link_node) |n| {
-            print("link: {s}\n", .{n.open.line(code).line});
             var attr_iter = n.startTagIterator(code, .html);
             while (attr_iter.next(code)) |attr| {
                 if (attr.value) |value| {
                     const name = attr.name.slice(code);
                     if (std.ascii.eqlIgnoreCase("a", name)) {
-                        link_href = value.span.slice(code);
+                        item_href = value.span.slice(code);
                     }
                 }
             }
 
-            
-            
-            var iter_text_node = IteratorTextNode.init(ast, code, n);
-            print("ITER\n", .{});
-            while (iter_text_node.next()) |text_node| {
-                // print("  TEXT_NODE: {}\n", .{text_node});
-                print("  TEXT_NODE: |{s}|\n", .{text_node.open.slice(code)});
+            if (try text_from_node(arena.allocator(), ast, code, n)) |text| {
+                item_title = text;
             }
-            print("ITER END\n", .{});
+        }
+        print("text: |{?s}|\n", .{item_title});
+
+        if (item_title == null) {
+            // TODO: find h1..h6 nodes
+            // TODO: extract text from first found match
+            // return if text isn't empty(null)
         }
 
         const child = ast.nodes[node.first_child_idx];
@@ -252,6 +253,38 @@ pub fn superhtml() !void {
     }
 
     // ast.debug(code);
+}
+
+fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?[]const u8 {
+    var iter_text_node = IteratorTextNode.init(ast, code, node);
+    var text_arr = try std.BoundedArray(u8, 1024).init(0);
+    blk: while (iter_text_node.next()) |text_node| {
+        const text = std.mem.trim(u8, text_node.open.slice(code), &std.ascii.whitespace);
+        var token_iter = std.mem.tokenizeAny(u8, text, &std.ascii.whitespace);
+        if (token_iter.next()) |word_first| {
+            if (text_arr.len != 0) {
+                text_arr.append(' ') catch break :blk;
+            }
+            text_arr.appendSlice(word_first) catch {
+                text_arr.appendSliceAssumeCapacity(word_first[0..text_arr.buffer.len - text_arr.len]);
+                break :blk;
+            };
+
+            while (token_iter.next()) |word| {
+                text_arr.append(' ') catch break :blk;
+                text_arr.appendSlice(word) catch {
+                    text_arr.appendSliceAssumeCapacity(word[0..text_arr.buffer.len - text_arr.len]);
+                    break :blk;
+                };
+            }
+        }
+    }
+
+    if (text_arr.len > 0) {
+        return try allocator.dupe(u8, text_arr.slice());
+    }
+
+    return null;
 }
 
 const IteratorTextNode = struct {
