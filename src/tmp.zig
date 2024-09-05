@@ -262,13 +262,11 @@ pub fn find_link_node_rec(ast: super.html.Ast, code: []const u8, node: super.htm
     var next_idx = node.next_idx;
     while (next_idx != 0) {
         const next_node = ast.nodes[next_idx];
-        if (next_node.kind != .element) { 
-            next_idx = next_node.next_idx;
-            continue; 
-        }
-        if (find_link_node(ast, code, next_node)) |n| {
-            return n;
-        }
+        if (next_node.kind == .element) { 
+            if (find_link_node(ast, code, next_node)) |n| {
+                return n;
+            }
+        } 
         next_idx = next_node.next_idx;
     }
 
