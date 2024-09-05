@@ -151,7 +151,6 @@ pub fn superhtml() !void {
     if (has_multiple_selectors) {
         for (last_matches.items) |i| {
             const last_node = ast.nodes[i];
-            print("start node: |{}|\n", .{last_node});
             var parent_idx = last_node.parent_idx;
             var selector_rest_iter = selector;
 
@@ -205,17 +204,16 @@ pub fn superhtml() !void {
 
     for (matches.items) |i| {
         const node = ast.nodes[i];
-        print("dir: {}\n", .{node.direction()});
+        print("START ({d}): {s}\n", .{i, node.open.slice(code)});
         const link_node = find_link_node(ast, code, node);
         if (link_node) |n| {
-            print("link_node: {s}\n", .{n.open.slice(code)});
-        }
-        var attr_iter = node.startTagIterator(code, .html);
-        // print("node text_content: |{s}|\n", .{node.open.line(code).line});
-        while (attr_iter.next(code)) |attr| {
-            if (attr.value) |value| {
-                const name = attr.name.slice(code);
-                print("name: {s} | value: {s}\n", .{name, value.span.slice(code)});
+            print("  link_node: |{s}|\n", .{n.open.slice(code)});
+            var attr_iter = n.startTagIterator(code, .html);
+            while (attr_iter.next(code)) |attr| {
+                if (attr.value) |value| {
+                    const name = attr.name.slice(code);
+                    print("  name: {s} | value: {s}\n", .{name, value.span.slice(code)});
+                }
             }
         }
 
@@ -234,13 +232,20 @@ pub fn superhtml() !void {
             }
             text_tmp = text_tmp[0..text_tmp.len - count];
         }
-        print("text_content: |{s}|\n", .{text_tmp});
+        print("END ==> text_content: |{s}|\n", .{text_tmp});
     }
 
     // ast.debug(code);
 }
 
 pub fn find_link_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
+    if (node.first_child_idx == 0) {
+        return null;
+    }
+    return find_link_node_rec(ast, code, ast.nodes[node.first_child_idx]);
+}
+
+pub fn find_link_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ?super.html.Ast.Node {
     if (node.kind != .element) { return null; }
     if (std.ascii.eqlIgnoreCase("a", node.open.getName(code, .html).slice(code))) {
         return node;
