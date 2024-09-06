@@ -886,35 +886,50 @@ const IteratorTextNode = struct {
 
 pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
     std.debug.assert(tag.len > 0);
-    print("tag: {s} | idx: {}\n", .{tag, node.first_child_idx});
-    if (node.first_child_idx == 0) {
-        return null;
+
+    if (node.kind == .element) {
+        if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
+            return node;
+        }
+
+        if (node.first_child_idx != 0) {
+            if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
+                return n;
+            }
+        }
     }
-    return find_node_rec(ast, code, ast.nodes[node.first_child_idx], tag);
+    
+    var next_idx = node.next_idx;
+    while (next_idx != 0) {
+        const next_node = ast.nodes[next_idx];
+        if (find_node_rec(ast, code, next_node, tag)) |n| {
+            if (n.kind == .element) {
+                return n;
+            }
+        }
+        next_idx = next_node.next_idx;
+    }
+    return null;
 }
 
 pub fn find_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
     std.debug.assert(tag.len > 0);
-    if (node.kind != .element) { return null; }
-    if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
-        return node;
-    }
+    if (node.kind == .element) {
+        if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
+            return node;
+        }
 
-    if (node.first_child_idx != 0) {
-        if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
-            return n;
+        if (node.first_child_idx != 0) {
+            if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
+                return n;
+            }
         }
     }
 
-    var next_idx = node.next_idx;
-    while (next_idx != 0) {
-        const next_node = ast.nodes[next_idx];
-        if (next_node.kind == .element) { 
-            if (find_node(ast, code, next_node, tag)) |n| {
-                return n;
-            }
-        } 
-        next_idx = next_node.next_idx;
+    if (node.next_idx != 0) {
+        if (find_node(ast, code, ast.nodes[node.next_idx], tag)) |n| {
+            return n;
+        }
     }
 
     return null;
@@ -962,13 +977,17 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     var last_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
     defer last_matches.deinit();
 
+    const feed: Feed = .{ .feed_url = undefined };
+    _ = feed; // autofix
+
     // TODO: find page title
-    // if (true) {
-    //     if (find_node(ast, content, ast.nodes[2], "title")) |n| {
-    //         n.debug(content);
-    //     }
-    //     return undefined;
-    // }
+    // ast.nodes[3].debug(content);
+    // print("\n", .{});
+    const start_node = ast.nodes[1];
+    if (find_node(ast, content, start_node, "title")) |n| {
+        _ = n; // autofix
+        print("<title> found\n", .{});
+    }
 
     print("==> Find last selector matches\n", .{});
     for (ast.nodes, 0..) |node, i| {
@@ -1027,7 +1046,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                         }
                     }
                 }
-                print("parent_node {s}\n", .{span.slice(content)});
                 parent_idx = node.parent_idx;
             }
         }
@@ -1227,6 +1245,23 @@ pub fn main() !void {
     const alloc = arena.allocator();
 
     const content = @embedFile("tmp_file");
+    // const content = 
+    // \\<!doctype html>
+    // \\<html>
+    // \\<head>
+    // \\ <title>page title</title>
+    // \\</head>
+    // \\<body>
+    // \\  <div class="post">
+    // \\    <!-- comment -->
+    // \\    <input type="text">
+    // \\    <div>
+    // \\      <a href="#item1">hello</a>
+    // \\    </div>
+    // \\  </div>
+    // \\</body>
+    // \\</html>
+    // ;
     const html_options: HtmlOptions = .{
         .selector_container = ".post",
     };
