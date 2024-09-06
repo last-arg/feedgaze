@@ -1053,7 +1053,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     defer feed_items.deinit();
 
     for (matches.items) |i| {
-        var item_href: ?[]const u8 = null;
+        var item_link: ?[]const u8 = null;
         var item_title: ?[]const u8 = null;
         const node = ast.nodes[i];
         print("START ({d}): {s}\n", .{i, node.open.slice(content)});
@@ -1066,8 +1066,8 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             while (attr_iter.next(content)) |attr| {
                 if (attr.value) |value| {
                     const name = attr.name.slice(content);
-                    if (std.ascii.eqlIgnoreCase("a", name)) {
-                        item_href = value.span.slice(content);
+                    if (std.ascii.eqlIgnoreCase("href", name)) {
+                        item_link = value.span.slice(content);
                     }
                 }
             }
@@ -1098,6 +1098,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
         }
         
+        print("link: |{?s}|\n", .{item_link});
         print("text: |{?s}|\n", .{item_title});
 
         // TODO: add items
