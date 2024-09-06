@@ -738,6 +738,379 @@ test "parseRss" {
     // try std.testing.expectEqualDeep(expect_items[start..expect_items.len], result.items);
 }
 
+const super = @import("superhtml");
+
+pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const u8) bool {
+    var iter = node.startTagIterator(code, .html);
+    while (iter.next(code)) |tag| {
+        const name = tag.name.slice(code);
+        if (!std.ascii.eqlIgnoreCase("class", name)) { continue; }
+
+        if (tag.value) |value| {
+            const expected_class_name = selector[1..];
+            std.debug.assert(expected_class_name.len > 0);
+            var token_iter = std.mem.tokenizeScalar(u8, value.span.slice(code), ' ');
+            while (token_iter.next()) |class_name| {
+                if (std.ascii.eqlIgnoreCase(expected_class_name, class_name)) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?[]const u8 {
+    var iter_text_node = IteratorTextNode.init(ast, code, node);
+    var text_arr = try std.BoundedArray(u8, 1024).init(0);
+    blk: while (iter_text_node.next()) |text_node| {
+        const text = std.mem.trim(u8, text_node.open.slice(code), &std.ascii.whitespace);
+        var token_iter = std.mem.tokenizeAny(u8, text, &std.ascii.whitespace);
+        if (token_iter.next()) |word_first| {
+            if (text_arr.len != 0) {
+                text_arr.append(' ') catch break :blk;
+            }
+            text_arr.appendSlice(word_first) catch {
+                text_arr.appendSliceAssumeCapacity(word_first[0..text_arr.buffer.len - text_arr.len]);
+                break :blk;
+            };
+
+            while (token_iter.next()) |word| {
+                text_arr.append(' ') catch break :blk;
+                text_arr.appendSlice(word) catch {
+                    text_arr.appendSliceAssumeCapacity(word[0..text_arr.buffer.len - text_arr.len]);
+                    break :blk;
+                };
+            }
+        }
+    }
+
+    if (text_arr.len > 0) {
+        return try allocator.dupe(u8, text_arr.slice());
+    }
+
+    return null;
+}
+
+const IteratorTextNode = struct {
+    current_sibling_index: usize,
+    ast: super.html.Ast,
+    code: []const u8,
+    current_index: usize,
+
+    pub fn init(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) @This() {
+        return .{
+            .ast = ast,
+            .code = code,
+            .current_sibling_index = node.first_child_idx,
+            .current_index = node.first_child_idx,
+        };
+    }
+
+    pub fn next(self: *@This()) ?super.html.Ast.Node {
+        if (self.current_sibling_index == 0) {
+            return null;
+        }
+
+        while (self.current_sibling_index != self.current_index and self.current_index != 0) {
+            const current = self.ast.nodes[self.current_index];
+            if (self.next_rec(current)) |idx| {
+                const node = self.ast.nodes[idx];
+                self.current_index = next_index_node(node);
+                return node;
+            }
+            self.current_index = current.parent_idx;
+        }
+
+        // - Need to continue going here until find text node or 
+        //   there are no more nodes to look.
+        while (self.current_index != 0) {
+            const current = self.ast.nodes[self.current_sibling_index];
+            if (self.next_rec(current)) |idx| {
+                const node = self.ast.nodes[idx];
+                self.current_index = next_index_node(node);
+                return node;
+            }
+            self.current_index = next_index_node(current);
+            self.current_sibling_index = current.next_idx;
+        }
+        return null;
+    }
+
+    fn next_index_node(node: super.html.Ast.Node) usize {
+        if (node.first_child_idx != 0) {
+            return node.first_child_idx;
+        } else if (node.next_idx != 0) {
+            return node.next_idx;
+        }
+        return 0;
+    }
+
+    fn next_rec(self: *@This(), node: super.html.Ast.Node) ?usize {
+        if (node.kind == .text) {
+            return self.ast.nodes[node.parent_idx].first_child_idx;
+        }
+
+        if (node.kind != .element) {
+            return null;
+        }
+
+        if (node.first_child_idx != 0) {
+            if (self.next_rec(self.ast.nodes[node.first_child_idx])) |idx| {
+                const n = self.ast.nodes[idx];
+                if (n.kind == .text) {
+                    return node.first_child_idx;
+                }
+            }
+        }
+
+        var next_index = node.next_idx;
+        while (next_index != 0) {
+            const current = self.ast.nodes[next_index];
+
+            if (current.kind != .text and current.kind != .element) {
+                next_index = current.next_idx;
+                continue;
+            }
+
+            if (self.next_rec(current)) |_| {
+                return node.first_child_idx;
+            }
+
+            next_index = current.next_idx;
+        }
+
+        return null;
+    }
+};
+
+pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
+    std.debug.assert(tag.len > 0);
+    print("tag: {s} | idx: {}\n", .{tag, node.first_child_idx});
+    if (node.first_child_idx == 0) {
+        return null;
+    }
+    return find_node_rec(ast, code, ast.nodes[node.first_child_idx], tag);
+}
+
+pub fn find_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
+    std.debug.assert(tag.len > 0);
+    if (node.kind != .element) { return null; }
+    if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
+        return node;
+    }
+
+    if (node.first_child_idx != 0) {
+        if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
+            return n;
+        }
+    }
+
+    var next_idx = node.next_idx;
+    while (next_idx != 0) {
+        const next_node = ast.nodes[next_idx];
+        if (next_node.kind == .element) { 
+            if (find_node(ast, code, next_node, tag)) |n| {
+                return n;
+            }
+        } 
+        next_idx = next_node.next_idx;
+    }
+
+    return null;
+}
+
+const HtmlOptions = struct {
+    selector_container: []const u8,
+    selector_link: ?[]const u8 = null,
+    selector_heading: ?[]const u8 = null,
+};
+
+const Selector = struct {
+    iter: std.mem.SplitBackwardsIterator(u8, .scalar), 
+
+    pub fn init(input: []const u8) @This() {
+        return .{
+            .iter = std.mem.splitBackwardsScalar(u8, input, ' '),
+        };
+    }
+
+    pub fn next(self: *@This()) ?[]const u8 {
+        while (self.iter.next()) |val| {
+            if (val.len == 0) {
+                continue;
+            }
+            return val;
+        }
+        return null;
+    }
+};
+
+pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !FeedAndItems {
+    const ast = try super.html.Ast.init(allocator, content, .html);
+    if (ast.errors.len > 0) {
+        std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
+        // ast.printErrors(code, "<STRING>");
+    }
+    var selector = Selector.init(html_options.selector_container);
+    const last_selector = selector.next() orelse @panic("there should be CSS selector");
+    const is_last_elem_class = last_selector[0] == '.';
+    std.debug.assert(
+        (is_last_elem_class and last_selector.len > 1)
+        or last_selector.len > 0
+    );
+    var last_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
+    defer last_matches.deinit();
+
+    // TODO: find page title
+    // if (true) {
+    //     if (find_node(ast, content, ast.nodes[2], "title")) |n| {
+    //         n.debug(content);
+    //     }
+    //     return undefined;
+    // }
+
+    print("==> Find last selector matches\n", .{});
+    for (ast.nodes, 0..) |node, i| {
+        if (node.kind == .element or node.kind == .element_void or node.kind == .element_self_closing) {
+            if (is_last_elem_class) {
+                if (has_class(node, content, last_selector)) {
+                    try last_matches.append(i);
+                }
+            } else {
+                const span = node.open.getName(content, .html);
+                if (std.ascii.eqlIgnoreCase(last_selector, span.slice(content))) {
+                    try last_matches.append(i);
+                }
+            }
+        }
+        
+    }
+    print("==> last selector matches: {d}\n", .{last_matches.items.len});
+
+    // TODO: use last_matches.items.len?
+    var selector_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
+    defer selector_matches.deinit();
+
+    var selector_value = selector.next();
+    const has_multiple_selectors = selector_value != null;
+
+    if (has_multiple_selectors) {
+        for (last_matches.items) |i| {
+            const last_node = ast.nodes[i];
+            var parent_idx = last_node.parent_idx;
+            var selector_rest_iter = selector;
+
+            while (parent_idx != 0) {
+                std.debug.assert(selector_value != null);
+                const node = ast.nodes[parent_idx];
+                const span = node.open.getName(content, .html);
+                const is_class = selector_value.?[0] == '.';
+                if (is_class) {
+                    if (has_class(node, content, selector_value.?)) {
+                        if (selector_rest_iter.next()) |next| {
+                            selector_value = next;
+                        } else {
+                            // found selector match
+                            try selector_matches.append(i);
+                            break;
+                        }
+                    }
+                } else {
+                    if (std.ascii.eqlIgnoreCase(selector_value.?, span.slice(content))) {
+                        if (selector_rest_iter.next()) |next| {
+                            selector_value = next;
+                        } else {
+                            // found selector match
+                            try selector_matches.append(i);
+                            break;
+                        }
+                    }
+                }
+                print("parent_node {s}\n", .{span.slice(content)});
+                parent_idx = node.parent_idx;
+            }
+        }
+    }
+    print("==> selector matches: {d}\n", .{selector_matches.items.len});
+
+    const matches = if (has_multiple_selectors) selector_matches else last_matches; 
+    print("==> matches: {d}\n", .{matches.items.len});
+
+    // TODO: get feed items info from matches
+    // - item (container) selector - required
+    // - link selector - optional. there might not be link
+    //   - default is to find first link (<a>) inside item container
+    // - heading selector - optional
+    //   - if link take heading from link text
+    //   - otherwise look for first h1-h6 inside item container
+    //   - otherwise find first text node?
+    // - date selector - optional
+    //   - find first <time> element?
+    //   - date format - optional
+
+    var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
+    defer feed_items.deinit();
+
+    for (matches.items) |i| {
+        var item_href: ?[]const u8 = null;
+        var item_title: ?[]const u8 = null;
+        const node = ast.nodes[i];
+        print("START ({d}): {s}\n", .{i, node.open.slice(content)});
+
+        // TODO: html_options.selector_link
+        // - selector might have several selectors
+        const link_node = find_node(ast, content, node, "a");
+        if (link_node) |n| {
+            var attr_iter = n.startTagIterator(content, .html);
+            while (attr_iter.next(content)) |attr| {
+                if (attr.value) |value| {
+                    const name = attr.name.slice(content);
+                    if (std.ascii.eqlIgnoreCase("a", name)) {
+                        item_href = value.span.slice(content);
+                    }
+                }
+            }
+
+            if (try text_from_node(allocator, ast, content, n)) |text| {
+                item_title = text;
+            }
+        }
+
+        // TODO: html_options.selector_heading
+        // - selector might have several selectors
+        if (item_title == null) {
+            for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
+                if (find_node(ast, content, node, tag)) |node_match| {
+                    if (try text_from_node(allocator, ast, content, node_match)) |text| {
+                        item_title = text;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Find any text inside node
+        if (item_title == null) {
+            if (try text_from_node(allocator, ast, content, node)) |text| {
+                item_title = text;
+                break;
+            }
+        }
+        
+        print("text: |{?s}|\n", .{item_title});
+
+        // TODO: add items
+    }
+
+    // ast.debug(code);
+
+    return .{
+        .feed = .{.feed_url = undefined},
+        .items = try feed_items.toOwnedSlice(),
+    };
+}
+
 pub const ContentType = feed_types.ContentType;
 
 pub fn getContentType(content: []const u8) ?ContentType {
@@ -835,20 +1208,35 @@ fn printEvent(event: zig_xml.Event) !void {
     }
 }
 
+pub const std_options: std.Options = .{
+    // This sets log level based on scope.
+    // This overrides global log_level
+    .log_scope_levels = &.{ 
+        .{.level = .err, .scope = .@"html/tokenizer"},
+        .{.level = .err, .scope = .@"html/ast"} 
+    },
+    // This set global log level
+    .log_level = .debug,
+};
+
+
 pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     const content = @embedFile("tmp_file");
-    const feed = try parseRss(alloc, content);
+    const html_options: HtmlOptions = .{
+        .selector_container = ".post",
+    };
+    const feed = try parse_html(alloc, content, html_options);
     print("\n==========> START {d}\n", .{feed.items.len});
     print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
     for (feed.items) |item| {
         print("title: |{s}|\n", .{item.title});
         print("link: |{?s}|\n", .{item.link});
-        print("link: |{?s}|\n", .{item.link});
         // print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});
     }
 }
+
