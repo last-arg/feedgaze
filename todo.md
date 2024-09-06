@@ -1,5 +1,9 @@
 # Initial
 - website:
+  - add last-modified header where possible
+    - feed page
+    - tag page
+    - feeds page
   - add feed: can add tags
   - tags page:
     - edit (rename) tags

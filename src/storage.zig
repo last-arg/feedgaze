@@ -1138,6 +1138,11 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
     }
 
+    pub fn get_latest_created_timestamp(self: *Self) !?i64 {
+        const query = "SELECT max(created_timestamp) FROM item";
+        return try one(&self.sql_db, i64, query, .{});
+    }
+
     pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const usize) ![]types.Feed {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);

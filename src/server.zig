@@ -535,6 +535,24 @@ fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
 
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
+
+    var date_buf: [29]u8 = undefined;
+    if (try db.get_latest_created_timestamp()) |ts| {
+        const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, ts * 1000);
+        resp.header("Last-Modified", date_slice);
+
+        if (req.method == .GET or req.method == .HEAD) {
+            if (req.header("if-modified-since")) |if_modified_since| {
+                const date = try feed_types.RssDateTime.parse(if_modified_since);
+                if (date == ts) {
+                    resp.status = 304;
+                    return;
+                }
+            } 
+        }
+
+    }
+    
     resp.content_type = .HTML;
 
     const w = resp.writer(); 
@@ -1210,7 +1228,8 @@ const Storage = @import("storage.zig").Storage;
 const print = std.debug.print;
 const mem = std.mem;
 const types = @import("./feed_types.zig");
-const Datetime = @import("zig-datetime").datetime.Datetime;
+const datetime = @import("zig-datetime").datetime;
+const Datetime = datetime.Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
 const html = @import("./html.zig");
