@@ -967,6 +967,14 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
         // ast.printErrors(code, "<STRING>");
     }
+
+    var feed: Feed = .{ .feed_url = undefined };
+
+    const start_node = ast.nodes[1];
+    if (find_node(ast, content, start_node, "title")) |n| {
+        feed.title = try text_from_node(allocator, ast, content, n);
+    }
+
     var selector = Selector.init(html_options.selector_container);
     const last_selector = selector.next() orelse @panic("there should be CSS selector");
     const is_last_elem_class = last_selector[0] == '.';
@@ -974,20 +982,9 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         (is_last_elem_class and last_selector.len > 1)
         or last_selector.len > 0
     );
+
     var last_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
     defer last_matches.deinit();
-
-    const feed: Feed = .{ .feed_url = undefined };
-    _ = feed; // autofix
-
-    // TODO: find page title
-    // ast.nodes[3].debug(content);
-    // print("\n", .{});
-    const start_node = ast.nodes[1];
-    if (find_node(ast, content, start_node, "title")) |n| {
-        _ = n; // autofix
-        print("<title> found\n", .{});
-    }
 
     print("==> Find last selector matches\n", .{});
     for (ast.nodes, 0..) |node, i| {
