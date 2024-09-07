@@ -899,39 +899,16 @@ pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Nod
         }
     }
     
-    var next_idx = node.next_idx;
+    var next_idx = ast.nodes[node.first_child_idx].next_idx;
     while (next_idx != 0) {
         const next_node = ast.nodes[next_idx];
-        if (find_node_rec(ast, code, next_node, tag)) |n| {
+        if (find_node(ast, code, next_node, tag)) |n| {
             if (n.kind == .element) {
                 return n;
             }
         }
         next_idx = next_node.next_idx;
     }
-    return null;
-}
-
-pub fn find_node_rec(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
-    std.debug.assert(tag.len > 0);
-    if (node.kind == .element) {
-        if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
-            return node;
-        }
-
-        if (node.first_child_idx != 0) {
-            if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
-                return n;
-            }
-        }
-    }
-
-    if (node.next_idx != 0) {
-        if (find_node(ast, code, ast.nodes[node.next_idx], tag)) |n| {
-            return n;
-        }
-    }
-
     return null;
 }
 
@@ -1009,6 +986,8 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     }
     print("==> last selector matches: {d}\n", .{last_matches.len});
 
+    // TODO: could reuse last_matches bounded array. Just filter out not valid
+    // values (indexes).
     var selector_matches = std.BoundedArray(usize, default_item_count).init(0) catch unreachable;
 
     var selector_value = selector.next();
