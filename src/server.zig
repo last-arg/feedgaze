@@ -536,17 +536,19 @@ fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
+    var last_modified_buf: [29]u8 = undefined;
     var date_buf: [29]u8 = undefined;
     if (try db.get_latest_created_timestamp()) |ts| {
-        const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, ts * 1000);
-        resp.header("Last-Modified", date_slice);
+        const date_out = try Datetime.fromSeconds(@floatFromInt(ts)).formatHttpBuf(&last_modified_buf);
+        resp.header("Last-Modified", date_out);
+        resp.header("Cache-control", "no-cache");
 
-        if (req.method == .GET or req.method == .HEAD) {
-            // TODO: this conflicts with next update countdown.
-            // Show wrong time if from cache. Use time only if JS enabled?
-            // Just show date and add time until next update with JS?
+        if (req.method == .GET or req.method == .HEAD) brk: {
             if (req.header("if-modified-since")) |if_modified_since| {
-                const date = try feed_types.RssDateTime.parse(if_modified_since);
+                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
+                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
+                    break :brk;
+                };
                 if (date == ts) {
                     resp.status = 304;
                     return;
