@@ -983,8 +983,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         or last_selector.len > 0
     );
 
-    var last_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
-    defer last_matches.deinit();
+    var last_matches = std.BoundedArray(usize, default_item_count).init(0) catch unreachable;
 
     print("==> Find last selector matches\n", .{});
     for (ast.nodes, 0..) |node, i| {
@@ -992,27 +991,31 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             if (is_last_elem_class) {
                 if (has_class(node, content, last_selector)) {
                     try last_matches.append(i);
+                    if (last_matches.capacity() == last_matches.len) {
+                        break;
+                    }
                 }
             } else {
                 const span = node.open.getName(content, .html);
                 if (std.ascii.eqlIgnoreCase(last_selector, span.slice(content))) {
                     try last_matches.append(i);
+                    if (last_matches.capacity() == last_matches.len) {
+                        break;
+                    }
                 }
             }
         }
         
     }
-    print("==> last selector matches: {d}\n", .{last_matches.items.len});
+    print("==> last selector matches: {d}\n", .{last_matches.len});
 
-    // TODO: use last_matches.items.len?
-    var selector_matches = try std.ArrayList(usize).initCapacity(allocator, 10);
-    defer selector_matches.deinit();
+    var selector_matches = std.BoundedArray(usize, default_item_count).init(0) catch unreachable;
 
     var selector_value = selector.next();
     const has_multiple_selectors = selector_value != null;
 
     if (has_multiple_selectors) {
-        for (last_matches.items) |i| {
+        for (last_matches.slice()) |i| {
             const last_node = ast.nodes[i];
             var parent_idx = last_node.parent_idx;
             var selector_rest_iter = selector;
@@ -1047,10 +1050,10 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
         }
     }
-    print("==> selector matches: {d}\n", .{selector_matches.items.len});
+    print("==> selector matches: {d}\n", .{selector_matches.len});
 
     const matches = if (has_multiple_selectors) selector_matches else last_matches; 
-    print("==> matches: {d}\n", .{matches.items.len});
+    print("==> matches: {d}\n", .{matches.len});
 
     // TODO: get feed items info from matches
     // - item (container) selector - required
@@ -1064,10 +1067,10 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     //   - find first <time> element?
     //   - date format - optional
 
-    var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
+    var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, matches.len);
     defer feed_items.deinit();
 
-    for (matches.items) |i| {
+    for (matches.slice()) |i| {
         var item_link: ?[]const u8 = null;
         var item_title: ?[]const u8 = null;
         const node = ast.nodes[i];
@@ -1116,7 +1119,10 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         print("link: |{?s}|\n", .{item_link});
         print("text: |{?s}|\n", .{item_title});
 
-        // TODO: add items
+        try feed_items.append(.{
+            .title = item_title orelse "",
+            .link = item_link,
+        });
     }
 
     // ast.debug(code);
