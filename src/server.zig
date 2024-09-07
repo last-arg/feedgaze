@@ -542,6 +542,9 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         resp.header("Last-Modified", date_slice);
 
         if (req.method == .GET or req.method == .HEAD) {
+            // TODO: this conflicts with next update countdown.
+            // Show wrong time if from cache. Use time only if JS enabled?
+            // Just show date and add time until next update with JS?
             if (req.header("if-modified-since")) |if_modified_since| {
                 const date = try feed_types.RssDateTime.parse(if_modified_since);
                 if (date == ts) {
@@ -581,39 +584,14 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.writeAll("<div class='root-heading'>");
     try w.writeAll("<h2>Latest (added)</h2>");
 
-    const CountdownDisplay = struct {
-        countdown: i64,
-
-        pub fn format(self: @This(), comptime _: []const u8, _: std.fmt.FormatOptions, writer: anytype) !void {
-            // NOTE: Might change in the future
-            std.debug.assert(self.countdown > 0);
-            const ct = self.countdown;
-            if (ct <= 60) {
-                try writer.print("{d} second", .{ct});
-                if (ct > 1) {
-                    try writer.writeAll("s");
-                }
-            } else {
-                const minutes = @divTrunc(ct, 60);
-                const hours = @divTrunc(ct, 3600);
-                if (hours > 0) {
-                    try writer.print("{d} hour", .{hours});
-                    if (hours > 1 ) { try writer.writeAll("s"); }
-                } else {
-                    try writer.print("{d} minute", .{minutes});
-                    if (minutes > 1 ) { try writer.writeAll("s"); }
-                }
-            }
-        }
-    };
     if (try db.next_update_countdown()) |countdown| {
         if (countdown > 0) {
             const countdown_ts = std.time.timestamp() + countdown;
             var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
             date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
 
-            try w.print("<span>Next update in {} ({d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4})</span>", .{
-                CountdownDisplay{.countdown = countdown},
+            try w.print("<time-relative>(<time datetime={s}>{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4})</time></time-relative>", .{
+                timestampToString(&date_buf, countdown_ts),
                 date.time.hour,
                 date.time.minute,
                 date.date.day,
@@ -621,7 +599,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 date.date.year,
             });
         } else if (countdown <= 0) {
-            try w.writeAll("<span>Updating now</span>");
+            try w.writeAll("<span>Update now</span>");
         }
     }
     try w.writeAll("</div>");

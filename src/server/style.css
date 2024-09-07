@@ -217,8 +217,12 @@ a:hover {
   text-decoration: underline;
 }
 
-time,
-.no-date {
+/** TODO: try to make it nicer.
+Probably juse use class
+*/
+.feed-item-list time,
+.feed-header-top time,
+.feed-item-list .no-date {
   font-family: monospace;
   font-size: var(--step--1);
   color: var(--grey-1);
@@ -550,7 +554,7 @@ input[type=text] {
   margin-inline-start: var(--space-m);
 }
 
-.root-heading span {
+.root-heading time-relative {
   font-style: italic;
   color: var(--grey-10);
   font-size: var(--step--1);
