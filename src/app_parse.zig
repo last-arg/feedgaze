@@ -1053,12 +1053,10 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         var item_link: ?[]const u8 = null;
         var item_title: ?[]const u8 = null;
         const node = ast.nodes[i];
-        print("START ({d}): {s}\n", .{i, node.open.slice(content)});
 
         // TODO: html_options.selector_link
         // - selector might have several selectors
-        const link_node = find_node(ast, content, node, "a");
-        if (link_node) |n| {
+        if (find_node(ast, content, node, "a")) |n| {
             var attr_iter = n.startTagIterator(content, .html);
             while (attr_iter.next(content)) |attr| {
                 if (attr.value) |value| {
@@ -1095,16 +1093,40 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
         }
         
-        print("link: |{?s}|\n", .{item_link});
-        print("text: |{?s}|\n", .{item_title});
+        // TODO: <time> has valid set of date formats 
+        // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
+        var item_updated_ts: ?i64 = null;
+        if (find_node(ast, content, node, "time")) |time_node| {
+            print("time\n", .{});
+            var attr_iter = time_node.startTagIterator(content, .html);
+            while (attr_iter.next(content)) |attr| {
+                if (attr.value) |value| {
+                    const name = attr.name.slice(content);
+                    if (std.ascii.eqlIgnoreCase("datetime", name)) {
+                        item_updated_ts = seconds_from_datetime(mem.trim(u8, value.span.slice(content), &std.ascii.whitespace));
+                    }
+                }
+            }
+
+            // TODO: if there is no datetime attribute, text content of <time>
+            // will be the date value. <time> can't have element children if
+            // there is no datetime value.
+        }
+
+        // {
+        //     print("link: |{?s}|\n", .{item_link});
+        //     print("text: |{?s}|\n", .{item_title});
+        //     print("text: |{?s}|\n", .{item_title});
+        // }
 
         try feed_items.append(.{
             .title = item_title orelse "",
             .link = item_link,
+            .updated_timestamp = item_updated_ts,
         });
     }
 
-    // ast.debug(code);
+    // ast.debug(content);
 
     return .{
         .feed = .{.feed_url = undefined},
