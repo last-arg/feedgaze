@@ -7,6 +7,7 @@ const AtomDateTime = feed_types.AtomDateTime;
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
+const datetime = @import("zig-datetime").datetime;
 
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
@@ -1093,8 +1094,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
         }
         
-        // TODO: <time> has valid set of date formats 
-        // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
         var item_updated_ts: ?i64 = null;
         if (find_node(ast, content, node, "time")) |time_node| {
             print("time\n", .{});
@@ -1132,6 +1131,156 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         .feed = .{.feed_url = undefined},
         .items = try feed_items.toOwnedSlice(),
     };
+}
+
+// NOTE: <time> valid set of date formats 
+// https://developer.mozilla.org/en-US/docs/Web/HTML/Element/time
+pub fn seconds_from_datetime(raw: []const u8) ?i64 {
+    if (raw.len == 4) {
+        // - YYYY
+        const year = std.fmt.parseUnsigned(u16, raw, 10) catch {
+            std.log.warn("Failed to parse 4 character length value '{s}' to year.", .{raw});
+            return null;
+        };
+        const date: datetime.Date = .{.year = year };
+        return @intFromFloat(date.toSeconds());
+    }
+
+    const dash_count = mem.count(u8, raw, "-");
+    const iso_len = 10;
+    const date = blk: { 
+        if (dash_count > 0) {
+            if (dash_count == 2 and raw.len >= iso_len) {
+                break :blk datetime.Date.parseIso(raw[0..iso_len]) catch {
+                    std.log.warn("Failed to parse full date from date format 'YYYY-MM-DD'. Failed input '{s}'", .{raw});
+                    return null;
+                };
+            } else if (dash_count == 1) {
+                if (raw.len == 5 and raw[2] == '-') {
+                    // - MM-DD
+                    const month = std.fmt.parseUnsigned(u4, raw[0..2], 10) catch {
+                        std.log.warn("Failed to parse month from date format 'MM-DD'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+
+                    const day = std.fmt.parseUnsigned(u8, raw[3..], 10) catch {
+                        std.log.warn("Failed to parse day from date format 'MM-DD'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+                
+                    var date = datetime.Date.now();
+                    date.month = month;
+                    date.day = day;
+                    break :blk date;
+                } else if (raw.len == 7 and raw[4] == '-') {
+                    // - YYYY-MM
+                    const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch {
+                        std.log.warn("Failed to parse year from date format 'YYYY-MM'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+
+                    const month = std.fmt.parseUnsigned(u4, raw[5..], 10) catch {
+                        std.log.warn("Failed to parse month from date format 'YYYY-MM'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+                
+                    break :blk datetime.Date{.year = year, .month = month};
+                } else if (raw.len == 8 and raw[4] == '-' and raw[5] == 'W') {
+                    // - YYYY-WWW
+                    const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch {
+                        std.log.warn("Failed to parse year from date format 'YYYY-WWW'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+
+                    const weeks = std.fmt.parseUnsigned(u16, raw[6..], 10) catch {
+                        std.log.warn("Failed to parse weeks from date format 'YYYY-WWW'. Failed input '{s}'", .{raw});
+                        return null;
+                    };
+
+                    var date = datetime.Date{.year = year};
+                    if (weeks > 2) {
+                        date = date.shiftDays((weeks - 1) * 7);
+                    }
+                    break :blk date;
+                }
+            
+            }
+        }
+        break :blk null;
+    };
+
+    if (date == null) {
+        return null;
+    }
+
+    var dt: datetime.Datetime = .{
+        .date = date.?,
+        .time = .{},
+        .zone = &datetime.timezones.Zulu,
+    };
+
+    const rest = mem.trimLeft(u8, raw[iso_len..], " T");
+    const time_end = mem.indexOfAny(u8, rest, ".+-Z") orelse rest.len;
+    const time_raw = rest[0..time_end];
+    print("|{s}|\n", .{time_raw});
+
+    var timezone: ?datetime.Timezone = null;
+    if (time_raw.len > 0) {
+        var time_iter = mem.splitScalar(u8, time_raw, ':');
+        var has_time = false;
+        if (time_iter.next()) |hours_str| {
+            if (std.fmt.parseUnsigned(u8, hours_str, 10)) |hour| {
+                dt.time.hour = hour;
+            } else |_| {
+                std.log.warn("Failed to parse hours from input '{s}'", .{raw});
+            }
+        }
+
+        if (time_iter.next()) |minutes_str| {
+            if (std.fmt.parseUnsigned(u8, minutes_str, 10)) |minute| {
+                dt.time.minute = minute;
+            } else |_| {
+                std.log.warn("Failed to parse minutes from input '{s}'", .{raw});
+            }
+            has_time = true;
+        }
+
+        if (time_iter.next()) |seconds_str| {
+            if (std.fmt.parseUnsigned(u8, seconds_str, 10)) |second| {
+                dt.time.second = second;
+            } else |_| {
+                std.log.warn("Failed to parse seconds from input '{s}'", .{raw});
+            }
+        }
+    
+        if (has_time) {
+            var timezone_offset: i16 = 0;
+            if (mem.indexOfAny(u8, rest[time_end..], "-+")) |index| {
+                var current_str = rest[time_end + index + 1 ..];
+                if (std.fmt.parseUnsigned(u8, current_str[0..2], 10)) |hour| {
+                    timezone_offset += hour * 60;
+                } else |_| {
+                    std.log.warn("Failed to parse timezone hours from input '{s}'", .{raw});
+                }
+
+                const next_start: u8 = if (current_str[2] == ':') 3 else 2;
+                const timezone_name = current_str[0..next_start+2];
+                if (std.fmt.parseUnsigned(u8, current_str[next_start..next_start+2], 10)) |minute| {
+                    timezone_offset += minute;
+                } else |_| {
+                    std.log.warn("Failed to parse timezone minutes from input '{s}'", .{raw});
+                }
+
+                timezone = datetime.Timezone.create(timezone_name, timezone_offset);
+            }
+        }
+    }
+
+    if (timezone) |zone| {
+        dt.zone = &zone;
+    }
+
+    return @intCast(@divFloor(dt.toTimestamp(), 1000));
 }
 
 pub const ContentType = feed_types.ContentType;
@@ -1269,14 +1418,15 @@ pub fn main() !void {
     const html_options: HtmlOptions = .{
         .selector_container = ".post",
     };
+    _ = seconds_from_datetime("1972-07-25 13:43:07+04:30");
     const feed = try parse_html(alloc, content, html_options);
     print("\n==========> START {d}\n", .{feed.items.len});
     print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    for (feed.items) |item| {
-        print("title: |{s}|\n", .{item.title});
-        print("link: |{?s}|\n", .{item.link});
-        // print("date: {?d}\n", .{item.updated_timestamp});
-        print("\n", .{});
-    }
+    // for (feed.items) |item| {
+    //     print("title: |{s}|\n", .{item.title});
+    //     print("link: |{?s}|\n", .{item.link});
+    //     print("date: {?d}\n", .{item.updated_timestamp});
+    //     print("\n", .{});
+    // }
 }
 
