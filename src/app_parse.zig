@@ -917,6 +917,7 @@ const HtmlOptions = struct {
     selector_container: []const u8,
     selector_link: ?[]const u8 = null,
     selector_heading: ?[]const u8 = null,
+    selector_date: ?[]const u8 = null,
 };
 
 const Selector = struct {
@@ -1096,20 +1097,30 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         
         var item_updated_ts: ?i64 = null;
         if (find_node(ast, content, node, "time")) |time_node| {
-            print("time\n", .{});
+            var value_raw: ?[]const u8 = null;
             var attr_iter = time_node.startTagIterator(content, .html);
             while (attr_iter.next(content)) |attr| {
                 if (attr.value) |value| {
                     const name = attr.name.slice(content);
                     if (std.ascii.eqlIgnoreCase("datetime", name)) {
-                        item_updated_ts = seconds_from_datetime(mem.trim(u8, value.span.slice(content), &std.ascii.whitespace));
+                        value_raw = value.span.slice(content);
                     }
                 }
             }
 
-            // TODO: if there is no datetime attribute, text content of <time>
-            // will be the date value. <time> can't have element children if
-            // there is no datetime value.
+            if (value_raw == null) {
+                // if there is no 'datetime' attribute on <time>
+                if (time_node.first_child_idx != 0) {
+                    const child_node = ast.nodes[time_node.first_child_idx];
+                    if (child_node.first_child_idx == 0 and child_node.next_idx == 0 and child_node.kind == .text) {
+                        value_raw = child_node.open.slice(content);
+                    }
+                }
+            }
+
+            if (value_raw) |raw| {
+                item_updated_ts = seconds_from_datetime(mem.trim(u8, raw, &std.ascii.whitespace));
+            }
         }
 
         // {
@@ -1417,16 +1428,16 @@ pub fn main() !void {
     // ;
     const html_options: HtmlOptions = .{
         .selector_container = ".post",
+        .selector_date = "span",
     };
-    _ = seconds_from_datetime("1972-07-25 13:43:07+04:30");
     const feed = try parse_html(alloc, content, html_options);
     print("\n==========> START {d}\n", .{feed.items.len});
     print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    // for (feed.items) |item| {
-    //     print("title: |{s}|\n", .{item.title});
-    //     print("link: |{?s}|\n", .{item.link});
-    //     print("date: {?d}\n", .{item.updated_timestamp});
-    //     print("\n", .{});
-    // }
+    for (feed.items) |item| {
+        print("title: |{s}|\n", .{item.title});
+        print("link: |{?s}|\n", .{item.link});
+        print("date: {?d}\n", .{item.updated_timestamp});
+        print("\n", .{});
+    }
 }
 
