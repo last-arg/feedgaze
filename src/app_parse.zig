@@ -885,32 +885,87 @@ const IteratorTextNode = struct {
     }
 };
 
-pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, tag: []const u8) ?super.html.Ast.Node {
-    std.debug.assert(tag.len > 0);
+// TODO: tag -> selector
+// There can be more than one 'tag' (selector).
+pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, selector: []const u8) ?super.html.Ast.Node {
+    std.debug.assert(selector.len > 0);
 
-    if (node.kind == .element) {
-        if (std.ascii.eqlIgnoreCase(tag, node.open.getName(code, .html).slice(code))) {
-            return node;
+    if (node.first_child_idx == 0) {
+        return null;
+    }
+        
+    print("first_index: {}\n", .{node.first_child_idx});
+    print("selector: {s}\n", .{selector});
+    var selector_iter = Selector.init(selector);
+    const last_selector = selector_iter.next() orelse return null;
+
+    const start_index = node.first_child_idx;
+    const end_idx = if (node.next_idx == 0) ast.nodes.len else node.next_idx;
+
+    print("search range: {}..{}\n", .{start_index, end_idx}); 
+    for (ast.nodes[start_index..end_idx]) |n| {
+        if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
+            continue;
         }
+        // print("find node: {}\n", .{n});
 
-        if (node.first_child_idx != 0) {
-            if (find_node(ast, code, ast.nodes[node.first_child_idx], tag)) |n| {
-                return n;
-            }
+        const span = n.open.getName(code, .html);
+        if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
+            // var copy_iter = selector_iter;
+            const is_match = is_selector_match(ast, code, selector_iter, n);
+            print("is selector match: {}\n", .{is_match});
+            n.debug(code);
+            print("\n", .{});
+            // TODO: see if rest of the selector matches
         }
     }
     
-    var next_idx = ast.nodes[node.first_child_idx].next_idx;
-    while (next_idx != 0) {
-        const next_node = ast.nodes[next_idx];
-        if (find_node(ast, code, next_node, tag)) |n| {
-            if (n.kind == .element) {
-                return n;
+
+    // TODO?: add node.kind:
+    // - element_void,
+    // - element_self_closing,
+    // if (node.kind == .element) {
+    //     if (std.ascii.eqlIgnoreCase(selector, node.open.getName(code, .html).slice(code))) {
+    //         return node;
+    //     }
+
+    //     if (node.first_child_idx != 0) {
+    //         if (find_node(ast, code, ast.nodes[node.first_child_idx], selector)) |n| {
+    //             return n;
+    //         }
+    //     }
+    // }
+    
+    // var next_idx = ast.nodes[node.first_child_idx].next_idx;
+    // while (next_idx != 0) {
+    //     const next_node = ast.nodes[next_idx];
+    //     if (find_node(ast, code, next_node, selector)) |n| {
+    //         if (n.kind == .element) {
+    //             return n;
+    //         }
+    //     }
+    //     next_idx = next_node.next_idx;
+    // }
+    return null;
+}
+
+pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: Selector, node: super.html.Ast.Node) bool {
+    var parent_index = node.parent_idx;
+    var iter = selector_iter;
+    while (iter.next()) |selector| {
+        while (parent_index != 0) {
+            const current = ast.nodes[parent_index];
+            parent_index = current.parent_idx;
+            
+            if (std.ascii.eqlIgnoreCase(selector, current.open.getName(code, .html).slice(code))) {
+                break;
             }
         }
-        next_idx = next_node.next_idx;
+        if (parent_index == 0) {
+            return false;
+        }
     }
-    return null;
+    return true;
 }
 
 const HtmlOptions = struct {
@@ -949,8 +1004,30 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
     var feed: Feed = .{ .feed_url = undefined };
 
-    const start_node = ast.nodes[1];
-    if (find_node(ast, content, start_node, "title")) |n| {
+    const root_node = ast.nodes[0];
+
+    ast.debug(content);
+    
+    print("Find selector\n", .{});
+    print("root: child {} | next {}\n", .{root_node.first_child_idx, root_node.next_idx});
+    const doctype = ast.nodes[1];
+    doctype.debug(content);
+    print("\ndoctype: child {} | next {}\n", .{doctype.first_child_idx, doctype.next_idx});
+    const html = ast.nodes[2];
+    html.debug(content);
+    print("\nhtml: child {} | next {}\n", .{html.first_child_idx, html.next_idx});
+    const r = find_node(ast, content, ast.nodes[0], "div p");
+    if (r) |n| {
+        print("FOUND: ", .{});
+        n.debug(content);
+        print("\n", .{});
+    }
+
+
+    if (true) return undefined;
+    
+
+    if (find_node(ast, content, root_node, "title")) |n| {
         feed.title = try text_from_node(allocator, ast, content, n);
     }
 
@@ -1135,8 +1212,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             .updated_timestamp = item_updated_ts,
         });
     }
-
-    // ast.debug(content);
 
     return .{
         .feed = .{.feed_url = undefined},
@@ -1408,36 +1483,39 @@ pub fn main() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const content = @embedFile("tmp_file");
-    // const content = 
-    // \\<!doctype html>
-    // \\<html>
-    // \\<head>
-    // \\ <title>page title</title>
-    // \\</head>
-    // \\<body>
-    // \\  <div class="post">
-    // \\    <!-- comment -->
-    // \\    <input type="text">
-    // \\    <div>
-    // \\      <a href="#item1">hello</a>
-    // \\    </div>
-    // \\  </div>
-    // \\</body>
-    // \\</html>
-    // ;
+    // const content = @embedFile("tmp_file");
+    const content = 
+    \\<!doctype html>
+    \\<html lang="en">
+    \\<head>
+    \\ <title>page title</title>
+    \\</head>
+    \\<body>
+    \\  <div class="post">
+    \\    <!-- comment -->
+    \\    <input type="text" value="foo">
+    \\    <p>foo bar</p>
+    \\    <div>
+    \\      <a href="#item1">hello</a>
+    \\    </div>
+    \\  </div>
+    \\  <p>other paragraph</p>
+    \\</body>
+    \\</html>
+    ;
     const html_options: HtmlOptions = .{
         .selector_container = ".post",
         .selector_date = "span",
     };
     const feed = try parse_html(alloc, content, html_options);
-    print("\n==========> START {d}\n", .{feed.items.len});
-    print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    for (feed.items) |item| {
-        print("title: |{s}|\n", .{item.title});
-        print("link: |{?s}|\n", .{item.link});
-        print("date: {?d}\n", .{item.updated_timestamp});
-        print("\n", .{});
-    }
+    _ = feed;
+    // print("\n==========> START {d}\n", .{feed.items.len});
+    // print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
+    // for (feed.items) |item| {
+    //     print("title: |{s}|\n", .{item.title});
+    //     print("link: |{?s}|\n", .{item.link});
+    //     print("date: {?d}\n", .{item.updated_timestamp});
+    //     print("\n", .{});
+    // }
 }
 
