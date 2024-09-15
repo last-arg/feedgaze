@@ -898,6 +898,7 @@ pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Nod
     print("selector: {s}\n", .{selector});
     var selector_iter = Selector.init(selector);
     const last_selector = selector_iter.next() orelse return null;
+    const is_class = last_selector[0] == '.';
 
     const start_index = node.first_child_idx;
     const end_idx = if (node.next_idx == 0) ast.nodes.len else node.next_idx;
@@ -907,45 +908,23 @@ pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Nod
         if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
             continue;
         }
-        // print("find node: {}\n", .{n});
 
         const span = n.open.getName(code, .html);
-        if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
-            // var copy_iter = selector_iter;
-            const is_match = is_selector_match(ast, code, selector_iter, n);
-            print("is selector match: {}\n", .{is_match});
-            n.debug(code);
-            print("\n", .{});
-            // TODO: see if rest of the selector matches
-        }
+        const is_match = blk: {
+            if (is_class and has_class(n, code, last_selector)) {
+                print("\tis class\n", .{});
+                break :blk is_selector_match(ast, code, selector_iter, n);
+            } else if (std.ascii.eqlIgnoreCase(last_selector, span.slice(code))) {
+                // var copy_iter = selector_iter;
+                break :blk is_selector_match(ast, code, selector_iter, n);
+            }
+            break :blk false;
+        };
+        print("is selector match: {}\n", .{is_match});
+        n.debug(code);
+        print("\n", .{});
     }
     
-
-    // TODO?: add node.kind:
-    // - element_void,
-    // - element_self_closing,
-    // if (node.kind == .element) {
-    //     if (std.ascii.eqlIgnoreCase(selector, node.open.getName(code, .html).slice(code))) {
-    //         return node;
-    //     }
-
-    //     if (node.first_child_idx != 0) {
-    //         if (find_node(ast, code, ast.nodes[node.first_child_idx], selector)) |n| {
-    //             return n;
-    //         }
-    //     }
-    // }
-    
-    // var next_idx = ast.nodes[node.first_child_idx].next_idx;
-    // while (next_idx != 0) {
-    //     const next_node = ast.nodes[next_idx];
-    //     if (find_node(ast, code, next_node, selector)) |n| {
-    //         if (n.kind == .element) {
-    //             return n;
-    //         }
-    //     }
-    //     next_idx = next_node.next_idx;
-    // }
     return null;
 }
 
@@ -953,11 +932,14 @@ pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: S
     var parent_index = node.parent_idx;
     var iter = selector_iter;
     while (iter.next()) |selector| {
+        const is_class = selector[0] == '.';
         while (parent_index != 0) {
             const current = ast.nodes[parent_index];
             parent_index = current.parent_idx;
             
-            if (std.ascii.eqlIgnoreCase(selector, current.open.getName(code, .html).slice(code))) {
+            if (is_class and has_class(current, code, selector)) {
+                break;
+            } else if (std.ascii.eqlIgnoreCase(selector, current.open.getName(code, .html).slice(code))) {
                 break;
             }
         }
@@ -1016,7 +998,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     const html = ast.nodes[2];
     html.debug(content);
     print("\nhtml: child {} | next {}\n", .{html.first_child_idx, html.next_idx});
-    const r = find_node(ast, content, ast.nodes[0], "div p");
+    const r = find_node(ast, content, ast.nodes[0], ".post .paragraph");
     if (r) |n| {
         print("FOUND: ", .{});
         n.debug(content);
@@ -1494,7 +1476,7 @@ pub fn main() !void {
     \\  <div class="post">
     \\    <!-- comment -->
     \\    <input type="text" value="foo">
-    \\    <p>foo bar</p>
+    \\    <p class="paragraph">foo bar</p>
     \\    <div>
     \\      <a href="#item1">hello</a>
     \\    </div>
