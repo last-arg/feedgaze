@@ -885,13 +885,77 @@ const IteratorTextNode = struct {
     }
 };
 
-// TODO: tag -> selector
-// There can be more than one 'tag' (selector).
+const NodeIterator = struct {
+    next_index: usize,
+    selector_iter: Selector,
+    start_node: super.html.Ast.Node,
+    ast: super.html.Ast,
+    code: []const u8,
+
+    pub fn init(ast: super.html.Ast, code: []const u8, start_node: super.html.Ast.Node, selector: []const u8) @This() {
+        std.debug.assert(selector.len > 0);
+
+        return .{
+            .start_node = start_node,
+            .ast = ast,
+            .code = code,
+            .next_index = start_node.first_child_idx,
+            .selector_iter = Selector.init(selector),
+        };
+    }
+    
+    pub fn next(self: *@This()) ?super.html.Ast.Node {
+        if (self.next_index == 0) {
+            return null;
+        }
+        
+        var selector_iter = self.selector_iter;
+        const last_selector = selector_iter.next() orelse return null;
+        const is_class = last_selector[0] == '.';
+
+        const start_index = self.next_index;
+        const end_idx = if (self.start_node.next_idx == 0) self.ast.nodes.len else self.start_node.next_idx;
+
+        print("search range: {}..{}\n", .{start_index, end_idx}); 
+        for (self.ast.nodes[start_index..end_idx], start_index..) |n, index| {
+            if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
+                continue;
+            }
+            print("index: {}\n", .{index});
+
+            const span = n.open.getName(self.code, .html);
+            const is_match = blk: {
+                if (is_class and has_class(n, self.code, last_selector)) {
+                    print("\tis class\n", .{});
+                    break :blk is_selector_match(self.ast, self.code, selector_iter, n);
+                } else if (std.ascii.eqlIgnoreCase(last_selector, span.slice(self.code))) {
+                    // var copy_iter = selector_iter;
+                    break :blk is_selector_match(self.ast, self.code, selector_iter, n);
+                }
+                break :blk false;
+            };
+            if (is_match) {
+                self.next_index = index + 1;
+                print("IS SELECTOR MATCH: {}\n", .{is_match});
+                n.debug(self.code);
+                print("\n", .{});
+                return n;
+            }
+            
+        }
+
+        return null;
+    }
+};
+
+var find_next_index: usize = 0;
 pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node, selector: []const u8) ?super.html.Ast.Node {
     std.debug.assert(selector.len > 0);
 
     if (node.first_child_idx == 0) {
         return null;
+    } else {
+        find_next_index = node.first_child_idx;
     }
         
     print("first_index: {}\n", .{node.first_child_idx});
@@ -900,14 +964,15 @@ pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Nod
     const last_selector = selector_iter.next() orelse return null;
     const is_class = last_selector[0] == '.';
 
-    const start_index = node.first_child_idx;
+    const start_index = find_next_index;
     const end_idx = if (node.next_idx == 0) ast.nodes.len else node.next_idx;
 
     print("search range: {}..{}\n", .{start_index, end_idx}); 
-    for (ast.nodes[start_index..end_idx]) |n| {
+    for (ast.nodes[start_index..end_idx], start_index..) |n, index| {
         if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
             continue;
         }
+        print("index: {}\n", .{index});
 
         const span = n.open.getName(code, .html);
         const is_match = blk: {
@@ -920,10 +985,16 @@ pub fn find_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Nod
             }
             break :blk false;
         };
-        print("is selector match: {}\n", .{is_match});
-        n.debug(code);
-        print("\n", .{});
+        if (is_match) {
+            find_next_index = index + 1;
+            print("IS SELECTOR MATCH: {}\n", .{is_match});
+            n.debug(code);
+            print("\n", .{});
+        }
+            
     }
+
+    // TODO: make into iterator?
     
     return null;
 }
@@ -998,12 +1069,17 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     const html = ast.nodes[2];
     html.debug(content);
     print("\nhtml: child {} | next {}\n", .{html.first_child_idx, html.next_idx});
-    const r = find_node(ast, content, ast.nodes[0], ".post .paragraph");
+    const r = find_node(ast, content, ast.nodes[0], ".post");
     if (r) |n| {
         print("FOUND: ", .{});
         n.debug(content);
         print("\n", .{});
     }
+
+    print("START ITER: \n", .{});
+    var node_iter = NodeIterator.init(ast, content, ast.nodes[0], ".post");
+    _ = node_iter.next();
+    _ = node_iter.next();
 
 
     if (true) return undefined;
@@ -1480,6 +1556,9 @@ pub fn main() !void {
     \\    <div>
     \\      <a href="#item1">hello</a>
     \\    </div>
+    \\  </div>
+    \\  <div class="post">
+    \\    second post
     \\  </div>
     \\  <p>other paragraph</p>
     \\</body>
