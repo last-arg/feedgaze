@@ -144,7 +144,7 @@ pub const Storage = struct {
         const items_all = parsed.items;
         const timestamp_max = try self.get_timestamp_max(feed_id);
         const id_and_link = blk: {
-            if (items_all[0].updated_timestamp == null) {
+            if (items_all.len > 0 and items_all[0].updated_timestamp == null) {
                 const query = "select id, link from item where feed_id = ? order by position limit 1";
                 break :blk try oneAlloc(&self.sql_db, arena.allocator(), IdAndLink, query, .{feed_id});
             }
