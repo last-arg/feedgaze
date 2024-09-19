@@ -1032,9 +1032,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         var item_title: ?[]const u8 = null;
         const node = node_container;
 
-        // TODO: html_options.selector_link
-        // - selector might have several selectors
-        var link_iter = NodeIterator.init(ast, content, node, "a");
+        var link_iter = NodeIterator.init(ast, content, node, html_options.selector_link orelse "a");
         if (link_iter.next()) |n| {
             var attr_iter = n.startTagIterator(content, .html);
             while (attr_iter.next(content)) |attr| {
@@ -1051,8 +1049,16 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
         }
 
-        // TODO: html_options.selector_heading
-        // - selector might have several selectors
+        if (html_options.selector_heading) |heading| {
+            var heading_iter = NodeIterator.init(ast, content, node, heading);
+            if (heading_iter.next()) |node_match| {
+                if (try text_from_node(allocator, ast, content, node_match)) |text| {
+                    item_title = text;
+                    break;
+                }
+            }
+        }
+
         if (item_title == null) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
                 var heading_iter = NodeIterator.init(ast, content, node, tag);
@@ -1074,7 +1080,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         }
         
         var item_updated_ts: ?i64 = null;
-        var time_iter = NodeIterator.init(ast, content, node, "time");
+        var time_iter = NodeIterator.init(ast, content, node, html_options.selector_date orelse "time");
         if (time_iter.next()) |time_node| {
             var value_raw: ?[]const u8 = null;
             var attr_iter = time_node.startTagIterator(content, .html);
