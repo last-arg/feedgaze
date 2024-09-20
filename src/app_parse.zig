@@ -1095,7 +1095,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         }
         
         var item_updated_ts: ?i64 = null;
-        const time_node = blk: {
+        const time_node: ?super.html.Ast.Node = blk: {
             if (html_options.selector_date) |selector| {
                 var iter = NodeIterator.init(ast, content, node, selector);
                 if (iter.next()) |n| {
@@ -1112,13 +1112,14 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         if (time_node) |n| {
             var value_raw: ?[]const u8 = null;
 
-            // TODO: do this only if node is <time>?
-            var attr_iter = n.startTagIterator(content, .html);
-            while (attr_iter.next(content)) |attr| {
-                if (attr.value) |value| {
-                    const name = attr.name.slice(content);
-                    if (std.ascii.eqlIgnoreCase("datetime", name)) {
-                        value_raw = value.span.slice(content);
+            if (std.ascii.eqlIgnoreCase("time", n.open.slice(content))) {
+                var attr_iter = n.startTagIterator(content, .html);
+                while (attr_iter.next(content)) |attr| {
+                    if (attr.value) |value| {
+                        const name = attr.name.slice(content);
+                        if (std.ascii.eqlIgnoreCase("datetime", name)) {
+                            value_raw = value.span.slice(content);
+                        }
                     }
                 }
             }
