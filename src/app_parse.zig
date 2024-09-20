@@ -1038,7 +1038,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                 if (iter.next()) |n| {
                     break :blk n;
                 } else {
-                    std.log.warn("Could not find link for item using selector '{s}'", .{selector});
+                    std.log.warn("Could not find link node with selector '{s}'", .{selector});
                 }
             }
 
@@ -1070,7 +1070,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                     break;
                 }
             } else {
-                std.log.warn("Could not find heading for item using selector '{s}'", .{heading});
+                std.log.warn("Could not find heading node with selector '{s}'", .{heading});
             }
         }
 
@@ -1095,10 +1095,25 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         }
         
         var item_updated_ts: ?i64 = null;
-        var time_iter = NodeIterator.init(ast, content, node, html_options.selector_date orelse "time");
-        if (time_iter.next()) |time_node| {
+        const time_node = blk: {
+            if (html_options.selector_date) |selector| {
+                var iter = NodeIterator.init(ast, content, node, selector);
+                if (iter.next()) |n| {
+                    break :blk n;
+                } else {
+                    std.log.warn("Could not find date node with selector '{s}'", .{selector});
+                }
+            }
+
+            var iter = NodeIterator.init(ast, content, node, "time");
+            break :blk iter.next();
+        };
+
+        if (time_node) |n| {
             var value_raw: ?[]const u8 = null;
-            var attr_iter = time_node.startTagIterator(content, .html);
+
+            // TODO: do this only if node is <time>?
+            var attr_iter = n.startTagIterator(content, .html);
             while (attr_iter.next(content)) |attr| {
                 if (attr.value) |value| {
                     const name = attr.name.slice(content);
@@ -1109,9 +1124,8 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
 
             if (value_raw == null) {
-                // if there is no 'datetime' attribute on <time>
-                if (time_node.first_child_idx != 0) {
-                    const child_node = ast.nodes[time_node.first_child_idx];
+                if (n.first_child_idx != 0) {
+                    const child_node = ast.nodes[n.first_child_idx];
                     if (child_node.first_child_idx == 0 and child_node.next_idx == 0 and child_node.kind == .text) {
                         value_raw = child_node.open.slice(content);
                     }
@@ -1122,12 +1136,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                 item_updated_ts = seconds_from_datetime(mem.trim(u8, raw, &std.ascii.whitespace));
             }
         }
-
-        // {
-        //     print("link: |{?s}|\n", .{item_link});
-        //     print("text: |{?s}|\n", .{item_title});
-        //     print("text: |{?s}|\n", .{item_title});
-        // }
 
         feed_items.appendAssumeCapacity(.{
             .title = item_title orelse "",
