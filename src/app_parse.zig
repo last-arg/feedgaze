@@ -1032,8 +1032,21 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         var item_title: ?[]const u8 = null;
         const node = node_container;
 
-        var link_iter = NodeIterator.init(ast, content, node, html_options.selector_link orelse "a");
-        if (link_iter.next()) |n| {
+        const link_node = blk: {
+            if (html_options.selector_link) |selector| {
+                var iter = NodeIterator.init(ast, content, node, selector);
+                if (iter.next()) |n| {
+                    break :blk n;
+                } else {
+                    std.log.warn("Could not find link for item using selector '{s}'", .{selector});
+                }
+            }
+
+            var iter = NodeIterator.init(ast, content, node, "a");
+            break :blk iter.next();
+        };
+
+        if (link_node) |n| {
             var attr_iter = n.startTagIterator(content, .html);
             while (attr_iter.next(content)) |attr| {
                 if (attr.value) |value| {
@@ -1056,6 +1069,8 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                     item_title = text;
                     break;
                 }
+            } else {
+                std.log.warn("Could not find heading for item using selector '{s}'", .{heading});
             }
         }
 
