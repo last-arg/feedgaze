@@ -1126,6 +1126,10 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{feed_id});
     }
 
+    pub fn max_last_update(self: *Self) !?i64 {
+        return try one(&self.sql_db, i64, "select max(last_update) from feed_update", .{});
+    }
+
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
         return try one(&self.sql_db, i64, "select last_update from feed_update where feed_id = ?", .{feed_id});
     }
