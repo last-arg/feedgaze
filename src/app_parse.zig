@@ -1039,10 +1039,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer feed_items.deinit();
 
-    // TODO: fix iterator.next() code
-    // can only find one item
     while (container_iter.next()) |node_container| {
-        print("container:\n", .{});
         var item_link: ?[]const u8 = null;
         var item_title: ?[]const u8 = null;
         const node = node_container;
@@ -1124,7 +1121,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         if (item_title == null) {
             if (try text_from_node(allocator, ast, content, node)) |text| {
                 item_title = text;
-                break;
             }
         }
         
@@ -1477,7 +1473,7 @@ pub fn main() !void {
     \\</html>
     ;
     const html_options: HtmlOptions = .{
-        .selector_container = "div",
+        .selector_container = ".post",
         .selector_date = "span",
     };
     const feed = try parse_html(alloc, content, html_options);
