@@ -742,6 +742,9 @@ test "parseRss" {
 const super = @import("superhtml");
 
 pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const u8) bool {
+    if (selector[0] != '.' and selector.len <= 1) {
+        return false;
+    }
     var iter = node.startTagIterator(code, .html);
     while (iter.next(code)) |tag| {
         const name = tag.name.slice(code);
@@ -993,8 +996,12 @@ const Selector = struct {
 
 pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, selector: []const u8) bool {
     const trimmed = mem.trim(u8, selector, &std.ascii.whitespace);
+    if (trimmed.len == 0) {
+        return false;
+    }
+
     if (mem.indexOfScalar(u8, trimmed, ' ')) |count| if (count == 0) {
-        return mem.eql(u8, node.open.slice(content), trimmed);
+        return has_class(node, content, trimmed) or mem.eql(u8, node.open.slice(content), trimmed);
     };
     return false;
 }
@@ -1027,15 +1034,15 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     //   - find first <time> element?
     //   - date format - optional
 
-    // TODO: link or heading might be the container?
-    // NodeIterator starts searching from first node
-
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
 
     var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer feed_items.deinit();
 
+    // TODO: fix iterator.next() code
+    // can only find one item
     while (container_iter.next()) |node_container| {
+        print("container:\n", .{});
         var item_link: ?[]const u8 = null;
         var item_title: ?[]const u8 = null;
         const node = node_container;
@@ -1078,19 +1085,31 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         }
 
         if (html_options.selector_heading) |heading| {
-            var heading_iter = NodeIterator.init(ast, content, node, heading);
-            if (heading_iter.next()) |node_match| {
-                if (try text_from_node(allocator, ast, content, node_match)) |text| {
+            if (is_single_selector_match(content, node, heading)) {
+                if (try text_from_node(allocator, ast, content, node)) |text| {
                     item_title = text;
-                    break;
                 }
             } else {
-                std.log.warn("Could not find heading node with selector '{s}'", .{heading});
+                var heading_iter = NodeIterator.init(ast, content, node, heading);
+                if (heading_iter.next()) |node_match| {
+                    if (try text_from_node(allocator, ast, content, node_match)) |text| {
+                        item_title = text;
+                    }
+                } else {
+                    std.log.warn("Could not find heading node with selector '{s}'", .{heading});
+                }
             }
         }
 
         if (item_title == null) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
+                if (is_single_selector_match(content, node, tag)) {
+                    if (try text_from_node(allocator, ast, content, node)) |text| {
+                        item_title = text;
+                        break;
+                    }
+                }
+
                 var heading_iter = NodeIterator.init(ast, content, node, tag);
                 if (heading_iter.next()) |node_match| {
                     if (try text_from_node(allocator, ast, content, node_match)) |text| {
@@ -1446,9 +1465,9 @@ pub fn main() !void {
     \\    <!-- comment -->
     \\    <input type="text" value="foo">
     \\    <p class="paragraph">foo bar</p>
-    \\    <div>
+    \\    <p>
     \\      <a href="#item1">hello</a>
-    \\    </div>
+    \\    </p>
     \\  </div>
     \\  <div class="post">
     \\    second post
@@ -1458,11 +1477,12 @@ pub fn main() !void {
     \\</html>
     ;
     const html_options: HtmlOptions = .{
-        .selector_container = ".post",
+        .selector_container = "div",
         .selector_date = "span",
     };
     const feed = try parse_html(alloc, content, html_options);
     print("feed {}\n", .{feed});
+    print("feed.len {}\n", .{feed.items.len});
     // print("\n==========> START {d}\n", .{feed.items.len});
     // print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
     // for (feed.items) |item| {
