@@ -991,6 +991,14 @@ const Selector = struct {
     }
 };
 
+pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, selector: []const u8) bool {
+    const trimmed = mem.trim(u8, selector, &std.ascii.whitespace);
+    if (mem.indexOfScalar(u8, trimmed, ' ')) |count| if (count == 0) {
+        return mem.eql(u8, node.open.slice(content), trimmed);
+    };
+    return false;
+}
+
 pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !FeedAndItems {
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
@@ -1034,12 +1042,19 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
         const link_node = blk: {
             if (html_options.selector_link) |selector| {
+                if (is_single_selector_match(content, node, selector)) {
+                    break :blk node;
+                }
                 var iter = NodeIterator.init(ast, content, node, selector);
                 if (iter.next()) |n| {
                     break :blk n;
                 } else {
                     std.log.warn("Could not find link node with selector '{s}'", .{selector});
                 }
+            }
+
+            if (is_single_selector_match(content, node, "a")) {
+                break :blk node;
             }
 
             var iter = NodeIterator.init(ast, content, node, "a");
