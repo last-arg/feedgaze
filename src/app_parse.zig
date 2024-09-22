@@ -890,19 +890,37 @@ const IteratorTextNode = struct {
 
 const NodeIterator = struct {
     next_index: usize,
+    end_index: usize,
     selector_iter: Selector,
-    start_node: super.html.Ast.Node,
     ast: super.html.Ast,
     code: []const u8,
 
     pub fn init(ast: super.html.Ast, code: []const u8, start_node: super.html.Ast.Node, selector: []const u8) @This() {
         std.debug.assert(selector.len > 0);
 
+        // exclusive
+        const end_index = blk: {
+            if (start_node.next_idx != 0) {
+                break :blk start_node.next_idx;
+            }
+
+            var parent = start_node.parent_idx;
+            while (parent != 0) {
+                const node = ast.nodes[parent];
+                if (node.next_idx != 0) {
+                    break :blk node.next_idx;
+                }
+                parent = node.parent_idx;
+            }
+
+            break :blk ast.nodes.len;
+        };
+
         return .{
-            .start_node = start_node,
             .ast = ast,
             .code = code,
             .next_index = start_node.first_child_idx,
+            .end_index = end_index,
             .selector_iter = Selector.init(selector),
         };
     }
@@ -917,7 +935,7 @@ const NodeIterator = struct {
         const is_class = last_selector[0] == '.';
 
         const start_index = self.next_index;
-        const end_idx = if (self.start_node.next_idx == 0) self.ast.nodes.len else self.start_node.next_idx;
+        const end_idx = self.end_index;
 
         for (self.ast.nodes[start_index..end_idx], start_index..) |n, index| {
             if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
@@ -938,7 +956,6 @@ const NodeIterator = struct {
                 self.next_index = index + 1;
                 return n;
             }
-            
         }
 
         return null;
