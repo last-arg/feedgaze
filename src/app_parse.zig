@@ -766,7 +766,7 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
 
 fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?[]const u8 {
     var iter_text_node = IteratorTextNode.init(ast, code, node);
-    var text_arr = try std.BoundedArray(u8, 1024).init(0);
+    var text_arr = try std.BoundedArray(u8, max_title_len).init(0);
     blk: while (iter_text_node.next()) |text_node| {
         const text = std.mem.trim(u8, text_node.open.slice(code), &std.ascii.whitespace);
         var token_iter = std.mem.tokenizeAny(u8, text, &std.ascii.whitespace);
@@ -797,91 +797,47 @@ fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []con
 }
 
 const IteratorTextNode = struct {
-    current_sibling_index: usize,
     ast: super.html.Ast,
     code: []const u8,
-    current_index: usize,
+    next_index: usize,
+    end_index: usize,
 
-    pub fn init(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) @This() {
+    pub fn init(ast: super.html.Ast, code: []const u8, start_node: super.html.Ast.Node) @This() {
+        // exclusive
+        const end_index = blk: {
+            if (start_node.next_idx != 0) {
+                break :blk start_node.next_idx;
+            }
+
+            var parent = start_node.parent_idx;
+            while (parent != 0) {
+                const node = ast.nodes[parent];
+                if (node.next_idx != 0) {
+                    break :blk node.next_idx;
+                }
+                parent = node.parent_idx;
+            }
+
+            break :blk ast.nodes.len;
+        };
+
         return .{
             .ast = ast,
             .code = code,
-            .current_sibling_index = node.first_child_idx,
-            .current_index = node.first_child_idx,
+            .next_index = start_node.first_child_idx,
+            .end_index = end_index,
         };
     }
 
     pub fn next(self: *@This()) ?super.html.Ast.Node {
-        if (self.current_sibling_index == 0) {
+        if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
             return null;
         }
 
-        while (self.current_sibling_index != self.current_index and self.current_index != 0) {
-            const current = self.ast.nodes[self.current_index];
-            if (self.next_rec(current)) |idx| {
-                const node = self.ast.nodes[idx];
-                self.current_index = next_index_node(node);
-                return node;
-            }
-            self.current_index = current.parent_idx;
-        }
-
-        // - Need to continue going here until find text node or 
-        //   there are no more nodes to look.
-        while (self.current_index != 0) {
-            const current = self.ast.nodes[self.current_sibling_index];
-            if (self.next_rec(current)) |idx| {
-                const node = self.ast.nodes[idx];
-                self.current_index = next_index_node(node);
-                return node;
-            }
-            self.current_index = next_index_node(current);
-            self.current_sibling_index = current.next_idx;
-        }
-        return null;
-    }
-
-    fn next_index_node(node: super.html.Ast.Node) usize {
-        if (node.first_child_idx != 0) {
-            return node.first_child_idx;
-        } else if (node.next_idx != 0) {
-            return node.next_idx;
-        }
-        return 0;
-    }
-
-    fn next_rec(self: *@This(), node: super.html.Ast.Node) ?usize {
-        if (node.kind == .text) {
-            return self.ast.nodes[node.parent_idx].first_child_idx;
-        }
-
-        if (node.kind != .element) {
-            return null;
-        }
-
-        if (node.first_child_idx != 0) {
-            if (self.next_rec(self.ast.nodes[node.first_child_idx])) |idx| {
-                const n = self.ast.nodes[idx];
-                if (n.kind == .text) {
-                    return node.first_child_idx;
-                }
-            }
-        }
-
-        var next_index = node.next_idx;
-        while (next_index != 0) {
-            const current = self.ast.nodes[next_index];
-
-            if (current.kind != .text and current.kind != .element) {
-                next_index = current.next_idx;
-                continue;
-            }
-
-            if (self.next_rec(current)) |_| {
-                return node.first_child_idx;
-            }
-
-            next_index = current.next_idx;
+        for (self.ast.nodes[self.next_index..self.end_index], self.next_index..) |node, index| {
+            if (node.kind != .text) { continue; }
+            self.next_index = index + 1;
+            return node;
         }
 
         return null;
@@ -926,7 +882,7 @@ const NodeIterator = struct {
     }
     
     pub fn next(self: *@This()) ?super.html.Ast.Node {
-        if (self.next_index == 0) {
+            if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
             return null;
         }
         
@@ -1023,6 +979,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
+// TODO: add date_format HtmlOption
 pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !FeedAndItems {
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
@@ -1038,18 +995,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     if (title_iter.next()) |n| {
         feed.title = try text_from_node(allocator, ast, content, n);
     }
-
-    // TODO: get feed items info from matches
-    // - item (container) selector - required
-    // - link selector - optional. there might not be link
-    //   - default is to find first link (<a>) inside item container
-    // - heading selector - optional
-    //   - if link take heading from link text
-    //   - otherwise look for first h1-h6 inside item container
-    //   - otherwise find first text node?
-    // - date selector - optional
-    //   - find first <time> element?
-    //   - date format - optional
 
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
 
@@ -1478,8 +1423,15 @@ pub fn main() !void {
     \\    <!-- comment -->
     \\    <input type="text" value="foo">
     \\    <p class="paragraph">foo bar</p>
+    \\    <span>2020</span>
     \\    <p>
-    \\      <a href="#item1">hello</a>
+    \\      <a href="#item1">
+    \\        text
+    \\        more text in here
+    \\        <span>link</span>
+    \\        <span>second</span>
+    \\        hello
+    \\      </a>
     \\    </p>
     \\  </div>
     \\  <div class="post">
@@ -1494,7 +1446,7 @@ pub fn main() !void {
         .selector_date = "span",
     };
     const feed = try parse_html(alloc, content, html_options);
-    print("feed {}\n", .{feed});
+    // print("feed {}\n", .{feed});
     print("feed.len {}\n", .{feed.items.len});
     // print("\n==========> START {d}\n", .{feed.items.len});
     // print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
