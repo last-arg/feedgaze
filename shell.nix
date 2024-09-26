@@ -5,5 +5,6 @@ mkShell {
     zig
     sqlite
     pkg-config
+    curl
   ];
 }
