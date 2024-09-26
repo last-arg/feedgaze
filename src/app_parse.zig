@@ -321,7 +321,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 if (std.ascii.eqlIgnoreCase("alternate", rel)) {
                                     if (token_reader.attributeIndex("href")) |idx| {
                                         const value = try token_reader.attributeValue(idx);
-                                        current_entry.link = mem.trim(u8, value, &std.ascii.whitespace);
+                                        current_entry.link = try allocator.dupe(u8, mem.trim(u8, value, &std.ascii.whitespace));
                                     }
                                 }
                             },
@@ -428,7 +428,6 @@ const RssParseTag = enum {
 };
 
 pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
-    var tmp_str = TmpStr.init();
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
