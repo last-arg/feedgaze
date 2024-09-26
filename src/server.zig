@@ -41,20 +41,20 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     // overwrite the default error handler
     // server.errorHandler(errorHandler); 
 
-    var router = server.router();
+    var router = server.router(.{});
 
     // use get/post/put/head/patch/options/delete
     // you can also use "all" to attach to all methods
-    router.get("/", latest_added_get);
-    router.get("/feeds", feeds_get);
-    router.get("/tags", tags_get);
-    router.get("/feed/add", feed_add_get);
-    router.post("/feed/add", feed_add_post);
-    router.get("/feed/:id", feed_get);
-    router.post("/feed/:id", feed_post);
-    router.post("/feed/:id/delete", feed_delete);
-    router.get("/public/*", public_get);
-    router.get("/favicon.ico", favicon_get);
+    router.get("/", latest_added_get, .{});
+    router.get("/feeds", feeds_get, .{});
+    router.get("/tags", tags_get, .{});
+    router.get("/feed/add", feed_add_get, .{});
+    router.post("/feed/add", feed_add_post, .{});
+    router.get("/feed/:id", feed_get, .{});
+    router.post("/feed/:id", feed_post, .{});
+    router.post("/feed/:id/delete", feed_delete, .{});
+    router.get("/public/*", public_get, .{});
+    router.get("/favicon.ico", favicon_get, .{});
 
     std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
     // start the server in the current thread, blocking.
