@@ -233,175 +233,130 @@ const AtomLinkAttr = enum {
     rel, 
 };
 
+pub fn text_truncate(allocator: Allocator, text: []const u8) ![]const u8 {
+    var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
+    defer arr.deinit();
+
+    var iter = mem.tokenizeAny(u8, text, &std.ascii.whitespace);
+    if (iter.next()) |chunk| {
+        arr.appendSliceAssumeCapacity(chunk[0..@min(chunk.len, max_title_len)]);
+    }
+
+    while (iter.next()) |chunk| {
+        if (arr.capacity == arr.items.len) { break; }
+
+        arr.appendAssumeCapacity(' ');
+        const len = @min(chunk.len, arr.capacity - arr.items.len);
+        arr.appendSliceAssumeCapacity(chunk[0..len]);
+    }
+        
+    return arr.toOwnedSlice();
+}
+
 pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
-    var tmp_str = TmpStr.init();
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
     var state: AtomParseState = .feed;
-    var current_tag: ?AtomParseTag = null;
     var current_entry: FeedItem = .{ .title = "" };
-    var link_href: ?[]const u8 = null;
-    var link_rel: []const u8 = "alternate";
-    var attr_key: ?AtomLinkAttr = null;
 
-    var stream = std.io.fixedBufferStream(content);
-    var input_buffered_reader = std.io.bufferedReader(stream.reader());
-    var token_reader = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+    var doc = zig_xml.StaticDocument.init(content);
+    var token_reader = doc.reader(allocator, .{});
+    defer token_reader.deinit();
 
-    var token = try token_reader.next();
-    while (token != .eof) : (token = try token_reader.next()) {
+    var token = try token_reader.read();
+    while (token != .eof) : (token = try token_reader.read()) {
         switch (token) {
             .eof => break,
             .element_start => {
-                const tag = token_reader.fullToken(token).element_start.name;
-                current_tag = AtomParseTag.fromString(tag);
+                const tag = token_reader.elementName();
+
                 if (AtomParseState.fromString(tag)) |new_state| {
                     state = new_state;
                 }
-            },
-            .element_content => {
-                const tag = current_tag orelse continue;
-                const elem_content = token_reader.fullToken(token).element_content.content;
-                switch (state) {
-                    .feed => switch (tag) {
-                        .title => try tmp_str.content_to_str(elem_content),
-                        // <link /> is void element
-                        .link => {},
-                        // Can be site url. Don't need it because already
-                        // have fallback url from fn arg 'url'.
-                        .id => {},
-                        .updated => feed.updated_timestamp = AtomDateTime.parse(mem.trim(u8, elem_content.text, &std.ascii.whitespace)) catch null,
-                        .published => {},
-                        .icon => {
-                            if (feed.icon_url == null) {
-                                feed.icon_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace));
-                            }
-                        }
-                    },
-                    .entry => switch (tag) {
-                        .title => try tmp_str.content_to_str(elem_content),
-                        // <link /> is void element
-                        .link => {},
-                        .id => current_entry.id = try allocator.dupe(u8, elem_content.text),
-                        .updated => {
-                            if (current_entry.updated_timestamp == null) {
-                                if (AtomDateTime.parse(mem.trim(u8, elem_content.text, &std.ascii.whitespace)) catch null) |ts| {
-                                    current_entry.updated_timestamp = ts;
+
+                if (AtomParseTag.fromString(tag)) |new_tag| {
+                   switch (state) {
+                        .feed => switch (new_tag) {
+                            .title => {
+                                const text = try token_reader.readElementText();
+                                feed.title = try text_truncate(allocator, text);
+                            },
+                            .link => {
+                                const rel = blk: {
+                                    if (token_reader.attributeIndex("rel")) |idx| {
+                                        break :blk try token_reader.attributeValue(idx);
+                                    }
+                                    break :blk "alternate";
+                                };
+
+                                if (std.ascii.eqlIgnoreCase("alternate", rel)) {
+                                    if (token_reader.attributeIndex("href")) |idx| {
+                                        const value = try token_reader.attributeValue(idx);
+                                        feed.page_url = mem.trim(u8, value, &std.ascii.whitespace);
+                                    }
                                 }
-                            }
+                            },
+                            .updated => {
+                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+                            },
+                            .published,
+                            .id,
+                            .icon => {},
                         },
-                        .published => {
-                            if (AtomDateTime.parse(mem.trim(u8, elem_content.text, &std.ascii.whitespace)) catch null) |ts| {
-                                current_entry.updated_timestamp = ts;
-                            }
+                        .entry => switch (new_tag) {
+                            .title => {
+                                const text = try token_reader.readElementText();
+                                current_entry.title = try text_truncate(allocator, text);
+                            },
+                            .link => {
+                                const rel = blk: {
+                                    if (token_reader.attributeIndex("rel")) |idx| {
+                                        break :blk try token_reader.attributeValue(idx);
+                                    }
+                                    break :blk "alternate";
+                                };
+
+                                if (std.ascii.eqlIgnoreCase("alternate", rel)) {
+                                    if (token_reader.attributeIndex("href")) |idx| {
+                                        const value = try token_reader.attributeValue(idx);
+                                        current_entry.link = mem.trim(u8, value, &std.ascii.whitespace);
+                                    }
+                                }
+                            },
+                            .id => {
+                                if (token_reader.readElementText()) |id_raw| {
+                                    current_entry.id = try allocator.dupe(u8, mem.trim(u8, id_raw, &std.ascii.whitespace));
+                                } else |err| {
+                                    std.log.warn("Failed to read entry's id from atom feed's entry. Error: {}", .{err});
+                                }
+                            },
+                            .updated => {
+                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                current_entry.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+                            },
+                            .published,
+                            .icon => {},
                         },
-                        .icon => {}
-                    },
+                    }
                 }
             },
             .element_end => {
-                const tag_str = token_reader.fullToken(token).element_end.name;
+                const tag_str = token_reader.elementName();
                 if (mem.eql(u8, "entry", tag_str)) {
                     add_or_replace_item(&entries, current_entry);
                     current_entry = .{ .title = "" };
                     state = .feed;
                     continue;
                 }
-                const tag = current_tag orelse continue;
-                switch (state) {
-                    .feed => switch (tag) {
-                        .title => {
-                            feed.title = try allocator.dupe(u8, tmp_str.slice());
-                            tmp_str.reset();
-                        },
-                        .id, .updated, .link, .published, .icon => {},
-                    },
-                    .entry => {
-                        switch (tag) {
-                            .title => {
-                                current_entry.title = try allocator.dupe(u8, tmp_str.slice());
-                                tmp_str.reset();
-                            },
-                            .id, .updated, .link, .published, .icon => {},
-                        }
-                    },
-                }
-                current_tag = null;
-                attr_key = null;
-            },
-            .element_end_empty => {
-                const tag = current_tag orelse continue;
-
-                switch (state) {
-                    .feed => switch (tag) {
-                        .link => {
-                            if (link_href) |href| {
-                                if (mem.eql(u8, "alternate", link_rel)) {
-                                    feed.page_url = mem.trim(u8, href, &std.ascii.whitespace);
-                                }
-                            }
-                            link_href = null;
-                            link_rel = "alternate";
-                        },
-                        .title, .id, .updated, .published, .icon => {},
-                    },
-                    .entry => {
-                        switch (tag) {
-                            .link => {
-                                if (link_href) |href| {
-                                    if (mem.eql(u8, "alternate", link_rel)) {
-                                        current_entry.link = mem.trim(u8, href, &std.ascii.whitespace);
-                                    }
-                                }
-                                link_href = null;
-                                link_rel = "alternate";
-                            },
-                            .title, .id, .updated, .published, .icon => {},
-                        }
-                    },
-                }
-                current_tag = null;
-                attr_key = null;
-            },
-            .attribute_start => {
-                if (current_tag == null) {
-                    continue;
-                }
-
-                const key = token_reader.fullToken(token).attribute_start.name;
-                if (mem.eql(u8, "href", key)) {
-                    attr_key = .href;
-                } else if (mem.eql(u8, "rel", key)) {
-                    attr_key = .rel;
-                } else {
-                    attr_key = null;
-                }
-            },
-            .attribute_content => {
-                if (current_tag == null or attr_key == null) {
-                    continue;
-                }
-
-                switch (current_tag.?) {
-                    .link => {
-                        const attr_content = token_reader.fullToken(token).attribute_content.content;
-                        if (attr_content != .text) {
-                            continue;
-                        }
-                        const attr_value = attr_content.text;
-                        switch (attr_key.?) {
-                            .href => link_href = try allocator.dupe(u8, mem.trim(u8, attr_value, &std.ascii.whitespace)),
-                            .rel => link_rel = try allocator.dupe(u8, attr_value),
-                        }
-                    },
-                    .title, .id, .updated, .published, .icon => {},
-                }
-
             },
             .xml_declaration,
-            .pi_start, .pi_content,
-            .comment_start, .comment_content => {},
+            .pi, .text,
+            .entity_reference,
+            .character_reference,
+            .cdata,
+            .comment => {},
         }
     }
 
@@ -425,7 +380,7 @@ test "parseAtom" {
     };
     try std.testing.expectEqualDeep(expect_feed, result.feed);
     var expect_items = [_]FeedItem{ .{
-        .title = "Atom-Powered Robots Run Amok",
+        .title = "Atom-Powered Robots Run Amok Next line",
         .link = "http://example.org/2003/12/13/atom03",
         .id = "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a",
         .updated_timestamp = try AtomDateTime.parse("2008-11-13T18:30:02Z"),
@@ -481,70 +436,71 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var current_tag: ?RssParseTag = null;
     var current_item: FeedItem = .{.title = ""};
 
-    var stream = std.io.fixedBufferStream(content);
-    var input_buffered_reader = std.io.bufferedReader(stream.reader());
-    var token_reader = zig_xml.tokenReader(input_buffered_reader.reader(), .{});
+    var doc = zig_xml.StaticDocument.init(content);
+    var token_reader = doc.reader(allocator, .{});
+    defer token_reader.deinit();
+
     var is_guid_link = false;
     var guid_has_permalink = false;
 
-    var token = try token_reader.next();
-    while (token != .eof) : (token = try token_reader.next()) {
+    var token = try token_reader.read();
+    while (token != .eof) : (token = try token_reader.read()) {
         switch (token) {
             .eof => break,
             .element_start => {
-                const tag = token_reader.fullToken(token).element_start.name;
+                const tag = token_reader.elementName();
                 current_tag = RssParseTag.fromString(tag);
                 if (RssParseState.fromString(tag)) |new_state| {
                     state = new_state;
                 }
             },
-            .element_content => {
-                const tag = current_tag orelse continue;
-                const elem_content = token_reader.fullToken(token).element_content.content;
+            // .element_content => {
+            //     const tag = current_tag orelse continue;
+            //     const elem_content = token_reader.fullToken(token).element_content.content;
 
-                switch (state) {
-                    .channel => switch (tag) {
-                        .title => try tmp_str.content_to_str(elem_content),
-                        .link => feed.page_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace)),
-                        .pubDate => {
-                            const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
-                            feed.updated_timestamp = RssDateTime.parse(date_raw) catch 
-                                AtomDateTime.parse(date_raw) catch null;
-                        },
-                        .@"dc:date" => {
-                            feed.updated_timestamp = AtomDateTime.parse(mem.trim(u8, elem_content.text, &std.ascii.whitespace)) catch null;
-                        },
-                        .guid, .description, .url, .image => {},
-                    },
-                    .image => switch (tag){
-                        .url => {
-                            if (feed.icon_url == null) {
-                                feed.icon_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace));
-                            }
-                        },
-                        .title, .description, .link, .guid, .pubDate, .@"dc:date", .image => {}
-                    },
-                    .item => switch (tag) {
-                        .title => try tmp_str.content_to_str(elem_content),
-                        .description => if (current_item.title.len == 0) {
-                            try tmp_str.content_to_str(elem_content);
-                        },
-                        .link, .guid => try tmp_str.content_to_str(elem_content),
-                        .pubDate => {
-                            const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
-                            current_item.updated_timestamp = RssDateTime.parse(date_raw) catch 
-                                AtomDateTime.parse(date_raw) catch null;
-                        },
-                        .@"dc:date" => {
-                            const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
-                            current_item.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
-                        },
-                        .url, .image => {}
-                    },
-                }
-            },
+            //     switch (state) {
+            //         .channel => switch (tag) {
+            //             .title => try tmp_str.content_to_str(elem_content),
+            //             .link => feed.page_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace)),
+            //             .pubDate => {
+            //                 const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
+            //                 feed.updated_timestamp = RssDateTime.parse(date_raw) catch 
+            //                     AtomDateTime.parse(date_raw) catch null;
+            //             },
+            //             .@"dc:date" => {
+            //                 feed.updated_timestamp = AtomDateTime.parse(mem.trim(u8, elem_content.text, &std.ascii.whitespace)) catch null;
+            //             },
+            //             .guid, .description, .url, .image => {},
+            //         },
+            //         .image => switch (tag){
+            //             .url => {
+            //                 if (feed.icon_url == null) {
+            //                     feed.icon_url = try allocator.dupe(u8, mem.trim(u8, elem_content.text, &std.ascii.whitespace));
+            //                 }
+            //             },
+            //             .title, .description, .link, .guid, .pubDate, .@"dc:date", .image => {}
+            //         },
+            //         .item => switch (tag) {
+            //             .title => try tmp_str.content_to_str(elem_content),
+            //             .description => if (current_item.title.len == 0) {
+            //                 try tmp_str.content_to_str(elem_content);
+            //             },
+            //             .link, .guid => try tmp_str.content_to_str(elem_content),
+            //             .pubDate => {
+            //                 const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
+            //                 current_item.updated_timestamp = RssDateTime.parse(date_raw) catch 
+            //                     AtomDateTime.parse(date_raw) catch null;
+            //             },
+            //             .@"dc:date" => {
+            //                 const date_raw = mem.trim(u8, elem_content.text, &std.ascii.whitespace);
+            //                 current_item.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+            //             },
+            //             .url, .image => {}
+            //         },
+            //     }
+            // },
             .element_end => {
-                const tag_str = token_reader.fullToken(token).element_end.name;
+                const tag_str = token_reader.elementName();
                 if (mem.eql(u8, "item", tag_str)) {
                     add_or_replace_item(&entries, current_item);
                     current_item = .{ .title = "" };
@@ -600,30 +556,27 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                 }
                 current_tag = null;
             },
-            .element_end_empty => {
-                current_tag = null;
-            },
-            .attribute_start => {
-                if (current_item.link == null and state == .item) {
-                    const tag = current_tag orelse continue;
-                    if (tag == .guid) {
-                        const attr = token_reader.fullToken(token).attribute_start;
-                        guid_has_permalink = std.mem.eql(u8, attr.name, "isPermaLink");
-                    }
-                }
-            },
-            .attribute_content => {
-                // This means element is in <guid> and attribute is 'isPermaLink'. And
-                // current_item.link == null
-                if (guid_has_permalink) {
-                    const attr_content = token_reader.fullToken(token).attribute_content;
-                    is_guid_link = std.mem.eql(u8, attr_content.content.text, "true");
-                }
-            },
-            .xml_declaration,
-            .pi_start, .pi_content,
-            .comment_start => {}, 
-            .comment_content => {},
+            // .element_end_empty => {
+            //     current_tag = null;
+            // },
+            // .attribute_start => {
+            //     if (current_item.link == null and state == .item) {
+            //         const tag = current_tag orelse continue;
+            //         if (tag == .guid) {
+            //             const attr = token_reader.fullToken(token).attribute_start;
+            //             guid_has_permalink = std.mem.eql(u8, attr.name, "isPermaLink");
+            //         }
+            //     }
+            // },
+            // .attribute_content => {
+            //     // This means element is in <guid> and attribute is 'isPermaLink'. And
+            //     // current_item.link == null
+            //     if (guid_has_permalink) {
+            //         const attr_content = token_reader.fullToken(token).attribute_content;
+            //         is_guid_link = std.mem.eql(u8, attr_content.content.text, "true");
+            //     }
+            // },
+            .xml_declaration, .comment, .pi, .text, .cdata, .character_reference, .entity_reference  => {},
         }
     }
 
@@ -1299,16 +1252,16 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
 
 pub const ContentType = feed_types.ContentType;
 
-pub fn getContentType(content: []const u8) ?ContentType {
-    var stream = std.io.fixedBufferStream(content);
-    var buf_reader = std.io.bufferedReader(stream.reader());
-    var r = zig_xml.tokenReader(buf_reader.reader(), .{});
+pub fn getContentType(allocator: Allocator, content: []const u8) ?ContentType {
+    var doc = zig_xml.StaticDocument.init(content);
+    var r = doc.reader(allocator, .{});
+    defer r.deinit();
+
     var depth: usize = 0;
     while (depth < 2) {
-        const token = r.next() catch break;
+        const token = r.read() catch break;
         if (token == .element_start) {
-            const full = r.fullToken(token);
-            const tag = full.element_start.name;
+            const tag = r.elementName();
 
             if (depth == 0) {
                 if (mem.eql(u8, "feed", tag)) {
@@ -1338,6 +1291,10 @@ pub fn getContentType(content: []const u8) ?ContentType {
 }
 
 test "getContentType" {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
     const rss =
         \\<?xml version="1.0"?>
         \\<rss version="2.0">
@@ -1345,7 +1302,7 @@ test "getContentType" {
         \\   </channel>
         \\</rss>
     ;
-    const rss_type = getContentType(rss);
+    const rss_type = getContentType(alloc, rss);
     try std.testing.expectEqual(ContentType.rss, rss_type.?);
 
     const atom =
@@ -1353,13 +1310,13 @@ test "getContentType" {
         \\<feed xmlns="http://www.w3.org/2005/Atom">
         \\</feed>
     ;
-    const atom_type = getContentType(atom);
+    const atom_type = getContentType(alloc, atom);
     try std.testing.expectEqual(ContentType.atom, atom_type.?);
 
     const html_raw =
         \\<!DOCTYPE html>
     ;
-    const html_type = getContentType(html_raw);
+    const html_type = getContentType(alloc, html_raw);
     try std.testing.expectEqual(ContentType.html, html_type.?);
 }
 
@@ -1368,7 +1325,7 @@ pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentTy
 
     // Figure out content type based on file content
     // Server might return wrong content type. Like 'https://jakearchibald.com/'
-    const ct = getContentType(content) orelse return error.UnknownContentType;
+    const ct = getContentType(allocator, content) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),

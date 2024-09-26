@@ -11,7 +11,8 @@
  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
 
  <entry>
-   <title>Atom-Powered Robots Run Amok</title>
+   <title><![CDATA[Atom-Powered Robots Run Amok
+     Next line]]></title>
    <link href="http://example.org/2003/12/13/atom03"/>
    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
    <updated>2008-11-13T18:30:02Z</updated>
