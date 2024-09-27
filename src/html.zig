@@ -194,7 +194,7 @@ fn isDuplicate(items: []FeedLink, link: []const u8) bool {
 }
 
 const rem = @import("rem");
-pub fn html_fragemnt_parse() !void {
+pub fn html_fragment_parse() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();

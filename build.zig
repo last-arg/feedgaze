@@ -6,7 +6,7 @@ pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
-    .{ .name = "tmp_file", .path = "./tmp/itscomputersciencetime.html" },
+    .{ .name = "tmp_file", .path = "./tmp/tmp.xml" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },

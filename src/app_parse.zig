@@ -233,13 +233,43 @@ const AtomLinkAttr = enum {
     rel, 
 };
 
-// TODO: 'text' might be html. Remove html tags.
-// Use superhtml?
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer arr.deinit();
+    var input = text;
+    var dealloc_input = false;
+    defer if (dealloc_input) allocator.free(input);
 
-    var iter = mem.tokenizeAny(u8, text, &std.ascii.whitespace);
+    // TODO: check if unescaping is needed
+    // check '&' and/or ';'?
+    if (mem.indexOfScalar(u8, input, ';')) |_| {
+    }
+
+    // TODO: do some check before parsing text as html
+    // - rss
+    //   - text might come from cdata
+    //   - text might contain escape html '&lt;', '&gt;', etc
+    // - atom
+    //   - <title type="text|html|xhtml">
+    //   - default: text - can have escaped symbols
+    //   - html - escaped tags and escaped symbols
+    //   - xhtml - has tags (not escaped). escaped symbols
+
+    // Possible solution
+    // - unescape 'text'
+    // - check if can be html
+    // - parse text to html
+
+    if (mem.indexOfScalar(u8, input, '<')) |_| {
+        const ast = try super.html.Ast.init(allocator, text, .html);
+        defer ast.deinit(allocator);
+        if (try text_from_node(allocator, ast, text, ast.nodes[0])) |text_html| {
+            dealloc_input = true;
+            input = text_html;
+        }
+    } 
+
+    var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
     if (iter.next()) |chunk| {
         arr.appendSliceAssumeCapacity(chunk[0..@min(chunk.len, max_title_len)]);
     }
@@ -474,9 +504,14 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 const text = try token_reader.readElementText();
                                 current_item.title = try text_truncate_alloc(allocator, text);
                             },
-                            .description => if (current_item.title.len == 0) {
+                            .description => {
+                                const t = try token_reader.readElementText();
+                                print("desc: |{s}|\n", .{t});
+
+                                if (current_item.title.len == 0) {
                                 const text = try token_reader.readElementText();
                                 current_item.title = try text_truncate_alloc(allocator, text);
+                                }
                             },
                             .guid => {
                                 const text = try token_reader.readElementText();
@@ -1309,6 +1344,21 @@ pub const std_options: std.Options = .{
 
 
 pub fn main() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+
+    // const content = @embedFile("tmp_file");
+    // const result = try parse(arena.allocator(), content, .rss);
+    // _ = result; // autofix
+
+    const input =
+    \\From Ray Monk&#8217;s biography of Bertrand Russell: Though the Russells were not especially wealthy, they employed&#8212;as was common in Britain until after the Second World War&#8212;a number of servants: a cook, a housemaid, a gardener, a chauffeur and a nanny. &#8230; <a href="https://statmodeling.stat.columbia.edu/2024/05/06/a-cook-a-housemaid-a-gardener-a-chauffeur-a-nanny-a-philosopher-and-his-wife/">Continue reading <span class="meta-nav">&#8594;</span></a>
+    ;
+    const te = try text_truncate_alloc(arena.allocator(), input);
+    print("te: |{?s}|\n", .{te});
+}
+
+pub fn main1() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
