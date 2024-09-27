@@ -34,17 +34,8 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
         }
     };
     var server = try httpz.Server(*Global).init(allocator, server_config, &global);
-    
-    // overwrite the default notFound handler
-    // server.notFound(notFound);
-
-    // overwrite the default error handler
-    // server.errorHandler(errorHandler); 
-
     var router = server.router(.{});
 
-    // use get/post/put/head/patch/options/delete
-    // you can also use "all" to attach to all methods
     router.get("/", latest_added_get, .{});
     router.get("/feeds", feeds_get, .{});
     router.get("/tags", tags_get, .{});
