@@ -505,12 +505,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                                 current_item.title = try text_truncate_alloc(allocator, text);
                             },
                             .description => {
-                                const t = try token_reader.readElementText();
-                                print("desc: |{s}|\n", .{t});
-
                                 if (current_item.title.len == 0) {
-                                const text = try token_reader.readElementText();
-                                current_item.title = try text_truncate_alloc(allocator, text);
+                                    const text = try token_reader.readElementText();
+                                    current_item.title = try text_truncate_alloc(allocator, text);
                                 }
                             },
                             .guid => {
@@ -1166,7 +1163,6 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
     const rest = mem.trimLeft(u8, raw[iso_len..], " T");
     const time_end = mem.indexOfAny(u8, rest, ".+-Z") orelse rest.len;
     const time_raw = rest[0..time_end];
-    print("|{s}|\n", .{time_raw});
 
     var timezone: ?datetime.Timezone = null;
     if (time_raw.len > 0) {

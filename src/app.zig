@@ -533,6 +533,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer item_arena.deinit();
 
             for (feed_updates) |f_update| {
+                errdefer |err| {
+                    std.log.err("Update loop error: {}", .{err});
+                    self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 2) catch {
+                        // TODO: right thing to do or do something else?
+                        @panic("Failed to update (increase) feed's next update");
+                    };
+                }
                 _ = item_arena.reset(.retain_capacity);
                 var req = http_client.init(item_arena.allocator()) catch |err| {
                     try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_min * 20);
@@ -596,16 +603,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
                     continue;
                 } else if (resp.status_code >= 400 and resp.status_code < 600) {
+                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 2);
                     std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
                     continue;
                 }
 
                 self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| switch (err) {
                     error.NoHtmlParse => {
+                        try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 2);
                         std.log.err("Failed to update feed '{s}'. Update should not return html file", .{f_update.feed_url});
                         continue;
                     },
                     else => {
+                        try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 2);
                         std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
                         continue;
                     }
