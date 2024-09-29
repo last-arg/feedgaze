@@ -334,6 +334,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  run       Run update in foreground
                 \\  show      Print feeds' items
                 \\  server    Start server
+                \\  batch     Do path actions
                 \\  help      Print this help and exit
                 \\
                 \\General options:
