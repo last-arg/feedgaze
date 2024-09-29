@@ -233,56 +233,92 @@ const AtomLinkAttr = enum {
     rel, 
 };
 
+// TODO: 
+// Use this as example code: https://jsr.io/@std/html/1.0.3/entities.ts
+// https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
+fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
+    const entities = [_][]const u8{"amp", "lt", "gt", "quot", "apos"};
+    const raws = [_][]const u8{    "&",   "<",  ">",  "\"",   "'"};
+
+    const items_start = writer.context.items.len;
+    var buf_index_start: usize = 0;
+
+    while (mem.indexOfScalarPos(u8, input, buf_index_start, '&')) |index| {
+        try writer.writeAll(input[buf_index_start..index]);
+        buf_index_start = index + 1;
+        const start = buf_index_start;
+        if (start >= input.len) { break; }
+
+        if (input[start] == '#') {
+            // numeric entities
+            var nr_start = start + 1; 
+            buf_index_start = mem.indexOfScalarPos(u8, input, nr_start, ';') orelse break;
+            const is_hex = input[nr_start] == 'x' or input[nr_start] == 'X';
+            nr_start += @intFromBool(is_hex);
+            const value = input[nr_start..buf_index_start];
+            buf_index_start += 1;
+            if (value.len == 0) { continue; }
+
+            const base: u8 = if (is_hex) 16 else 10;
+            const nr = std.fmt.parseUnsigned(u21, value, base) catch continue;
+            var buf_cp: [4]u8 = undefined;
+            const cp = std.unicode.utf8Encode(nr, &buf_cp) catch continue;
+            try writer.writeAll(buf_cp[0..cp]);
+        } else {
+            // named entities
+            const index_opt: ?usize = blk: {
+                for (entities, 0..) |entity, i| {
+                    if (mem.startsWith(u8, input[start..], entity) and
+                        start + entity.len < input.len and input[start + entity.len] == ';'
+                    ) {
+                        break :blk i;
+                    }
+                }
+
+                break :blk null;
+            };
+
+            if (index_opt) |i| {
+                buf_index_start += entities[i].len + 1;
+                try writer.writeAll(raws[i]);
+            }
+        }
+    }
+    return writer.context.items[items_start..];
+}
+
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer arr.deinit();
     var input = text;
-    var dealloc_input = false;
-    defer if (dealloc_input) allocator.free(input);
 
-    // TODO: check if unescaping is needed
-    // check '&' and/or ';'?
-    if (mem.indexOfScalar(u8, input, ';')) |_| {
+    if (mem.indexOfScalar(u8, input, '&') != null and mem.indexOfScalar(u8, input, ';') != null) {
+        input = try html_unescape(arr.writer(), input);
     }
-
-    // TODO: do some check before parsing text as html
-    // - rss
-    //   - text might come from cdata
-    //   - text might contain escape html '&lt;', '&gt;', etc
-    // - atom
-    //   - <title type="text|html|xhtml">
-    //   - default: text - can have escaped symbols
-    //   - html - escaped tags and escaped symbols
-    //   - xhtml - has tags (not escaped). escaped symbols
-
-    // Possible solution
-    // - unescape 'text'
-    // - check if can be html
-    // - parse text to html
 
     if (mem.indexOfScalar(u8, input, '<')) |_| {
-        const ast = try super.html.Ast.init(allocator, text, .html);
+        const ast = try super.html.Ast.init(allocator, input, .html);
         defer ast.deinit(allocator);
-        if (try text_from_node(allocator, ast, text, ast.nodes[0])) |text_html| {
-            dealloc_input = true;
-            input = text_html;
-        }
+        input = try text_from_node(arr.writer(), ast, input, ast.nodes[0]);
     } 
 
+    var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
+    defer out.deinit();
+
     var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
-    if (iter.next()) |chunk| {
-        arr.appendSliceAssumeCapacity(chunk[0..@min(chunk.len, max_title_len)]);
-    }
+    if (iter.next()) |first| {
+        out.appendSliceAssumeCapacity(first[0..@min(first.len, max_title_len)]);
 
-    while (iter.next()) |chunk| {
-        if (arr.capacity == arr.items.len) { break; }
+        while (iter.next()) |chunk| {
+            if (out.capacity == out.items.len) { break; }
 
-        arr.appendAssumeCapacity(' ');
-        const len = @min(chunk.len, arr.capacity - arr.items.len);
-        arr.appendSliceAssumeCapacity(chunk[0..len]);
+            out.appendAssumeCapacity(' ');
+            const len = @min(chunk.len, out.capacity - out.items.len);
+            out.appendSliceAssumeCapacity(chunk[0..len]);
+        }
     }
         
-    return arr.toOwnedSlice();
+    return out.toOwnedSlice();
 }
 
 pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
@@ -691,7 +727,7 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
     return false;
 }
 
-fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?[]const u8 {
+fn text_from_node(writer: anytype, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ![]const u8 {
     var iter_text_node = IteratorTextNode.init(ast, code, node);
     var text_arr = try std.BoundedArray(u8, max_title_len).init(0);
     blk: while (iter_text_node.next()) |text_node| {
@@ -716,11 +752,12 @@ fn text_from_node(allocator: std.mem.Allocator, ast: super.html.Ast, code: []con
         }
     }
 
+    const start = writer.context.items.len;
     if (text_arr.len > 0) {
-        return try allocator.dupe(u8, text_arr.slice());
+        const text = text_arr.slice(); 
+        try writer.writeAll(text);
     }
-
-    return null;
+    return writer.context.items[start..];
 }
 
 const IteratorTextNode = struct {
@@ -918,9 +955,12 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     const root_node = ast.nodes[0];
     // ast.debug(content);
 
+    var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
+    defer arr.deinit();
+
     var title_iter = NodeIterator.init(ast, content, root_node, "title");
     if (title_iter.next()) |n| {
-        feed.title = try text_from_node(allocator, ast, content, n);
+        feed.title = try text_from_node(arr.writer(), ast, content, n);
     }
 
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
@@ -930,7 +970,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
     while (container_iter.next()) |node_container| {
         var item_link: ?[]const u8 = null;
-        var item_title: ?[]const u8 = null;
+        var item_title: []const u8 = "";
         const node = node_container;
 
         const link_node = blk: {
@@ -965,52 +1005,40 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                 }
             }
 
-            if (try text_from_node(allocator, ast, content, n)) |text| {
-                item_title = text;
-            }
+            item_title = try text_from_node(arr.writer(), ast, content, n);
         }
 
         if (html_options.selector_heading) |heading| {
             if (is_single_selector_match(content, node, heading)) {
-                if (try text_from_node(allocator, ast, content, node)) |text| {
-                    item_title = text;
-                }
+                item_title = try text_from_node(arr.writer(), ast, content, node);
             } else {
                 var heading_iter = NodeIterator.init(ast, content, node, heading);
                 if (heading_iter.next()) |node_match| {
-                    if (try text_from_node(allocator, ast, content, node_match)) |text| {
-                        item_title = text;
-                    }
+                    item_title = try text_from_node(arr.writer(), ast, content, node_match);
                 } else {
                     std.log.warn("Could not find heading node with selector '{s}'", .{heading});
                 }
             }
         }
 
-        if (item_title == null) {
+        if (item_title.len == 0) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
                 if (is_single_selector_match(content, node, tag)) {
-                    if (try text_from_node(allocator, ast, content, node)) |text| {
-                        item_title = text;
-                        break;
-                    }
+                    item_title = try text_from_node(arr.writer(), ast, content, node);
+                    break;
                 }
 
                 var heading_iter = NodeIterator.init(ast, content, node, tag);
                 if (heading_iter.next()) |node_match| {
-                    if (try text_from_node(allocator, ast, content, node_match)) |text| {
-                        item_title = text;
-                        break;
-                    }
+                    item_title = try text_from_node(arr.writer(), ast, content, node_match);
+                    break;
                 }
             }
         }
 
         // Find any text inside node
-        if (item_title == null) {
-            if (try text_from_node(allocator, ast, content, node)) |text| {
-                item_title = text;
-            }
+        if (item_title.len == 0) {
+            item_title = try text_from_node(arr.writer(), ast, content, node);
         }
         
         var item_updated_ts: ?i64 = null;
@@ -1058,7 +1086,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         }
 
         feed_items.appendAssumeCapacity(.{
-            .title = item_title orelse "",
+            .title = item_title,
             .link = item_link,
             .updated_timestamp = item_updated_ts,
         });
@@ -1339,7 +1367,7 @@ pub const std_options: std.Options = .{
 };
 
 
-pub fn main() !void {
+pub fn main1jk() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
 
@@ -1348,13 +1376,13 @@ pub fn main() !void {
     // _ = result; // autofix
 
     const input =
-    \\From Ray Monk&#8217;s biography of Bertrand Russell: Though the Russells were not especially wealthy, they employed&#8212;as was common in Britain until after the Second World War&#8212;a number of servants: a cook, a housemaid, a gardener, a chauffeur and a nanny. &#8230; <a href="https://statmodeling.stat.columbia.edu/2024/05/06/a-cook-a-housemaid-a-gardener-a-chauffeur-a-nanny-a-philosopher-and-his-wife/">Continue reading <span class="meta-nav">&#8594;</span></a>
+    \\From&#x21; &#39; &lt; Ray Monk&#8217;s biography of Bertrand Russell: Though the Russells were not especially wealthy, they employed&#8212;as was common in Britain until after the Second World War&#8212;a number of servants: a cook, a housemaid, a gardener, a chauffeur and a nanny. &#8230; <a href="https://statmodeling.stat.columbia.edu/2024/05/06/a-cook-a-housemaid-a-gardener-a-chauffeur-a-nanny-a-philosopher-and-his-wife/">Continue reading <span class="meta-nav">&#8594;</span></a>
     ;
     const te = try text_truncate_alloc(arena.allocator(), input);
     print("te: |{?s}|\n", .{te});
 }
 
-pub fn main1() !void {
+pub fn main() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
