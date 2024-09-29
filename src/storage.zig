@@ -1267,7 +1267,7 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS rate_limit(
     \\  feed_id INTEGER UNIQUE NOT NULL,
     \\  utc_sec INTEGER NOT NULL DEFAULT 3600,
-    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id)
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\)
 };
 
