@@ -329,7 +329,7 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
     var current_entry: FeedItem = .{ .title = "" };
 
     var doc = zig_xml.StaticDocument.init(content);
-    var token_reader = doc.reader(allocator, .{});
+    var token_reader = doc.reader(allocator, .{ .namespace_aware = false, });
     defer token_reader.deinit();
 
     var token = try token_reader.read();
@@ -503,7 +503,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
     var current_item: FeedItem = .{.title = ""};
 
     var doc = zig_xml.StaticDocument.init(content);
-    var token_reader = doc.reader(allocator, .{});
+    var token_reader = doc.reader(allocator, .{ .namespace_aware = false, });
     defer token_reader.deinit();
 
     var token = try token_reader.read();
@@ -1367,7 +1367,7 @@ pub const std_options: std.Options = .{
 };
 
 
-pub fn main1jk() !void {
+pub fn tmp_text_truncate_alloc() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
 
@@ -1382,7 +1382,7 @@ pub fn main1jk() !void {
     print("te: |{?s}|\n", .{te});
 }
 
-pub fn main() !void {
+pub fn tmp_parse_html() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1434,3 +1434,15 @@ pub fn main() !void {
     // }
 }
 
+fn tmp_bug_1() !void {
+    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
+    defer arena.deinit();
+
+    const content = @embedFile("tmp_file");
+    const result = try parseRss(arena.allocator(), content);
+    _ = result;
+}
+
+pub fn main() !void {
+    try tmp_bug_1();
+}
