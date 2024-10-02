@@ -61,6 +61,7 @@ pub const Storage = struct {
         };
     }
 
+    // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
@@ -77,6 +78,7 @@ pub const Storage = struct {
         // TODO: For some tests disable 'journal_mode=delete'?
         _ = try db.pragma(void, .{}, "journal_mode", "WAL");
         _ = try db.pragma(void, .{}, "synchronous", "normal");
+        _ = try db.pragma(void, .{}, "busy_timeout", "5000");
         _ = try db.pragma(void, .{}, "temp_store", "2");
         _ = try db.pragma(void, .{}, "mmap_size", "30000000000");
         _ = try db.pragma(void, .{}, "cache_size", "-32000");
