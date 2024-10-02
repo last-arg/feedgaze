@@ -400,11 +400,22 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
                                     std.log.warn("Failed to read entry's id from atom feed's entry. Error: {}", .{err});
                                 }
                             },
-                            .updated => {
+                            .published => {
                                 const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
-                                current_entry.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+                                if (AtomDateTime.parse(date_raw)) |new_date| {
+                                    current_entry.updated_timestamp = new_date;
+                                } else |err| {
+                                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
+                                }
                             },
-                            .published,
+                            .updated => if (current_entry.updated_timestamp == null) {
+                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                if (AtomDateTime.parse(date_raw)) |new_date| {
+                                    current_entry.updated_timestamp = new_date;
+                                } else |err| {
+                                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
+                                }
+                            },
                             .icon => {},
                         },
                     }
