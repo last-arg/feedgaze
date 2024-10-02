@@ -75,7 +75,6 @@ pub const Storage = struct {
             _ = try db.pragma(void, .{}, "user_version", "1");
         }
         _ = try db.pragma(void, .{}, "foreign_keys", "1");
-        // TODO: For some tests disable 'journal_mode=delete'?
         _ = try db.pragma(void, .{}, "journal_mode", "WAL");
         _ = try db.pragma(void, .{}, "synchronous", "normal");
         _ = try db.pragma(void, .{}, "busy_timeout", "5000");

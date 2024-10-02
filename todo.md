@@ -65,7 +65,6 @@ appear in the file.
   will used newest (first) feed item.
 
 # Future (Maybe)
-[ ] typed SQLite - [Strict tables](https://www.sqlite.org/stricttables.html)
 [ ] (Popular) Sites that don't support feeds (twitter, instagram, soundcloud).
   [ ] Let user defined 'feed' area?
 [ ] Mark feeds to use OS notification system on new link(s)
