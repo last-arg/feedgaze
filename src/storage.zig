@@ -1210,7 +1210,7 @@ const tables = &[_][]const u8{
     \\  page_url TEXT DEFAULT NULL,
     \\  icon_url TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
-    \\);
+    \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS item(
     \\  item_id INTEGER PRIMARY KEY,
@@ -1224,7 +1224,7 @@ const tables = &[_][]const u8{
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  UNIQUE(feed_id, id),
     \\  UNIQUE(feed_id, link)
-    \\);
+    \\) STRICT;
     ,
     comptimePrint(
         \\CREATE TABLE IF NOT EXISTS feed_update (
@@ -1235,12 +1235,12 @@ const tables = &[_][]const u8{
         \\  last_modified_utc INTEGER DEFAULT NULL,
         \\  etag TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
-        \\);
+        \\) STRICT;
     , .{ app_config.update_interval, seconds_in_10_days }),
     \\CREATE TABLE IF NOT EXISTS tag(
     \\  tag_id INTEGER PRIMARY KEY,
     \\  name TEXT UNIQUE NOT NULL
-    \\)
+    \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS feed_tag(
     \\  tag_id INTEGER NOT NULL,
@@ -1248,12 +1248,12 @@ const tables = &[_][]const u8{
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE,
     \\  FOREIGN KEY(tag_id) REFERENCES tag(tag_id) ON DELETE CASCADE,
     \\  UNIQUE(tag_id, feed_id)
-    \\)
+    \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS add_rule_host(
     \\  host_id INTEGER PRIMARY KEY,
     \\  name TEXT NOT NULL UNIQUE
-    \\)
+    \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS add_rule(
     \\  add_rule_id INTEGER PRIMARY KEY,
@@ -1264,13 +1264,13 @@ const tables = &[_][]const u8{
     \\  FOREIGN KEY(match_host_id) REFERENCES add_rule_host(host_id),
     \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id),
     \\  UNIQUE(match_host_id, match_path)
-    \\)
+    \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS rate_limit(
     \\  feed_id INTEGER UNIQUE NOT NULL,
     \\  utc_sec INTEGER NOT NULL DEFAULT 3600,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
-    \\)
+    \\) STRICT;
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
