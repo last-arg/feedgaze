@@ -284,6 +284,7 @@ fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
             }
         }
     }
+    try writer.writeAll(input[buf_index_start..]);
     return writer.context.items[items_start..];
 }
 
