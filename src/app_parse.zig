@@ -7,7 +7,9 @@ const AtomDateTime = feed_types.AtomDateTime;
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
 const print = std.debug.print;
-const datetime = @import("zig-datetime").datetime;
+const dt = @import("zig-datetime"); 
+const datetime = dt.datetime;
+const assert = std.debug.assert;
 
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
@@ -451,7 +453,7 @@ test "parseAtom" {
     defer arena.deinit();
 
     const content = @embedFile("atom.atom");
-    const result = try parse(arena.allocator(), content, .atom);
+    const result = try parse(arena.allocator(), content, null);
     const expect_feed = Feed{
         .title = "Example Feed",
         .feed_url = "",
@@ -686,7 +688,7 @@ test "parseRss" {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const result = try parse(arena.allocator(), content, .rss);
+    const result = try parse(arena.allocator(), content, null);
     const expect_feed = Feed{
         .title = "Liftoff News",
         .feed_url = "",
@@ -916,11 +918,12 @@ pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: S
     return true;
 }
 
-const HtmlOptions = struct {
+pub const HtmlOptions = struct {
     selector_container: []const u8,
     selector_link: ?[]const u8 = null,
     selector_heading: ?[]const u8 = null,
     selector_date: ?[]const u8 = null,
+    date_format: ?[]const u8 = null,
 };
 
 const Selector = struct {
@@ -955,7 +958,6 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
-// TODO: add date_format HtmlOption
 pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !FeedAndItems {
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
@@ -1070,6 +1072,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
         if (time_node) |n| {
             var value_raw: ?[]const u8 = null;
+            var is_time_datetime = false;
 
             if (std.ascii.eqlIgnoreCase("time", n.open.slice(content))) {
                 var attr_iter = n.startTagIterator(content, .html);
@@ -1078,6 +1081,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                         const name = attr.name.slice(content);
                         if (std.ascii.eqlIgnoreCase("datetime", name)) {
                             value_raw = value.span.slice(content);
+                            is_time_datetime = true;
                         }
                     }
                 }
@@ -1093,7 +1097,16 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
 
             if (value_raw) |raw| {
-                item_updated_ts = seconds_from_datetime(mem.trim(u8, raw, &std.ascii.whitespace));
+                const trimmed = mem.trim(u8, raw, &std.ascii.whitespace);
+                if (html_options.date_format) |date_format| {
+                    item_updated_ts = seconds_from_date_format(trimmed, date_format);
+                }
+
+                if (item_updated_ts == null and is_time_datetime) {
+                    item_updated_ts = seconds_from_datetime(trimmed);
+                }
+
+                // TODO: try some other date parsing formats?
             }
         }
 
@@ -1112,6 +1125,180 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         .feed = feed,
         .items = try feed_items.toOwnedSlice(),
     };
+}
+
+pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
+    assert(raw.len > 0);
+    assert(date_format.len > 0);
+    assert(raw[0] != ' ' and raw[raw.len - 1] != ' ');
+
+    const year_fmt, const year_start = blk: { 
+        const year_long_fmt = "YYYY";
+        if (mem.indexOf(u8, date_format, year_long_fmt)) |index| {
+            break :blk .{year_long_fmt, index};
+        }
+
+        const year_short_fmt = "YY";
+        break :blk .{year_short_fmt, mem.indexOf(u8, date_format, year_short_fmt)};
+    };
+    // TODO: 0 not good default. Probably default to current year?
+    // Or return null if year is 0?
+    // Should I default month and day also to current date?
+    var year: u32 = 0;
+    if (year_start) |index| {
+        const end = index + year_fmt.len;
+        if (end <= raw.len) {
+            const year_raw = raw[index..end];
+            if (std.fmt.parseUnsigned(u32, year_raw, 10)) |value| {
+                // TODO: might have two digit value in 1900s?
+                const short_add: u32 = if (value < 100) 2000 else 0;
+                year = value + short_add;
+            } else |_| {
+                std.log.warn("Failed to parse year from '{s}'. Try to parse years value from '{s}'", .{raw, year_raw});
+            }
+        }
+    }
+
+    const month_fmt, const month_start = blk: {
+        const month_text_fmt = "MMM";
+        if (mem.indexOf(u8, date_format, month_text_fmt)) |index| {
+            break :blk .{month_text_fmt, index};
+        }
+
+        const month_fmt = "MM";
+        break :blk .{month_fmt, mem.indexOf(u8, date_format, month_fmt)};
+    };
+    const month = blk: {
+        const index = month_start orelse break :blk 1;
+        const end = index + month_fmt.len;
+        if (end <= raw.len) {
+            const month_raw = raw[index..end];
+            if (month_fmt.len == 2) {
+                if (std.fmt.parseUnsigned(u32, month_raw, 10)) |value| {
+                    break :blk value;
+                } else |_| {
+                    std.log.warn("Failed to parse month from '{s}'. Try to parse months value from '{s}'", .{raw, month_raw});
+                }
+            } else if (month_fmt.len == 3) {
+                if (datetime.Month.parseAbbr(month_raw)) |value| {
+                    break :blk @intFromEnum(value);
+                } else |_| {
+                    std.log.warn("Failed to parse month from '{s}'. Try to parse months abbreviated value from '{s}'", .{raw, month_raw});
+                }
+            } else {
+                unreachable;
+            }
+        }
+
+        break :blk 1;
+    };
+    
+    const day_fmt = "DD";
+    const day_start = mem.indexOf(u8, date_format, day_fmt);
+    var day: u32 = 1;
+    if (day_start) |index| {
+        const end = index + day_fmt.len;
+        if (end <= raw.len) {
+            const day_raw = raw[index..end];
+            if (std.fmt.parseUnsigned(u32, day_raw, 10)) |value| {
+                day = value;
+            } else |_| {
+                std.log.warn("Failed to parse date from '{s}'. Try to parse days value from '{s}'", .{raw, day_raw});
+            }
+        }
+    }
+
+    const hour_fmt = "HH";
+    const hour_start = mem.indexOf(u8, date_format, hour_fmt);
+    var hour: u32 = 0;
+    if (hour_start) |index| {
+        const end = index + hour_fmt.len;
+        if (end <= raw.len) {
+            const hour_raw = raw[index..end];
+            if (std.fmt.parseUnsigned(u32, hour_raw, 10)) |value| {
+                hour = value;
+            } else |_| {
+                std.log.warn("Failed to parse date from '{s}'. Try to parse hour value from '{s}'", .{raw, hour_raw});
+            }
+        }
+    }
+
+    const minute_fmt = "mm";
+    const minute_start = mem.indexOf(u8, date_format, minute_fmt);
+    var minute: u32 = 0;
+    if (minute_start) |index| {
+        const end = index + minute_fmt.len;
+        if (end <= raw.len) {
+            const minute_raw = raw[index..end];
+            if (std.fmt.parseUnsigned(u32, minute_raw, 10)) |value| {
+                minute = value;
+            } else |_| {
+                std.log.warn("Failed to parse date from '{s}'. Try to parse minutes value from '{s}'", .{raw, minute_raw});
+            }
+        }
+    }
+
+    const second_fmt = "ss";
+    const second_start = mem.indexOf(u8, date_format, second_fmt);
+    var second: u32 = 0;
+    if (second_start) |index| {
+        const end = index + second_fmt.len;
+        if (end <= raw.len) {
+            const second_raw = raw[index..end];
+            if (std.fmt.parseUnsigned(u32, second_raw, 10)) |value| {
+                second = value;
+            } else |_| {
+                std.log.warn("Failed to parse date from '{s}'. Try to parse seconds value from '{s}'", .{raw, second_raw});
+            }
+        }
+    }
+
+    // TODO: date format timezone
+    const timezone_fmt = "Z";
+    const timezone_start = mem.indexOf(u8, date_format, timezone_fmt);
+    var timezone: ?*const dt.datetime.Timezone = null;
+    if (timezone_start) |index| blk: {
+        var end = index;
+        var sign: i8 = 1;
+        if (raw[index] == '-') {
+            sign = -1;
+        } else if (raw[index] != '+') {
+            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone value", .{raw});
+            break :blk;
+        }
+        end += 1;
+
+        if (end + 2 > raw.len) { break :blk; }
+        const hours_raw = raw[end..end + 2];
+        var hours: u32 = 0;
+        if (std.fmt.parseUnsigned(u32, hours_raw, 10)) |value| {
+            hours = value;
+        } else |_| {
+            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone's hours value from '{s}'", .{raw, hours_raw});
+            break :blk;
+        }
+        end += 2;
+        end += @intFromBool(raw[end] == ':');
+
+        if (end + 2 > raw.len) { break :blk; }
+        const minutes_raw = raw[end..end + 2];
+        var minutes: u32 = 0;
+        if (std.fmt.parseUnsigned(u32, minutes_raw, 10)) |value| {
+            minutes = value;
+        } else |_| {
+            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone's minutes value from '{s}'", .{raw, minutes_raw});
+            break :blk;
+        }
+
+        end += 2;
+        const all_minutes: i16 = @intCast(hours * 60 + minutes);
+        const offset = sign * all_minutes;
+
+        timezone = &dt.datetime.Timezone.create(raw[index..end], offset);
+    }
+
+    const date = datetime.Datetime.create(year, month, day, hour, minute, second, 0, timezone) catch return null;
+    return @intFromFloat(date.toSeconds());
 }
 
 // NOTE: <time> valid set of date formats 
@@ -1194,7 +1381,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
         return null;
     }
 
-    var dt: datetime.Datetime = .{
+    var item_datetime: datetime.Datetime = .{
         .date = date.?,
         .time = .{},
         .zone = &datetime.timezones.Zulu,
@@ -1210,7 +1397,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
         var has_time = false;
         if (time_iter.next()) |hours_str| {
             if (std.fmt.parseUnsigned(u8, hours_str, 10)) |hour| {
-                dt.time.hour = hour;
+                item_datetime.time.hour = hour;
             } else |_| {
                 std.log.warn("Failed to parse hours from input '{s}'", .{raw});
             }
@@ -1218,7 +1405,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
 
         if (time_iter.next()) |minutes_str| {
             if (std.fmt.parseUnsigned(u8, minutes_str, 10)) |minute| {
-                dt.time.minute = minute;
+                item_datetime.time.minute = minute;
             } else |_| {
                 std.log.warn("Failed to parse minutes from input '{s}'", .{raw});
             }
@@ -1227,7 +1414,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
 
         if (time_iter.next()) |seconds_str| {
             if (std.fmt.parseUnsigned(u8, seconds_str, 10)) |second| {
-                dt.time.second = second;
+                item_datetime.time.second = second;
             } else |_| {
                 std.log.warn("Failed to parse seconds from input '{s}'", .{raw});
             }
@@ -1257,10 +1444,10 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
     }
 
     if (timezone) |zone| {
-        dt.zone = &zone;
+        item_datetime.zone = &zone;
     }
 
-    return @intCast(@divFloor(dt.toTimestamp(), 1000));
+    return @intCast(@divFloor(item_datetime.toTimestamp(), 1000));
 }
 
 pub const ContentType = feed_types.ContentType;
@@ -1336,16 +1523,17 @@ test "getContentType" {
     try std.testing.expectEqual(ContentType.html, html_type.?);
 }
 
-pub fn parse(allocator: Allocator, content: []const u8, content_type: ?ContentType) !FeedAndItems {
-    _ = content_type;
-
+pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions) !FeedAndItems {
     // Figure out content type based on file content
     // Server might return wrong content type. Like 'https://jakearchibald.com/'
+
+    // TODO: could first try to parse base on content type that http response had.
+    // And if erros use getContentType() and try to parse then again.
     const ct = getContentType(content) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
-        .html => error.NoHtmlParse,
+        .html => parse_html(allocator, content, html_options.?),
         .xml => error.NotAtomOrRss,
     };
 }
@@ -1411,7 +1599,7 @@ pub fn tmp_parse_html() !void {
     \\    <!-- comment -->
     \\    <input type="text" value="foo">
     \\    <p class="paragraph">foo bar</p>
-    \\    <span>2020</span>
+    \\    <span>20 Dec +0200</span>
     \\    <p>
     \\      <a href="#item1">
     \\        text
@@ -1432,6 +1620,7 @@ pub fn tmp_parse_html() !void {
     const html_options: HtmlOptions = .{
         .selector_container = ".post",
         .selector_date = "span",
+        .date_format = "YY.MMM Z",
     };
     const feed = try parse_html(alloc, content, html_options);
     // print("feed {}\n", .{feed});
@@ -1446,15 +1635,6 @@ pub fn tmp_parse_html() !void {
     // }
 }
 
-fn tmp_bug_1() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-
-    const content = @embedFile("tmp_file");
-    const result = try parseRss(arena.allocator(), content);
-    _ = result;
-}
-
 pub fn main() !void {
-    try tmp_bug_1();
+    try tmp_parse_html();
 }
