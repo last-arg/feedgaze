@@ -98,7 +98,7 @@ pub const Storage = struct {
     pub fn addFeed(self: *Self, allocator: Allocator, feed_opts: *FeedOptions) !usize {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
-        var parsed = try parse.parse(arena.allocator(), feed_opts.body, feed_opts.content_type);
+        var parsed = try parse.parse(arena.allocator(), feed_opts.body, null);
         if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
             parsed.feed.title = new_title;
         };
@@ -124,17 +124,11 @@ pub const Storage = struct {
     pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, resp: curl.Easy.Response, feed_info: FeedToUpdate) !void {
         const body = resp.body orelse return error.NoBody;
         const content = body.items;
-        const content_type = blk: {
-            const value = resp.getHeader("content-type") catch null;
-            if (value) |v| {
-                break :blk ContentType.fromString(v.get());
-            }
-            break :blk null;
-        };
         var feed_update = FeedUpdate.fromCurlHeaders(resp);
 
         const feed_id = feed_info.feed_id;
-        var parsed = try parse.parse(arena.allocator(), content, content_type);
+        const html_options = try self.html_selector_get(arena.allocator(), feed_id);
+        var parsed = try parse.parse(arena.allocator(), content, html_options);
         parsed.feed.feed_url = feed_info.feed_url;
         parsed.feed.feed_id = feed_id;
         try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
@@ -1198,6 +1192,37 @@ pub const Storage = struct {
         ;
         try self.sql_db.exec(query, .{}, .{icon_url, feed_id});
     }
+
+    pub fn html_selector_add(self: *Self, options: parse.HtmlOptions) !void {
+        // TODO: on conflict update instead?
+        const query =
+            \\INSERT INTO html_selector (container, link, heading, date, date_format)
+            \\VALUES (
+            \\  @selector_container,
+            \\  @selector_link,
+            \\  @selector_heading,
+            \\  @selector_date,
+            \\  @date_format
+            \\) ON CONFLICT(feed_id) DO NOTHING
+            \\;
+        ;
+
+        try self.sql_db.exec(query, .{}, options);
+    }
+
+    pub fn html_selector_get(self: *Self, allocator: Allocator, feed_id: usize) !?parse.HtmlOptions {
+        const query = 
+        \\select 
+        \\ container as selector_container,
+        \\ link as selector_container,
+        \\ heading as selector_heading,
+        \\ date as selector_date,
+        \\ date_format
+        \\from html_selector
+        \\where feed_id = ?;
+        ;
+        return try oneAlloc(&self.sql_db, allocator, parse.HtmlOptions, query, .{feed_id});
+    }
 };
 
 // TODO: feed.title default value should be null
@@ -1270,6 +1295,17 @@ const tables = &[_][]const u8{
     \\  utc_sec INTEGER NOT NULL DEFAULT 3600,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
+    ,
+    \\CREATE TABLE IF NOT EXISTS html_selector(
+    \\  feed_id INTEGER UNIQUE NOT NULL,
+    \\  container TEXT NOT NULL,
+    \\  link TEXT DEFAUTL NULL,
+    \\  heading TEXT DEFAUTL NULL,
+    \\  date TEXT DEFAUTL NULL,
+    \\  date_format TEXT DEFAUTL NULL,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
+    \\) STRICT;
+    ,
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
