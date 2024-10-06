@@ -95,10 +95,15 @@ pub const Storage = struct {
         }
     }
 
-    pub fn addFeed(self: *Self, allocator: Allocator, feed_opts: *FeedOptions) !usize {
+    pub const AddOptions = struct {
+        feed_opts: FeedOptions,
+        html_opts: ?parse.HtmlOptions = null,
+    };
+    pub fn addFeed(self: *Self, allocator: Allocator, opts: AddOptions) !usize {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
-        var parsed = try parse.parse(arena.allocator(), feed_opts.body, null);
+        var feed_opts = opts.feed_opts;
+        var parsed = try parse.parse(arena.allocator(), feed_opts.body, opts.html_opts);
         if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
             parsed.feed.title = new_title;
         };
@@ -112,6 +117,9 @@ pub const Storage = struct {
         try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
+        if (opts.html_opts) |html_opts| {
+            try self.html_selector_add(feed_id, html_opts);
+        }
         try parsed.prepareAndValidate(arena.allocator(), feed_opts.feed_updates.last_modified_utc);
         _ = try self.insertFeedItems(parsed.items);
         feed_opts.feed_updates.set_item_interval(parsed.items, null, parsed.feed.updated_timestamp);
@@ -1193,21 +1201,29 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{icon_url, feed_id});
     }
 
-    pub fn html_selector_add(self: *Self, options: parse.HtmlOptions) !void {
+    pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
         // TODO: on conflict update instead?
         const query =
-            \\INSERT INTO html_selector (container, link, heading, date, date_format)
+            \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)
             \\VALUES (
-            \\  @selector_container,
-            \\  @selector_link,
-            \\  @selector_heading,
-            \\  @selector_date,
+            \\  @feed_id,
+            \\  @container,
+            \\  @link,
+            \\  @heading,
+            \\  @date,
             \\  @date_format
             \\) ON CONFLICT(feed_id) DO NOTHING
             \\;
         ;
 
-        try self.sql_db.exec(query, .{}, options);
+        try self.sql_db.exec(query, .{}, .{
+            .feed_id = feed_id,
+            .container = options.selector_container,
+            .link = options.selector_link,
+            .heading = options.selector_heading,
+            .date = options.selector_date,
+            .date_format = options.date_format,
+        });
     }
 
     pub fn html_selector_get(self: *Self, allocator: Allocator, feed_id: usize) !?parse.HtmlOptions {

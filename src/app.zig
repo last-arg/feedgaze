@@ -446,17 +446,16 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
             }
 
+            var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
 
                 switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
                     .html => |html_opts| {
-                        _ = html_opts;
-                        print("handle html_opts\n", .{});
-                        // TODO: parse html
-                        // TODO: pass html_opts to addFeed()
-                        feed_options.icon_url = html_parsed.icon_url;
+                        add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+                        add_opts.html_opts = html_opts;
+                        add_opts.feed_opts.icon_url = html_parsed.icon_url;
                     },
                     .index => |index| {
                         const link = links[index];
@@ -478,25 +477,25 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         const req_2 = fetch_2.req;
                         const resp_2 = fetch_2.resp;
 
-                        feed_options = FeedOptions.fromResponse(resp_2);
+                        add_opts.feed_opts = FeedOptions.fromResponse(resp_2);
                         if (feed_options.content_type == .html) {
                             // Let's make sure it is html, some give wrong content-type.
-                            feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+                            add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
                             const ct = feed_options.content_type;
                             if (ct == null or ct == .html) {
                                 std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                                 return error.UnexpectedContentTypeHtml;
                             }
                         }
-                        feed_options.feed_url = try req_2.get_url_slice();
-                        feed_options.title = link.title;
-                        feed_options.icon_url = html_parsed.icon_url;
+                        add_opts.feed_opts.feed_url = try req_2.get_url_slice();
+                        add_opts.feed_opts.title = link.title;
+                        add_opts.feed_opts.icon_url = html_parsed.icon_url;
                     }
                 }
             } else {
                 feed_options.feed_url = try fetch.req.get_url_slice();
             }
-            return try self.storage.addFeed(self.allocator, &feed_options);
+            return try self.storage.addFeed(self.allocator, add_opts);
         }
 
         const UserInput = union(enum) {

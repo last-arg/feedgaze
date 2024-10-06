@@ -95,11 +95,13 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var fetch = try app.fetch_response(req.arena, feed_url);
     defer fetch.deinit();
 
-    var feed_options = FeedOptions.fromResponse(fetch.resp);
+    const feed_options = FeedOptions.fromResponse(fetch.resp);
+    var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     if (feed_options.content_type == .html) {
-        feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+        add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
     }
 
+    // TODO: handle making html into feed
     if (feed_options.content_type == .html) {
         const c: std.Uri.Component = .{ .raw = feed_url };
         var arr = try std.ArrayList(u8).initCapacity(req.arena, 256);
@@ -121,8 +123,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
 
-    feed_options.feed_url = try fetch.req.get_url_slice();
-    const feed_id = try db.addFeed(req.arena, &feed_options);
+    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+    const feed_id = try db.addFeed(req.arena, add_opts);
 
     const redirect = try std.fmt.bufPrint(&buf, "/feed/add?success={d}", .{feed_id});
     resp.header("Location", redirect);

@@ -11,6 +11,17 @@ const dt = @import("zig-datetime");
 const datetime = dt.datetime;
 const assert = std.debug.assert;
 
+// pub const std_options: std.Options = .{
+//     // This sets log level based on scope.
+//     // This overrides global log_level
+//     .log_scope_levels = &.{ 
+//         .{.level = .err, .scope = .@"html/tokenizer"},
+//         .{.level = .err, .scope = .@"html/ast"} 
+//     },
+//     // This set global log level
+//     .log_level = .debug,
+// };
+
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
 
@@ -1019,6 +1030,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                 }
             }
 
+            // TODO: fix getting title. When added to DB get just blobs filled with 0xaa
             item_title = try text_from_node(arr.writer(), ast, content, n);
         }
 
@@ -1559,18 +1571,6 @@ fn printEvent(event: zig_xml.Event) !void {
         .pi => |pi| print("<?{s} {s}\n", .{ pi.target, pi.content }),
     }
 }
-
-pub const std_options: std.Options = .{
-    // This sets log level based on scope.
-    // This overrides global log_level
-    .log_scope_levels = &.{ 
-        .{.level = .err, .scope = .@"html/tokenizer"},
-        .{.level = .err, .scope = .@"html/ast"} 
-    },
-    // This set global log level
-    .log_level = .debug,
-};
-
 
 pub fn tmp_text_truncate_alloc() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
