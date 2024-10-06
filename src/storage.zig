@@ -1299,10 +1299,10 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS html_selector(
     \\  feed_id INTEGER UNIQUE NOT NULL,
     \\  container TEXT NOT NULL,
-    \\  link TEXT DEFAUTL NULL,
-    \\  heading TEXT DEFAUTL NULL,
-    \\  date TEXT DEFAUTL NULL,
-    \\  date_format TEXT DEFAUTL NULL,
+    \\  link TEXT DEFAULT NULL,
+    \\  heading TEXT DEFAULT NULL,
+    \\  date TEXT DEFAULT NULL,
+    \\  date_format TEXT DEFAULT NULL,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
