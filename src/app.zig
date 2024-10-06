@@ -449,55 +449,71 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
-                if (links.len == 0) {
-                    std.log.info("Found no feed links in HTML", .{});
-                    return 0;
-                }
 
-                const index = if (links.len > 1) try getUserInput(links, self.out, self.in) else 0;
-                const link = links[index];
+                switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
+                    .html => |html_opts| {
+                        _ = html_opts;
+                        print("handle html_opts\n", .{});
+                        // TODO: parse html
+                        // TODO: pass html_opts to addFeed()
+                        feed_options.icon_url = html_parsed.icon_url;
+                    },
+                    .index => |index| {
+                        const link = links[index];
+                        var fetch_url = url;
 
-                var fetch_url = url;
+                        if (!mem.startsWith(u8, link.link, "http")) {
+                            var url_uri = try std.Uri.parse(url);
+                            var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
+                            const result = try url_uri.resolve_inplace(link.link, &link_buf);
+                            fetch_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
+                        } else {
+                            fetch_url = link.link;
+                        }
 
-                if (!mem.startsWith(u8, link.link, "http")) {
-                    var url_uri = try std.Uri.parse(url);
-                    var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
-                    const result = try url_uri.resolve_inplace(link.link, &link_buf);
-                    fetch_url = try std.fmt.allocPrint(arena.allocator(), "{}", .{result});
-                } else {
-                    fetch_url = link.link;
-                }
+                        // Need to create new curl request
+                        var fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
+                        defer fetch_2.deinit();
 
-                // Need to create new curl request
-                var fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
-                defer fetch_2.deinit();
+                        const req_2 = fetch_2.req;
+                        const resp_2 = fetch_2.resp;
 
-                const req_2 = fetch_2.req;
-                const resp_2 = fetch_2.resp;
-
-                feed_options = FeedOptions.fromResponse(resp_2);
-                if (feed_options.content_type == .html) {
-                    // Let's make sure it is html, some give wrong content-type.
-                    feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
-                    const ct = feed_options.content_type;
-                    if (ct == null or ct == .html) {
-                        std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
-                        return error.UnexpectedContentTypeHtml;
+                        feed_options = FeedOptions.fromResponse(resp_2);
+                        if (feed_options.content_type == .html) {
+                            // Let's make sure it is html, some give wrong content-type.
+                            feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+                            const ct = feed_options.content_type;
+                            if (ct == null or ct == .html) {
+                                std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
+                                return error.UnexpectedContentTypeHtml;
+                            }
+                        }
+                        feed_options.feed_url = try req_2.get_url_slice();
+                        feed_options.title = link.title;
+                        feed_options.icon_url = html_parsed.icon_url;
                     }
                 }
-                feed_options.feed_url = try req_2.get_url_slice();
-                feed_options.title = link.title;
-                feed_options.icon_url = html_parsed.icon_url;
             } else {
                 feed_options.feed_url = try fetch.req.get_url_slice();
             }
             return try self.storage.addFeed(self.allocator, &feed_options);
         }
 
-        fn getUserInput(links: []html.FeedLink, writer: Writer, reader: Reader) !usize {
+        const UserInput = union(enum) {
+            index: usize,
+            html: parse.HtmlOptions,
+        };
+        fn getUserInput(allocator: Allocator, links: []html.FeedLink, writer: Writer, reader: Reader) !UserInput {
+            if (links.len == 0) {
+                try writer.print("Found no feed links in html\n", .{});
+            } else {
+                try writer.print("Pick feed link to add\n", .{});
+            }
             for (links, 1..) |link, i| {
                 try writer.print("{d}. {s} | {s}\n", .{i, link.title orelse "<no-title>", link.link});
             }
+            const html_option_index = links.len + 1;
+            try writer.print("{d}. Add html as feed\n", .{html_option_index});
             var buf: [32]u8 = undefined;
             var fix_buf = std.io.fixedBufferStream(&buf);
             var index: usize = 0;
@@ -508,15 +524,89 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
                 const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
                 index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
-                    std.log.err("Provide input is not a number. Enter number between 1 - {d}", .{links.len});
+                    try writer.print("Provided input is not a number. Enter number between 1 - {d}\n", .{links.len + 1});
                     continue;
                 };
-                if (index == 0 or index > links.len) {
-                    std.log.err("Invalid number input. Have to enter number between 1 - {d}", .{links.len});
+                if (index == html_option_index) {
+                    return .{ .html = try html_options(allocator, writer, reader) };
+                } else if (index == 0 or index > links.len) {
+                    try writer.print("Invalid number input. Enter number between 1 - {d}\n", .{links.len + 1});
                     continue;
                 }
             }
-            return index - 1;
+            return .{ .index = index - 1 };
+        }
+
+        fn html_options(allocator: Allocator, writer: Writer, reader: Reader) !parse.HtmlOptions {
+            var opts: parse.HtmlOptions = .{ .selector_container = undefined };
+            var buf: [1024]u8 = undefined;
+            var fix_buf = std.io.fixedBufferStream(&buf);
+
+            try writer.writeAll("Can enter simple selector that are made up of tag names or classes. Like: '.item div'\n");
+
+            while (true) {
+                try writer.writeAll("Enter feed item's selector: ");
+                fix_buf.reset();
+                try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+                if (get_input_value(fix_buf.getWritten())) |val| {
+                    opts.selector_container = try allocator.dupe(u8, val);
+                    break;
+                }
+            }
+
+            try writer.writeAll("Rest of the selector options view feed item selector as root.\n");
+            try writer.writeAll("Enter feed item's link selector: ");
+            fix_buf.reset();
+            try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+            if (get_input_value(fix_buf.getWritten())) |val| {
+                opts.selector_link = try allocator.dupe(u8, val);
+            }
+
+            try writer.writeAll("Enter feed item's title selector: ");
+            fix_buf.reset();
+            try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+            if (get_input_value(fix_buf.getWritten())) |val| {
+                opts.selector_heading = try allocator.dupe(u8, val);
+            }
+
+            try writer.writeAll("Enter feed item's date selector: ");
+            fix_buf.reset();
+            try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+            if (get_input_value(fix_buf.getWritten())) |val| {
+                opts.selector_date = try allocator.dupe(u8, val);
+            }
+
+            try writer.writeAll(
+            \\Can set date format that will be parsed from date selector's content.
+            \\If date content has other characters, can fill them in with anything.
+            \\Important is the position of date options.
+            \\Possible options:
+            \\- year: YY, YYYY
+            \\- month: MM, MMM (Jan, Sep)
+            \\- day: DD
+            \\- hour: HH
+            \\- minute: mm
+            \\- second: ss
+            \\- timezone: Z (+02:00, -0800)
+            \\
+            );
+            try writer.writeAll("Enter feed date format: ");
+            fix_buf.reset();
+            try reader.streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len);
+            if (get_input_value(fix_buf.getWritten())) |val| {
+                opts.date_format = try allocator.dupe(u8, val);
+            }
+
+            return opts;
+        }
+
+        fn get_input_value(input: []const u8) ?[]const u8 {
+            const value = mem.trim(u8, input, &std.ascii.whitespace);
+            if (value.len == 0) {
+                return null;
+            }
+
+            return value;
         }
 
         pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !bool {
@@ -612,19 +702,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     continue;
                 }
 
-                self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| switch (err) {
-                    error.NoHtmlParse => {
-                        try self.storage.rate_limit_remove(f_update.feed_id);
-                        try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12);
-                        std.log.err("Failed to update feed '{s}'. Update should not return html file", .{f_update.feed_url});
-                        continue;
-                    },
-                    else => {
-                        try self.storage.rate_limit_remove(f_update.feed_id);
-                        try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12);
-                        std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
-                        continue;
-                    }
+                self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| {
+                    try self.storage.rate_limit_remove(f_update.feed_id);
+                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12);
+                    std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                    continue;
                 };
             }
             return true;
