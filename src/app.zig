@@ -579,7 +579,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             \\Can set date format that will be parsed from date selector's content.
             \\If date content has other characters, can fill them in with anything.
             \\Important is the position of date options.
-            \\Possible options:
+            \\Format options:
             \\- year: YY, YYYY
             \\- month: MM, MMM (Jan, Sep)
             \\- day: DD
