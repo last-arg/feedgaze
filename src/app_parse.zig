@@ -910,6 +910,25 @@ pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: S
     var parent_index = node.parent_idx;
     var iter = selector_iter;
     while (iter.next()) |selector| {
+        if (parent_index == 0) {
+            return false;
+        }
+
+        if (selector.len == 1 and selector[0] == '>') {
+            if (iter.next()) |selector_parent| {
+                const current = ast.nodes[parent_index];
+                parent_index = current.parent_idx;
+
+                const is_class = selector_parent[0] == '.';
+                if (is_class and has_class(current, code, selector_parent)) {
+                    continue;
+                } else if (std.ascii.eqlIgnoreCase(selector_parent, current.open.getName(code, .html).slice(code))) {
+                    continue;
+                }
+            }
+            return false;
+        }
+
         const is_class = selector[0] == '.';
         while (parent_index != 0) {
             const current = ast.nodes[parent_index];
@@ -920,9 +939,6 @@ pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: S
             } else if (std.ascii.eqlIgnoreCase(selector, current.open.getName(code, .html).slice(code))) {
                 break;
             }
-        }
-        if (parent_index == 0) {
-            return false;
         }
     }
     return true;
@@ -947,10 +963,11 @@ const Selector = struct {
 
     pub fn next(self: *@This()) ?[]const u8 {
         while (self.iter.next()) |val| {
-            if (val.len == 0) {
+            const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
+            if (trimmed.len == 0) {
                 continue;
             }
-            return val;
+            return trimmed;
         }
         return null;
     }
@@ -962,9 +979,11 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
         return false;
     }
 
-    if (mem.indexOfScalar(u8, trimmed, ' ')) |count| if (count == 0) {
-        return has_class(node, content, trimmed) or mem.eql(u8, node.open.slice(content), trimmed);
-    };
+    // TODO: Make it init assert instead?
+    // TODO: Make trimmed also into assert?
+    if (mem.indexOfScalar(u8, trimmed, ' ') == null) {
+        return has_class(node, content, trimmed) or mem.eql(u8, node.open.getName(content, .html).slice(content), trimmed);
+    }
     return false;
 }
 
@@ -1620,20 +1639,17 @@ pub fn tmp_parse_html() !void {
     // \\</html>
     // ;
     const html_options: HtmlOptions = .{
-        .selector_container = ".post-list li",
-        .selector_date = "p",
-        .date_format = "xxx MMM DD YYYY",
+        .selector_container = "main > a",
     };
     const feed = try parse_html(alloc, content, html_options);
     // print("feed {}\n", .{feed});
     print("feed.len {}\n", .{feed.items.len});
     print("\n==========> START {d}\n", .{feed.items.len});
     print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    for (feed.items[0..1]) |item| {
-        print("title: |{any}|\n", .{item.title});
-        // print("title: |{s}|\n", .{item.title});
-        // print("link: |{?s}|\n", .{item.link});
-        // print("date: {?d}\n", .{item.updated_timestamp});
+    for (feed.items[0..]) |item| {
+        print("title: |{s}|\n", .{item.title});
+        print("link: |{?s}|\n", .{item.link});
+        print("date: {?d}\n", .{item.updated_timestamp});
         print("\n", .{});
     }
 }
