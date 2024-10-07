@@ -11,7 +11,7 @@ const dt = @import("zig-datetime");
 const datetime = dt.datetime;
 const assert = std.debug.assert;
 
-// pub const std_options: std.Options = .{
+pub const std_options: std.Options = .{
 //     // This sets log level based on scope.
 //     // This overrides global log_level
 //     .log_scope_levels = &.{ 
@@ -19,8 +19,8 @@ const assert = std.debug.assert;
 //         .{.level = .err, .scope = .@"html/ast"} 
 //     },
 //     // This set global log level
-//     .log_level = .debug,
-// };
+    .log_level = .err,
+};
 
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
@@ -313,7 +313,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     if (mem.indexOfScalar(u8, input, '<')) |_| {
         const ast = try super.html.Ast.init(allocator, input, .html);
         defer ast.deinit(allocator);
-        input = try text_from_node(arr.writer(), ast, input, ast.nodes[0]);
+        input = try text_from_node(allocator, ast, input, ast.nodes[0]);
     } 
 
     var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
@@ -752,7 +752,7 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
     return false;
 }
 
-fn text_from_node(writer: anytype, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ![]const u8 {
+fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ![]const u8 {
     var iter_text_node = IteratorTextNode.init(ast, code, node);
     var text_arr = try std.BoundedArray(u8, max_title_len).init(0);
     blk: while (iter_text_node.next()) |text_node| {
@@ -777,12 +777,11 @@ fn text_from_node(writer: anytype, ast: super.html.Ast, code: []const u8, node: 
         }
     }
 
-    const start = writer.context.items.len;
-    if (text_arr.len > 0) {
-        const text = text_arr.slice(); 
-        try writer.writeAll(text);
+    if (text_arr.len == 0) {
+        return "";
     }
-    return writer.context.items[start..];
+
+    return try allocator.dupe(u8, text_arr.slice());
 }
 
 const IteratorTextNode = struct {
@@ -980,12 +979,9 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
     const root_node = ast.nodes[0];
     // ast.debug(content);
 
-    var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
-    defer arr.deinit();
-
     var title_iter = NodeIterator.init(ast, content, root_node, "title");
     if (title_iter.next()) |n| {
-        feed.title = try text_from_node(arr.writer(), ast, content, n);
+        feed.title = try text_from_node(allocator, ast, content, n);
     }
 
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
@@ -1031,16 +1027,17 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
             }
 
             // TODO: fix getting title. When added to DB get just blobs filled with 0xaa
-            item_title = try text_from_node(arr.writer(), ast, content, n);
+            item_title = try text_from_node(allocator, ast, content, n);
+            print("d: {s}\n", .{item_title});
         }
 
         if (html_options.selector_heading) |heading| {
             if (is_single_selector_match(content, node, heading)) {
-                item_title = try text_from_node(arr.writer(), ast, content, node);
+                item_title = try text_from_node(allocator, ast, content, node);
             } else {
                 var heading_iter = NodeIterator.init(ast, content, node, heading);
                 if (heading_iter.next()) |node_match| {
-                    item_title = try text_from_node(arr.writer(), ast, content, node_match);
+                    item_title = try text_from_node(allocator, ast, content, node_match);
                 } else {
                     std.log.warn("Could not find heading node with selector '{s}'", .{heading});
                 }
@@ -1050,13 +1047,13 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
         if (item_title.len == 0) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
                 if (is_single_selector_match(content, node, tag)) {
-                    item_title = try text_from_node(arr.writer(), ast, content, node);
+                    item_title = try text_from_node(allocator, ast, content, node);
                     break;
                 }
 
                 var heading_iter = NodeIterator.init(ast, content, node, tag);
                 if (heading_iter.next()) |node_match| {
-                    item_title = try text_from_node(arr.writer(), ast, content, node_match);
+                    item_title = try text_from_node(allocator, ast, content, node_match);
                     break;
                 }
             }
@@ -1064,7 +1061,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
         // Find any text inside node
         if (item_title.len == 0) {
-            item_title = try text_from_node(arr.writer(), ast, content, node);
+            item_title = try text_from_node(allocator, ast, content, node);
         }
         
         var item_updated_ts: ?i64 = null;
@@ -1592,52 +1589,54 @@ pub fn tmp_parse_html() !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    // const content = @embedFile("tmp_file");
-    const content = 
-    \\<!doctype html>
-    \\<html lang="en">
-    \\<head>
-    \\ <title>page title</title>
-    \\</head>
-    \\<body>
-    \\  <div class="post">
-    \\    <!-- comment -->
-    \\    <input type="text" value="foo">
-    \\    <p class="paragraph">foo bar</p>
-    \\    <span>20 Dec +0200</span>
-    \\    <p>
-    \\      <a href="#item1">
-    \\        text
-    \\        more text in here
-    \\        <span>link</span>
-    \\        <span>second</span>
-    \\        hello
-    \\      </a>
-    \\    </p>
-    \\  </div>
-    \\  <div class="post">
-    \\    second post
-    \\  </div>
-    \\  <p>other paragraph</p>
-    \\</body>
-    \\</html>
-    ;
+    const content = @embedFile("tmp_file");
+
+    // const content = 
+    // \\<!doctype html>
+    // \\<html lang="en">
+    // \\<head>
+    // \\ <title>page title</title>
+    // \\</head>
+    // \\<body>
+    // \\  <div class="post">
+    // \\    <!-- comment -->
+    // \\    <input type="text" value="foo">
+    // \\    <p class="paragraph">foo bar</p>
+    // \\    <span>20 Dec +0200</span>
+    // \\    <p>
+    // \\      <a href="#item1">
+    // \\        text
+    // \\        more text in here
+    // \\        <span>link</span>
+    // \\        <span>second</span>
+    // \\        hello
+    // \\      </a>
+    // \\    </p>
+    // \\  </div>
+    // \\  <div class="post">
+    // \\    second post
+    // \\  </div>
+    // \\  <p>other paragraph</p>
+    // \\</body>
+    // \\</html>
+    // ;
     const html_options: HtmlOptions = .{
-        .selector_container = ".post",
-        .selector_date = "span",
-        .date_format = "YY.MMM Z",
+        .selector_container = ".post-list li",
+        .selector_date = "p",
+        .date_format = "xxx MMM DD YYYY",
     };
     const feed = try parse_html(alloc, content, html_options);
     // print("feed {}\n", .{feed});
     print("feed.len {}\n", .{feed.items.len});
-    // print("\n==========> START {d}\n", .{feed.items.len});
-    // print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    // for (feed.items) |item| {
-    //     print("title: |{s}|\n", .{item.title});
-    //     print("link: |{?s}|\n", .{item.link});
-    //     print("date: {?d}\n", .{item.updated_timestamp});
-    //     print("\n", .{});
-    // }
+    print("\n==========> START {d}\n", .{feed.items.len});
+    print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
+    for (feed.items[0..1]) |item| {
+        print("title: |{any}|\n", .{item.title});
+        // print("title: |{s}|\n", .{item.title});
+        // print("link: |{?s}|\n", .{item.link});
+        // print("date: {?d}\n", .{item.updated_timestamp});
+        print("\n", .{});
+    }
 }
 
 pub fn main() !void {
