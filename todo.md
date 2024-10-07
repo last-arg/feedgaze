@@ -21,6 +21,8 @@
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
 
+- see how superhtml handle invalid html
+  - https://www.ludomotion.com/devblogs
 - should 'update --force' pass http cache?
 - twitch integration
 - cli: try https://github.com/n0s4/flags

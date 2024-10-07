@@ -19,7 +19,7 @@ const assert = std.debug.assert;
 //         .{.level = .err, .scope = .@"html/ast"} 
 //     },
 //     // This set global log level
-    // .log_level = .err,
+//     .log_level = .err,
 // };
 
 const max_title_len = 512;
@@ -246,12 +246,10 @@ const AtomLinkAttr = enum {
     rel, 
 };
 
-// TODO: 
-// Use this as example code: https://jsr.io/@std/html/1.0.3/entities.ts
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
-    const entities = [_][]const u8{"amp", "lt", "gt", "quot", "apos"};
-    const raws = [_][]const u8{    "&",   "<",  ">",  "\"",   "'"};
+    const entities = [_][]const u8{"amp", "lt", "gt", "quot", "apos", "nbsp"};
+    const raws = [_][]const u8{    "&",   "<",  ">",  "\"",   "'",    " "};
 
     const items_start = writer.context.items.len;
     var buf_index_start: usize = 0;
@@ -1045,7 +1043,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
                 }
             }
 
-            // TODO: fix getting title. When added to DB get just blobs filled with 0xaa
             item_title = try text_from_node(allocator, ast, content, n);
         }
 
@@ -1135,6 +1132,12 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
                 // TODO: try some other date parsing formats?
             }
+        }
+
+        var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
+
+        if (item_title.len > 0 and mem.indexOfScalar(u8, item_title, '&') != null and mem.indexOfScalar(u8, item_title, ';') != null) {
+            item_title = try html_unescape(arr.writer(), item_title);
         }
 
         feed_items.appendAssumeCapacity(.{
