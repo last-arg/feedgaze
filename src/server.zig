@@ -531,7 +531,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     var last_modified_buf: [29]u8 = undefined;
     var date_buf: [29]u8 = undefined;
-    if (try db.get_latest_created_timestamp()) |latest_created| {
+    if (try db.get_latest_change()) |latest_created| {
         const date_out = try Datetime.fromSeconds(@floatFromInt(latest_created)).formatHttpBuf(&last_modified_buf);
         resp.header("Last-Modified", date_out);
         resp.header("Cache-control", "no-cache");

@@ -1132,10 +1132,6 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{feed_id});
     }
 
-    pub fn max_last_update(self: *Self) !?i64 {
-        return try one(&self.sql_db, i64, "select max(last_update) from feed_update", .{});
-    }
-
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
         return try one(&self.sql_db, i64, "select last_update from feed_update where feed_id = ?", .{feed_id});
     }
@@ -1148,8 +1144,13 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
     }
 
-    pub fn get_latest_created_timestamp(self: *Self) !?i64 {
-        const query = "SELECT max(created_timestamp) FROM item";
+    pub fn get_latest_change(self: *Self) !?i64 {
+        const query = 
+            \\select max(
+            \\  (SELECT max(created_timestamp) FROM item),
+            \\  (SELECT max(last_update) FROM feed_update)
+            \\);
+        ;
         return try one(&self.sql_db, i64, query, .{});
     }
 
