@@ -1028,7 +1028,6 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
             // TODO: fix getting title. When added to DB get just blobs filled with 0xaa
             item_title = try text_from_node(allocator, ast, content, n);
-            print("d: {s}\n", .{item_title});
         }
 
         if (html_options.selector_heading) |heading| {
