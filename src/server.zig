@@ -531,8 +531,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     var last_modified_buf: [29]u8 = undefined;
     var date_buf: [29]u8 = undefined;
-    if (try db.max_last_update()) |last_update| {
-        const date_out = try Datetime.fromSeconds(@floatFromInt(last_update)).formatHttpBuf(&last_modified_buf);
+    if (try db.get_latest_created_timestamp()) |latest_created| {
+        const date_out = try Datetime.fromSeconds(@floatFromInt(latest_created)).formatHttpBuf(&last_modified_buf);
         resp.header("Last-Modified", date_out);
         resp.header("Cache-control", "no-cache");
 
@@ -542,7 +542,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                     std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
                     break :brk;
                 };
-                if (date == last_update) {
+                if (date == latest_created) {
                     resp.status = 304;
                     return;
                 }
