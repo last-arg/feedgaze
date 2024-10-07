@@ -21,6 +21,7 @@
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text?
 
+- should 'update --force' pass http cache?
 - twitch integration
 - cli: try https://github.com/n0s4/flags
 - can change update interval?
@@ -41,12 +42,6 @@
   - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
     And mark them in DB somehow. Rest would get full path. NULL for feeds
     that don't have favicon?
-- Turn HTML page into feed
-  - Use CSS selector to find:
-    - titles
-    - links
-  - Use page title as feed title
-  - check https://github.com/chadwain/rem
 - cli: feed update counter
 - Logo ideas
   - keywords: feed, gaze, rss, atom, links

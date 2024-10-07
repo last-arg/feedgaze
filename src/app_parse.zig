@@ -11,7 +11,7 @@ const dt = @import("zig-datetime");
 const datetime = dt.datetime;
 const assert = std.debug.assert;
 
-pub const std_options: std.Options = .{
+// pub const std_options: std.Options = .{
 //     // This sets log level based on scope.
 //     // This overrides global log_level
 //     .log_scope_levels = &.{ 
@@ -19,8 +19,8 @@ pub const std_options: std.Options = .{
 //         .{.level = .err, .scope = .@"html/ast"} 
 //     },
 //     // This set global log level
-    .log_level = .err,
-};
+    // .log_level = .err,
+// };
 
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
