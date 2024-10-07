@@ -114,6 +114,9 @@ pub const Storage = struct {
 
         parsed.feed.feed_url = feed_opts.feed_url;
         parsed.feed_updated_timestamp(feed_opts.feed_updates.last_modified_utc);
+        if (opts.html_opts) |_| {
+            parsed.feed.page_url = parsed.feed.feed_url;
+        }
         try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
