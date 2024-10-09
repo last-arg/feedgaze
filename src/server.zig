@@ -733,6 +733,27 @@ const base_layout = @embedFile("./layouts/base.html");
 fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
+    var last_modified_buf: [29]u8 = undefined;
+    if (try db.get_latest_change()) |latest_created| {
+        const date_out = try Datetime.fromSeconds(@floatFromInt(latest_created)).formatHttpBuf(&last_modified_buf);
+        resp.header("Last-Modified", date_out);
+        resp.header("Cache-control", "no-cache");
+
+        if (req.method == .GET or req.method == .HEAD) brk: {
+            if (req.header("if-modified-since")) |if_modified_since| {
+                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
+                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
+                    break :brk;
+                };
+                if (date == latest_created) {
+                    resp.status = 304;
+                    return;
+                }
+            } 
+        }
+
+    }
+
     resp.content_type = .HTML;
 
     const w = resp.writer(); 

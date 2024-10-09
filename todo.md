@@ -1,9 +1,14 @@
 # Initial
 - website:
+  - cache problems
+    - items' relative times won't update
+      - root, feed, feeds
+    - updating feed fields won't break cache
+      - root, feed, feeds
+    - when feed is removed
+      - root, feeds
   - add last-modified header where possible
-    - feed page
     - tag page
-    - feeds page
   - add feed: can add tags
   - tags page:
     - edit (rename) tags
