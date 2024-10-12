@@ -754,10 +754,13 @@ fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, n
     var iter_text_node = IteratorTextNode.init(ast, code, node);
     var text_arr = try std.BoundedArray(u8, max_title_len).init(0);
     blk: while (iter_text_node.next()) |text_node| {
-        const text = std.mem.trim(u8, text_node.open.slice(code), &std.ascii.whitespace);
-        var token_iter = std.mem.tokenizeAny(u8, text, &std.ascii.whitespace);
+        const open_span = text_node.open;
+        const text = open_span.slice(code);
+        // Collapse whitespace (expect space) to one space
+        const whitespace = [_]u8{ '\t', '\n', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff };
+        var token_iter = std.mem.tokenizeAny(u8, text, &whitespace);
         if (token_iter.next()) |word_first| {
-            if (text_arr.len != 0) {
+            if (open_span.start > 0 and std.ascii.isWhitespace(code[open_span.start - 1])) {
                 text_arr.append(' ') catch break :blk;
             }
             text_arr.appendSlice(word_first) catch {
@@ -1605,7 +1608,7 @@ pub fn tmp_text_truncate_alloc() !void {
     print("te: |{?s}|\n", .{te});
 }
 
-pub fn tmp_parse_html() !void {
+pub fn tmp_parse() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
@@ -1641,15 +1644,15 @@ pub fn tmp_parse_html() !void {
     // \\</body>
     // \\</html>
     // ;
-    const html_options: HtmlOptions = .{
-        .selector_container = "main > a",
-    };
-    const feed = try parse_html(alloc, content, html_options);
+    // const html_options: HtmlOptions = .{
+    //     .selector_container = "main > a",
+    // };
+    const feed = try parseRss(alloc, content);
     // print("feed {}\n", .{feed});
     print("feed.len {}\n", .{feed.items.len});
     print("\n==========> START {d}\n", .{feed.items.len});
     print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    for (feed.items[0..]) |item| {
+    for (feed.items[0..1]) |item| {
         print("title: |{s}|\n", .{item.title});
         print("link: |{?s}|\n", .{item.link});
         print("date: {?d}\n", .{item.updated_timestamp});
@@ -1658,5 +1661,5 @@ pub fn tmp_parse_html() !void {
 }
 
 pub fn main() !void {
-    try tmp_parse_html();
+    try tmp_parse();
 }

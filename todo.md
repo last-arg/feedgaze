@@ -9,6 +9,9 @@
       - root, feeds
   - add last-modified header where possible
     - tag page
+      - remove
+      - update (name)
+      - add
   - add feed: can add tags
   - tags page:
     - edit (rename) tags
