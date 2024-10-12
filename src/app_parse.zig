@@ -246,8 +246,40 @@ const AtomLinkAttr = enum {
     rel, 
 };
 
+pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
+    const symbols = [_]u8{   '&',   '<',  '>',  '"',   '\''};
+    const entities = [_][]const u8{"&amp;", "&lt;", "&gt;", "&quot;", "&apos;"};
+    var new_size = input.len;
+    for (symbols, entities) |sym, ent| {
+        new_size += mem.replacementSize(u8, input, &.{sym}, ent) - input.len;
+    }
+    if (input.len == new_size) {
+        return input;
+    }
+    var arr = try std.ArrayList(u8).initCapacity(allocator, new_size);
+    defer arr.deinit();
+
+    var pos: usize = 0;
+    while (mem.indexOfAnyPos(u8, input, pos, &symbols)) |index| {
+        arr.appendSliceAssumeCapacity(input[pos..index]);
+        const ent = blk: {
+            for (symbols, entities) |sym, ent| {
+                if (sym == input[index]) {
+                    break :blk ent;
+                }
+            }
+            unreachable;
+        };
+        arr.appendSliceAssumeCapacity(ent);
+        pos = index + 1;
+    }
+    arr.appendSliceAssumeCapacity(input[pos..]);
+
+    return arr.toOwnedSlice();
+}
+
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
-fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
+pub fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
     const entities = [_][]const u8{"amp", "lt", "gt", "quot", "apos", "nbsp"};
     const raws = [_][]const u8{    "&",   "<",  ">",  "\"",   "'",    " "};
 
@@ -1612,52 +1644,11 @@ pub fn tmp_parse() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
-
-    const content = @embedFile("tmp_file");
-
-    // const content = 
-    // \\<!doctype html>
-    // \\<html lang="en">
-    // \\<head>
-    // \\ <title>page title</title>
-    // \\</head>
-    // \\<body>
-    // \\  <div class="post">
-    // \\    <!-- comment -->
-    // \\    <input type="text" value="foo">
-    // \\    <p class="paragraph">foo bar</p>
-    // \\    <span>20 Dec +0200</span>
-    // \\    <p>
-    // \\      <a href="#item1">
-    // \\        text
-    // \\        more text in here
-    // \\        <span>link</span>
-    // \\        <span>second</span>
-    // \\        hello
-    // \\      </a>
-    // \\    </p>
-    // \\  </div>
-    // \\  <div class="post">
-    // \\    second post
-    // \\  </div>
-    // \\  <p>other paragraph</p>
-    // \\</body>
-    // \\</html>
-    // ;
-    // const html_options: HtmlOptions = .{
-    //     .selector_container = "main > a",
-    // };
-    const feed = try parseRss(alloc, content);
-    // print("feed {}\n", .{feed});
-    print("feed.len {}\n", .{feed.items.len});
-    print("\n==========> START {d}\n", .{feed.items.len});
-    print("feed.icon_url: |{?s}|\n", .{feed.feed.icon_url});
-    for (feed.items[0..1]) |item| {
-        print("title: |{s}|\n", .{item.title});
-        print("link: |{?s}|\n", .{item.link});
-        print("date: {?d}\n", .{item.updated_timestamp});
-        print("\n", .{});
-    }
+    const content =
+    \\hello>world
+    ;
+    const r = try html_escape(alloc, content);
+    print("result: |{s}|\n", .{r});
 }
 
 pub fn main() !void {
