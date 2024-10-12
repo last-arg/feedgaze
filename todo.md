@@ -17,17 +17,19 @@
     - edit (rename) tags
     - remove tags
     - better styling
-  - make feed items into 2 columns on wider screens
-  - encoding output text.
+  - make feed items into 2 columns on wider screens?
+  - escape stuff:
     This should actually be done for all data that I don't input. Anything can 
     contain malicious scripts in title, description etc.
-  - escape urls?
+    - text
+    - attributes
+    - escape urls? Attribute? Text?
   - can trigger feed update?
   - change page title on different pages
   - minify html
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
-  - Do I want list item link area to extend beyond text?
+  - Do I want list item link area to extend beyond text (when text is short one liner)?
 
 - should 'update --force' pass http cache?
 - twitch integration
@@ -73,14 +75,14 @@ appear in the file.
 [ ] Mark feeds to use OS notification system on new link(s)
 [ ] Mark feeds that will send email on new link(s)
 [ ] For cli UX implement https://en.wikipedia.org/wiki/Damerau%E2%80%93Levenshtein_distance to print word user might have meant
-[ ] HTTP ranges: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
-    The RSS url is usually in <head>, but also and be anywhere in the <body>.
-    Not sure if it is worth using http ranges.
 [ ] UI
   [ ] TUI - NotCurses
     * Example: https://github.com/dundalek/notcurses-zig-example
 
 # Old, done, abandoned
+[ ] HTTP ranges: https://developer.mozilla.org/en-US/docs/Web/HTTP/Range_requests
+    The RSS url is usually in <head>, but also and be anywhere in the <body>.
+    Not sure if it is worth using http ranges.
 [ ] UI with [zig-webui](https://github.com/webui-dev/zig-webui)
 Tried this and liked it. But I think I can just go with a server. 
 [ ] Add http server
