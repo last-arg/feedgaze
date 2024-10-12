@@ -100,7 +100,7 @@ const AtomLinkAttr = enum {
 
 pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
     const symbols = [_]u8{   '&',   '<',  '>',  '"',   '\''};
-    const entities = [_][]const u8{"&amp;", "&lt;", "&gt;", "&quot;", "&apos;"};
+    const entities = [_][]const u8{"&amp;", "&lt;", "&gt;", "&quot;", "&#39;"};
     var new_size = input.len;
     for (symbols, entities) |sym, ent| {
         new_size += mem.replacementSize(u8, input, &.{sym}, ent) - input.len;
