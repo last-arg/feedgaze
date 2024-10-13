@@ -640,13 +640,14 @@ fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, n
     blk: while (iter_text_node.next()) |text_node| {
         const open_span = text_node.open;
         const text = open_span.slice(code);
+        if (iter_text_node.has_space()) {
+            text_arr.append(' ') catch break :blk;
+        }
+
         // Collapse whitespace (expect space) to one space
         const whitespace = [_]u8{ '\t', '\n', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff };
         var token_iter = std.mem.tokenizeAny(u8, text, &whitespace);
         if (token_iter.next()) |word_first| {
-            if (open_span.start > 0 and std.ascii.isWhitespace(code[open_span.start - 1])) {
-                text_arr.append(' ') catch break :blk;
-            }
             text_arr.appendSlice(word_first) catch {
                 text_arr.appendSliceAssumeCapacity(word_first[0..text_arr.buffer.len - text_arr.len]);
                 break :blk;
@@ -674,6 +675,7 @@ const IteratorTextNode = struct {
     code: []const u8,
     next_index: usize,
     end_index: usize,
+    has_prev_space: bool = false,
 
     pub fn init(ast: super.html.Ast, code: []const u8, start_node: super.html.Ast.Node) @This() {
         // exclusive
@@ -703,17 +705,27 @@ const IteratorTextNode = struct {
     }
 
     pub fn next(self: *@This()) ?super.html.Ast.Node {
+        self.has_prev_space = false;
         if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
             return null;
         }
 
         for (self.ast.nodes[self.next_index..self.end_index], self.next_index..) |node, index| {
+            if (!self.has_prev_space and
+                node.open.start > 0 and self.code[node.open.start - 1] == ' '
+               ) {
+                self.has_prev_space = true;
+            }
             if (node.kind != .text) { continue; }
             self.next_index = index + 1;
             return node;
         }
 
         return null;
+    }
+
+    pub fn has_space(self: @This()) bool {
+        return self.has_prev_space;
     }
 };
 
@@ -1477,19 +1489,22 @@ fn printEvent(event: zig_xml.Event) !void {
     }
 }
 
-pub fn tmp_text_truncate_alloc() !void {
+pub fn tmp_test() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
 
-    // const content = @embedFile("tmp_file");
-    // const result = try parse(arena.allocator(), content, .rss);
-    // _ = result; // autofix
+    const content = @embedFile("tmp_file");
+    const result = try parse(arena.allocator(), content, null);
 
-    const input =
-    \\From&#x21; &#39; &lt; Ray Monk&#8217;s biography of Bertrand Russell: Though the Russells were not especially wealthy, they employed&#8212;as was common in Britain until after the Second World War&#8212;a number of servants: a cook, a housemaid, a gardener, a chauffeur and a nanny. &#8230; <a href="https://statmodeling.stat.columbia.edu/2024/05/06/a-cook-a-housemaid-a-gardener-a-chauffeur-a-nanny-a-philosopher-and-his-wife/">Continue reading <span class="meta-nav">&#8594;</span></a>
-    ;
-    const te = try text_truncate_alloc(arena.allocator(), input);
-    print("te: |{?s}|\n", .{te});
+    // Wanted output. Line breaks are spaces
+    // Had a ton of fun speaking and 
+    // watching https://fitc.ca/event/webu24_inperson/ #WebUnleashed 
+    // today—thank you for having me! I’ll post my slides when 
+    // I get some time!
+
+    for (result.items[0..1]) |item| {
+        print("|{s}|\n", .{item.title});
+    }
 }
 
 pub fn tmp_parse() !void {
@@ -1504,5 +1519,5 @@ pub fn tmp_parse() !void {
 }
 
 pub fn main() !void {
-    try tmp_parse();
+    try tmp_test();
 }
