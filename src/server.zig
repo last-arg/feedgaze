@@ -53,7 +53,6 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 }
 
 fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    var buf: [1024]u8 = undefined;
     const db = &global.storage;
 
     resp.status = 303;
@@ -71,19 +70,18 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
 
-    var feed_url = url_tmp.?;
-    feed_url = mem.trim(u8, feed_url, &std.ascii.whitespace);
+    const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
 
     _ = std.Uri.parse(feed_url) catch {
         const c: std.Uri.Component = .{ .raw = feed_url };
-        const location = try std.fmt.bufPrint(&buf, "/feed/add?error=invalid-url&input-url={%}", .{c});
+        const location = try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
         resp.header("Location", location);
         return;
     };
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const c: std.Uri.Component = .{ .raw = feed_url };
-        const redirect = try std.fmt.bufPrint(&buf, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
+        const redirect = try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
         resp.header("Location", redirect);
         return;
     }
@@ -126,7 +124,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
     const feed_id = try db.addFeed(req.arena, add_opts);
 
-    const redirect = try std.fmt.bufPrint(&buf, "/feed/add?success={d}", .{feed_id});
+    const redirect = try std.fmt.allocPrint(req.arena, "/feed/add?success={d}", .{feed_id});
     resp.header("Location", redirect);
 }
 
@@ -251,6 +249,7 @@ fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
     resp.header("Location", "/?msg=delete");
 }
 
+// TODO: Escape html values
 fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
