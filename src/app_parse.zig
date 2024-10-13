@@ -711,12 +711,24 @@ const IteratorTextNode = struct {
         }
 
         for (self.ast.nodes[self.next_index..self.end_index], self.next_index..) |node, index| {
-            if (!self.has_prev_space and
-                node.open.start > 0 and self.code[node.open.start - 1] == ' '
-               ) {
-                self.has_prev_space = true;
+            if (!self.has_prev_space) {
+                if (node.open.start > 0 and 
+                 (self.code[node.open.start - 1] == ' ' or self.code[node.open.start - 1] == '\n')) {
+                    self.has_prev_space = true;
+                }
             }
-            if (node.kind != .text) { continue; }
+
+            if (node.kind != .text) { 
+                if (!self.has_prev_space) {
+                    const name = node.open.getName(self.code, .html).slice(self.code);
+                    if (std.ascii.eqlIgnoreCase("br", name)) {
+                        self.has_prev_space = true;
+                    }
+                }
+
+                continue; 
+            }
+
             self.next_index = index + 1;
             return node;
         }

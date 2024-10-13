@@ -23,7 +23,7 @@
     contain malicious scripts in title, description etc.
     - text
     - attributes
-    - escape urls? Attribute? Text?
+    - url: escape url -> escape attribute
   - can trigger feed update?
   - change page title on different pages
   - minify html
