@@ -1224,7 +1224,12 @@ pub const Storage = struct {
             \\  @heading,
             \\  @date,
             \\  @date_format
-            \\) ON CONFLICT(feed_id) DO NOTHING
+            \\) ON CONFLICT(feed_id) DO UPDATE SET
+            \\  container = @container,
+            \\  link = @link,
+            \\  heading = @heading,
+            \\  date = @date,
+            \\  date_format = @date_format
             \\;
         ;
 
