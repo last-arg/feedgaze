@@ -309,8 +309,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     // TODO: doesn't bust cache when feed column (field) values are changed
     // TODO: item time's won't update when cached
     if (try db.get_latest_feed_change(id)) |latest| {
-        var last_modified_buf: [29]u8 = undefined;
-        const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(&last_modified_buf);
+        const last_modified_buf = try req.arena.alloc(u8, 29);
+        const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(last_modified_buf);
         resp.header("Last-Modified", date_out);
         resp.header("Cache-control", "no-cache");
 
