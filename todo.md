@@ -12,7 +12,9 @@
       - remove
       - update (name)
       - add
-  - add feed: can add tags
+  - add feed: 
+    - can add tags
+    - handle html feed
   - tags page:
     - edit (rename) tags
     - remove tags

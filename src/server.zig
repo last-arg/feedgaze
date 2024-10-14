@@ -187,10 +187,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         break :blk "";
     };
 
-    var buf: [1024]u8 = undefined;
-    const c: std.Uri.Component = .{ .raw = url };
-    const url_encoded = try std.fmt.bufPrint(&buf, "{%}", .{c});
-    const url_escaped = try parse.html_escape(req.arena, url_encoded);
+    const url_escaped = try parse.html_escape(req.arena, url);
     try w.print(
         \\<form action="/feed/add" method="POST" class="flow" style="--flow-space(--space-m)">
         \\<div>
@@ -207,7 +204,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         while (iter.next()) |kv| : (index += 1) {
             if (mem.eql(u8, "url", kv.key)) {
                 try w.writeAll("<p>");
-                const value_escaped = try parse.html_escape(req.arena, kv.value);
+                const url_dupe = try req.arena.dupe(u8, url);
+                const url_decoded = std.Uri.percentDecodeInPlace(url_dupe);
+                const value_escaped = try parse.html_escape(req.arena, url_decoded);
                 try w.print(
                     \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
                     \\<label for="url-{[index]d}">{[value]s}</label>
