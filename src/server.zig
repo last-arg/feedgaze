@@ -747,7 +747,8 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     for (tags) |tag| {
         try w.writeAll("<li>");
         try w.print("{d} - ", .{tag.tag_id});
-        try tag_link_print(w, tag.name);
+        const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
+        try tag_link_print(w, tag_name_escaped);
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
