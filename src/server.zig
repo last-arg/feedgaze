@@ -517,22 +517,37 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
-    // TODO: 1 and more outputs (1 minute, 34 minutes)
-    if (seconds < 0) {
-        return try std.fmt.bufPrint(buf, "0 seconds", .{});
-    } else if (seconds == 0) {
-        return try std.fmt.bufPrint(buf, "1 second", .{});
-    } else if (seconds < std.time.s_per_min) {
-        return try std.fmt.bufPrint(buf, "{d} seconds", .{seconds});
-    } else if (seconds < std.time.s_per_hour) {
-        return try std.fmt.bufPrint(buf, "{d} minutes", .{@divFloor(seconds, std.time.s_per_min)});
-    } else if (seconds < std.time.s_per_day) {
-        return try std.fmt.bufPrint(buf, "{d} hours", .{@divFloor(seconds, std.time.s_per_hour)});
-    } else if (seconds < std.time.s_per_week) {
-        return try std.fmt.bufPrint(buf, "{d} days", .{@divFloor(seconds, std.time.s_per_day)});
+    if (seconds <= 0) {
+        return try std.fmt.bufPrint(buf, "now", .{});
     }
 
-    return try std.fmt.bufPrint(buf, "{d} weeks", .{@divFloor(seconds, std.time.s_per_week)});
+    const day = @divFloor(seconds, std.time.s_per_day);
+    const hour = @divFloor(seconds, std.time.s_per_hour);
+    const minute = @divFloor(seconds, std.time.s_per_min);
+    const second = seconds;
+
+    const year = @divFloor(day, 365);
+    const month = @divFloor(day, 365 / 12);
+
+    if (year > 0) {
+        const months = year * 12 + month;
+        return try std.fmt.bufPrint(buf, "{d} months", .{months});
+    } else if (month > 0) {
+        const plural = if (month > 1) "s" else "";
+        return try std.fmt.bufPrint(buf, "{d} month{s}", .{month, plural});
+    } else if (day > 0) {
+        const plural = if (day > 1) "s" else "";
+        return try std.fmt.bufPrint(buf, "{d} day{s}", .{day, plural});
+    } else if (hour > 0) {
+        const plural = if (hour > 1) "s" else "";
+        return try std.fmt.bufPrint(buf, "{d} hour{s}", .{hour, plural});
+    } else if (minute > 0) {
+        const plural = if (minute > 1) "s" else "";
+        return try std.fmt.bufPrint(buf, "{d} minute{s}", .{minute, plural});
+    }
+
+    const plural = if (second > 1) "s" else "";
+    return try std.fmt.bufPrint(buf, "{d} second{s}", .{second, plural});
 }
 
 
