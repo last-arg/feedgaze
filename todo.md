@@ -12,7 +12,7 @@
       - remove
       - update (name)
       - add
-  - add feed: 
+  - add feed page: 
     - can add tags
     - handle html feed
   - tags page:
@@ -20,12 +20,6 @@
     - remove tags
     - better styling
   - make feed items into 2 columns on wider screens?
-  - escape stuff:
-    This should actually be done for all data that I don't input. Anything can 
-    contain malicious scripts in title, description etc.
-    - text
-    - attributes
-    - url: escape url -> escape attribute
   - can trigger feed update?
   - change page title on different pages
   - minify html
@@ -36,7 +30,6 @@
 - should 'update --force' pass http cache?
 - twitch integration
 - cli: try https://github.com/n0s4/flags
-- can change update interval?
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.
@@ -178,4 +171,3 @@ from temp_table where feed_update.feed_id = temp_table.feed_id;
   + check why 'https://www.foundmyfitness.com/' doesn't have favicon
     + DB has page_url as 'http://www.foundmyfitness.com/' might be a problem with
       redirect?
-

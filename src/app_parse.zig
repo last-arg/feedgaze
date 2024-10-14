@@ -1082,9 +1082,7 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
         const year_short_fmt = "YY";
         break :blk .{year_short_fmt, mem.indexOf(u8, date_format, year_short_fmt)};
     };
-    // TODO: 0 not good default. Probably default to current year?
-    // Or return null if year is 0? A date format might assume that current
-    // year will be used.
+
     var year: u32 = 0;
     if (year_start) |index| {
         const end = index + year_fmt.len;
@@ -1199,7 +1197,6 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
         }
     }
 
-    // TODO: date format timezone
     const timezone_fmt = "Z";
     const timezone_start = mem.indexOf(u8, date_format, timezone_fmt);
     var timezone: ?*const dt.datetime.Timezone = null;

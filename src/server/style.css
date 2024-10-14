@@ -217,9 +217,6 @@ a:hover {
   text-decoration: underline;
 }
 
-/** TODO: try to make it nicer.
-Probably juse use class
-*/
 .feed-item-list time,
 .feed-header-top time,
 .feed-item-list .no-date {
