@@ -437,9 +437,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const page_url = blk: {
         if (feed.page_url) |page_url| {
-            const url_component: std.Uri.Component = .{ .raw = page_url };
-            const page_url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{url_component});
-            const page_url_escaped = try parse.html_escape(req.arena, page_url_encoded);
+            const page_url_escaped = try parse.html_escape(req.arena, page_url);
             break :blk page_url_escaped;
         }
         break :blk "";
@@ -447,9 +445,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const icon_url = blk: {
         if (feed.icon_url) |icon_url| {
-            const url_component: std.Uri.Component = .{ .raw = icon_url };
-            const icon_url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{url_component});
-            const icon_url_escaped = try parse.html_escape(req.arena, icon_url_encoded);
+            const icon_url_escaped = try parse.html_escape(req.arena, icon_url);
             break :blk icon_url_escaped;
         }
         break :blk "";
