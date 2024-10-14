@@ -60,29 +60,64 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const form_data = try req.formData();
     const url_picked = form_data.get("url-picked");
     const url_input = form_data.get("input-url");
+    const tags_input = blk: {
+        if (form_data.get("input-tags")) |val| {
+            const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :blk trimmed;
+            }
+        }
+        break :blk null;
+    };
     var url_tmp = url_picked;
     if (url_tmp == null or mem.eql(u8, "none", url_tmp.?)) {
         url_tmp = url_input;
     }
 
     if (url_tmp == null or mem.trim(u8, url_tmp.?, &std.ascii.whitespace).len == 0) {
-        resp.header("Location", "/feed/add?error=url-missing");
+        const location = blk: {
+            if (tags_input) |val| {
+                const c: std.Uri.Component = .{ .raw = val };
+                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={%}", .{c});
+            }
+            break :blk "/feed/add?error=url-missing";
+        };
+
+        resp.header("Location", location);
         return;
     }
 
     const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
 
     _ = std.Uri.parse(feed_url) catch {
-        const c: std.Uri.Component = .{ .raw = feed_url };
-        const location = try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
+        const location = blk: {
+            if (tags_input) |val| {
+                const c1: std.Uri.Component = .{ .raw = feed_url };
+                const c2: std.Uri.Component = .{ .raw = val };
+                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}&input-tags={%}", .{c1, c2});
+            }
+
+            const c: std.Uri.Component = .{ .raw = feed_url };
+            break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
+        };
+
         resp.header("Location", location);
         return;
     };
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
-        const c: std.Uri.Component = .{ .raw = feed_url };
-        const redirect = try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
-        resp.header("Location", redirect);
+        const location = blk: {
+            if (tags_input) |val| {
+                const c1: std.Uri.Component = .{ .raw = feed_url };
+                const c2: std.Uri.Component = .{ .raw = val };
+                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}&input-tags={%}", .{feed_id, c1, c2});
+            }
+
+            const c: std.Uri.Component = .{ .raw = feed_url };
+            break :blk try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
+        };
+
+        resp.header("Location", location);
         return;
     }
 
@@ -105,6 +140,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         var arr = try std.ArrayList(u8).initCapacity(req.arena, 256);
         const writer_arr= arr.writer();
         try writer_arr.print("/feed/add?input-url={%}", .{c});
+        if (tags_input) |val| {
+            const c2: std.Uri.Component = .{ .raw = val };
+            try writer_arr.print("&input-tags={%}", .{c2});
+        }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         if (html_parsed.links.len > 0) {
             for (html_parsed.links) |link| {
@@ -222,6 +261,19 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         try w.writeAll("</p>");
         try w.writeAll("</fieldset>");
     }
+
+    var tags_str: []const u8 = "";
+    if (query.get("input-tags")) |tags_raw| {
+        tags_str = try parse.html_escape(req.arena, tags_raw);
+    }
+
+    try w.print(
+        \\<div>
+        \\<p><label for="input-tags">Tags (optional)</label></p>
+        \\<p class="input-desc">Tags are comma separated</p>
+        \\<input id="input-tags" name="input-tags" value="{s}">
+        \\</div>
+    , .{tags_str});
 
     try w.writeAll(
         \\<button class="btn btn-primary">Add new feed</button>
