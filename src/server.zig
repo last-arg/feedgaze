@@ -248,7 +248,6 @@ fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
     resp.header("Location", "/?msg=delete");
 }
 
-// TODO: Escape html values
 fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
@@ -307,7 +306,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     // TODO: doesn't bust cache when feed column (field) values are changed
-    // TODO: item time's won't update when cached
+    // TODO: item times won't update when cached. Probably use JS on the frontend
     if (try db.get_latest_feed_change(id)) |latest| {
         const last_modified_buf = try req.arena.alloc(u8, 29);
         const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(last_modified_buf);
@@ -363,17 +362,22 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</h2>");
     try w.writeAll("<p>Page url: ");
     if (feed.page_url) |page_url| {
+        const page_url_encoded = try parse.html_escape(req.arena, page_url);
         try w.print(
         \\<a href="{s}" class="inline-block">{s}</a>
-        , .{page_url, page_url});
+        , .{page_url_encoded, page_url_encoded});
     } else {
         try w.writeAll("no url");
     }
     try w.writeAll("</p>");
 
+    const c: std.Uri.Component = .{ .raw = feed.feed_url };
+    const url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{c});
+    const feed_url_encoded_attr = try parse.html_escape(req.arena, url_encoded);
+    const feed_url_encoded = try parse.html_escape(req.arena, feed.feed_url);
     try w.print(
-        \\<p>Feed url: <a href="{[feed_url]s}">{[feed_url]s}</a></p>
-    , .{ .feed_url = feed.feed_url });
+        \\<p>Feed url: <a href="{s}">{s}</a></p>
+    , .{ feed_url_encoded_attr, feed_url_encoded });
 
     var date_buf: [date_len_max]u8 = undefined;
     var relative_buf: [32]u8 = undefined;
@@ -430,10 +434,31 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\  <input type="text" id="icon_url" name="icon_url" value="{[icon_url]s}">
     \\</div>
     ;
+
+    const page_url = blk: {
+        if (feed.page_url) |page_url| {
+            const url_component: std.Uri.Component = .{ .raw = page_url };
+            const page_url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{url_component});
+            const page_url_escaped = try parse.html_escape(req.arena, page_url_encoded);
+            break :blk page_url_escaped;
+        }
+        break :blk "";
+    };
+
+    const icon_url = blk: {
+        if (feed.icon_url) |icon_url| {
+            const url_component: std.Uri.Component = .{ .raw = icon_url };
+            const icon_url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{url_component});
+            const icon_url_escaped = try parse.html_escape(req.arena, icon_url_encoded);
+            break :blk icon_url_escaped;
+        }
+        break :blk "";
+    };
+
     try w.print(inputs_fmt, .{
-        .title = feed.title, 
-        .page_url = feed.page_url orelse "",
-        .icon_url = feed.icon_url orelse "",
+        .title = try parse.html_escape(req.arena, feed.title), 
+        .page_url = page_url,
+        .icon_url = icon_url,
     });
 
     try w.writeAll("<fieldset>");
@@ -448,8 +473,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             }
             break :blk "";
         };
+        const tag_escaped = try parse.html_escape(req.arena, tag);
         try tag_input_render(w, .{
-            .tag = tag,
+            .tag = tag_escaped,
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
@@ -470,7 +496,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     var path = req.url.path;
     if (path[path.len - 1] == '/') {
-        path = path[0.. path.len - 1];
+        path = path[0..path.len - 1];
     }
     try w.print("<form action='{s}/delete' method='POST'>", .{path});
     try w.writeAll("<button class='btn btn-secondary'>Delete feed</button>");
@@ -1010,13 +1036,16 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
 fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !void {
     try timestamp_render(w, item.updated_timestamp);
 
-    const item_title = if (item.title.len > 0) try html.encode(allocator, item.title) else title_placeholder;
+    const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
 
     if (item.link) |link| {
         const item_link_fmt =
             \\<a href="{[link]s}" class="item-link truncate-2" title="{[title]s}">{[title]s}</a>
         ;
-        try w.print(item_link_fmt, .{ .title = item_title, .link = link });
+        const c: std.Uri.Component = .{ .raw = link };
+        const link_encoded = try std.fmt.allocPrint(allocator, "{%}", .{c});
+        const link_escaped = try parse.html_escape(allocator, link_encoded);
+        try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped });
     } else {
         const item_title_fmt =
             \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
