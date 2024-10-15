@@ -578,8 +578,8 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
     const month = @divFloor(day, 365 / 12);
 
     if (year > 0) {
-        const months = year * 12 + month;
-        return try std.fmt.bufPrint(buf, "{d} months", .{months});
+        const plural = if (year > 1) "s" else "";
+        return try std.fmt.bufPrint(buf, "{d} year{s}", .{year, plural});
     } else if (month > 0) {
         const plural = if (month > 1) "s" else "";
         return try std.fmt.bufPrint(buf, "{d} month{s}", .{month, plural});
