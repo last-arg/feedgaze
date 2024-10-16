@@ -640,7 +640,9 @@ fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, n
     blk: while (iter_text_node.next()) |text_node| {
         const open_span = text_node.open;
         const text = open_span.slice(code);
-        if (iter_text_node.has_space()) {
+        if (text_arr.len > 0 and 
+            text_arr.get(text_arr.len - 1) != ' ' and
+            iter_text_node.has_space()) {
             text_arr.append(' ') catch break :blk;
         }
 
@@ -722,6 +724,8 @@ const IteratorTextNode = struct {
                 if (!self.has_prev_space) {
                     const name = node.open.getName(self.code, .html).slice(self.code);
                     if (std.ascii.eqlIgnoreCase("br", name)) {
+                        self.has_prev_space = true;
+                    } else if (std.ascii.eqlIgnoreCase("p", name)) {
                         self.has_prev_space = true;
                     }
                 }
