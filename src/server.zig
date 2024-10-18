@@ -135,26 +135,23 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     // TODO: handle making html into feed
+    // @continue
     if (feed_options.content_type == .html) {
         const c: std.Uri.Component = .{ .raw = feed_url };
         var arr = try std.ArrayList(u8).initCapacity(req.arena, 256);
         const writer_arr= arr.writer();
-        try writer_arr.print("/feed/add?input-url={%}", .{c});
+        try writer_arr.print("/feed/add?type=html&input-url={%}", .{c});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
             try writer_arr.print("&input-tags={%}", .{c2});
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
-        if (html_parsed.links.len > 0) {
-            for (html_parsed.links) |link| {
-                const url_final = try fetch.req.get_url_slice();
-                const uri_final = try std.Uri.parse(url_final);
-                const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
-                const uri_component: std.Uri.Component = .{ .raw = url_str };
-                try writer_arr.print("&url={%}", .{uri_component});
-            }
-        } else {
-            try writer_arr.writeAll("&no-links=");
+        for (html_parsed.links) |link| {
+            const url_final = try fetch.req.get_url_slice();
+            const uri_final = try std.Uri.parse(url_final);
+            const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
+            const uri_component: std.Uri.Component = .{ .raw = url_str };
+            try writer_arr.print("&url={%}", .{uri_component});
         }
         resp.header("Location", arr.items);
         return;
@@ -235,9 +232,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         \\</div>
     , .{url_escaped});
 
-    if (query.get("url")) |_| {
+    if (query.get("type")) |t| if (mem.eql(u8, t, "html")) {
         try w.writeAll("<fieldset>");
-        try w.writeAll("<legend>Pick feed(s) to add</legend>");
+        try w.writeAll("<legend>Pick feed to add</legend>");
         var iter = query.iterator();
         var index: usize = 0;
         while (iter.next()) |kv| : (index += 1) {
@@ -253,19 +250,50 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
                 try w.writeAll("</p>");
             }
         }
-        try w.writeAll("<p>");
-        try w.writeAll(
-            \\<input type="radio" id="url-none" name="url-picked" value="none"> 
-            \\<label for="url-none">None</label>
-        );
-        try w.writeAll("</p>");
-        try w.writeAll("</fieldset>");
-    }
 
-    var tags_str: []const u8 = "";
-    if (query.get("input-tags")) |tags_raw| {
-        tags_str = try parse.html_escape(req.arena, tags_raw);
-    }
+        try w.writeAll("<div>");
+        try w.writeAll(
+            \\<input type="radio" id="url-html" name="url-picked" value="html"> 
+            \\<label for="url-html">Html as feed</label>
+            \\<fieldset class='html-feed-inputs'>
+            \\<legend>Html feed selectors and date format</legend>
+            \\<p>
+            \\<label for="feed-container">Feed item selector</label>
+            \\</p>
+            \\<input type="text" id="feed-container" name="selector-container" value=""> 
+            \\<p>Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
+            \\<p>
+            \\<label for="feed-link">Link selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is &lt;a&gt; href value</p>
+            \\<input type="text" id="feed-link" name="selector-link" value=""> 
+            \\<p>
+            \\<label for="feed-heading">Heading selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</p>
+            \\<input type="text" id="feed-heading" name="selector-heading" value=""> 
+            \\<p>
+            \\<label for="feed-date">Date selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is &lt;time&gt.</p>
+            \\<input type="text" id="feed-date" name="selector-date" value=""> 
+            \\<p>
+            \\<label for="feed-date-format">Date format (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is date format that &lt;time&gt; uses.</p>
+            \\<input type="text" id="feed-date-format" name="feed-date-format" value=""> 
+            \\</fieldset>
+        );
+        try w.writeAll("</div>");
+        try w.writeAll("</fieldset>");
+    };
+
+    const tags_str: []const u8 = blk: {
+        if (query.get("input-tags")) |tags_raw| {
+            break :blk try parse.html_escape(req.arena, tags_raw);
+        }
+        break :blk "";
+    };
 
     try w.print(
         \\<div>

@@ -30,6 +30,7 @@
 - should 'update --force' pass http cache?
 - twitch integration
 - cli: try https://github.com/n0s4/flags
+- cli: can add, remove, update tags
 - Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
     '.percent_encoded' probably better option. Currently just get/set whatever
     is there.

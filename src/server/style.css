@@ -620,6 +620,14 @@ input[type=text] {
   height: 1em;
 }
 
+.html-feed-inputs {
+  display: none;
+}
+
+#url-html:checked ~ .html-feed-inputs {
+  display: block;
+}
+
 /* 
   Component styles 
 */
