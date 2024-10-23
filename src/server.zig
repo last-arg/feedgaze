@@ -167,7 +167,15 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    const w = resp.writer();
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
 
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
     const head = base_iter.next() orelse unreachable;
@@ -422,7 +430,15 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk &.{};
     };
 
-    const w = resp.writer();
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
 
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
     const head = base_iter.next() orelse unreachable;
@@ -862,7 +878,16 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
     resp.content_type = .HTML;
 
-    const w = resp.writer(); 
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
+
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
     const head = base_iter.next() orelse unreachable;
     const foot = base_iter.next() orelse unreachable;
@@ -917,7 +942,16 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     resp.content_type = .HTML;
 
-    const w = resp.writer(); 
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
+
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
     const head = base_iter.next() orelse unreachable;
     const foot = base_iter.next() orelse unreachable;
