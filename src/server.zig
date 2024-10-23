@@ -599,7 +599,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         try w.print("<li class='feed-item {s}'>", .{""});
-        try item_render(w, req.arena, item);
+        try item_render(w, req.arena, item, .{});
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
@@ -827,7 +827,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 }
 
 fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed) !void {
-    try item_render(w, allocator, item);
+    try item_render(w, allocator, item, .{.class = "truncate-2"});
 
     const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
     const title = feed.title orelse "";
@@ -1155,7 +1155,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             };
 
             try w.print("<li class='feed-item {s}'>", .{hidden});
-            try item_render(w, allocator, item);
+            try item_render(w, allocator, item, .{.class = "truncate-2"});
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -1199,24 +1199,28 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
     try w.print(edit_fmt, .{ feed_id });
 }
 
-fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender) !void {
+const ItemRenderOptions = struct {
+    class: []const u8 = "",
+};
+
+fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
     try timestamp_render(w, item.updated_timestamp);
 
     const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
 
     if (item.link) |link| {
         const item_link_fmt =
-            \\<a href="{[link]s}" class="item-link truncate-2" title="{[title]s}">{[title]s}</a>
+            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}">{[title]s}</a>
         ;
         const c: std.Uri.Component = .{ .raw = link };
         const link_encoded = try std.fmt.allocPrint(allocator, "{%}", .{c});
         const link_escaped = try parse.html_escape(allocator, link_encoded);
-        try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped });
+        try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped, .class = opts.class });
     } else {
         const item_title_fmt =
-            \\<p class="truncate-2" title="{[title]s}">{[title]s}</p>
+            \\<p class="{[class]s}" title="{[title]s}">{[title]s}</p>
         ;
-        try w.print(item_title_fmt, .{ .title = item_title });
+        try w.print(item_title_fmt, .{ .title = item_title, .class = opts.class });
     }
 }
 
