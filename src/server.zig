@@ -682,6 +682,23 @@ fn has_encoding(req: *const httpz.Request, value: []const u8) bool {
     return false;
 }
 
+fn compressor_setup(req: *httpz.Request, resp: *httpz.Response) !?std.compress.gzip.Compressor(httpz.Response.Writer.IOWriter) { 
+    if (!has_encoding(req, "gzip")) {
+        return null;
+    }
+
+    resp.header("Content-Encoding", "gzip");
+
+    return try std.compress.gzip.compressor(resp.writer(), .{});
+}
+
+fn compressor_finish(compressor: *std.compress.gzip.Compressor(httpz.Response.Writer.IOWriter)) void {
+    compressor.finish() catch |err| {
+        std.log.warn("Failed to finish gzip compression. Error: {}\n", .{err});
+    };
+}
+
+
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
@@ -709,19 +726,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     
     resp.content_type = .HTML;
 
-    var compressor = blk: {
-        if (has_encoding(req, "gzip")) {
-            break :blk try std.compress.gzip.compressor(resp.writer(), .{});
-        }
-        break :blk null;
-    };
-    defer if (compressor) |*c| c.finish() catch |err| {
-        std.log.warn("Failed to finish gzip compression. Error: {}\n", .{err});
-    };
-
-    if (compressor) |_| {
-        resp.header("Content-Encoding", "gzip");
-    }
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
         if (compressor) |*c| {
