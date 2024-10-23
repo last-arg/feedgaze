@@ -668,6 +668,20 @@ fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
     // resp.body = @embedFile("server/favicon.ico");
 }
 
+fn has_encoding(req: *const httpz.Request, value: []const u8) bool {
+    if (req.header("accept-encoding")) |raw| {
+        var iter = mem.splitScalar(u8, raw, ',');
+        while (iter.next()) |encoding| {
+            const trimmed = std.mem.trim(u8, encoding, &std.ascii.whitespace);
+            if (std.ascii.eqlIgnoreCase(value, trimmed)) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
@@ -695,7 +709,27 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     
     resp.content_type = .HTML;
 
-    const w = resp.writer(); 
+    var compressor = blk: {
+        if (has_encoding(req, "gzip")) {
+            break :blk try std.compress.gzip.compressor(resp.writer(), .{});
+        }
+        break :blk null;
+    };
+    defer if (compressor) |*c| c.finish() catch |err| {
+        std.log.warn("Failed to finish gzip compression. Error: {}\n", .{err});
+    };
+
+    if (compressor) |_| {
+        resp.header("Content-Encoding", "gzip");
+    }
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
+    
     var base_iter = mem.splitSequence(u8, base_layout, "[content]");
     const head = base_iter.next() orelse unreachable;
     const foot = base_iter.next() orelse unreachable;
