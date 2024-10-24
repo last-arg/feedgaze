@@ -220,7 +220,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.storage.tags_add(tags_arr.items);
 
                         // get tags' ids
-                        const tags_ids_buf = try arena.allocator().alloc(usize, cap);
+                        const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
                         tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
                     }
 

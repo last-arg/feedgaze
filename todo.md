@@ -20,7 +20,6 @@
     - remove tags
     - better styling
   - make feed items into 2 columns on wider screens?
-  - can trigger feed update?
   - change page title on different pages
   - minify html
   - purge and minify css

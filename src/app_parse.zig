@@ -1480,7 +1480,7 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
-        .html => parse_html(allocator, content, html_options.?),
+        .html => if (html_options) |opts| parse_html(allocator, content, opts) else error.TODO_WHAT,
         .xml => error.NotAtomOrRss,
     };
 }

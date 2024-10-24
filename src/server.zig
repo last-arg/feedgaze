@@ -41,6 +41,8 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/tags", tags_get, .{});
     router.get("/feed/add", feed_add_get, .{});
     router.post("/feed/add", feed_add_post, .{});
+    router.get("/feed/pick", feed_pick_get, .{});
+    router.post("/feed/pick", feed_pick_post, .{});
     router.get("/feed/:id", feed_get, .{});
     router.post("/feed/:id", feed_post, .{});
     router.post("/feed/:id/delete", feed_delete, .{});
@@ -52,7 +54,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     try server.listen(); 
 }
 
-fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
     resp.status = 303;
@@ -69,41 +71,60 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
         break :blk null;
     };
-    var url_tmp = url_picked;
-    if (url_tmp == null or mem.eql(u8, "none", url_tmp.?)) {
-        url_tmp = url_input;
+
+    var url_tmp: ?[]const u8 = null;
+
+    if (url_picked) |url_raw| {
+        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
+        if (url.len == 0) {
+            const location = blk: {
+                if (tags_input) |val| {
+                    const c: std.Uri.Component = .{ .raw = val };
+                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-pick&input-tags={%}", .{c});
+                }
+                break :blk "/feed/add?error=invalid-pick";
+            };
+
+            resp.header("Location", location);
+            return;
+
+        }
     }
+    
+    if (url_input) |url_raw| {
+        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
+        if (url.len == 0) {
+            const location = blk: {
+                if (tags_input) |val| {
+                    const c: std.Uri.Component = .{ .raw = val };
+                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={%}", .{c});
+                }
+                break :blk "/feed/add?error=url-missing";
+            };
 
-    if (url_tmp == null or mem.trim(u8, url_tmp.?, &std.ascii.whitespace).len == 0) {
-        const location = blk: {
-            if (tags_input) |val| {
-                const c: std.Uri.Component = .{ .raw = val };
-                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={%}", .{c});
-            }
-            break :blk "/feed/add?error=url-missing";
+            resp.header("Location", location);
+            return;
+        }
+
+        _ = std.Uri.parse(url) catch {
+            const location = blk: {
+                if (tags_input) |val| {
+                    const c1: std.Uri.Component = .{ .raw = url };
+                    const c2: std.Uri.Component = .{ .raw = val };
+                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}&input-tags={%}", .{c1, c2});
+                }
+
+                const c: std.Uri.Component = .{ .raw = url };
+                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
+            };
+
+            resp.header("Location", location);
+            return;
         };
-
-        resp.header("Location", location);
-        return;
+        url_tmp = url;
     }
 
     const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
-
-    _ = std.Uri.parse(feed_url) catch {
-        const location = blk: {
-            if (tags_input) |val| {
-                const c1: std.Uri.Component = .{ .raw = feed_url };
-                const c2: std.Uri.Component = .{ .raw = val };
-                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}&input-tags={%}", .{c1, c2});
-            }
-
-            const c: std.Uri.Component = .{ .raw = feed_url };
-            break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
-        };
-
-        resp.header("Location", location);
-        return;
-    };
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const location = blk: {
@@ -160,8 +181,298 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
     const feed_id = try db.addFeed(req.arena, add_opts);
 
+    if (tags_input) |raw| {
+        errdefer |err| {
+            std.log.err("Failed to add tags for new feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+        }
+
+        var iter = mem.splitScalar(u8, raw, ',');
+        const cap = mem.count(u8, raw, ",") + 1;
+        var tags_arr = try std.ArrayList([]const u8).initCapacity(req.arena, cap);
+        defer tags_arr.deinit();
+
+        while (iter.next()) |tag| {
+            const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
+            tags_arr.appendAssumeCapacity(trimmed);
+        }
+
+        try db.tags_add(tags_arr.items);
+        const tags_ids_buf = try req.arena.alloc(usize, tags_arr.items.len);
+        const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
+        try db.tags_feed_add(feed_id, tags_ids);
+    }
+
     const redirect = try std.fmt.allocPrint(req.arena, "/feed/add?success={d}", .{feed_id});
     resp.header("Location", redirect);
+}
+
+fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+
+    var query = try req.query();
+
+    const url_raw = query.get("input-url") orelse {
+        resp.header("Location", "/feed/add?error=url-missing");
+        return;
+    }; 
+
+    const input_url_decoded = std.Uri.percentDecodeInPlace(@constCast(url_raw[0..]));
+    const url = mem.trim(u8, input_url_decoded, &std.ascii.whitespace);
+    if (url.len == 0) {
+        resp.header("Location", "/feed/add?error=url-missing");
+        return;
+    }
+        
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
+
+    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+    const head = base_iter.next() orelse unreachable;
+    const foot = base_iter.next() orelse unreachable;
+
+    try w.writeAll(head);
+
+    try body_head_render(req, db, w, .{});
+
+    try w.writeAll("<main class='box'>");
+
+    try w.writeAll("<h2>Add feed</h2>");
+
+    if (query.get("feed-exists")) |raw_value| {
+        const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
+        if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
+            try w.print(
+                \\<p>Feed already exists.
+                \\<a href="/feed/{d}">Got to feed page</a>.
+                \\</p>
+            , .{feed_id});
+        } else |err| {
+            std.log.warn("Failed to get parse feed id '{s}'. Error: {}", .{value, err});
+            try w.writeAll("<p>Feed already exists.</p>");
+        }
+    } else if (query.get("error")) |value| {
+        if (mem.eql(u8, "invalid-url", value)) {
+            try w.writeAll("<p>Failed to add feed. Invalid url.</p>");
+        } else if (mem.eql(u8, "url-missing", value)) {
+            try w.writeAll("<p>Fill in feed/page url.</p>");
+        }
+    }
+
+    const url_escaped = try parse.html_escape(req.arena, url);
+    try w.print("<p>Page url: {s}</p>", .{url_escaped});
+    try w.writeAll(
+        \\<form action="/feed/pick" method="POST" class="flow" style="--flow-space(--space-m)">
+    );
+
+    // TODO: rename to pick-html
+    // TODO: make pick-html value input-url
+    if (query.get("type")) |t| if (mem.eql(u8, t, "html")) {
+        try w.writeAll("<fieldset>");
+        try w.writeAll("<legend>Pick feed to add</legend>");
+        var iter = query.iterator();
+        var index: usize = 0;
+        while (iter.next()) |kv| : (index += 1) {
+            if (mem.eql(u8, "url", kv.key)) {
+                try w.writeAll("<p>");
+                const url_dupe = try req.arena.dupe(u8, url);
+                const url_decoded = std.Uri.percentDecodeInPlace(url_dupe);
+                const value_escaped = try parse.html_escape(req.arena, url_decoded);
+                try w.print(
+                    \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
+                    \\<label for="url-{[index]d}">{[value]s}</label>
+                , .{.index = index, .value = value_escaped});
+                try w.writeAll("</p>");
+            }
+        }
+
+        try w.writeAll("<div>");
+        try w.writeAll(
+            \\<input type="radio" id="url-html" name="url-picked" value="html"> 
+            \\<label for="url-html">Html as feed</label>
+            \\<fieldset class='html-feed-inputs'>
+            \\<legend>Html feed selectors and date format</legend>
+            \\<p>
+            \\<label for="feed-container">Feed item selector</label>
+            \\</p>
+            \\<input type="text" id="feed-container" name="selector-container" value=""> 
+            \\<p>Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
+            \\<p>
+            \\<label for="feed-link">Link selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is &lt;a&gt; href value</p>
+            \\<input type="text" id="feed-link" name="selector-link" value=""> 
+            \\<p>
+            \\<label for="feed-heading">Heading selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</p>
+            \\<input type="text" id="feed-heading" name="selector-heading" value=""> 
+            \\<p>
+            \\<label for="feed-date">Date selector (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is &lt;time&gt.</p>
+            \\<input type="text" id="feed-date" name="selector-date" value=""> 
+            \\<p>
+            \\<label for="feed-date-format">Date format (optional)</label>
+            \\</p>
+            \\<p class="input-desc">Fallback is date format that &lt;time&gt; uses.</p>
+            \\<input type="text" id="feed-date-format" name="feed-date-format" value=""> 
+            \\</fieldset>
+        );
+        try w.writeAll("</div>");
+        try w.writeAll("</fieldset>");
+    };
+
+    const tags_str: []const u8 = blk: {
+        if (query.get("input-tags")) |tags_raw| {
+            break :blk try parse.html_escape(req.arena, tags_raw);
+        }
+        break :blk "";
+    };
+
+    try w.print(
+        \\<div>
+        \\<p><label for="input-tags">Tags (optional)</label></p>
+        \\<p class="input-desc">Tags are comma separated</p>
+        \\<input id="input-tags" name="input-tags" value="{s}">
+        \\</div>
+    , .{tags_str});
+
+    try w.writeAll(
+        \\<button class="btn btn-primary">Add new feed</button>
+        \\</form>
+    );
+
+    try w.writeAll("</main>");
+    try w.writeAll(foot);
+}
+
+
+fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+
+    resp.status = 303;
+
+    const form_data = try req.formData();
+    const url_input = form_data.get("input-url");
+    const tags_input = blk: {
+        if (form_data.get("input-tags")) |val| {
+            const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :blk trimmed;
+            }
+        }
+        break :blk null;
+    };
+
+    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+
+    var url_tmp: ?[]const u8 = null;
+   
+    if (url_input) |url_raw| {
+        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
+        if (url.len == 0) {
+            const location = blk: {
+                if (tags_input) |val| {
+                    const c: std.Uri.Component = .{ .raw = val };
+                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={%}", .{c});
+                }
+                break :blk "/feed/add?error=url-missing";
+            };
+
+            resp.header("Location", location);
+            return;
+        }
+
+        _ = std.Uri.parse(url) catch {
+            const url_comp: std.Uri.Component = .{ .raw = url };
+            try std.fmt.format(location_arr.writer(), "/feed/add?error=invalid-url&input-url={%}", .{url_comp});
+            if (tags_input) |val| {
+                const tags_comp: std.Uri.Component = .{ .raw = val };
+                try std.fmt.format(location_arr.writer(), "&input-tags={%}", .{tags_comp});
+            }
+
+            resp.header("Location", location_arr.items);
+            return;
+        };
+        url_tmp = url;
+    }
+
+    const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
+
+    if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
+        const url_comp: std.Uri.Component = .{ .raw = feed_url };
+        try std.fmt.format(location_arr.writer(), "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, url_comp});
+        if (tags_input) |val| {
+            const c2: std.Uri.Component = .{ .raw = val };
+            try std.fmt.format(location_arr.writer(), "&input-tags={%}", .{c2});
+        }
+
+        resp.header("Location", location_arr.items);
+        return;
+    }
+
+    // try to add new feed
+    const App = @import("app.zig").App;
+    var app = App{.storage = db.*, .allocator = req.arena};
+
+    var fetch = try app.fetch_response(req.arena, feed_url);
+    defer fetch.deinit();
+
+    const feed_options = FeedOptions.fromResponse(fetch.resp);
+
+    if (feed_options.content_type == .html) {
+        const url_comp: std.Uri.Component = .{ .raw = feed_url };
+        try location_arr.writer().print("/feed/pick?input-url={%}", .{url_comp});
+        if (tags_input) |val| {
+            const c2: std.Uri.Component = .{ .raw = val };
+            try location_arr.writer().print("&input-tags={%}", .{c2});
+        }
+        const html_parsed = try html.parse_html(req.arena, feed_options.body);
+        for (html_parsed.links) |link| {
+            const url_final = try fetch.req.get_url_slice();
+            const uri_final = try std.Uri.parse(url_final);
+            const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
+            const uri_component: std.Uri.Component = .{ .raw = url_str };
+            try location_arr.writer().print("&url={%}", .{uri_component});
+        }
+        resp.header("Location", location_arr.items);
+        return;
+    }
+
+    var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
+    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+    const feed_id = try db.addFeed(req.arena, add_opts);
+
+    if (tags_input) |raw| {
+        errdefer |err| {
+            std.log.err("Failed to add tags for new feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+        }
+
+        var iter = mem.splitScalar(u8, raw, ',');
+        const cap = mem.count(u8, raw, ",") + 1;
+        var tags_arr = try std.ArrayList([]const u8).initCapacity(req.arena, cap);
+        defer tags_arr.deinit();
+
+        while (iter.next()) |tag| {
+            const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
+            tags_arr.appendAssumeCapacity(trimmed);
+        }
+
+        try db.tags_add(tags_arr.items);
+        const tags_ids_buf = try req.arena.alloc(usize, tags_arr.items.len);
+        const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
+        try db.tags_feed_add(feed_id, tags_ids);
+    }
+
+    try location_arr.writer().print("/feed/add?success={d}", .{feed_id});
+    resp.header("Location", location_arr.items);
 }
 
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -219,8 +530,6 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         } else if (mem.eql(u8, "url-missing", value)) {
             try w.writeAll("<p>Fill in feed/page url</p>");
         }
-    } else if (query.get("no-links")) |_| {
-        try w.writeAll("<p>Found no feed links in html page</p>");
     }
 
     const url = blk: {
@@ -239,62 +548,6 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         \\<input id="input-url" name="input-url" value="{s}">
         \\</div>
     , .{url_escaped});
-
-    if (query.get("type")) |t| if (mem.eql(u8, t, "html")) {
-        try w.writeAll("<fieldset>");
-        try w.writeAll("<legend>Pick feed to add</legend>");
-        var iter = query.iterator();
-        var index: usize = 0;
-        while (iter.next()) |kv| : (index += 1) {
-            if (mem.eql(u8, "url", kv.key)) {
-                try w.writeAll("<p>");
-                const url_dupe = try req.arena.dupe(u8, url);
-                const url_decoded = std.Uri.percentDecodeInPlace(url_dupe);
-                const value_escaped = try parse.html_escape(req.arena, url_decoded);
-                try w.print(
-                    \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
-                    \\<label for="url-{[index]d}">{[value]s}</label>
-                , .{.index = index, .value = value_escaped});
-                try w.writeAll("</p>");
-            }
-        }
-
-        try w.writeAll("<div>");
-        try w.writeAll(
-            \\<input type="radio" id="url-html" name="url-picked" value="html"> 
-            \\<label for="url-html">Html as feed</label>
-            \\<fieldset class='html-feed-inputs'>
-            \\<legend>Html feed selectors and date format</legend>
-            \\<p>
-            \\<label for="feed-container">Feed item selector</label>
-            \\</p>
-            \\<input type="text" id="feed-container" name="selector-container" value=""> 
-            \\<p>Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
-            \\<p>
-            \\<label for="feed-link">Link selector (optional)</label>
-            \\</p>
-            \\<p class="input-desc">Fallback is &lt;a&gt; href value</p>
-            \\<input type="text" id="feed-link" name="selector-link" value=""> 
-            \\<p>
-            \\<label for="feed-heading">Heading selector (optional)</label>
-            \\</p>
-            \\<p class="input-desc">Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</p>
-            \\<input type="text" id="feed-heading" name="selector-heading" value=""> 
-            \\<p>
-            \\<label for="feed-date">Date selector (optional)</label>
-            \\</p>
-            \\<p class="input-desc">Fallback is &lt;time&gt.</p>
-            \\<input type="text" id="feed-date" name="selector-date" value=""> 
-            \\<p>
-            \\<label for="feed-date-format">Date format (optional)</label>
-            \\</p>
-            \\<p class="input-desc">Fallback is date format that &lt;time&gt; uses.</p>
-            \\<input type="text" id="feed-date-format" name="feed-date-format" value=""> 
-            \\</fieldset>
-        );
-        try w.writeAll("</div>");
-        try w.writeAll("</fieldset>");
-    };
 
     const tags_str: []const u8 = blk: {
         if (query.get("input-tags")) |tags_raw| {
