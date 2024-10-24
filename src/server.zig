@@ -467,9 +467,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     try w.writeAll("</p>");
 
-    const c: std.Uri.Component = .{ .raw = feed.feed_url };
-    const url_encoded = try std.fmt.allocPrint(req.arena, "{%}", .{c});
-    const feed_url_encoded_attr = try parse.html_escape(req.arena, url_encoded);
+    const feed_url_encoded_attr = try parse.html_escape(req.arena, feed.feed_url);
     const feed_url_encoded = try parse.html_escape(req.arena, feed.feed_url);
     try w.print(
         \\<p>Feed url: <a href="{s}">{s}</a></p>
