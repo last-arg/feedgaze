@@ -54,6 +54,36 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     try server.listen(); 
 }
 
+fn write_pick_urls(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
+    var iter = form_data.iterator();
+    while (iter.next()) |kv| {
+        if (mem.eql(u8, "url", kv.key)) {
+            const c: std.Uri.Component = .{ .raw = mem.trim(u8, kv.value, &std.ascii.whitespace) };
+            try writer.print("&url={%}", .{c});
+        }
+    }
+}
+
+fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
+    const selectors = .{
+        "selector-container",
+        "selector-link",
+        "selector-heading",
+        "selector-date",
+        "feed-date-format",
+    };
+
+    inline for (selectors) |sel| {
+        if (form_data.get(sel)) |raw| {
+            const val = mem.trim(u8, raw, &std.ascii.whitespace);
+            if (val.len > 0) {
+                const c: std.Uri.Component = .{ .raw = val };
+                try writer.print("&{s}={%}", .{sel, c});
+            }
+        }
+    }
+}
+
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
