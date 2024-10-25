@@ -64,16 +64,16 @@ fn write_pick_urls(writer: anytype, form_data: *httpz.key_value.StringKeyValue) 
     }
 }
 
-fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
-    const selectors = .{
-        "selector-container",
-        "selector-link",
-        "selector-heading",
-        "selector-date",
-        "feed-date-format",
-    };
+const selector_names = .{
+    "selector-container",
+    "selector-link",
+    "selector-heading",
+    "selector-date",
+    "feed-date-format",
+};
 
-    inline for (selectors) |sel| {
+fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
+    inline for (selector_names) |sel| {
         if (form_data.get(sel)) |raw| {
             const val = mem.trim(u8, raw, &std.ascii.whitespace);
             if (val.len > 0) {
@@ -211,30 +211,13 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
 
     if (feed_options.content_type == .html) {
-        add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
-    }
-
-    // TODO: handle making html into feed
-    // @continue
-    if (feed_options.content_type == .html) {
-        const c: std.Uri.Component = .{ .raw = feed_url };
-        var arr = try std.ArrayList(u8).initCapacity(req.arena, 256);
-        const writer_arr= arr.writer();
-        try writer_arr.print("/feed/add?type=html&input-url={%}", .{c});
-        if (tags_input) |val| {
-            const c2: std.Uri.Component = .{ .raw = val };
-            try writer_arr.print("&input-tags={%}", .{c2});
-        }
-        const html_parsed = try html.parse_html(req.arena, feed_options.body);
-        for (html_parsed.links) |link| {
-            const url_final = try fetch.req.get_url_slice();
-            const uri_final = try std.Uri.parse(url_final);
-            const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
-            const uri_component: std.Uri.Component = .{ .raw = url_str };
-            try writer_arr.print("&url={%}", .{uri_component});
-        }
-        resp.header("Location", arr.items);
-        return;
+        add_opts.html_opts = .{
+            .selector_container = selector_container,
+            .selector_link = form_data.get("selector-link"),
+            .selector_heading = form_data.get("selector-heading"),
+            .selector_date = form_data.get("selector-date"),
+            .date_format = form_data.get("feed-date-format"),
+        };
     }
 
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
@@ -261,8 +244,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         try db.tags_feed_add(feed_id, tags_ids);
     }
 
-    const redirect = try std.fmt.allocPrint(req.arena, "/feed/add?success={d}", .{feed_id});
-    resp.header("Location", redirect);
+    try location_arr.writer().print("/feed/add?success={d}", .{feed_id});
+    resp.header("Location", location_arr.items);
 }
 
 fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {

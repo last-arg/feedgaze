@@ -553,7 +553,7 @@ pub const FeedOptions = struct {
         const header_value = resp.getHeader("content-type") catch null;
         const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
         return .{
-            .body = resp.body.?.items,
+            .body = if (resp.body) |body| body.items else "",
             .content_type = content_type,
             .feed_updates = FeedUpdate.fromCurlHeaders(resp),
         };
