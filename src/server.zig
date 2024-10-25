@@ -302,9 +302,11 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
     } else if (query.get("error")) |value| {
         if (mem.eql(u8, "invalid-url", value)) {
-            try w.writeAll("<p>Failed to add feed. Invalid url.</p>");
+            try w.writeAll("<p>Enter valid url.</p>");
         } else if (mem.eql(u8, "url-missing", value)) {
             try w.writeAll("<p>Pick feed option.</p>");
+        } else if (mem.eql(u8, "empty-selector", value)) {
+            try w.writeAll("<p>Fill in 'Feed item selector'</p>");
         }
     }
 
@@ -319,6 +321,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     try w.writeAll("<legend>Pick feed to add</legend>");
     var iter = query.iterator();
     var index: usize = 0;
+    // TODO: auto select active pick
     while (iter.next()) |kv| : (index += 1) {
         if (mem.eql(u8, "url", kv.key)) {
             try w.writeAll("<p>");
