@@ -198,6 +198,9 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         try location_arr.writer().print("/feed/pick?error=empty-selector&input-url={%}", .{url_comp});
         try write_pick_urls(location_arr.writer(), form_data);
         try write_selectors(location_arr.writer(), form_data);
+
+        resp.header("Location", location_arr.items);
+        return;
     }
 
     // try to add new feed
