@@ -336,37 +336,40 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     try w.writeAll("<div>");
-    // TODO: get values from url params
     try w.writeAll(
         \\<input type="radio" id="url-html" name="url-picked" value="html"> 
         \\<label for="url-html">Html as feed</label>
         \\<fieldset class='html-feed-inputs'>
         \\<legend>Html feed selectors and date format</legend>
-        \\<p>
-        \\<label for="feed-container">Feed item selector</label>
-        \\</p>
-        \\<input type="text" id="feed-container" name="selector-container" value=""> 
+    );
+    try w.print(
+        \\<p><label for="feed-container">Feed item selector</label></p>
+        \\<input type="text" id="feed-container" name="selector-container" value="{s}"> 
+    , .{try selector_value(req.arena, query, "selector-container")});
+    try w.writeAll(
         \\<p>Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
-        \\<p>
-        \\<label for="feed-link">Link selector (optional)</label>
-        \\</p>
+    );
+    try w.print(
+        \\<p><label for="feed-link">Link selector (optional)</label></p>
         \\<p class="input-desc">Fallback is &lt;a&gt; href value</p>
-        \\<input type="text" id="feed-link" name="selector-link" value=""> 
-        \\<p>
-        \\<label for="feed-heading">Heading selector (optional)</label>
-        \\</p>
+        \\<input type="text" id="feed-link" name="selector-link" value="{s}"> 
+    , .{try selector_value(req.arena, query, "selector-link")});
+    try w.print(
+        \\<p><label for="feed-heading">Heading selector (optional)</label></p>
         \\<p class="input-desc">Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</p>
-        \\<input type="text" id="feed-heading" name="selector-heading" value=""> 
-        \\<p>
-        \\<label for="feed-date">Date selector (optional)</label>
-        \\</p>
+        \\<input type="text" id="feed-heading" name="selector-heading" value="{s}"> 
+    , .{try selector_value(req.arena, query, "selector-heading")});
+    try w.print(
+        \\<p><label for="feed-date">Date selector (optional)</label></p>
         \\<p class="input-desc">Fallback is &lt;time&gt.</p>
-        \\<input type="text" id="feed-date" name="selector-date" value=""> 
-        \\<p>
-        \\<label for="feed-date-format">Date format (optional)</label>
-        \\</p>
+        \\<input type="text" id="feed-date" name="selector-date" value="{s}"> 
+    , .{try selector_value(req.arena, query, "selector-date")});
+    try w.print(
+        \\<p><label for="feed-date-format">Date format (optional)</label></p>
         \\<p class="input-desc">Fallback is date format that &lt;time&gt; uses.</p>
-        \\<input type="text" id="feed-date-format" name="feed-date-format" value=""> 
+        \\<input type="text" id="feed-date-format" name="feed-date-format" value="{s}"> 
+    , .{try selector_value(req.arena, query, "feed-date-format")});
+    try w.writeAll(
         \\</fieldset>
     );
     try w.writeAll("</div>");
@@ -395,6 +398,16 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try w.writeAll("</main>");
     try w.writeAll(foot);
+}
+
+fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyValue, key: []const u8) ![]const u8 {
+    if (query.get(key)) |raw| {
+        const value = mem.trim(u8, raw, &std.ascii.whitespace);
+        if (value.len > 0) {
+            return try parse.html_escape(allocator, value);
+        }
+    }
+    return "";
 }
 
 
