@@ -90,8 +90,12 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     resp.status = 303;
 
     const form_data = try req.formData();
-    const url_picked = form_data.get("url-picked");
-    const url_input = form_data.get("input-url");
+
+    var url_input = form_data.get("input-url") orelse {
+        resp.header("Location", "/feed/add?error=url-missing");
+        return;
+    }; 
+
     const tags_input = blk: {
         if (form_data.get("input-tags")) |val| {
             const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
@@ -102,74 +106,98 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         break :blk null;
     };
 
-    var url_tmp: ?[]const u8 = null;
+    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
 
-    if (url_picked) |url_raw| {
-        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
-        if (url.len == 0) {
-            const location = blk: {
-                if (tags_input) |val| {
-                    const c: std.Uri.Component = .{ .raw = val };
-                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-pick&input-tags={%}", .{c});
-                }
-                break :blk "/feed/add?error=invalid-pick";
-            };
-
-            resp.header("Location", location);
-            return;
-
-        }
-    }
-    
-    if (url_input) |url_raw| {
-        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
-        if (url.len == 0) {
-            const location = blk: {
-                if (tags_input) |val| {
-                    const c: std.Uri.Component = .{ .raw = val };
-                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={%}", .{c});
-                }
-                break :blk "/feed/add?error=url-missing";
-            };
-
-            resp.header("Location", location);
-            return;
+    url_input = mem.trim(u8, url_input, &std.ascii.whitespace);
+    if (url_input.len == 0) {
+        try location_arr.writer().writeAll("/feed/add?error=url-missing");
+        if (tags_input) |val| {
+            const c: std.Uri.Component = .{ .raw = val };
+            try location_arr.writer().print("&input-tags={%}", .{c});
         }
 
-        _ = std.Uri.parse(url) catch {
-            const location = blk: {
-                if (tags_input) |val| {
-                    const c1: std.Uri.Component = .{ .raw = url };
-                    const c2: std.Uri.Component = .{ .raw = val };
-                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}&input-tags={%}", .{c1, c2});
-                }
-
-                const c: std.Uri.Component = .{ .raw = url };
-                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=invalid-url&input-url={%}", .{c});
-            };
-
-            resp.header("Location", location);
-            return;
-        };
-        url_tmp = url;
+        resp.header("Location", location_arr.items);
+        return;
     }
 
-    const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
+    _ = std.Uri.parse(url_input) catch {
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        try location_arr.writer().print("/feed/add?error=invalid-url&input-url={%}", .{url_comp});
+        if (tags_input) |val| {
+            const c2: std.Uri.Component = .{ .raw = val };
+            try location_arr.writer().print("&input-tags={%}", .{c2});
+        }
 
-    if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
-        const location = blk: {
+        resp.header("Location", location_arr.items);
+        return;
+    };
+
+    const url_picked = mem.trim(
+        u8, 
+        form_data.get("url-picked") orelse "",
+        &std.ascii.whitespace
+    );
+    if (url_picked.len == 0) {
+        try location_arr.writer().writeAll("/feed/pick?error=pick-url");
+        if (tags_input) |val| {
+            const c: std.Uri.Component = .{ .raw = val };
+            try location_arr.writer().print("&input-tags={%}", .{c});
+        }
+        try write_pick_urls(location_arr.writer(), form_data);
+
+        // TODO: add html feed selector inputs to url parameters
+
+        resp.header("Location", location_arr.items);
+        return;
+    }
+
+    const is_html_feed = mem.eql(u8, "html", url_picked);
+
+    if (!is_html_feed) {
+        _ = std.Uri.parse(url_picked) catch {
+            const url_comp: std.Uri.Component = .{ .raw = url_picked };
+            try location_arr.writer().print("/feed/pick?error=invalid-url&input-url={%}", .{url_comp});
             if (tags_input) |val| {
-                const c1: std.Uri.Component = .{ .raw = feed_url };
                 const c2: std.Uri.Component = .{ .raw = val };
-                break :blk try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}&input-tags={%}", .{feed_id, c1, c2});
+                try location_arr.writer().print("&input-tags={%}", .{c2});
             }
 
-            const c: std.Uri.Component = .{ .raw = feed_url };
-            break :blk try std.fmt.allocPrint(req.arena, "/feed/add?feed-exists={d}&input-url={%}", .{feed_id, c});
-        };
+            try write_pick_urls(location_arr.writer(), form_data);
+            try write_selectors(location_arr.writer(), form_data);
 
-        resp.header("Location", location);
+            resp.header("Location", location_arr.items);
+            return;
+        };
+    }
+
+    const feed_url = if (is_html_feed) url_input else url_picked;
+
+    if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        try location_arr.writer().print("/feed/pick?feed-exists={d}&input-url={%}", .{feed_id, url_comp});
+
+        if (tags_input) |val| {
+            const c2: std.Uri.Component = .{ .raw = val };
+            try location_arr.writer().print("&input-tags={%}", .{c2});
+        }
+
+        try write_pick_urls(location_arr.writer(), form_data);
+        try write_selectors(location_arr.writer(), form_data);
+
+        resp.header("Location", location_arr.items);
         return;
+    }
+
+    const selector_container = mem.trim(
+        u8, 
+        form_data.get("selector-container") orelse "",
+        &std.ascii.whitespace,
+    );
+    if (is_html_feed and selector_container.len == 0) {
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        try location_arr.writer().print("/feed/pick?error=empty-selector&input-url={%}", .{url_comp});
+        try write_pick_urls(location_arr.writer(), form_data);
+        try write_selectors(location_arr.writer(), form_data);
     }
 
     // try to add new feed
@@ -181,6 +209,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     const feed_options = FeedOptions.fromResponse(fetch.resp);
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
+
     if (feed_options.content_type == .html) {
         add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
     }
@@ -309,6 +338,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             try w.writeAll("<p>");
             const value_escaped = try parse.html_escape(req.arena, kv.value);
             try w.print(
+                \\<input type="hidden" name="url" value="{[value]s}"> 
                 \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
                 \\<label for="url-{[index]d}">{[value]s}</label>
             , .{.index = index, .value = value_escaped});
@@ -317,6 +347,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     try w.writeAll("<div>");
+    // TODO: get values from url params
     try w.writeAll(
         \\<input type="radio" id="url-html" name="url-picked" value="html"> 
         \\<label for="url-html">Html as feed</label>
