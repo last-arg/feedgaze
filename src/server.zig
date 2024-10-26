@@ -91,11 +91,6 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     const form_data = try req.formData();
 
-    var url_input = form_data.get("input-url") orelse {
-        resp.header("Location", "/feed/add?error=url-missing");
-        return;
-    }; 
-
     const tags_input = blk: {
         if (form_data.get("input-tags")) |val| {
             const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
@@ -108,7 +103,11 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
 
-    url_input = mem.trim(u8, url_input, &std.ascii.whitespace);
+    const url_input = mem.trim(
+        u8, 
+        form_data.get("input-url") orelse "", 
+        &std.ascii.whitespace,
+    );
     if (url_input.len == 0) {
         try location_arr.writer().writeAll("/feed/add?error=url-missing");
         if (tags_input) |val| {
@@ -138,7 +137,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         &std.ascii.whitespace
     );
     if (url_picked.len == 0) {
-        try location_arr.writer().writeAll("/feed/pick?error=pick-url");
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        try location_arr.writer().print("/feed/pick?error=pick-url&input-url={%}", .{url_comp});
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
             try location_arr.writer().print("&input-tags={%}", .{c});
@@ -321,7 +321,9 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         } else if (mem.eql(u8, "url-missing", value)) {
             try w.writeAll("<p>Pick feed option.</p>");
         } else if (mem.eql(u8, "empty-selector", value)) {
-            try w.writeAll("<p>Fill in 'Feed item selector'</p>");
+            try w.writeAll("<p>Fill in 'Feed item selector'.</p>");
+        } else if (mem.eql(u8, "pick-url", value)) {
+            try w.writeAll("<p>Pick on of the feed options.</p>");
         }
     }
 
@@ -348,7 +350,8 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         if (mem.eql(u8, "url", kv.key)) {
             try w.writeAll("<p>");
             const value_escaped = try parse.html_escape(req.arena, kv.value);
-            const checked = if (pick_index == index) "checked" else "";
+            // const checked = if (pick_index == index) "checked" else "";
+            const checked = "";
             try w.print(
                 \\<input type="hidden" name="url" value="{[value]s}"> 
                 \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}" {[checked]s}> 
