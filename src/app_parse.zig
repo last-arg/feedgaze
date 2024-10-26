@@ -184,15 +184,19 @@ pub fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
 }
 
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
+    var input = mem.trim(u8, text, &std.ascii.whitespace);
+    if (input.len == 0) {
+        return "";
+    }
+
     var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer arr.deinit();
-    var input = text;
 
     if (mem.indexOfScalar(u8, input, '&') != null and mem.indexOfScalar(u8, input, ';') != null) {
         input = try html_unescape(arr.writer(), input);
     }
 
-    if (mem.indexOfScalar(u8, input, '<')) |_| {
+    if (input[0] == '<') {
         const ast = try super.html.Ast.init(allocator, input, .html);
         defer ast.deinit(allocator);
         input = try text_from_node(allocator, ast, input, ast.nodes[0]);
@@ -1515,20 +1519,9 @@ pub fn tmp_test() !void {
     // today—thank you for having me! I’ll post my slides when 
     // I get some time!
 
-    for (result.items[0..1]) |item| {
+    for (result.items[0..]) |item| {
         print("|{s}|\n", .{item.title});
     }
-}
-
-pub fn tmp_parse() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    const content =
-    \\hello>world
-    ;
-    const r = try html_escape(alloc, content);
-    print("result: |{s}|\n", .{r});
 }
 
 pub fn main() !void {

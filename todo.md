@@ -12,9 +12,6 @@
       - remove
       - update (name)
       - add
-  - add feed page: 
-    - can add tags
-    - handle html feed
   - tags page:
     - edit (rename) tags
     - remove tags
@@ -25,6 +22,9 @@
   - purge and minify css
   - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
   - Do I want list item link area to extend beyond text (when text is short one liner)?
+
+- error: Failed to fetch feed 'https://programmingisterrible.com/rss'. 
+  Error: error.Unexpected
 
 - should 'update --force' pass http cache?
 - twitch integration
