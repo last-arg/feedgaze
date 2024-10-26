@@ -1548,9 +1548,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
         const item_link_fmt =
             \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}">{[title]s}</a>
         ;
-        const c: std.Uri.Component = .{ .raw = link };
-        const link_encoded = try std.fmt.allocPrint(allocator, "{%}", .{c});
-        const link_escaped = try parse.html_escape(allocator, link_encoded);
+        const link_escaped = try parse.html_escape(allocator, link);
         try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped, .class = opts.class });
     } else {
         const item_title_fmt =
