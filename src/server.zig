@@ -315,7 +315,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     try w.writeAll(
         \\<form action="/feed/pick" method="POST" class="flow" style="--flow-space(--space-m)">
     );
-    try w.print("<input type='hidden' name='input-url' value='{s}'", .{url_escaped});
+    try w.print("<input type='hidden' name='input-url' value='{s}'>", .{url_escaped});
 
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Pick feed to add</legend>");
