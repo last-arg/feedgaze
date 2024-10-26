@@ -171,6 +171,20 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     const feed_url = if (is_html_feed) url_input else url_picked;
 
+    const pick_index = blk: {
+        var iter = form_data.iterator();
+        var i: u32 = 0;
+        while (iter.next()) |kv| {
+            if (!mem.eql(u8, "url", kv.key)) { continue; }
+
+            if (mem.eql(u8, kv.value, url_picked)) {
+                break;
+            }
+            i += 1;
+        }
+        break :blk i;
+    };
+
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
         try location_arr.writer().print("/feed/pick?feed-exists={d}&input-url={%}", .{feed_id, url_comp});
@@ -182,6 +196,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
         try write_pick_urls(location_arr.writer(), form_data);
         try write_selectors(location_arr.writer(), form_data);
+        try location_arr.writer().print("&pick-index={}", .{pick_index});
 
         resp.header("Location", location_arr.items);
         return;
@@ -197,6 +212,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         try location_arr.writer().print("/feed/pick?error=empty-selector&input-url={%}", .{url_comp});
         try write_pick_urls(location_arr.writer(), form_data);
         try write_selectors(location_arr.writer(), form_data);
+        try location_arr.writer().print("&pick-index={}", .{pick_index});
 
         resp.header("Location", location_arr.items);
         return;
@@ -318,25 +334,36 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Pick feed to add</legend>");
+
+    const pick_index = blk: {
+        if (query.get("pick-index")) |raw| {
+            break :blk std.fmt.parseInt(u32, raw, 10) catch 0;
+        }
+        break :blk 0;
+    };
+
     var iter = query.iterator();
     var index: usize = 0;
-    // TODO: auto select active pick
-    while (iter.next()) |kv| : (index += 1) {
+    while (iter.next()) |kv| {
         if (mem.eql(u8, "url", kv.key)) {
             try w.writeAll("<p>");
             const value_escaped = try parse.html_escape(req.arena, kv.value);
+            const checked = if (pick_index == index) "checked" else "";
             try w.print(
                 \\<input type="hidden" name="url" value="{[value]s}"> 
-                \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}"> 
+                \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}" {[checked]s}> 
                 \\<label for="url-{[index]d}">{[value]s}</label>
-            , .{.index = index, .value = value_escaped});
+            , .{.index = index, .value = value_escaped, .checked = checked});
             try w.writeAll("</p>");
+            index += 1;
         }
     }
 
     try w.writeAll("<div>");
+    try w.print(
+        \\<input type="radio" id="url-html" name="url-picked" value="html" {s}> 
+    , .{if (pick_index == index) "checked" else ""});
     try w.writeAll(
-        \\<input type="radio" id="url-html" name="url-picked" value="html"> 
         \\<label for="url-html">Html as feed</label>
         \\<fieldset class='html-feed-inputs'>
         \\<legend>Html feed selectors and date format</legend>
