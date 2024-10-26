@@ -144,8 +144,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
             try location_arr.writer().print("&input-tags={%}", .{c});
         }
         try write_pick_urls(location_arr.writer(), form_data);
-
-        // TODO: add html feed selector inputs to url parameters
+        try write_selectors(location_arr.writer(), form_data);
 
         resp.header("Location", location_arr.items);
         return;
