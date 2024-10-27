@@ -292,11 +292,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         break :blk resp.writer().any();
     };
 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    try Layout.write_head(w, "Pick feed", .{});
 
     try body_head_render(req, db, w, .{});
 
@@ -426,7 +422,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     );
 
     try w.writeAll("</main>");
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
 fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyValue, key: []const u8) ![]const u8 {
@@ -574,11 +570,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         break :blk resp.writer().any();
     };
 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    try Layout.write_head(w, "Add feed", .{});
 
     try body_head_render(req, db, w, .{});
 
@@ -655,7 +647,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     );
 
     try w.writeAll("</main>");
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
 fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -778,11 +770,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk resp.writer().any();
     };
 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    if (feed.title.len > 0) {
+        try Layout.write_head(w, "Feed - {s}", .{feed.title});
+    } else {
+        try Layout.write_head(w, "Feed", .{});
+    }
 
     try body_head_render(req, db, w, .{});
 
@@ -941,7 +933,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</ul>");
 
     try w.writeAll("</main>");
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
 fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
@@ -1088,11 +1080,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         break :blk resp.writer().any();
     };
     
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    try Layout.write_head(w, "Home - latest added feed items", .{});
 
     try body_head_render(req, db, w, .{});
 
@@ -1159,7 +1147,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     }
     try w.writeAll("</main>");
 
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
 fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed) !void {
@@ -1224,11 +1212,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk resp.writer().any();
     };
 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    try Layout.write_head(w, "Tags", .{});
 
     try body_head_render(req, db, w, .{});
 
@@ -1246,11 +1230,46 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</ul>");
     try w.writeAll("</div>");
 
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
-// TODO: try to split base to head and foot during comptime
-const base_layout = @embedFile("./layouts/base.html");
+const Layout = struct {
+    const splits = base_split();
+    const head = splits[0]; 
+    const foot = splits[1];
+    const head_splits = head_split(head);
+    const head_top = head_splits[0];
+    const head_bottom = head_splits[1].?;
+
+    pub fn write_head(writer: anytype, comptime fmt: []const u8, args: anytype) !void {
+        if (head_top) |top| {
+            try writer.writeAll(top);
+            try writer.print(fmt, args);
+        }
+        try writer.writeAll(head_bottom);
+    }
+    pub fn write_foot(writer: anytype) !void {
+        try writer.writeAll(foot);
+    }
+
+    fn base_split() [2][]const u8 {
+        const base_layout = @embedFile("./layouts/base.html");
+        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
+        const head_tmp = base_iter.next() orelse @compileError("Failed to split base.html");
+        const foot_tmp = base_iter.next() orelse @compileError("Failed to split base.html. Missing split string '[content]' ");
+        return .{head_tmp, foot_tmp};
+    }
+
+    fn head_split(input: []const u8) [2]?[]const u8 {
+        var base_iter = mem.splitSequence(u8, input, "[title]");
+        const top = base_iter.next() orelse @compileError("Failed to split base.html");
+        if (base_iter.next()) |bottom| {
+            return .{top, bottom};
+        }
+        return .{null, top};
+    }
+
+};
 
 fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
@@ -1288,11 +1307,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         break :blk resp.writer().any();
     };
 
-    var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-    const head = base_iter.next() orelse unreachable;
-    const foot = base_iter.next() orelse unreachable;
-
-    try w.writeAll(head);
+    try Layout.write_head(w, "Feeds", .{});
 
     const query = try req.query();
     const search_value = query.get("search");
@@ -1430,7 +1445,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
     try w.writeAll("</main>");
 
-    try w.writeAll(foot);
+    try Layout.write_foot(w);
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {

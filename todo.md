@@ -17,15 +17,13 @@
     - remove tags
     - better styling
   - make feed items into 2 columns on wider screens?
-  - change page title on different pages
   - minify html
   - purge and minify css
-  - Session example: https://github.com/nonk123/cheesle/blob/3412acc7d34bebf4882705e8bd480a907c03f7b3/src/session.zig#L54
-  - Do I want list item link area to extend beyond text (when text is short one liner)?
 
+- some images (favicon) might be very large
+  - check images when first time loaded? Or download icon url?
 - error: Failed to fetch feed 'https://programmingisterrible.com/rss'. 
   Error: error.Unexpected
-
 - should 'update --force' pass http cache?
 - twitch integration
 - cli: try https://github.com/n0s4/flags
