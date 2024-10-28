@@ -45,7 +45,6 @@
   - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
     And mark them in DB somehow. Rest would get full path. NULL for feeds
     that don't have favicon?
-- cli: feed update counter
 - Logo ideas
   - keywords: feed, gaze, rss, atom, links
   - Something with gaze and atoms?

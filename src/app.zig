@@ -617,10 +617,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 std.log.info("No feeds to update", .{});
                 return false;
             }
-            std.log.info("Updating {d} feed(s).", .{feed_updates.len});
 
             var item_arena = std.heap.ArenaAllocator.init(self.allocator);
             defer item_arena.deinit();
+
+            var count_updated: u32 = 0;
+            const progress_node = std.Progress.start(.{
+                .estimated_total_items = feed_updates.len,
+                .root_name = "Updating feeds",
+            });
+            defer {
+                progress_node.end();
+                std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
+            }
 
             for (feed_updates) |f_update| {
                 errdefer |err| {
@@ -654,6 +663,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // Resource hasn't been modified
                     try self.storage.updateLastUpdate(f_update.feed_id);
                     try self.storage.rate_limit_remove(f_update.feed_id);
+                    progress_node.completeOne();
+                    count_updated += 1;
                     continue;
                 } else if (resp.status_code == 503) {
                     const retry_ts = std.time.timestamp() + std.time.s_per_hour;
@@ -707,6 +718,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };
+                progress_node.completeOne();
+                count_updated += 1;
             }
             return true;
         }

@@ -16,7 +16,35 @@ pub fn main() !void {
     // try find_dir();
     // try http_head();
     // try zig_http();
+    try tmp_progress();
 }
+
+pub fn tmp_progress() !void {
+    const progress_node = std.Progress.start(.{
+        .estimated_total_items = 9,
+        .root_name = "Updating feeds",
+    });
+    defer {
+        const total_opt = progress_node.index.unwrap();  
+        progress_node.end();
+        if (total_opt) |total| {
+            std.log.info("Feed update [{}/{}]", .{total, 9});
+        }
+        std.io.getStdOut().writer().writeAll("Update done\n") catch {};
+    }
+
+    var i: usize = 0;
+    while (i < 10) : (i += 1) {
+        progress_node.setCompletedItems(i);
+        if (i == 4) {
+            std.Progress.lockStdErr();
+            try std.io.getStdErr().writer().writeAll("Error happened\n");
+            defer std.Progress.unlockStdErr();
+        }
+        std.time.sleep(std.time.ns_per_s * 0.5);
+    }
+}
+
 
 // pub const std_options: std.Options = .{
 //     // This sets log level based on scope.
