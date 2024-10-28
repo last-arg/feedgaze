@@ -11,10 +11,15 @@ pub fn main() !void {
         const writer = std.io.getStdOut().writer();
         const reader = std.io.getStdIn().reader();
         const CliApp = Cli(@TypeOf(writer), @TypeOf(reader));
+        const progress_node = std.Progress.start(.{
+            .root_name = "Updating feeds",
+        });
+
         var app_cli = CliApp{
             .allocator = arena.allocator(),
             .out = writer,
             .in = reader,
+            .progress = progress_node,
         };
         try app_cli.run();
     }

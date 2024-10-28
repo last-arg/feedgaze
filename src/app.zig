@@ -58,6 +58,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         storage: Storage = undefined,
         out: Writer,
         in: Reader,
+        progress: std.Progress.Node,
         const Self = @This();
 
         // TODO: pass 'args' as parameter to function? Makes testing also easier.
@@ -622,10 +623,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer item_arena.deinit();
 
             var count_updated: u32 = 0;
-            const progress_node = std.Progress.start(.{
-                .estimated_total_items = feed_updates.len,
-                .root_name = "Updating feeds",
-            });
+            const progress_node = self.progress;
+            progress_node.setEstimatedTotalItems(feed_updates.len);
             defer {
                 progress_node.end();
                 std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
