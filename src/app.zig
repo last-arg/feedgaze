@@ -623,8 +623,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             defer item_arena.deinit();
 
             var count_updated: u32 = 0;
-            const progress_node = self.progress;
-            progress_node.setEstimatedTotalItems(feed_updates.len);
+            const progress_node = self.progress.start("Updating feeds", feed_updates.len);
             defer {
                 progress_node.end();
                 std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
