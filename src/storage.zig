@@ -1214,7 +1214,6 @@ pub const Storage = struct {
     }
 
     pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
-        // TODO: on conflict update instead?
         const query =
             \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)
             \\VALUES (

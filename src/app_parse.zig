@@ -896,8 +896,6 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
         return false;
     }
 
-    // TODO: Make it init assert instead?
-    // TODO: Make trimmed also into assert?
     if (mem.indexOfScalar(u8, trimmed, ' ') == null) {
         return has_class(node, content, trimmed) or mem.eql(u8, node.open.getName(content, .html).slice(content), trimmed);
     }
@@ -1484,7 +1482,10 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
-        .html => if (html_options) |opts| parse_html(allocator, content, opts) else error.TODO_WHAT,
+        .html => if (html_options) |opts| parse_html(allocator, content, opts) else {
+            std.log.err("Failed to parse html because there are no html options.", .{});
+            return error.NoHtmlOptions;
+        },
         .xml => error.NotAtomOrRss,
     };
 }
