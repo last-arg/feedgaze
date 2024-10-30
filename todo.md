@@ -20,20 +20,23 @@
   - minify html
   - purge and minify css
 
+- cli: 
+  - try https://github.com/n0s4/flags
+  - can add, remove, list, update tags
+  - can add, remove, list, update? rules
+  - should 'update --force' pass http cache?
+
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
 - error: Failed to fetch feed 'https://programmingisterrible.com/rss'. 
   Error: error.Unexpected
-- should 'update --force' pass http cache?
 - twitch integration
-- cli: try https://github.com/n0s4/flags
-- cli: can add, remove, update tags
-- Be consistent either use 'std.Uri.Component.percent_encoded' or '.raw'.
-    '.percent_encoded' probably better option. Currently just get/set whatever
-    is there.
 - save failed favicon requests
   - don't include them in missing request or all
   - make new flag for failed icons requests '--check-failed-icons'
+- could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
+  And mark them in DB somehow. Rest would get full path. NULL for feeds
+  that don't have favicon?
 - add transactions
 - validate feed tags where needed
   - Need to figure out rules for valid tags
@@ -42,9 +45,6 @@
     - no space
   - length limit?
 - third party service: https://openrss.org/
-  - could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
-    And mark them in DB somehow. Rest would get full path. NULL for feeds
-    that don't have favicon?
 - Logo ideas
   - keywords: feed, gaze, rss, atom, links
   - Something with gaze and atoms?

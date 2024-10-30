@@ -170,14 +170,8 @@ pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWi
     }
 
     var tmp_uri = uri;
-    set_uri_component(&tmp_uri.path, output_arr.items);
+    tmp_uri.path.percent_encoded = output_arr.items;
     return try std.fmt.allocPrint(allocator, "{}", .{tmp_uri});
-}
-
-pub fn set_uri_component(uri_comp: *std.Uri.Component, val: []const u8) void {
-    switch(uri_comp.*) {
-        .raw, .percent_encoded => |*field| field.* = val,
-    }
 }
 
 pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
