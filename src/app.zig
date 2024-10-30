@@ -270,6 +270,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 .all => try self.storage.feed_icons_all(arena.allocator()),
                 .missing => try self.storage.feed_icons_missing(arena.allocator()),
             };
+
+            if (feeds.len == 0) {
+                std.log.info("No feed icons to check", .{});
+                return;
+            }
+
+            var count_updated: u32 = 0;
+            const progress_node = self.progress.start("Checking icons", feeds.len);
+            defer {
+                progress_node.end();
+                std.log.info("Icons checked: [{}/{}]", .{count_updated, feeds.len});
+            }
+
             for (feeds) |feed| {
                 const uri = std.Uri.parse(mem.trim(u8, feed.page_url, &std.ascii.whitespace)) catch |err| {
                     std.log.warn("Failed to parse feed page url '{s}'. Error: {}", .{feed.page_url, err});
@@ -280,6 +293,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const url_root = url_request[0..url_request.len - icon_path.len];
                 if (map.get(url_request)) |value| {
                     try self.storage.feed_icon_update(feed.feed_id, value);
+                    progress_node.completeOne();
+                    count_updated += 1;
                     continue;
                 }
 
@@ -292,6 +307,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const value = try arena.allocator().dupe(u8, url_request);
                     try map.put(key, value);
                     try self.storage.feed_icon_update(feed.feed_id, value);
+                    progress_node.completeOne();
+                    count_updated += 1;
                     continue;
                 }
 
@@ -322,6 +339,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const value = try arena.allocator().dupe(u8, url_or_data);
                     try map.put(key, value);
                     try self.storage.feed_icon_update(feed.feed_id, value);
+                    progress_node.completeOne();
+                    count_updated += 1;
                 } else {
                     std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp.status_code});
                     continue;
