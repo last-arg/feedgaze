@@ -246,28 +246,34 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 .server => |opts| try self.server(opts),
                 .batch => |opts| {
                     if (opts.@"check-all-icons") {
-                        // TODO: batch --check-all-icons
-                        std.log.info("TODO: implement --check-all-icons", .{});
+                        try self.check_icons(.all);
                     } else if (opts.@"check-missing-icons") {
-                        try self.check_icons();
+                        try self.check_icons(.missing);
                     }
                 }
             }
         }
 
-        fn check_icons(self: *Self) !void {
+        const IconCheckType = enum {
+            all,
+            missing,
+        };
+
+        fn check_icons(self: *Self, check_type: IconCheckType) !void {
             var buf: [1024]u8 = undefined;
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
             var map = std.StringArrayHashMap([]const u8).init(arena.allocator());
             defer map.deinit();
-            const feeds = try self.storage.feed_icons_missing(arena.allocator());
+            const feeds = switch (check_type) {
+                .all => try self.storage.feed_icons_all(arena.allocator()),
+                .missing => try self.storage.feed_icons_missing(arena.allocator()),
+            };
             for (feeds) |feed| {
                 const uri = std.Uri.parse(mem.trim(u8, feed.page_url, &std.ascii.whitespace)) catch |err| {
-                    print("feed.page_url: {s}", .{feed.page_url});
-                    print("err: {}", .{err});
-                    return err;
+                    std.log.warn("Failed to parse feed page url '{s}'. Error: {}", .{feed.page_url, err});
+                    continue;
                 };
                 const icon_path = "/favicon.ico";
                 const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
