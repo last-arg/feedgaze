@@ -514,10 +514,10 @@ pub const Storage = struct {
             \\VALUES 
             \\  (@feed_id, @update_interval, @last_modified_utc, @etag, @item_interval)
             \\ ON CONFLICT(feed_id) DO UPDATE SET
-            \\  update_interval = @u_update_interval,
-            \\  last_modified_utc = @u_last_modified_utc,
-            \\  etag = @u_etag,
-            \\  item_interval = @u_item_interval,
+            \\  update_interval = @update_interval,
+            \\  last_modified_utc = @last_modified_utc,
+            \\  etag = @etag,
+            \\  item_interval = @item_interval,
             \\  last_update = strftime('%s', 'now')
             \\;
         ;
@@ -527,10 +527,6 @@ pub const Storage = struct {
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
             .item_interval = feed_update.item_interval,
-            .u_update_interval = feed_update.update_interval,
-            .u_last_modified_utc = feed_update.last_modified_utc,
-            .u_etag = feed_update.etag,
-            .u_item_interval = feed_update.item_interval,
         });
     }
 
@@ -1054,18 +1050,18 @@ pub const Storage = struct {
 
         const query = 
         \\select 
-        \\  (select name from add_rule_host where host_id = ?) as match_host, 
+        \\  (select name from add_rule_host where host_id = @host_id) as match_host, 
         \\  match_path, 
-        \\  (select name from add_rule_host where host_id = ?) as result_host, 
+        \\  (select name from add_rule_host where host_id = @host_id) as result_host, 
         \\  result_path 
         \\from add_rule 
-        \\where match_host_id = ? AND match_path like ?;
+        \\where match_host_id = @host_id AND match_path like @tmp_path;
         ;
 
         const tmp_path = try allocator.dupe(u8, uri.path);
         mem.replaceScalar(u8, tmp_path, '*', '%');
         print("path: {s}\n", .{tmp_path});
-        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{host_id, host_id, host_id, tmp_path});
+        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{. host_id = host_id, .tmp_path = tmp_path});
     }
 
     pub fn update_item_intervals(self: *Self) !void {
