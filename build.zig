@@ -40,7 +40,7 @@ pub fn build(b: *Build) !void {
         }
     }
 
-    const opts_exe = .{
+    const opts_exe: Build.ExecutableOptions = .{
         .name = "feedgaze",
         .root_source_file = b.path(source_file),
         .target = target,

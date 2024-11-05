@@ -26,8 +26,8 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var global = .{ .storage = storage };
-    const server_config = .{
+    var global: Global = .{ .storage = storage };
+    const server_config: httpz.Config = .{
         .port = opts.port,  
         .request = .{
             .max_form_count = 10,
@@ -693,7 +693,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
 
     resp.status = 303;
-    const fields = .{
+    const fields: Storage.FeedFields = .{
         .feed_id = feed_id,
         .title = title,
         .page_url = page_url,

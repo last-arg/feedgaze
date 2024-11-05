@@ -356,7 +356,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{ .updated_timestamp = feed.updated_timestamp, .feed_id = feed.feed_id });
     }
 
-    const FeedFields = struct {
+    pub const FeedFields = struct {
         feed_id: usize,
         title: []const u8,
         page_url: []const u8,
