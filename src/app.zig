@@ -130,70 +130,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
                     }
                 },
-                .tag => |opts| {
-                    var arena = std.heap.ArenaAllocator.init(self.allocator);
-                    defer arena.deinit();
-
-                    if (opts.list) {
-                        const tags = try self.storage.tags_all(arena.allocator());
-
-                        if (tags.len == 0) {
-                            try self.out.print("There are no tags.\n", .{});
-                        }
-
-                        for (tags) |tag| {
-                            try self.out.writeAll(tag);
-                        }
-                        return;
-                    }
-
-                    if (args.positionals.len == 0) {
-                        try self.out.print("No tags to add. Please add tags you want to add.\n", .{});
-                        return;
-                    }
-
-                    var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), args.positionals.len);
-                    defer tags_arr.deinit();
-                    for (args.positionals) |tag| {
-                        const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
-                        if (trimmed.len > 0) {
-                            tags_arr.appendAssumeCapacity(trimmed);
-                        }
-                    }
-
-                    if (opts.feed) |input| {
-                        const feeds = try self.storage.feeds_search_complex(arena.allocator(), .{ .search = input });
-                        if (feeds.len > 0) {
-                            if (!opts.remove) {
-                                try self.storage.tags_add(tags_arr.items);
-                            }
-                            const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
-                            const tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
-
-                            if (opts.remove) {
-                                for (feeds) |feed| {
-                                    try self.storage.tags_feed_remove(feed.feed_id, tags_ids);
-                                }
-                                try self.out.print("Removed tags from {d} feed(s).\n", .{feeds.len});
-                            } else {
-                                for (feeds) |feed| {
-                                    try self.storage.tags_feed_add(feed.feed_id, tags_ids);
-                                }
-                                try self.out.print("Added tags to {d} feed(s).\n", .{feeds.len});
-                            }
-                        } else {
-                            try self.out.print("Found no feeds to add or remove tags.\n", .{});
-                        }
-                        return;
-                    }
-
-                    if (opts.remove) {
-                        try self.storage.tags_remove(tags_arr.items);
-                        return;
-                    }
-
-                    try self.storage.tags_add(tags_arr.items);
-                },
+                .tag => |opts| try self.tag(args.positionals, opts),
                 .add => |opts| {
                     if (args.positionals.len == 0) {
                         try self.out.print("Please enter valid input you want to add or modify.\n", .{});
@@ -210,8 +147,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         const cap = mem.count(u8, tags_raw, ",") + 1;
                         var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), cap);
                         defer tags_arr.deinit();
-                        while (tags_iter.next()) |tag| {
-                            const trimmed = mem.trim(u8, tag, &std.ascii.whitespace);
+                        while (tags_iter.next()) |tag_name| {
+                            const trimmed = mem.trim(u8, tag_name, &std.ascii.whitespace);
                             if (trimmed.len > 0) {
                                 tags_arr.appendAssumeCapacity(trimmed);
                             }
@@ -408,7 +345,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Auto update feeds in the foreground. 
                     \\
                     \\Options:
-                    \\  -p, --port    Server port (default: 1222)
                     \\  -h, --help    Print this help and exit
                     ,
                     .server => 
@@ -417,14 +353,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Launches server
                     \\
                     \\Options:
+                    \\  -p, --port    Server port (default: 1222)
                     \\  -h, --help    Print this help and exit
                     ,
                     .tag => 
                     \\Usage: feedgaze tag [options]
                     \\
-                    \\  Add remove tags
+                    \\  Add/Remove tags. Or add/remove tags from feeds.
                     \\
                     \\Options:
+                    \\  --feed        Add/Remove tags from feed base on this flags input
+                    \\  --add         Add tags
+                    \\  --remove      Remove tags
+                    \\  --list        List tags
                     \\  -h, --help    Print this help and exit
                     ,
                     .add => 
@@ -449,6 +390,139 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             _ = try self.out.write(output);
+        }
+
+        const UserOutput = enum {
+            yes,
+            no,
+            invalid,
+        };
+        fn user_output_state(str: []const u8) UserOutput {
+            const trimmed = mem.trim(u8, str, &std.ascii.whitespace);
+            if (trimmed.len != 1) {
+                return .invalid;
+            }
+            const lower = std.ascii.toLower(trimmed[0]);
+            if (lower == 'y') {
+                return .yes;
+            } else if (lower == 'n') {
+                return .no;
+            }
+            return .invalid;
+        }
+        
+        pub fn tag(self: *Self, inputs: [][]const u8, opts: TagOptions) !void {
+            var arena = std.heap.ArenaAllocator.init(self.allocator);
+            defer arena.deinit();
+
+            if (!opts.list and !opts.remove and !opts.add) {
+                try self.out.writeAll("Use on of these flags:\n");
+                try self.out.writeAll("--list\n--add\n--remove\n\n");
+                try self.printHelp(.{.tag = opts});
+                return;
+            }
+
+            if (opts.list) {
+                const tags = try self.storage.tags_all(arena.allocator());
+
+                if (tags.len == 0) {
+                    try self.out.print("There are no tags.\n", .{});
+                }
+
+                for (tags) |name| {
+                    try self.out.print("- {s}\n", .{name});
+                }
+                return;
+            }
+
+            const flag_str, const flag_upper_str = blk: {
+                if (opts.add) {
+                    break :blk .{"add", "Add"};
+                } else if (opts.remove) {
+                    break :blk .{"remove", "Remove"};
+                }
+                unreachable;
+            };
+
+            if (inputs.len == 0) {
+                try self.out.print("Enter tags you want to {s}: feegaze <flags> tag1 tag2\n", .{flag_str});
+                return;
+            }
+
+            var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), inputs.len);
+            defer tags_arr.deinit();
+            for (inputs) |name| {
+                const trimmed = mem.trim(u8, name, &std.ascii.whitespace);
+                if (trimmed.len > 0) {
+                    tags_arr.appendAssumeCapacity(trimmed);
+                }
+            }
+
+            const feed_filter = mem.trim(u8, opts.feed orelse "", &std.ascii.whitespace);
+            if (feed_filter.len == 0) {
+                if (opts.add) {
+                    try self.storage.tags_add(tags_arr.items);
+                } else if (opts.remove) {
+                    try self.storage.tags_remove(tags_arr.items);
+                }
+                return;
+            }
+
+            const feeds = try self.storage.feeds_search_complex(arena.allocator(), .{ .search = feed_filter });
+            if (feeds.len == 0) {
+                try self.out.print("Found no feeds to {s} tags to.\n", .{flag_str});
+                return;
+            }
+
+            try self.out.print("{s} tags from feeds:\n", .{flag_upper_str});
+
+            for (feeds) |feed| {
+                try self.out.print("{s} | {s}\n", .{feed.title, feed.page_url orelse feed.feed_url});
+            }
+
+            var buf: [16]u8 = undefined;
+            var fix_buf = std.io.fixedBufferStream(&buf);
+            const invalid_msg = "Enter valid input 'y' or 'n'.\n";
+            while (true) {
+                try self.out.print("{s} tags to {d} feeds? ", .{flag_upper_str, feeds.len});
+                fix_buf.reset();
+                self.in
+                    .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
+                        error.StreamTooLong => {
+                            try self.out.writeAll(invalid_msg);
+                            continue;
+                        },
+                        else => return err,
+                    };
+
+                switch (user_output_state(fix_buf.getWritten())) {
+                    .yes => {},
+                    .no => {
+                        return;
+                    },
+                    .invalid => {
+                        try self.out.writeAll(invalid_msg);
+                        continue;
+                    },
+                }
+                break;
+            }
+
+            if (opts.remove) {
+                for (feeds) |feed| {
+                    try self.storage.tags_feed_remove(feed.feed_id, tags_arr.items);
+                }
+                try self.out.writeAll("Removed tags from feed(s).\n");
+            } else if (opts.add) {
+                try self.storage.tags_add(tags_arr.items);
+                const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
+                const tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
+
+                for (feeds) |feed| {
+                    try self.storage.tags_feed_add(feed.feed_id, tags_ids);
+                }
+                try self.out.print("Added tags to {d} feed(s).\n", .{feeds.len});
+            }
         }
 
         pub fn add(self: *Self, url_raw: []const u8) !usize {

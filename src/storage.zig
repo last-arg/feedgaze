@@ -779,10 +779,10 @@ pub const Storage = struct {
         }
     }
 
-    pub fn tags_feed_remove(self: *Self, feed_id: usize, tag_ids: []usize) !void {
-        const query = "DELETE FROM feed_tag WHERE feed_id = ? AND tag_id = ?;";
-        for (tag_ids) |tag_id| {
-            try self.sql_db.exec(query, .{}, .{feed_id, tag_id});
+    pub fn tags_feed_remove(self: *Self, feed_id: usize, tags: [][]const u8) !void {
+        const query = "DELETE FROM feed_tag WHERE feed_id = ? AND (select tag_id from tag where name = ?);";
+        for (tags) |tag| {
+            try self.sql_db.exec(query, .{}, .{feed_id, tag});
         }
     }
 
