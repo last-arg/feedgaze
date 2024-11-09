@@ -9,19 +9,23 @@ rules: []Rule = &.{},
 pub fn create_rule(match_raw:[]const u8, result_raw: []const u8) !Rule {
     const uri = std.Uri.parse(match_raw) catch return error.InvalidMatchUrl;
     const host = uri.host orelse return error.MissingMatchHost;
-    const result_uri = std.Uri.parse(result_raw) catch std.Uri.parseWithoutScheme(result_raw) catch {
+    const result_uri = std.Uri.parse(result_raw) catch std.Uri.parseAfterScheme("https", result_raw) catch {
         return error.InvalidResultUrl;
     };
 
     // TODO?: check that match and result placeholders match?
     // Make sure can create result url from match?
     // Does placeholder count for match and result have to be same?
+    // result placeholder length <= match placeholder count
+     
+    // TODO: Use numbered placeholders '/path/$1/more'
+    // Can I mix '*' with numeric placeholders?
 
     return .{
-      .match_host = host,
-      .match_path = uri.path,
-      .result_host = result_uri.host orelse host, 
-      .result_path = result_uri.path, 
+      .match_host = uri_component_val(host),
+      .match_path = uri_component_val(uri.path),
+      .result_host = uri_component_val(result_uri.host orelse host), 
+      .result_path = uri_component_val(result_uri.path), 
     };
 }
 
