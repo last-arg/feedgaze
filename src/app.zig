@@ -35,6 +35,7 @@ const CliVerb = union(enum) {
     remove: void,
     show: ShowOptions,
     update: UpdateOptions,
+    rule: feed_types.RuleOptions,
     run: void,
     server: ServerOptions,
     tag: TagOptions,
@@ -181,6 +182,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 },
                 .server => |opts| try self.server(opts),
+                .rule => |opts| try self.rule(opts),
                 .batch => |opts| {
                     if (opts.@"check-all-icons") {
                         try self.check_icons(.all);
@@ -294,6 +296,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  add       Add feed
                 \\  remove    Remove feed(s)
                 \\  update    Update feed(s)
+                \\  rule      Feed adding rules
                 \\  run       Run update in foreground
                 \\  show      Print feeds' items
                 \\  server    Start server
@@ -376,6 +379,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\Options:
                     \\  -h, --help    Print this help and exit
                     ,
+                    .rule => 
+                    \\Usage: feedgaze add [options] <input>
+                    \\
+                    \\  Feed adding rules
+                    \\
+                    \\Options:
+                    \\  --list        List rules
+                    \\  -h, --help    Print this help and exit
+                    ,
                     .batch => 
                     \\Usage: feedgaze batch <options> [options]
                     \\
@@ -392,6 +404,46 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
+        pub fn rule(self: *Self, opts: feed_types.RuleOptions) !void {
+            if (!opts.list) {
+                try self.printHelp(.{.rule = opts});
+            }
+
+            if (opts.list) {
+                const rules = try self.storage.rules_all(self.allocator);
+                defer self.allocator.free(rules);
+                if (rules.len == 0) {
+                    try self.out.writeAll("There are no feed add rules.");
+                    return;
+                }
+                var match_longest: u64 = 0;
+                for (rules) |r| {
+                    match_longest = @max(match_longest, r.match_url.len);
+                }
+                const first_column_width = match_longest + 4;
+
+                { // 'Table' header
+                    const first_column_name = "Rule to match"; 
+                    try self.out.writeAll(first_column_name);
+                    const space_count = first_column_width - first_column_name.len;
+                    for (0..space_count) |_| {
+                        try self.out.writeAll(" ");
+                    }
+                    try self.out.writeAll("Transform rule match to\n");
+                }
+                
+                for (rules) |r| {
+                    try self.out.print("{s}", .{r.match_url});
+                    const space_count = first_column_width - r.match_url.len;
+                    for (0..space_count) |_| {
+                        try self.out.writeAll(" ");
+                    }
+                    try self.out.print("{s}\n", .{r.result_url});
+                }
+                return;
+            }
+        }
+        
         const UserOutput = enum {
             yes,
             no,

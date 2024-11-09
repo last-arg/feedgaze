@@ -1028,6 +1028,22 @@ pub const Storage = struct {
         try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match_path, host_id, rule.result_path});
     }
 
+    const RuleMatchStr = struct {
+        match_url: []const u8,
+        result_url: []const u8,
+    };
+    pub fn rules_all(self: *Self, allocator: mem.Allocator) ![]RuleMatchStr {
+        const query_fmt = 
+        \\select 
+        \\(select name from add_rule_host where host_id = add_rule.match_host_id 
+        \\) || match_path as match_url,
+        \\(select name from add_rule_host where host_id = add_rule.result_host_id 
+        \\) || result_path as result_url
+        \\from add_rule
+        ;
+        return try selectAll(&self.sql_db, allocator, RuleMatchStr, query_fmt, .{});
+    }
+
     const AddRule = @import("add_rule.zig");
     pub fn get_rules_for_host(self: *Self, allocator: Allocator, host: []const u8) ![]AddRule.RuleWithHost {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";

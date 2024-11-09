@@ -37,6 +37,10 @@ pub const TagOptions = struct {
     // @"remove-unused": bool = false,
 };
 
+pub const RuleOptions = struct {
+    list: bool = false,
+};
+
 pub const AddOptions = struct {
     tags: ?[]const u8 = null
 };
