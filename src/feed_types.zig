@@ -39,6 +39,7 @@ pub const TagOptions = struct {
 
 pub const RuleOptions = struct {
     list: bool = false,
+    add: bool = false,
 };
 
 pub const AddOptions = struct {

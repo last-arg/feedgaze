@@ -182,7 +182,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 },
                 .server => |opts| try self.server(opts),
-                .rule => |opts| try self.rule(opts),
+                .rule => |opts| try self.rule(args.positionals, opts),
                 .batch => |opts| {
                     if (opts.@"check-all-icons") {
                         try self.check_icons(.all);
@@ -380,12 +380,14 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  -h, --help    Print this help and exit
                     ,
                     .rule => 
-                    \\Usage: feedgaze add [options] <input>
+                    \\Usage: feedgaze rule [options] [match-url] [result-url]
                     \\
-                    \\  Feed adding rules
+                    \\  Feed adding rules. 
+                    \\  Example: 'domain.com/*/*' -> 'domain.com/*/*.atom'
                     \\
                     \\Options:
                     \\  --list        List rules
+                    \\  --add         Add new rule
                     \\  -h, --help    Print this help and exit
                     ,
                     .batch => 
@@ -404,8 +406,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             _ = try self.out.write(output);
         }
 
-        pub fn rule(self: *Self, opts: feed_types.RuleOptions) !void {
-            if (!opts.list) {
+        pub fn rule(self: *Self, inputs: [][]const u8, opts: feed_types.RuleOptions) !void {
+            if (!opts.list and !opts.add) {
                 try self.printHelp(.{.rule = opts});
             }
 
@@ -440,7 +442,35 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                     try self.out.print("{s}\n", .{r.result_url});
                 }
-                return;
+            } else if (opts.add) {
+                if (inputs.len < 2) {
+                    try self.out.writeAll("'--add' requires to inputs: <match-url> <result-url>\n");
+                    return;
+                }
+                const match_str = mem.trim(u8, inputs[0], &std.ascii.whitespace);
+                const result_str = mem.trim(u8, inputs[1], &std.ascii.whitespace);
+                if (match_str.len == 0) {
+                    try self.out.writeAll("'--add' input <match-url> <result-url>\n");
+                }
+                const rule_new = AddRule.create_rule(match_str, result_str) catch |err| switch (err) {
+                    error.InvalidMatchUrl => {
+                        try self.out.writeAll("Enter valid <match-url>");
+                        return;
+                    },
+                    error.MissingMatchHost => {
+                        try self.out.writeAll("Add host domain to <match-url>");
+                        return;
+                    },
+                    error.InvalidResultUrl => {
+                        try self.out.writeAll("Enter valid <result-url>");
+                        return;
+                    },
+                };
+                if (try self.storage.has_rule(rule_new)) {
+                    try self.out.writeAll("Rule exists\n");
+                    return;
+                }
+                try self.storage.rule_add(rule_new);
             }
         }
         
