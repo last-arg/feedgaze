@@ -1015,17 +1015,25 @@ pub const Storage = struct {
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const name = rule.match_host;
-        const host_id = try one(&self.sql_db, usize, query_insert_host, .{name}) 
-            orelse try one(&self.sql_db, usize, query_select_host, .{name})
-            orelse return error.CouldNotGetAddRuleHostId;
+        const match_host_id = try one(&self.sql_db, usize, query_insert_host, .{rule.match_host}) 
+            orelse try one(&self.sql_db, usize, query_select_host, .{rule.match_host})
+            orelse return error.AddRuleNoMatchHostId;
+
+        const result_host_id = blk: {
+            if (!mem.eql(u8, rule.match_host, rule.result_host)) {
+                break :blk try one(&self.sql_db, usize, query_insert_host, .{rule.result_host}) 
+                    orelse try one(&self.sql_db, usize, query_select_host, .{rule.result_host})
+                    orelse return error.AddRuleNoResultHostId;
+            }
+            break :blk match_host_id;
+        };
 
         const query_insert_rule = 
         \\insert or ignore into 
         \\  add_rule(match_host_id, match_path, result_host_id, result_path) 
         \\  values (?, ?, ?, ?);
         ;
-        try self.sql_db.exec(query_insert_rule, .{}, .{host_id, rule.match_path, host_id, rule.result_path});
+        try self.sql_db.exec(query_insert_rule, .{}, .{match_host_id, rule.match_path, result_host_id, rule.result_path});
     }
 
     const RuleMatchStr = struct {
@@ -1042,6 +1050,16 @@ pub const Storage = struct {
         \\from add_rule
         ;
         return try selectAll(&self.sql_db, allocator, RuleMatchStr, query_fmt, .{});
+    }
+
+    pub fn has_rule(self: *Self, rule: Rule) !bool {
+        const query =
+            \\select 1 from add_rule where
+            \\match_path = $match_path AND result_path = $result_path
+            \\AND (select host_id from add_rule_host where name = $match_host)
+            \\AND (select host_id from add_rule_host where name = $result_host)
+        ;
+        return (try one(&self.sql_db, bool, query, rule)) orelse false;
     }
 
     const AddRule = @import("add_rule.zig");
@@ -1331,7 +1349,7 @@ const tables = &[_][]const u8{
     \\  result_path TEXT NOT NULL,
     \\  FOREIGN KEY(match_host_id) REFERENCES add_rule_host(host_id),
     \\  FOREIGN KEY(result_host_id) REFERENCES add_rule_host(host_id),
-    \\  UNIQUE(match_host_id, match_path)
+    \\  UNIQUE(result_host_id, result_path, match_host_id, match_path)
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS rate_limit(
