@@ -39,6 +39,8 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/", latest_added_get, .{});
     router.get("/feeds", feeds_get, .{});
     router.get("/tags", tags_get, .{});
+    router.get("/tag/:id/edit", tag_edit, .{});
+    router.get("/tag/:id/delete", tag_delete, .{});
     router.get("/feed/add", feed_add_get, .{});
     router.post("/feed/add", feed_add_post, .{});
     router.get("/feed/pick", feed_pick_get, .{});
@@ -1198,6 +1200,27 @@ fn timestamp_render(w: anytype, timestamp: ?i64) !void {
     }
 }
 
+fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
+
+    const db = &global.storage;
+    resp.status = 301;
+    db.tags_remove_with_id(tag_id) catch {
+        // On failure redirect to feed page. Display error message
+        resp.header("Location", "/tags?error=");
+        return;
+    };
+
+    resp.header("Location", "/tags?success=");
+}
+
+fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    _ = global; // autofix
+    _ = req; // autofix
+    _ = resp; // autofix
+}
+
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
     resp.content_type = .HTML;
@@ -1219,12 +1242,18 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all_with_ids(req.arena);
     try w.writeAll("<div class='ml-m'>");
     try w.writeAll("<h2>Tags</h2>");
+    const query_kv = try req.query();
+    if (query_kv.get("error")) |_| {
+        try w.writeAll("<p>Failed to delete tag</p>");
+    } else if (query_kv.get("success")) |_| {
+        try w.writeAll("<p>Tag deleted</p>");
+    }
     try w.writeAll("<ul role='list'>");
     for (tags) |tag| {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped);
-        try w.print("<a href='/tag/{d}/delete'>Delete</a>", .{tag.tag_id});
+        try w.print("<a href='/tag/{d}/delete' rel='nofollow'>Delete</a>", .{tag.tag_id});
         try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
         try w.writeAll("</li>");
     }

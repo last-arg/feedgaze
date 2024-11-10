@@ -705,6 +705,13 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
     }
 
+    pub fn tags_remove_with_id(self: *Self, tag_id: usize) !void {
+        const query =
+        \\delete from tag where tag_id = ?
+        ;
+        try self.sql_db.exec(query, .{}, .{tag_id});
+    }
+
     pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: usize, tag_ids: []usize) !void {
         std.debug.assert(tag_ids.len >= 0);
         var arena = std.heap.ArenaAllocator.init(allocator_in);
