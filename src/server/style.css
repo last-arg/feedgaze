@@ -551,7 +551,8 @@ input[type=text] {
   margin-inline-start: var(--space-m);
 }
 
-.root-heading time-relative {
+.root-heading time-relative,
+.root-heading span {
   font-style: italic;
   color: var(--grey-10);
   font-size: var(--step--1);
@@ -626,6 +627,11 @@ input[type=text] {
 
 #url-html:checked ~ .html-feed-inputs {
   display: block;
+}
+
+.tag-item {
+  display: flex;
+  gap: var(--space-xs);
 }
 
 /* 
@@ -725,4 +731,8 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
 
 .inline-block {
   display: inline-block;
+}
+
+.ml-m {
+  margin-left: var(--space-m);
 }

@@ -1143,7 +1143,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
         try w.writeAll("</ul>");
     } else {
-        try w.writeAll("<p>No feeds have been added in the previous 3 days</p>");
+        try w.writeAll("<p class='ml-m'>No feeds have been added in the previous 3 days</p>");
     }
     try w.writeAll("</main>");
 
@@ -1217,14 +1217,15 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try body_head_render(req, db, w, .{});
 
     const tags = try db.tags_all_with_ids(req.arena);
-    try w.writeAll("<div>");
+    try w.writeAll("<div class='ml-m'>");
     try w.writeAll("<h2>Tags</h2>");
     try w.writeAll("<ul role='list'>");
     for (tags) |tag| {
-        try w.writeAll("<li>");
-        try w.print("{d} - ", .{tag.tag_id});
+        try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped);
+        try w.print("<a href='/tag/{d}/delete'>Delete</a>", .{tag.tag_id});
+        try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");

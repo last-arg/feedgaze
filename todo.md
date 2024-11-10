@@ -19,6 +19,7 @@
   - make feed items into 2 columns on wider screens?
   - minify html
   - purge and minify css
+  - need to url escape link paths?
 
 - cli: 
   - try https://github.com/n0s4/flags
