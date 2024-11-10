@@ -22,14 +22,10 @@
 
 - cli: 
   - try https://github.com/n0s4/flags
-  - can add, remove, list, update? rules
   - should 'update --force' pass http cache?
-  - add feed: can also add tags?
 
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
-- error: Failed to fetch feed 'https://programmingisterrible.com/rss'. 
-  Error: error.Unexpected
 - twitch integration
 - save failed favicon requests
   - don't include them in missing request or all
