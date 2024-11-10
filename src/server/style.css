@@ -231,9 +231,13 @@ button {
   cursor: pointer;
 }
 
-input[type=text] {
+input:where([type=text]) {
   width: 100%;
   max-width: 40ch;
+}
+
+.input-small {
+  max-width: 20ch;
 }
 
 /* 

@@ -1208,7 +1208,7 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     resp.status = 301;
     db.tags_remove_with_id(tag_id) catch {
         // On failure redirect to feed page. Display error message
-        resp.header("Location", "/tags?error=");
+        resp.header("Location", "/tags?error=delete");
         return;
     };
 
@@ -1216,9 +1216,50 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
 }
 
 fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    _ = global; // autofix
-    _ = req; // autofix
-    _ = resp; // autofix
+    const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
+
+    const db = &global.storage;
+
+    const tag = try db.tag_with_id(req.arena, tag_id) orelse {
+        resp.status = 301;
+        resp.header("Location", "/tags?error=missing");
+        return;
+    };
+
+    resp.content_type = .HTML;
+
+    var compressor = try compressor_setup(req, resp);
+    defer if (compressor) |*c| compressor_finish(c);
+
+    var w = blk: {
+        if (compressor) |*c| {
+            break :blk c.writer().any(); 
+        }
+        break :blk resp.writer().any();
+    };
+
+    try Layout.write_head(w, "Edit tag: {s}", .{tag.name});
+
+    try body_head_render(req, db, w, .{});
+    
+    try w.writeAll("<div class='ml-m'>");
+    try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
+
+    try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='post'>");
+    try w.writeAll("<div>");
+    try w.writeAll("<p>");
+    try w.writeAll("<label for='tag-name'>Tag name</label>");
+    try w.writeAll("</p>");
+    try w.print("<input class='input-small' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
+    try w.writeAll("</div>");
+    try w.print("<input type='hidden' value='{d}'>", .{tag.tag_id});
+    try w.writeAll("<p><button class='btn btn-primary'>Save changes</button></p>");
+    try w.writeAll("</form>");
+
+    try w.writeAll("</div>");
+
+    try Layout.write_foot(w);
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1242,12 +1283,18 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all_with_ids(req.arena);
     try w.writeAll("<div class='ml-m'>");
     try w.writeAll("<h2>Tags</h2>");
+
     const query_kv = try req.query();
-    if (query_kv.get("error")) |_| {
-        try w.writeAll("<p>Failed to delete tag</p>");
+    if (query_kv.get("error")) |err_value| {
+        if (mem.eql(u8, "delete", err_value)) {
+            try w.writeAll("<p>Failed to delete tag</p>");
+        } else if (mem.eql(u8, "missing", err_value)) {
+            try w.writeAll("<p>Tag doesn't exist</p>");
+        } 
     } else if (query_kv.get("success")) |_| {
         try w.writeAll("<p>Tag deleted</p>");
     }
+
     try w.writeAll("<ul role='list'>");
     for (tags) |tag| {
         try w.writeAll("<li class='tag-item'>");

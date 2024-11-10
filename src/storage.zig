@@ -699,6 +699,11 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
     }
 
+    pub fn tag_with_id(self: *Self, allocator: Allocator, tag_id: usize) !?TagResult {
+        const query = "SELECT tag_id, name FROM tag where tag_id = ?;";
+        return try oneAlloc(&self.sql_db, allocator, TagResult, query, .{tag_id});
+    }
+    
     const TagResult = struct{tag_id: usize, name: []const u8};
     pub fn tags_all_with_ids(self: *Self, alloc: Allocator) ![]TagResult {
         const query = "select * from tag order by name ASC;";
