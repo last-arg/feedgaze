@@ -407,7 +407,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         }
 
         pub fn rule(self: *Self, inputs: [][]const u8, opts: feed_types.RuleOptions) !void {
-            if (!opts.list and !opts.add) {
+            if (!opts.list and !opts.add and !opts.remove) {
                 try self.printHelp(.{.rule = opts});
             }
 
@@ -471,6 +471,44 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     return;
                 }
                 try self.storage.rule_add(rule_new);
+            } else if (opts.remove) {
+                if (inputs.len == 0) {
+                    try self.out.writeAll("'--remove' requires input to filter rules.\n");
+                    return;
+                }
+                const rules = try self.storage.rules_filter(self.allocator, inputs[0]);
+                const invalid_msg = "Enter valid input 'y' or 'n'.\n";
+                var buf: [16]u8 = undefined;
+                var fix_buf = std.io.fixedBufferStream(&buf);
+
+                for (rules) |r| {
+                    while (true) {
+                        try self.out.print("Remove rule '{s}' -> '{s}'? (y/n) ", .{r.match_url, r.result_url});
+                        fix_buf.reset();
+                        self.in
+                            .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
+                                error.StreamTooLong => {
+                                    try self.out.writeAll(invalid_msg);
+                                    continue;
+                                },
+                                else => return err,
+                            };
+
+                        switch (user_output_state(fix_buf.getWritten())) {
+                            .yes => {
+                                try self.storage.rule_remove(r.add_rule_id);
+                                break;
+                            },
+                            .no => {
+                                break;
+                            },
+                            .invalid => {
+                                try self.out.writeAll(invalid_msg);
+                                continue;
+                            },
+                        }
+                    }
+                }
             }
         }
         
@@ -566,7 +604,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var fix_buf = std.io.fixedBufferStream(&buf);
             const invalid_msg = "Enter valid input 'y' or 'n'.\n";
             while (true) {
-                try self.out.print("{s} tags to {d} feeds? ", .{flag_upper_str, feeds.len});
+                try self.out.print("{s} tags to {d} feeds? (y/n) ", .{flag_upper_str, feeds.len});
                 fix_buf.reset();
                 self.in
                     .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {

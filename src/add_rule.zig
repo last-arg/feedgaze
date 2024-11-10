@@ -7,6 +7,7 @@ pub const AddRule = @This();
 rules: []Rule = &.{},
 
 pub fn create_rule(match_raw:[]const u8, result_raw: []const u8) !Rule {
+    // TODO Decode create_rule() inputs?
     const uri = std.Uri.parse(match_raw) catch return error.InvalidMatchUrl;
     const host = uri.host orelse return error.MissingMatchHost;
     const result_uri = std.Uri.parse(result_raw) catch std.Uri.parseAfterScheme("https", result_raw) catch {
@@ -19,6 +20,10 @@ pub fn create_rule(match_raw:[]const u8, result_raw: []const u8) !Rule {
     // result placeholder length <= match placeholder count
      
     // TODO: Use numbered placeholders '/path/$1/more'
+    // match and result numeric values have to match.
+    // Have to check match numeric against result ones.
+    // And have to do it in reverse also because result might have 
+    // numeric values that match doesn't 
     // Can I mix '*' with numeric placeholders?
 
     return .{

@@ -931,7 +931,6 @@ pub const Storage = struct {
         var savepoint = try self.sql_db.savepoint("search_complex");
         defer savepoint.rollback();
 
-
         const query_where = try self.search_query_where(allocator, args);
         defer allocator.free(query_where);
         const query_fmt = 
@@ -1051,6 +1050,33 @@ pub const Storage = struct {
         ;
         return try selectAll(&self.sql_db, allocator, RuleMatchStr, query_fmt, .{});
     }
+
+    const RuleFilterMatch = struct {
+        add_rule_id: usize,
+        match_url: []const u8,
+        result_url: []const u8,
+    };
+    pub fn rules_filter(self: *Self, allocator: mem.Allocator, filter: []const u8) ![]RuleFilterMatch {
+        const query_fmt = 
+        \\select 
+        \\add_rule_id,
+        \\(select name from add_rule_host where host_id = add_rule.match_host_id 
+        \\) || match_path as match_url,
+        \\(select name from add_rule_host where host_id = add_rule.result_host_id 
+        \\) || result_path as result_url
+        \\from add_rule 
+        \\where 
+        \\  add_rule_id in (select add_rule_id from add_rule_host where name like '%' || $filter || '%') or
+        \\  match_path like '%' || $filter || '%' or
+        \\  result_path like '%' || $filter || '%'
+        ;
+        return try selectAll(&self.sql_db, allocator, RuleFilterMatch, query_fmt, .{ .filter = filter });
+    }
+    
+    pub fn rule_remove(self: *Self, add_rule_id: usize) !void {
+        try self.sql_db.exec("DELETE FROM add_rule WHERE add_rule_id = ?", .{}, .{add_rule_id});
+    }
+
 
     pub fn has_rule(self: *Self, rule: Rule) !bool {
         const query =
