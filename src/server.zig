@@ -1254,8 +1254,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.print("<input class='input-small' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
     try w.writeAll("</div>");
     try w.print("<input type='hidden' value='{d}'>", .{tag.tag_id});
-    try w.writeAll("<div>");
-    try w.print("<a class='btn btn-secondary' href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
+    try w.print("<a class='btn btn-secondary mr-s' href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
     try w.writeAll("<button class='btn btn-primary'>Save changes</button>");
     try w.writeAll("</div>");
     try w.writeAll("</form>");

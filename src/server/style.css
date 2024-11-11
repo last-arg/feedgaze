@@ -739,3 +739,7 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
 .ml-m {
   margin-left: var(--space-m);
 }
+
+.mr-s {
+  margin-right: var(--space-s);
+}
