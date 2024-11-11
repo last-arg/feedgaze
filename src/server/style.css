@@ -318,20 +318,25 @@ input:where([type=text]) {
 }
 
 .body-header {
-  /* 
-    TODO: have to figure out what todo do on smaller screens.
-    Take advantage of horizontal space?
-  */
-  --sidebar-target-width: min-content;
+  --sidebar-target-width: 200px;
   --flow-space: 2em;
-  height: 100vh;
-  overflow-y: auto;
-  position: sticky;
-  top: 0;
   border-inline-end: 1px solid var(--surface-2);
   padding-block-start: var(--space-2xs);
   padding-block-end: var(--space-l);
   padding-inline: var(--space-2xs);
+}
+
+.body-header input[type=search] {
+  width: 100%;
+}
+
+@media screen and (min-width: 900px) {
+  .body-header {
+    height: 100vh;
+    overflow-y: auto;
+    position: sticky;
+    top: 0;
+  }
 }
 
 .sidebar nav {
