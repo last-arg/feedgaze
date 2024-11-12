@@ -281,11 +281,9 @@ input:where([type=text]) {
 .tag {
   display: flex;
   gap: 2px;
-  margin-inline: calc(-1 * var(--space-2xs));
 }
 
 .tag-checkbox {
-  display: flex;
   background: var(--label-bg, var(--gray-2));
   padding-inline-start: var(--space-2xs);
   padding-inline-end: calc((1em * 1.5 - 0.9em) / 2);
@@ -647,6 +645,11 @@ input:where([type=text]) {
   gap: var(--space-xs);
 }
 
+.tag-list {
+  columns: 160px;
+  margin-inline: calc(-1 * var(--space-2xs));
+}
+
 /* 
   Component styles 
 */
@@ -751,4 +754,10 @@ Info: https://piccalil.li/quick-tip/visually-hidden/
 
 .mr-s {
   margin-right: var(--space-s);
+}
+
+.line-count-1 {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

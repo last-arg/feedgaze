@@ -1741,9 +1741,8 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
     try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
 
+    try w.writeAll("<div class='tag-list flow'>");
     try untagged_label_render(w, opts.has_untagged);
-
-    try w.writeAll("<div class='tag-list'>");
     for (tags, 0..) |tag, i| {
         try tag_label_render(w, tag, i + 1, opts.tags_checked);
     }
@@ -1774,7 +1773,7 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     \\</span>
     ;
     try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
-    try w.print("<a href='/?untagged='>{s}</a>", .{ untagged });
+    try w.print("<a class='line-count-1' href='/?untagged=' title='untagged'>{s}</a>", .{ untagged });
     try w.writeAll("</div>");
 }
 
@@ -1817,7 +1816,7 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
 
 fn tag_link_print(w: anytype, tag: []const u8) !void {
     const tag_link_fmt = 
-    \\<a href="/feeds?tag={[tag]s}">{[tag]s}</a>
+    \\<a class='line-count-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
     ;
     
     try w.print(tag_link_fmt, .{ .tag = tag });
