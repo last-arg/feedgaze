@@ -372,6 +372,10 @@ input:where([type=text]) {
   margin-top: var(--space-xs);
 }
 
+#search_value {
+  max-width: 200px;
+}
+
 .form-submit {
   font-weight: bold;
 }

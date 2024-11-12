@@ -1731,7 +1731,7 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
     try w.writeAll("<div class='filter-wrapper'>");
     try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
     const tags = try db.tags_all(allocator);
-    try w.writeAll("<form action='/feeds'>");
+    try w.writeAll("<form action='/feeds' class='flow'>");
     // NOTE: don't want tags-only button to be the 'default' button. This is
     // used when enter is pressed in input (text) field.
     try w.writeAll(
@@ -1743,18 +1743,20 @@ fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOpt
 
     try untagged_label_render(w, opts.has_untagged);
 
+    try w.writeAll("<div class='tag-list'>");
     for (tags, 0..) |tag, i| {
         try tag_label_render(w, tag, i + 1, opts.tags_checked);
     }
+    try w.writeAll("</div>");
     try w.writeAll("</fieldset>");
     try w.writeAll("<button name='tags-only'>Filter tags only</button>");
 
     try w.print(
-    \\<p>
+    \\<div>
     \\  <label class="form-heading" for="search_value">Filter term</label>
-    \\  <input type="search" name="search" id="search_value" value="{s}">
+    \\  <div><input type="search" name="search" id="search_value" value="{s}"></div>
     \\  <button class="form-submit">Filter</button>
-    \\</p>
+    \\</div>
     , .{ opts.search });
 
     try w.writeAll("</form>");
