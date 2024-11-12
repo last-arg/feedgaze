@@ -1283,7 +1283,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try body_head_render(req, db, w, .{});
 
     const tags = try db.tags_all_with_ids(req.arena);
-    try w.writeAll("<div class='ml-m'>");
+    try w.writeAll("<main class='box'>");
     try w.writeAll("<h2>Tags</h2>");
 
     const query_kv = try req.query();
@@ -1307,7 +1307,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
-    try w.writeAll("</div>");
+    try w.writeAll("</main>");
 
     try Layout.write_foot(w);
 }
