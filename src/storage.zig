@@ -1240,7 +1240,8 @@ pub const Storage = struct {
         const query = 
             \\select max(
             \\  (SELECT max(created_timestamp) FROM item),
-            \\  (SELECT max(last_update) FROM feed_update)
+            \\  (SELECT max(last_update) FROM feed_update),
+            \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
             \\);
         ;
         return try one(&self.sql_db, i64, query, .{});
@@ -1248,10 +1249,20 @@ pub const Storage = struct {
 
     pub fn get_latest_feed_change(self: *Self, feed_id: usize) !?i64 {
         const query = 
-            \\SELECT max(created_timestamp) FROM item
-            \\WHERE feed_id = ?;
+            \\select max(
+            \\  (SELECT max(created_timestamp) FROM item WHERE feed_id = ?),
+            \\  (SELECT max(last_update) FROM feed_update),
+            \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
+            \\);
         ;
         return try one(&self.sql_db, i64, query, .{feed_id});
+    }
+
+    pub fn get_tags_change(self: *Self) !?i64 {
+        const query = 
+            \\SELECT last_update_timestamp FROM table_last_update where table_name = 'tag';
+        ;
+        return try one(&self.sql_db, i64, query, .{});
     }
 
     pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const usize) ![]types.Feed {
