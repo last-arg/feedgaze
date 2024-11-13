@@ -283,10 +283,15 @@ input:where([type=text]) {
   gap: 2px;
 }
 
-.tag-checkbox {
+.feed-tag-list {
+  --flow-space: var(--space-3xs);
+  columns: 160px;
   background: var(--label-bg, var(--gray-2));
-  padding-inline-start: var(--space-2xs);
-  padding-inline-end: calc((1em * 1.5 - 0.9em) / 2);
+  padding: var(--space-3xs) var(--space-2xs);
+}
+
+.tag-checkbox {
+  display: block;
 }
 
 .tag input[type=checkbox] {

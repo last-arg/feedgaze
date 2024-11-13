@@ -885,7 +885,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
-    try w.writeAll("<div>");
+    try w.writeAll("<div class='feed-tag-list flow'>");
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -901,6 +901,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
+            .label_class = "line-count-1",
         });
     }
     try w.writeAll("</div>");
