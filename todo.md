@@ -1,6 +1,5 @@
 # Initial
 - website:
-  - style small viewport 
   - cache problems
     - items' relative times won't update
       - root, feed, feeds

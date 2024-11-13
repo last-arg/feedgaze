@@ -83,6 +83,7 @@ pub const Storage = struct {
         _ = try db.pragma(void, .{}, "cache_size", "-32000");
 
         try setupTables(db);
+        try initData(db);
     }
 
     fn setupTables(db: *sql.Db) !void {
@@ -93,6 +94,20 @@ pub const Storage = struct {
                 return err;
             };
         }
+    }
+
+    fn initData(db: *sql.Db) !void {
+        errdefer std.log.err("Failed to fill in database data", .{});
+        const query =
+        \\INSERT OR IGNORE INTO table_last_update (table_name) 
+        \\VALUES 
+        \\  ('tag'),
+        \\  ('feed');
+        ;
+        db.exec(query, .{}, .{}) catch |err| {
+            std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+            return err;
+        };
     }
 
     pub const AddOptions = struct {
@@ -1414,6 +1429,46 @@ const tables = &[_][]const u8{
     \\  date_format TEXT DEFAULT NULL,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
+    ,
+    \\CREATE TABLE IF NOT EXISTS table_last_update(
+    \\  table_name TEXT NOT NULL,
+    \\  last_update_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    \\) STRICT;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS tag_update_trigger
+    \\   AFTER UPDATE ON tag
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'tag';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS tag_delete_trigger
+    \\   AFTER DELETE ON tag
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'tag';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS tag_insert_trigger 
+    \\   AFTER INSERT ON tag
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'tag';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_update_trigger
+    \\   AFTER UPDATE ON feed
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_delete_trigger
+    \\   AFTER DELETE ON feed
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed';
+    \\END;
     ,
 };
 
