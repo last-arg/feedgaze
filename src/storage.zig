@@ -1431,7 +1431,7 @@ const tables = &[_][]const u8{
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS table_last_update(
-    \\  table_name TEXT NOT NULL,
+    \\  table_name TEXT NOT NULL UNIQUE,
     \\  last_update_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\) STRICT;
     ,
