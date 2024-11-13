@@ -1439,7 +1439,7 @@ const tables = &[_][]const u8{
     \\   AFTER UPDATE ON tag
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
-    \\  where table_name = 'tag' AND OLD.;
+    \\  where table_name = 'tag' AND OLD.name != NEW.name;
     \\END;
     ,
     \\CREATE TRIGGER IF NOT EXISTS tag_delete_trigger
@@ -1460,7 +1460,12 @@ const tables = &[_][]const u8{
     \\   AFTER UPDATE ON feed
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
-    \\  where table_name = 'feed';
+    \\  where table_name = 'feed' AND (
+    \\    OLD.title != NEW.title OR
+    \\    OLD.feed_url != NEW.feed_url OR
+    \\    OLD.page_url != NEW.page_url OR
+    \\    OLD.icon_url != NEW.icon_url
+    \\  );
     \\END;
     ,
     \\CREATE TRIGGER IF NOT EXISTS feed_delete_trigger
