@@ -40,6 +40,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/feeds", feeds_get, .{});
     router.get("/tags", tags_get, .{});
     router.get("/tag/:id/edit", tag_edit, .{});
+    router.post("/tag/:id/edit", tag_edit_post, .{});
     router.get("/tag/:id/delete", tag_delete, .{});
     router.get("/feed/add", feed_add_get, .{});
     router.post("/feed/add", feed_add_post, .{});
@@ -1215,6 +1216,34 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     resp.header("Location", "/tags?success=");
 }
 
+fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
+    const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
+
+    const db = &global.storage;
+    resp.status = 301;
+
+    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+    const form_data = try req.formData();
+    const tag_name_form = form_data.get("tag-name") orelse {
+        try location_arr.writer().print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        resp.header("Location", location_arr.items);
+        return;
+    };
+
+    const tag_id_form_raw = form_data.get("tag-id") orelse {
+        try location_arr.writer().print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        resp.header("Location", location_arr.items);
+        return;
+    };
+    const tag_id_form = std.fmt.parseUnsigned(usize, tag_id_form_raw, 10) catch return error.InvalidIdParam;
+
+    try db.tag_update(.{ .tag_id = tag_id_form, .name = tag_name_form });
+
+    try location_arr.writer().print("/tag/{d}/edit?success=", .{tag_id});
+    resp.header("Location", location_arr.items);
+}
+
 fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
@@ -1246,6 +1275,19 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<div class='ml-m'>");
     try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
 
+    const query_kv = try req.query();
+    if (query_kv.get("success")) |_| {
+        try w.writeAll("<div>");
+        try w.writeAll("<p>Saved changes</p>");
+        try w.writeAll("</div>");
+    } else if (query_kv.get("error")) |val| {
+        if (mem.eql(u8, "invalid-form", val)) {
+            try w.writeAll("<div>");
+            try w.writeAll("<p>Invalid form</p>");
+            try w.writeAll("</div>");
+        }
+    }
+
     try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='post'>");
     try w.writeAll("<div>");
     try w.writeAll("<p>");
@@ -1253,7 +1295,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</p>");
     try w.print("<input class='input-small' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
     try w.writeAll("</div>");
-    try w.print("<input type='hidden' value='{d}'>", .{tag.tag_id});
+    try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
     try w.print("<a class='btn btn-secondary mr-s' href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
     try w.writeAll("<button class='btn btn-primary'>Save changes</button>");
     try w.writeAll("</div>");

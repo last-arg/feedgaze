@@ -703,7 +703,16 @@ pub const Storage = struct {
         const query = "SELECT tag_id, name FROM tag where tag_id = ?;";
         return try oneAlloc(&self.sql_db, allocator, TagResult, query, .{tag_id});
     }
-    
+
+    pub fn tag_update(self: *Self, data: struct{tag_id: usize, name: []const u8}) !void {
+        const query =
+            \\UPDATE tag SET
+            \\  name = $name
+            \\WHERE tag_id = $tag_id;
+        ;
+        try self.sql_db.exec(query, .{}, data);
+    }
+        
     const TagResult = struct{tag_id: usize, name: []const u8};
     pub fn tags_all_with_ids(self: *Self, alloc: Allocator) ![]TagResult {
         const query = "select * from tag order by name ASC;";

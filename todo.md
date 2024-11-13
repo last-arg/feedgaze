@@ -14,8 +14,6 @@
       - update (name)
       - add
   - tags page:
-    - edit (rename) tags
-    - remove tags
     - better styling
   - make feed items into 2 columns on wider screens?
   - minify html
