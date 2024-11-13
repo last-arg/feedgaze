@@ -1439,7 +1439,7 @@ const tables = &[_][]const u8{
     \\   AFTER UPDATE ON tag
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
-    \\  where table_name = 'tag';
+    \\  where table_name = 'tag' AND OLD.;
     \\END;
     ,
     \\CREATE TRIGGER IF NOT EXISTS tag_delete_trigger
@@ -1470,6 +1470,19 @@ const tables = &[_][]const u8{
     \\  where table_name = 'feed';
     \\END;
     ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_tag_delete_trigger
+    \\   AFTER DELETE ON feed_tag
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_tag_insert_trigger
+    \\   AFTER INSERT ON feed_tag
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed';
+    \\END;
 };
 
 pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
