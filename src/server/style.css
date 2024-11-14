@@ -291,7 +291,12 @@ input:where([type=text]) {
 }
 
 .tag-checkbox {
+  background: var(--label-bg, var(--gray-2));
   display: block;
+}
+
+.tags .tag-checkbox {
+  padding-inline: var(--space-2xs) var(--space-3xs);
 }
 
 .tag input[type=checkbox] {
@@ -311,12 +316,12 @@ input:where([type=text]) {
 }
 
 /* When new tag is added */
-.tag:has(input[type="checkbox"]:checked:not(:default)) {
+.tag-checkbox:has(input[type="checkbox"]:checked:not(:default)) {
   --label-bg: var(--green-3);
 }
 
 /* When tag is removed */
-.tag:has(input[type="checkbox"]:default:not(:checked)) {
+.tag-checkbox:has(input[type="checkbox"]:default:not(:checked)) {
   --label-bg: var(--red-3);
 }
 
