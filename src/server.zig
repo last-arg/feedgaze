@@ -727,25 +727,25 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     // TODO: item times won't update when cached. Probably use JS on the frontend
-    if (try db.get_latest_feed_change(id)) |latest| {
-        const last_modified_buf = try req.arena.alloc(u8, 29);
-        const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(last_modified_buf);
-        resp.header("Last-Modified", date_out);
-        resp.header("Cache-control", "no-cache");
+    // if (try db.get_latest_feed_change(id)) |latest| {
+    //     const last_modified_buf = try req.arena.alloc(u8, 29);
+    //     const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(last_modified_buf);
+    //     resp.header("Last-Modified", date_out);
+    //     resp.header("Cache-control", "no-cache");
 
-        if (req.method == .GET or req.method == .HEAD) brk: {
-            if (req.header("if-modified-since")) |if_modified_since| {
-                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
-                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
-                    break :brk;
-                };
-                if (date == latest) {
-                    resp.status = 304;
-                    return;
-                }
-            } 
-        }
-    }
+    //     if (req.method == .GET or req.method == .HEAD) brk: {
+    //         if (req.header("if-modified-since")) |if_modified_since| {
+    //             const date = feed_types.RssDateTime.parse(if_modified_since) catch {
+    //                 std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
+    //                 break :brk;
+    //             };
+    //             if (date == latest) {
+    //                 resp.status = 304;
+    //                 return;
+    //             }
+    //         } 
+    //     }
+    // }
      
     const tags_all = db.tags_all(req.arena) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
@@ -883,6 +883,61 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .icon_url = icon_url,
     });
 
+    if (mem.eql(u8, page_url, feed.feed_url)) {
+        if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
+            const selector_template = 
+                \\<div>
+                \\<p><label for="html-{[name]s}-selector">{[label]s}</label></p>
+                \\<input type="text" value="{[value]s}" name="html-{[name]s}-selector" id="html-{[name]s}-selector">
+                \\</div>
+            ;
+
+            try w.writeAll("<fieldset>");
+            try w.writeAll("<legend>Html 'feed' options</legend>");
+            try w.print(
+                selector_template,
+                .{ 
+                    .label = "Feed item selector",
+                    .name = "item",
+                    .value = html_opts.selector_container,
+                }
+            );
+            try w.print(
+                selector_template,
+                .{ 
+                    .label = "Feed item link selector",
+                    .name = "link",
+                    .value = html_opts.selector_link orelse "",
+                }
+            );
+            try w.print(
+                selector_template,
+                .{ 
+                    .label = "Feed item title selector",
+                    .name = "title",
+                    .value = html_opts.selector_heading orelse "",
+                }
+            );
+            try w.print(
+                selector_template,
+                .{ 
+                    .label = "Feed item date selector",
+                    .name = "date",
+                    .value = html_opts.selector_date orelse "",
+                }
+            );
+
+            try w.print(
+                \\<div>
+                \\<p><label for="html-date-format">Date format</label></p>
+                \\<input type="text" value="{s}" name="html-date-format" id="html-date-format">
+                \\</div>
+            , .{html_opts.date_format orelse ""});
+
+            try w.writeAll("</fieldset>");
+        }
+    }
+    
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
     try w.writeAll("<div class='feed-tag-list flow'>");
