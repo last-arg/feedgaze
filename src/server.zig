@@ -705,13 +705,45 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     };
     const db = &global.storage;
     db.update_feed_fields(req.arena, fields) catch {
-        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=", .{req.url.path});
+        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=feed", .{req.url.path});
         resp.header("Location", url_redirect);
         return;
     };
 
+    if (try db.html_selector_has(feed_id)) {
+        const selector_item = get_field(form_data, "html-item-selector") catch return error.MissingFormFieldHtmlItemSelector;
+        if (selector_item == null) {
+            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=item-selector", .{req.url.path});
+            resp.header("Location", url_redirect);
+            return;
+        }
+
+        const update_fields: parse.HtmlOptions = .{
+            .selector_container = selector_item.?,
+            .selector_link = get_field(form_data, "html-link-selector") catch return error.MissingFormFieldHtmlLinkSelector,
+            .selector_heading = get_field(form_data, "html-title-selector") catch return error.MissingFormFieldHtmlTitleSelector,
+            .selector_date = get_field(form_data, "html-date-selector") catch return error.MissingFormFieldHtmlDateSelector,
+            .date_format = get_field(form_data, "html-date-format") catch return error.MissingFormFieldHtmlDateFormat,
+        };
+
+        db.html_selector_update(feed_id, update_fields) catch {
+            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=html", .{req.url.path});
+            resp.header("Location", url_redirect);
+            return;
+        };
+    }
+
     const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?success=", .{req.url.path});
     resp.header("Location", url_redirect);
+}
+
+fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]const u8 {
+    const value = form_data.get(key) orelse return error.MissingField;
+    const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
+    if (trimmed.len > 0) {
+        return trimmed;
+    }
+    return null;
 }
 
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -836,6 +868,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     if (query_kv.get("error")) |error_value| {
         if (mem.eql(u8, "delete", error_value)) {
             try w.writeAll("<p>Failed to delete feed</p>");
+        } else if (mem.eql(u8, "feed", error_value)) {
+            try w.writeAll("<p>Failed to update feed</p>");
+        } else if (mem.eql(u8, "html", error_value)) {
+            try w.writeAll("<p>Failed to update feed html fields</p>");
+        } else if (mem.eql(u8, "item-selector", error_value)) {
+            try w.writeAll("<p>Fill in 'Feed item selector' field</p>");
         } else {
             try w.writeAll("<p>Failed to save feed changes</p>");
             // TODO: list errors?

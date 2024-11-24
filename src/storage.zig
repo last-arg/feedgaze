@@ -1345,6 +1345,31 @@ pub const Storage = struct {
         });
     }
 
+    pub fn html_selector_update(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
+        const query = 
+        \\update html_selector set 
+        \\ container = ?,
+        \\ link = ?,
+        \\ heading = ?,
+        \\ date = ?,
+        \\ date_format = ?
+        \\where feed_id = ?;
+        ;
+        try self.sql_db.exec(query, .{}, .{
+            options.selector_container,
+            options.selector_link,
+            options.selector_heading,
+            options.selector_date,
+            options.date_format,
+            feed_id
+        });
+    }
+    
+    pub fn html_selector_has(self: *Self, feed_id: usize) !bool {
+        const query = "select 1 from html_selector where feed_id = ?";
+        return (try one(&self.sql_db, bool, query, .{feed_id})) orelse false;
+    }
+
     pub fn html_selector_get(self: *Self, allocator: Allocator, feed_id: usize) !?parse.HtmlOptions {
         const query = 
         \\select 

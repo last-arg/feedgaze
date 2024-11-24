@@ -1,8 +1,5 @@
 # Initial
 - website:
-  - feed page: 
-    - display html selectors info
-    - can update html selector info
   - cache problems
     - items' relative times won't update
       - root, feed, feeds
