@@ -95,6 +95,10 @@ textarea:not([rows]) {
   min-height: 10em;
 }
 
+legend {
+  padding: 0;
+}
+
 /* Anything that has been anchored to should have extra scroll margin */
 :target {
   scroll-margin-block: 5ex;
