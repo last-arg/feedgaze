@@ -301,12 +301,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 \\  show      Print feeds' items
                 \\  server    Start server
                 \\  batch     Do path actions
-                \\  help      Print this help and exit
                 \\
                 \\General options:
                 \\
                 \\  -h, --help        Print command-specific usage
-                \\  -d, --database    Set database to use 
+                \\  -d, --database    Database location 
                 \\
                 \\
             ;
@@ -316,31 +315,34 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .remove =>
                     \\Usage: feedgaze remove <search_term> [options]
                     \\
-                    \\  Remove feed. Requires search term. Search term will match page or feed url. 
+                    \\  Remove feed. Search term will match page or feed url. 
                     \\
                     \\Options:
-                    \\  -h, --help    Print this help and exit
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     \\
                     ,
                     .show =>
                     \\Usage: feedgaze show [search_term] [options]
                     \\
-                    \\  Show feed(s). Optional search term. Search term will match page or feed url. 
-                    \\  Orders feeds by latest updated.
+                    \\  Show feed(s). Optional search term. Search term will match page or feed url. Most recently updated feeds will be shown first.
                     \\
                     \\Options:
+                    \\  -l, --limit     Limit how many feeds to show
+                    \\  --item-limit    Limit how many feed items to show
+                    \\  -d, --database  Database location 
                     \\  -h, --help      Print this help and exit
-                    \\  -l, --limit     Set limit how many feeds to show
-                    \\  --item-limit    Set limit how many feed items to show
+                    \\
                     ,
                     .update =>
                     \\Usage: feedgaze update [search_term] [options]
                     \\
-                    \\  Update feed(s). Optional search term. Search term will match page or feed url. 
+                    \\  Update feed(s). Search term will match page or feed url. 
                     \\
                     \\Options:
-                    \\  -h, --help    Print this help and exit
-                    \\  --force       Will force update all matched feeds
+                    \\  --force         Will force update all matched feeds
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .run =>
                     \\Usage: feedgaze run [options]
@@ -348,7 +350,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Auto update feeds in the foreground. 
                     \\
                     \\Options:
-                    \\  -h, --help    Print this help and exit
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .server => 
                     \\Usage: feedgaze server [options]
@@ -356,8 +359,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Launches server
                     \\
                     \\Options:
-                    \\  -p, --port    Server port (default: 1222)
-                    \\  -h, --help    Print this help and exit
+                    \\  -p, --port      Server port (default: 1222)
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .tag => 
                     \\Usage: feedgaze tag [options]
@@ -365,11 +369,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Add/Remove tags. Or add/remove tags from feeds.
                     \\
                     \\Options:
-                    \\  --feed        Add/Remove tags from feed base on this flags input
-                    \\  --add         Add tags
-                    \\  --remove      Remove tags
-                    \\  --list        List tags
-                    \\  -h, --help    Print this help and exit
+                    \\  --feed          Add/Remove tags from feed base on this flags input
+                    \\  --add           Add tags
+                    \\  --remove        Remove tags
+                    \\  --list          List tags
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .add => 
                     \\Usage: feedgaze add [options] <input>
@@ -377,7 +382,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Add feed(s)
                     \\
                     \\Options:
-                    \\  -h, --help    Print this help and exit
+                    \\  --tags          Tags to add. Comma separated
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .rule => 
                     \\Usage: feedgaze rule [options] [match-url] [result-url]
@@ -386,9 +393,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\  Example: 'domain.com/*/*' -> 'domain.com/*/*.atom'
                     \\
                     \\Options:
-                    \\  --list        List rules
-                    \\  --add         Add new rule
-                    \\  -h, --help    Print this help and exit
+                    \\  --list          List rules
+                    \\  --add           Add new rule
+                    \\  -d, --database  Database location 
+                    \\  -h, --help      Print this help and exit
                     ,
                     .batch => 
                     \\Usage: feedgaze batch <options> [options]
@@ -398,6 +406,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     \\Options:
                     \\  --check-all-icons        Check if all icons are valid
                     \\  --check-missing-icons    Fetch missing icons
+                    \\  -d, --database           Database location 
                     \\  -h, --help               Print this help and exit
                     ,
                 };
