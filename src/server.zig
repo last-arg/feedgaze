@@ -758,6 +758,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         return;
     };
 
+    resp.content_type = .HTML;
+
     // TODO: item times won't update when cached. Probably use JS on the frontend
     if (try db.get_latest_feed_change(id)) |latest| {
         const last_modified_buf = try req.arena.alloc(u8, 29);
@@ -930,6 +932,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 \\</div>
             ;
 
+            // TODO: need to escape html_opts.* values. Those are user input so
+            // can be anything.
             try w.writeAll("<fieldset>");
             try w.writeAll("<legend>Html 'feed' options</legend>");
             try w.print(
@@ -937,7 +941,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 .{ 
                     .label = "Feed item selector",
                     .name = "item",
-                    .value = html_opts.selector_container,
+                    .value = try parse.html_escape(req.arena, html_opts.selector_container),
                 }
             );
             try w.print(
@@ -945,7 +949,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 .{ 
                     .label = "Feed item link selector",
                     .name = "link",
-                    .value = html_opts.selector_link orelse "",
+                    .value = try parse.html_escape(req.arena, html_opts.selector_link orelse ""),
                 }
             );
             try w.print(
@@ -953,7 +957,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 .{ 
                     .label = "Feed item title selector",
                     .name = "title",
-                    .value = html_opts.selector_heading orelse "",
+                    .value = try parse.html_escape(req.arena, html_opts.selector_heading orelse ""),
                 }
             );
             try w.print(
@@ -961,7 +965,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 .{ 
                     .label = "Feed item date selector",
                     .name = "date",
-                    .value = html_opts.selector_date orelse "",
+                    .value = try parse.html_escape(req.arena, html_opts.selector_date orelse ""),
                 }
             );
 
@@ -970,7 +974,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 \\<p><label for="html-date-format">Date format</label></p>
                 \\<input type="text" value="{s}" name="html-date-format" id="html-date-format">
                 \\</div>
-            , .{html_opts.date_format orelse ""});
+            , .{try parse.html_escape(req.arena, html_opts.date_format orelse "")});
 
             try w.writeAll("</fieldset>");
         }
