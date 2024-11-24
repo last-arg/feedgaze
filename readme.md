@@ -27,6 +27,13 @@ General options:
 ```
 
 
+## Install
+This will install feedgaze into $HOME/.local/bin/feedgaze
+```
+zig build install --prefix ~/.local -Doptimize=ReleaseSafe
+```
+
+
 ## HTML to feed
 ### Fields
 - Feed item's selector (required)
