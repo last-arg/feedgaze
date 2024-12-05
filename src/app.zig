@@ -931,7 +931,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 }) catch |err| {
-                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_min * 20);
+                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 8);
                     std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };
