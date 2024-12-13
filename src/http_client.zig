@@ -108,7 +108,15 @@ pub fn check_icon_path(self: *@This(), url_full: []const u8) !bool {
 
     if (try resp.getHeader("content-length")) |cl| {
         const val = mem.trim(u8, cl.get(), &std.ascii.whitespace);
-        if (val.len == 1 and val[0] == '0') {
+        const content_len = std.fmt.parseUnsigned(u32, val, 10) catch blk: {
+            std.log.warn("Failed to parse number from HTTP header 'Content-Length'. Value: '{s}'", .{val});
+            break :blk 0;
+        };
+        const max_size = 100 * 1024;
+        if (content_len == 0) {
+            return false;
+        } else if (content_len >= max_size) {
+            std.log.warn("Favicon '{s}' exceeds 100kb size.", .{url_full});
             return false;
         }
     }
