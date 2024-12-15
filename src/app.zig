@@ -105,7 +105,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 const countdown_ts = std.time.timestamp() + countdown;
                                 const Datetime = @import("zig-datetime").datetime.Datetime;
                                 var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
-                                date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
+                                date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
 
                                 std.log.info("Next update in {d} second(s) [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
                                     countdown,

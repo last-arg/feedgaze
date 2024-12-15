@@ -1205,9 +1205,9 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         if (countdown > 0) {
             const countdown_ts = std.time.timestamp() + countdown;
             var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
-            date = date.shiftTimezone(&@import("zig-datetime").timezones.Etc.GMTm3);
+            date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
 
-            try w.print("<time-relative>(<time datetime={s}>{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4})</time></time-relative>", .{
+            try w.print("<time-relative>(<time datetime={s}>{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}</time>)</time-relative>", .{
                 timestampToString(&date_buf, countdown_ts),
                 date.time.hour,
                 date.time.minute,
