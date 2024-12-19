@@ -1212,6 +1212,16 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{});
     }
 
+    pub fn countdown_utc(self: *Self) !?i64 {
+        const query = 
+        \\select min(
+        \\  (select ifnull(min(utc_sec), 9223372036854775807) from rate_limit),
+        \\  (select min(last_update + item_interval) from feed_update where feed_id not in (select feed_id from rate_limit))
+        \\)
+        ;
+        return try one(&self.sql_db, i64, query, .{});
+    }
+    
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
         const query = 
         \\select 
