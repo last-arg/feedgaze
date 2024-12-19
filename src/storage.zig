@@ -1249,7 +1249,7 @@ pub const Storage = struct {
     pub fn get_latest_change(self: *Self) !?i64 {
         const query = 
             \\select max(
-            \\  (SELECT max(utc_sec) FROM rate_limit),
+            \\  (SELECT ifnull(max(utc_sec), 0) FROM rate_limit),
             \\  (SELECT max(created_timestamp) FROM item),
             \\  (SELECT max(last_update) FROM feed_update),
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
