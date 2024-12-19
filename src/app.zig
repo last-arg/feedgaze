@@ -909,19 +909,19 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
             }
 
+            // TODO: remove some of error catches? errdefer could deal most of them?
             for (feed_updates) |f_update| {
                 errdefer |err| {
                     std.log.err("Update loop error: {}", .{err});
-                    self.storage.rate_limit_remove(f_update.feed_id) catch {
-                        @panic("Failed to remove feed from rate limit");
-                    };
-                    self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12) catch {
+                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+                    self.storage.rate_limit_add(f_update.feed_id, retry_ts) catch {
                         @panic("Failed to update (increase) feed's next update");
                     };
                 }
                 _ = item_arena.reset(.retain_capacity);
                 var req = http_client.init(item_arena.allocator()) catch |err| {
-                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_min * 20);
+                    const retry_ts = std.time.timestamp() + (std.time.s_per_min * 20);
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
                     std.log.err("Failed to start http request to '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 }; 
@@ -931,7 +931,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     .etag = f_update.etag,
                     .last_modified_utc = f_update.last_modified_utc,
                 }) catch |err| {
-                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 8);
+                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 8);
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
                     std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };
@@ -984,15 +985,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
                     continue;
                 } else if (resp.status_code >= 400 and resp.status_code < 600) {
-                    try self.storage.rate_limit_remove(f_update.feed_id);
-                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12);
+                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
                     std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
                     continue;
                 }
 
                 self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| {
-                    try self.storage.rate_limit_remove(f_update.feed_id);
-                    try self.storage.add_to_last_update(f_update.feed_id, std.time.s_per_hour * 12);
+                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
                     std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
                     continue;
                 };

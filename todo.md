@@ -21,6 +21,7 @@
 
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
+  - also check favicon if found in feed file (rss/atom)
 - twitch integration
 - save failed favicon requests
   - don't include them in missing request or all
