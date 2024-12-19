@@ -1239,6 +1239,7 @@ pub const Storage = struct {
     pub fn get_latest_change(self: *Self) !?i64 {
         const query = 
             \\select max(
+            \\  (SELECT max(utc_sec) FROM rate_limit),
             \\  (SELECT max(created_timestamp) FROM item),
             \\  (SELECT max(last_update) FROM feed_update),
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
@@ -1452,7 +1453,7 @@ const tables = &[_][]const u8{
     ,
     \\CREATE TABLE IF NOT EXISTS rate_limit(
     \\  feed_id INTEGER UNIQUE NOT NULL,
-    \\  utc_sec INTEGER NOT NULL DEFAULT 3600,
+    \\  utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
