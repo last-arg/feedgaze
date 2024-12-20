@@ -438,7 +438,6 @@ fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyVal
     return "";
 }
 
-
 fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
@@ -555,6 +554,9 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
         try db.tags_feed_add(feed_id, tags_ids);
     }
+
+    // TODO: check, fetch favicon
+    // TODO: push fetching favicon to another thread
 
     try location_arr.writer().print("/feed/add?success={d}", .{feed_id});
     resp.header("Location", location_arr.items);
@@ -1509,30 +1511,32 @@ const Layout = struct {
 
 };
 
+fn resp_cache(req: *httpz.Request, resp: *httpz.Response, etag: []const u8) bool {
+    resp.header("Etag", etag);
+    resp.header("Cache-control", "no-cache");
+
+    if (req.method == .GET or req.method == .HEAD) {
+        if (req.header("if-none-match")) |if_match| {
+            return mem.eql(u8, if_match, etag);
+        }
+    }
+
+    return false;
+}
+
 fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    var last_modified_buf: [29]u8 = undefined;
+    var etag_buf: [64]u8 = undefined;
+
     if (try db.get_latest_change()) |latest_created| {
-        const date_out = try Datetime.fromSeconds(@floatFromInt(latest_created)).formatHttpBuf(&last_modified_buf);
-        resp.header("Last-Modified", date_out);
-        resp.header("Cache-control", "no-cache");
-
-        if (req.method == .GET or req.method == .HEAD) brk: {
-            if (req.header("if-modified-since")) |if_modified_since| {
-                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
-                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
-                    break :brk;
-                };
-                if (date == latest_created) {
-                    resp.status = 304;
-                    return;
-                }
-            } 
+        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
         }
-
     }
-
+    
     resp.content_type = .HTML;
 
     var compressor = try compressor_setup(req, resp);
