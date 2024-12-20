@@ -762,27 +762,17 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
+    var etag_buf: [64]u8 = undefined;
+
     // TODO: item times won't update when cached. Probably use JS on the frontend
     if (try db.get_latest_feed_change(id)) |latest| {
-        const last_modified_buf = try req.arena.alloc(u8, 29);
-        const date_out = try Datetime.fromSeconds(@floatFromInt(latest)).formatHttpBuf(last_modified_buf);
-        resp.header("Last-Modified", date_out);
-        resp.header("Cache-control", "no-cache");
-
-        if (req.method == .GET or req.method == .HEAD) brk: {
-            if (req.header("if-modified-since")) |if_modified_since| {
-                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
-                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
-                    break :brk;
-                };
-                if (date == latest) {
-                    resp.status = 304;
-                    return;
-                }
-            } 
+        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest});
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
         }
     }
-     
+
     const tags_all = db.tags_all(req.arena) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
         break :blk &.{};
@@ -1398,25 +1388,14 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    var last_modified_buf: [29]u8 = undefined;
+    var etag_buf: [64]u8 = undefined;
+
     if (try db.get_tags_change()) |latest_created| {
-        const date_out = try Datetime.fromSeconds(@floatFromInt(latest_created)).formatHttpBuf(&last_modified_buf);
-        resp.header("Last-Modified", date_out);
-        resp.header("Cache-control", "no-cache");
-
-        if (req.method == .GET or req.method == .HEAD) brk: {
-            if (req.header("if-modified-since")) |if_modified_since| {
-                const date = feed_types.RssDateTime.parse(if_modified_since) catch {
-                    std.log.warn("Failed to parse HTTP header 'if-modified-since' value '{s}'", .{if_modified_since});
-                    break :brk;
-                };
-                if (date == latest_created) {
-                    resp.status = 304;
-                    return;
-                }
-            } 
+        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
         }
-
     }
 
     resp.content_type = .HTML;
