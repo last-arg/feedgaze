@@ -1154,18 +1154,10 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.countdown_utc() catch 0 orelse 0;
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}-{x}\"", .{latest_created, countdown});
-        resp.header("Etag", etag_out);
-        resp.header("Cache-control", "no-cache");
-
-        if (req.method == .GET or req.method == .HEAD) {
-            if (req.header("if-none-match")) |if_match| {
-                if (mem.eql(u8, if_match, etag_out)) {
-                    resp.status = 304;
-                    return;
-                }
-            } 
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
         }
-
     }
     
     resp.content_type = .HTML;
