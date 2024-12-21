@@ -748,6 +748,30 @@ fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]co
     return null;
 }
 
+// Example output: "15:05 21.12.2024"
+const date_format_readable = "{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}";
+const date_format_readable_len = std.fmt.count(date_format_readable, .{
+    13, 34, 22, 11, 2024
+});
+
+fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
+    var result: [date_format_readable_len]u8 = undefined;
+    var date_for_human = Datetime.fromSeconds(@floatFromInt(utc_sec));
+    date_for_human = date_for_human.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
+    _ = std.fmt.bufPrint(
+        &result, date_format_readable,
+        .{
+            date_for_human.time.hour,
+            date_for_human.time.minute,
+            date_for_human.date.day,
+            date_for_human.date.month,
+            date_for_human.date.year,
+        }
+    ) catch unreachable;
+
+    return result;
+}
+
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
@@ -764,7 +788,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     var etag_buf: [64]u8 = undefined;
 
-    // TODO: item times won't update when cached. Probably use JS on the frontend
     if (try db.get_latest_feed_change(id)) |latest| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest});
         if (resp_cache(req, resp, etag_out)) {
@@ -835,11 +858,21 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var relative_buf: [32]u8 = undefined;
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
+    // TODO: item times won't update when cached. Probably use JS on the frontend
+    // 1) Just dates
+    // 2) Use JS to use relative times
     if (try db.feed_last_update(feed.feed_id)) |last_update| {
-        const seconds = now_sec - last_update;
+        const date_for_machine = timestampToString(&date_buf, last_update);
         try w.print(
-            \\<p>Last update was <time datetime="{s}">{s}</time> ago</p>
-        , .{ timestampToString(&date_buf, last_update), try relative_time_from_seconds(&relative_buf, seconds)});
+            \\<p>Last update was
+            \\<relative-time>
+            \\<time datetime={s}>{s}</time>
+            \\</relative-time>
+            \\</p>
+        , .{
+            date_for_machine,
+            date_readable(last_update),
+        });
     }
 
     if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
@@ -1080,6 +1113,9 @@ fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
         src = try get_file(req.arena, "server/main.js");
+        resp.content_type = .JS;
+    } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
+        src = try get_file(req.arena, "server/relative-time.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
         src = try get_file(req.arena, "server/style.css");
