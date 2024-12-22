@@ -3,7 +3,8 @@
   - cache problems
     - items' relative times won't update
       - root, feed, feeds
-  - add last-modified header where possible
+  - pages caching
+    - tag update/add/remove should break all pages cache because sidebar
     - tag page
       - remove
       - update (name)
@@ -14,6 +15,9 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
+  - cache page header? Save it into variable
+  - root (latest) page:
+    - make route to check for feed updates
 
 - cli: 
   - try https://github.com/n0s4/flags

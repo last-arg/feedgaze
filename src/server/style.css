@@ -576,11 +576,25 @@ input:where([type=text]) {
   margin-inline-start: var(--space-m);
 }
 
-.root-heading time-relative,
-.root-heading span {
+.root-heading relative-time,
+.heading-info {
   font-style: italic;
   color: var(--grey-10);
   font-size: var(--step--1);
+}
+
+.heading-info p {
+  margin: 0;
+}
+
+.heading-info a {
+  font-style: normal;
+  color: var(--text-1);
+  text-decoration: var(--grey-9) dotted underline;
+}
+
+.heading-info a:hover {
+  text-decoration: var(--grey-10) underline;
 }
 
 .feed-item {

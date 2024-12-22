@@ -14,7 +14,7 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    const storage = try Storage.init("tmp/feeds.db");
+    const storage = try Storage.init(null);
     try start_server(storage, .{.port = 5882 });
 }
 
@@ -855,12 +855,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     , .{ feed_url_encoded_attr, feed_url_encoded });
 
     var date_buf: [date_len_max]u8 = undefined;
-    var relative_buf: [32]u8 = undefined;
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
-    // TODO: item times won't update when cached. Probably use JS on the frontend
-    // 1) Just dates
-    // 2) Use JS to use relative times
     if (try db.feed_last_update(feed.feed_id)) |last_update| {
         const date_for_machine = timestampToString(&date_buf, last_update);
         try w.print(
@@ -877,9 +873,17 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
         const ts = now_sec + utc_sec;
+        const date_for_machine = timestampToString(&date_buf, ts);
         try w.print(
-            \\<p>Next update in <time datetime="{s}">{s}</time></p>
-        , .{ timestampToString(&date_buf, ts), try relative_time_from_seconds(&relative_buf, utc_sec)});
+            \\<p>Last update was
+            \\<relative-time>
+            \\<time datetime={s}>{s}</time>
+            \\</relative-time>
+            \\</p>
+        , .{
+            date_for_machine,
+            date_readable(ts),
+        });
     } else {
         try w.writeAll(
             \\<p>Next update unknown</p>
@@ -1222,19 +1226,25 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     if (try db.next_update_countdown()) |countdown| {
         if (countdown > 0) {
             const countdown_ts = std.time.timestamp() + countdown;
-            var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
-            date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
-
-            try w.print("<time-relative>(<time datetime={s}>{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}</time>)</time-relative>", .{
+            const date_readable_str = date_readable(countdown_ts);
+            try w.print("Last update was <relative-time><time datetime={s}>{s}</time></relative-time> ({s})", .{
                 timestampToString(&date_buf, countdown_ts),
-                date.time.hour,
-                date.time.minute,
-                date.date.day,
-                date.date.month,
-                date.date.year,
+                date_readable_str,
+                date_readable_str,
             });
         } else if (countdown <= 0) {
-            try w.writeAll("<span>Update now</span>");
+            const countdown_ts = std.time.timestamp() + countdown;
+            const date_readable_str = date_readable(countdown_ts);
+            // TODO: create route for checking for feed updates
+            try w.print(
+                \\<div class="heading-info">
+                \\<p>Last update was <relative-time><time datetime="{s}">{s}</time><relative-time>.</p>
+                \\<p><a href="#">Check for updates</a>. Might take some time.</p>
+                \\</div>
+            , .{
+                timestampToString(&date_buf, countdown_ts),
+                date_readable_str,
+            });
         }
     }
     try w.writeAll("</div>");
@@ -1261,7 +1271,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
         try w.writeAll("</ul>");
     } else {
-        try w.writeAll("<p class='ml-m'>No feeds have been added in the previous 3 days</p>");
+        try w.writeAll("<p class='ml-m'>No feed items have been added in the previous 3 days</p>");
     }
     try w.writeAll("</main>");
 
@@ -2041,7 +2051,8 @@ fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
 
 const std = @import("std");
 const httpz = @import("httpz");
-const Storage = @import("storage.zig").Storage;
+const s = @import("storage.zig");
+const Storage = s.Storage;
 const print = std.debug.print;
 const mem = std.mem;
 const types = @import("./feed_types.zig");
