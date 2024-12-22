@@ -14,7 +14,8 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    const storage = try Storage.init(null);
+    // const storage = try Storage.init(null);
+    const storage = try Storage.init("./tmp/feeds.db");
     try start_server(storage, .{.port = 5882 });
 }
 
@@ -1223,17 +1224,16 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.writeAll("<div class='root-heading'>");
     try w.writeAll("<h2>Latest (added)</h2>");
 
-    if (try db.next_update_countdown()) |countdown| {
-        if (countdown > 0) {
-            const countdown_ts = std.time.timestamp() + countdown;
+    if (try db.next_update_timestamp()) |countdown_ts| {
+        const now_ts = std.time.timestamp();
+        if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
             try w.print("Last update was <relative-time><time datetime={s}>{s}</time></relative-time> ({s})", .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
                 date_readable_str,
             });
-        } else if (countdown <= 0) {
-            const countdown_ts = std.time.timestamp() + countdown;
+        } else if (countdown_ts <= now_ts) {
             const date_readable_str = date_readable(countdown_ts);
             // TODO: create route for checking for feed updates
             try w.print(
@@ -1698,6 +1698,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             try w.writeAll("</footer>");
         }
     } else {
+        // TODO: style
         try w.writeAll(
             \\<p>Nothing to show</p>
         );

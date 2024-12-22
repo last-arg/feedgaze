@@ -100,9 +100,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const loop_limit = 5;
                     var loop_count: u16 = 0;
                     while (loop_count < loop_limit) {
-                        if (try self.storage.next_update_countdown()) |countdown| {
-                            if (countdown > 0) {
-                                const countdown_ts = std.time.timestamp() + countdown;
+                        if (try self.storage.next_update_timestamp()) |countdown| {
+                            const now_ts = std.time.timestamp();
+                            if (countdown > now_ts) {
+                                const countdown_ts = countdown;
                                 const Datetime = @import("zig-datetime").datetime.Datetime;
                                 var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
                                 date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);

@@ -1200,14 +1200,12 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{});
     }
 
-    // Negative numbers means can be updated right now
-    // Positive number is countdown till update
-    pub fn next_update_countdown(self: *Self) !?i64 {
+    pub fn next_update_timestamp(self: *Self) !?i64 {
         const query = 
         \\select min(
         \\  (select ifnull(min(utc_sec), 9223372036854775807) from rate_limit),
         \\  (select min(last_update + item_interval) from feed_update where feed_id not in (select feed_id from rate_limit))
-        \\) - strftime('%s', 'now')
+        \\)
         ;
         return try one(&self.sql_db, i64, query, .{});
     }
