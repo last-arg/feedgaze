@@ -14,8 +14,8 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    // const storage = try Storage.init(null);
-    const storage = try Storage.init("./tmp/feeds.db");
+    const storage = try Storage.init(null);
+    // const storage = try Storage.init("./tmp/feeds.db");
     try start_server(storage, .{.port = 5882 });
 }
 
@@ -1183,7 +1183,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     var etag_buf: [64]u8 = undefined;
 
     if (try db.get_latest_change()) |latest_created| {
-        const countdown = db.countdown_utc() catch 0 orelse 0;
+        const countdown = db.next_update_timestamp() catch 0 orelse 0;
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}-{x}\"", .{latest_created, countdown});
         if (resp_cache(req, resp, etag_out)) {
             resp.status = 304;
@@ -1226,23 +1226,28 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     if (try db.next_update_timestamp()) |countdown_ts| {
         const now_ts = std.time.timestamp();
-        if (countdown_ts > now_ts) {
+        if (countdown_ts <= now_ts) {
+            try w.writeAll("<div class=\"heading-info\">");
+            if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
+                const date_readable_str = date_readable(recent_timestamp);
+                try w.print(
+                    \\<p>Last update was <relative-time><time datetime="{s}">{s}</time><relative-time>.</p>
+                , .{
+                    timestampToString(&date_buf, recent_timestamp),
+                    date_readable_str,
+                });
+            };
+
+            // TODO: create route for checking for feed updates
+            try w.writeAll(
+                \\<p><a href="#">Check for updates</a>. Might take some time.</p>
+                \\</div>
+            );
+        } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
             try w.print("Last update was <relative-time><time datetime={s}>{s}</time></relative-time> ({s})", .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
-                date_readable_str,
-            });
-        } else if (countdown_ts <= now_ts) {
-            const date_readable_str = date_readable(countdown_ts);
-            // TODO: create route for checking for feed updates
-            try w.print(
-                \\<div class="heading-info">
-                \\<p>Last update was <relative-time><time datetime="{s}">{s}</time><relative-time>.</p>
-                \\<p><a href="#">Check for updates</a>. Might take some time.</p>
-                \\</div>
-            , .{
-                timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
             });
         }
