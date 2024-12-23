@@ -723,7 +723,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 }
             } else {
-                feed_options.feed_url = try fetch.req.get_url_slice();
+                add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
             // Add icon
