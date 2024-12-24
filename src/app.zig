@@ -661,7 +661,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 return error.FeedExists;
             }
 
-            var app: App = .{ .storage = self.storage, .allocator = self.allocator };
+            var app: App = .{ .storage = self.storage };
 
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
@@ -910,96 +910,18 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
             }
 
-            // TODO: remove some of error catches? errdefer could deal most of them?
+            var app: App = .{ .storage = self.storage };
+
             for (feed_updates) |f_update| {
-                errdefer |err| {
-                    std.log.err("Update loop error: {}", .{err});
-                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
-                    self.storage.rate_limit_add(f_update.feed_id, retry_ts) catch {
-                        @panic("Failed to update (increase) feed's next update");
-                    };
-                }
                 _ = item_arena.reset(.retain_capacity);
-                var req = http_client.init(item_arena.allocator()) catch |err| {
-                    const retry_ts = std.time.timestamp() + (std.time.s_per_min * 20);
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-                    std.log.err("Failed to start http request to '{s}'. Error: {}", .{f_update.feed_url, err});
-                    continue;
-                }; 
-                defer req.deinit();
-                
-                const resp = req.fetch(f_update.feed_url, .{
-                    .etag = f_update.etag,
-                    .last_modified_utc = f_update.last_modified_utc,
-                }) catch |err| {
-                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 8);
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-                    std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
-                    continue;
-                };
-                defer resp.deinit();
-
-                if (resp.status_code == 304) {
-                    // Resource hasn't been modified
-                    try self.storage.updateLastUpdate(f_update.feed_id);
-                    try self.storage.rate_limit_remove(f_update.feed_id);
-                    progress_node.completeOne();
-                    count_updated += 1;
-                    continue;
-                } else if (resp.status_code == 503) {
-                    const retry_ts = std.time.timestamp() + std.time.s_per_hour;
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-                    continue;
-                } else if (resp.status_code == 429) {
-                    std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
-                    const now_utc_sec = std.time.timestamp();
-                    const retry_reset = blk: {
-                        if (try resp.getHeader("x-ratelimit-remaining")) |remaining| {
-                            const raw = remaining.get();
-                            std.debug.assert(raw.len > 0);
-                            const value = try std.fmt.parseFloat(f32, raw);
-                            if (value == 0.0) {
-                                if (try resp.getHeader("x-ratelimit-reset")) |header| {
-                                    if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
-                                        std.log.debug("x-ratelimit-reset", .{});
-                                        break :blk now_utc_sec + nr + 1;
-                                    } else |_| {}
-                                }
-                            }
-                        }
-
-                        if (try resp.getHeader("retry-after") orelse 
-                            try resp.getHeader("x-ratelimit-reset")) |header| {
-                                const raw = header.get();
-                                std.log.debug("header rate-limit: {s}", .{raw});
-                                if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
-                                    break :blk now_utc_sec + nr + 1;
-                                } else |_| {}
-
-                                if (feed_types.RssDateTime.parse(raw)) |date_utc| {
-                                    break :blk date_utc + 1;
-                                } else |_| {}
-                        }
-                        break :blk now_utc_sec + std.time.s_per_hour;
-                    };
-                    print("retry_reset: {d}\n", .{retry_reset});
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
-                    continue;
-                } else if (resp.status_code >= 400 and resp.status_code < 600) {
-                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-                    std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
-                    continue;
+                const r = try app.update_feed(&item_arena, f_update);
+                switch (r) {
+                    .added, .no_changes => {
+                        progress_node.completeOne();
+                        count_updated += 1;
+                    },
+                    .failed => {},
                 }
-
-                self.storage.updateFeedAndItems(&item_arena, resp, f_update) catch |err| {
-                    const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
-                    try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-                    std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
-                    continue;
-                };
-                progress_node.completeOne();
-                count_updated += 1;
             }
             return true;
         }
@@ -1197,7 +1119,6 @@ test "feedgaze.show" {
 
 pub const App = struct {
     storage: Storage, 
-    allocator: Allocator,
 
     const curl = @import("curl");
     const RequestResponse = struct {
@@ -1242,4 +1163,97 @@ pub const App = struct {
         };
     }
 
+    const UpdateResult = enum {
+        added,
+        no_changes,
+        failed,
+    };
+
+    pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
+        errdefer |err| {
+            std.log.err("Update loop error: {}", .{err});
+            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+            self.storage.rate_limit_add(f_update.feed_id, retry_ts) catch {
+                @panic("Failed to update (increase) feed's next update");
+            };
+        }
+        var req = http_client.init(arena.allocator()) catch |err| {
+            const retry_ts = std.time.timestamp() + (std.time.s_per_min * 20);
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            std.log.err("Failed to start http request to '{s}'. Error: {}", .{f_update.feed_url, err});
+            return .failed;
+        }; 
+        defer req.deinit();
+        
+        const resp = req.fetch(f_update.feed_url, .{
+            .etag = f_update.etag,
+            .last_modified_utc = f_update.last_modified_utc,
+        }) catch |err| {
+            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 8);
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            return .failed;
+        };
+        defer resp.deinit();
+
+        if (resp.status_code == 304) {
+            // Resource hasn't been modified
+            try self.storage.updateLastUpdate(f_update.feed_id);
+            try self.storage.rate_limit_remove(f_update.feed_id);
+            return .no_changes;
+        } else if (resp.status_code == 503) {
+            const retry_ts = std.time.timestamp() + std.time.s_per_hour;
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            return .failed;
+        } else if (resp.status_code == 429) {
+            std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
+            const now_utc_sec = std.time.timestamp();
+            const retry_reset = blk: {
+                if (try resp.getHeader("x-ratelimit-remaining")) |remaining| {
+                    const raw = remaining.get();
+                    std.debug.assert(raw.len > 0);
+                    const value = try std.fmt.parseFloat(f32, raw);
+                    if (value == 0.0) {
+                        if (try resp.getHeader("x-ratelimit-reset")) |header| {
+                            if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
+                                std.log.debug("x-ratelimit-reset", .{});
+                                break :blk now_utc_sec + nr + 1;
+                            } else |_| {}
+                        }
+                    }
+                }
+
+                if (try resp.getHeader("retry-after") orelse 
+                    try resp.getHeader("x-ratelimit-reset")) |header| {
+                        const raw = header.get();
+                        std.log.debug("header rate-limit: {s}", .{raw});
+                        if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
+                            break :blk now_utc_sec + nr + 1;
+                        } else |_| {}
+
+                        if (feed_types.RssDateTime.parse(raw)) |date_utc| {
+                            break :blk date_utc + 1;
+                        } else |_| {}
+                }
+                break :blk now_utc_sec + std.time.s_per_hour;
+            };
+            print("retry_reset: {d}\n", .{retry_reset});
+            try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
+            return .failed;
+        } else if (resp.status_code >= 400 and resp.status_code < 600) {
+            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
+            return .failed;
+        }
+
+        self.storage.updateFeedAndItems(arena, resp, f_update) catch |err| {
+            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            return .failed;
+        };
+
+        return .added;
+    }
 };

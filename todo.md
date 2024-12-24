@@ -16,8 +16,6 @@
   - purge and minify css
   - need to url escape link paths?
   - cache page header? Save it into variable
-  - root (latest) page:
-    - make route to check for feed updates
 
 - cli: 
   - try https://github.com/n0s4/flags

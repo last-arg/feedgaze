@@ -14,8 +14,8 @@ const untagged = "[untagged]";
 
 // For fast compiling and testing
 pub fn main() !void {
-    const storage = try Storage.init(null);
-    // const storage = try Storage.init("./tmp/feeds.db");
+    // const storage = try Storage.init(null);
+    const storage = try Storage.init("./tmp/feeds.db");
     try start_server(storage, .{.port = 5882 });
 }
 
@@ -40,16 +40,22 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.get("/", latest_added_get, .{});
     router.get("/feeds", feeds_get, .{});
     router.get("/tags", tags_get, .{});
+    router.post("/update", update_post, .{});
+
     router.get("/tag/:id/edit", tag_edit, .{});
     router.post("/tag/:id/edit", tag_edit_post, .{});
     router.get("/tag/:id/delete", tag_delete, .{});
+
     router.get("/feed/add", feed_add_get, .{});
     router.post("/feed/add", feed_add_post, .{});
+
     router.get("/feed/pick", feed_pick_get, .{});
     router.post("/feed/pick", feed_pick_post, .{});
+
     router.get("/feed/:id", feed_get, .{});
     router.post("/feed/:id", feed_post, .{});
     router.post("/feed/:id/delete", feed_delete, .{});
+
     router.get("/public/*", public_get, .{});
     router.get("/favicon.ico", favicon_get, .{});
 
@@ -86,6 +92,23 @@ fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) 
             }
         }
     }
+}
+
+fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    resp.status = 303;
+
+    var app: App = .{ .storage = global.storage };
+
+    var item_arena = std.heap.ArenaAllocator.init(req.arena);
+    defer item_arena.deinit();
+
+    const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
+    for (feed_updates) |f_update| {
+        _ = item_arena.reset(.retain_capacity);
+        _ = app.update_feed(&item_arena, f_update) catch {};
+    }
+
+    resp.header("Location", "/");
 }
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -223,8 +246,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     }
 
     // try to add new feed
-    const App = @import("app.zig").App;
-    var app = App{.storage = db.*, .allocator = req.arena};
+    var app = App{.storage = db.*};
 
     var fetch = try app.fetch_response(req.arena, feed_url);
     defer fetch.deinit();
@@ -504,8 +526,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     // try to add new feed
-    const App = @import("app.zig").App;
-    var app = App{.storage = db.*, .allocator = req.arena};
+    var app = App{.storage = db.*};
 
     var fetch = try app.fetch_response(req.arena, feed_url);
     defer fetch.deinit();
@@ -1238,9 +1259,11 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 });
             };
 
-            // TODO: create route for checking for feed updates
             try w.writeAll(
-                \\<p><a href="#">Check for updates</a>. Might take some time.</p>
+                \\<form method=POST action=/update>
+                \\<button href="/update">Check for updates</button>.
+                \\Might take some time.
+                \\</form>
                 \\</div>
             );
         } else if (countdown_ts > now_ts) {
@@ -2070,3 +2093,4 @@ const html = @import("./html.zig");
 const feed_types = @import("./feed_types.zig");
 const FeedOptions = feed_types.FeedOptions;
 const parse = @import("./app_parse.zig");
+const App = @import("app.zig").App;
