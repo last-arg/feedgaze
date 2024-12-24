@@ -21,6 +21,7 @@ pub fn main() !void {
 
 const Global = struct {
     storage: Storage, 
+    is_updating: bool = false,
 };
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
@@ -97,15 +98,18 @@ fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) 
 fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     resp.status = 303;
 
-    var app: App = .{ .storage = global.storage };
+    if (!global.is_updating) {
+        global.is_updating = true;
+        var app: App = .{ .storage = global.storage };
+        var item_arena = std.heap.ArenaAllocator.init(req.arena);
+        defer item_arena.deinit();
 
-    var item_arena = std.heap.ArenaAllocator.init(req.arena);
-    defer item_arena.deinit();
-
-    const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
-    for (feed_updates) |f_update| {
-        _ = item_arena.reset(.retain_capacity);
-        _ = app.update_feed(&item_arena, f_update) catch {};
+        const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
+        for (feed_updates) |f_update| {
+            _ = item_arena.reset(.retain_capacity);
+            _ = app.update_feed(&item_arena, f_update) catch {};
+        }
+        global.is_updating = false;
     }
 
     resp.header("Location", "/");
@@ -578,7 +582,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     // TODO: check, fetch favicon
-    // TODO: push fetching favicon to another thread
+    // TODO: push fetching favicon to another thread?
 
     try location_arr.writer().print("/feed/add?success={d}", .{feed_id});
     resp.header("Location", location_arr.items);
