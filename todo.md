@@ -17,6 +17,10 @@
   - need to url escape link paths?
   - cache page header? Save it into variable
 
+- keep track of 404 feeds
+  - keep count how many times it has failed?
+  - save date when it failed first time?
+  - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
 - cli: 
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?

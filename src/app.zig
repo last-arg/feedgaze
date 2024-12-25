@@ -727,54 +727,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            // Add icon
-            if (add_opts.feed_opts.icon_url == null) blk: {
-                var buf: [1024]u8 = undefined;
-                const uri = std.Uri.parse(mem.trim(u8, add_opts.feed_opts.feed_url, &std.ascii.whitespace)) catch |err| {
-                    std.log.warn("Failed to parse feed page url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
-                    break :blk;
+            if (add_opts.feed_opts.icon_url == null) {
+                add_opts.feed_opts.icon_url = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url) catch |err| blk: {
+                    std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+                    break :blk null;
                 };
-                const icon_path = "/favicon.ico";
-                const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
-                const url_root = url_request[0..url_request.len - icon_path.len];
-
-                var req = try http_client.init(arena.allocator());
-                defer req.deinit();
-
-                // Check domain's '/favicon.ico' path
-                if (try req.check_icon_path(url_request)) {
-                    add_opts.feed_opts.icon_url = try arena.allocator().dupe(u8, url_request);
-                    break :blk;
-                }
-
-                var resp_icon = req.fetch(url_root, .{}) catch |err| {
-                    std.log.err("Failed to fetch '{s}'", .{url_root});
-                    return err;
-                };
-                defer resp_icon.deinit();
-
-                if (resp_icon.status_code == 200) {
-                    const body = resp_icon.body orelse {
-                        std.log.warn("There is no body for '{s}'", .{url_root});
-                        break :blk;
-                    };
-                    // TODO: replace this with function that only parses favicon
-                    const html_parsed = try html.parse_html(arena.allocator(), body.items);
-                    const icon_url = html_parsed.icon_url orelse break :blk;
-
-                    const url_or_data = icon: {
-                        if (mem.startsWith(u8, icon_url, "data:")) {
-                            break :icon icon_url;
-                        }
-
-                        break :icon try feed_types.url_create(arena.allocator(), icon_url, uri);
-                    };
-
-                    add_opts.feed_opts.icon_url = try arena.allocator().dupe(u8, url_or_data);
-                } else {
-                    std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp_icon.status_code});
-                    break :blk;
-                }
             }
 
             const feed_id = try self.storage.addFeed(self.allocator, add_opts);
@@ -1256,5 +1213,40 @@ pub const App = struct {
         };
 
         return .added;
+    }
+
+    fn fetch_icon(allocator: Allocator, feed_url: []const u8) !?[]const u8 {
+        var buf: [1024]u8 = undefined;
+        const uri = try std.Uri.parse(mem.trim(u8, feed_url, &std.ascii.whitespace));
+        const icon_path = "/favicon.ico";
+        const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
+        const url_root = url_request[0..url_request.len - icon_path.len];
+
+        var req = try http_client.init(allocator);
+        defer req.deinit();
+
+        // Check domain's '/favicon.ico' path
+        if (try req.check_icon_path(url_request)) {
+            return try allocator.dupe(u8, url_request);
+        }
+
+        var resp_icon = try req.fetch(url_root, .{});
+        defer resp_icon.deinit();
+
+        if (resp_icon.status_code != 200) {
+            std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp_icon.status_code});
+            return error.InvalidStatusCode;
+        }
+
+        const body = resp_icon.body orelse return error.MissingHTTPBody;
+        // TODO: replace this with function that only parses favicon?
+        const html_parsed = try html.parse_html(allocator, body.items);
+        const icon_url = html_parsed.icon_url orelse return null;
+
+        if (mem.startsWith(u8, icon_url, "data:")) {
+            return icon_url;
+        }
+
+        return try feed_types.url_create(allocator, icon_url, uri);
     }
 };
