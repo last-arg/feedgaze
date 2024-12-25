@@ -100,17 +100,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     const loop_limit = 5;
                     var loop_count: u16 = 0;
                     while (loop_count < loop_limit) {
-                        if (try self.storage.next_update_timestamp()) |countdown| {
+                        if (try self.storage.next_update_timestamp()) |timestamp_next| {
                             const now_ts = std.time.timestamp();
-                            if (countdown > now_ts) {
-                                const countdown_ts = countdown;
+                            if (timestamp_next > now_ts) {
                                 const Datetime = @import("zig-datetime").datetime.Datetime;
-                                var date = Datetime.fromSeconds(@floatFromInt(countdown_ts));
+                                var date = Datetime.fromSeconds(@floatFromInt(timestamp_next));
                                 date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
 
+                                const countdown_ts = timestamp_next - now_ts;
                                 std.log.info("Next update in {d} second(s) [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
                                     // TODO: use more than seconds for relative time
-                                    countdown - now_ts,
+                                    countdown_ts,
                                     date.date.day,
                                     date.date.month,
                                     date.date.year,
@@ -119,7 +119,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 });
 
                                 loop_count = 0;
-                                std.time.sleep(@intCast(countdown * std.time.ns_per_s));
+                                std.time.sleep(@intCast(countdown_ts * std.time.ns_per_s));
                                 continue;
                             }
                         }
