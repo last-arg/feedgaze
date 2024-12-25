@@ -307,8 +307,10 @@ pub const Storage = struct {
         if (!options.force) {
             has_where = true;
             storage_arr.appendSliceAssumeCapacity( 
-                \\WHERE ifnull((select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id), false)
-                \\OR strftime('%s', 'now') - last_update >= item_interval
+                \\WHERE ifnull(
+                \\  (select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id),
+                \\  (strftime('%s', 'now') - last_update >= item_interval)
+                \\)
             );
         }
 
