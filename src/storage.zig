@@ -1206,6 +1206,7 @@ pub const Storage = struct {
         const query = 
         \\select min((
         \\  select last_update + item_interval from feed_update
+        \\    where feed_id not in (select feed_id from rate_limit)
         \\  UNION
         \\  select utc_sec from rate_limit
         \\))
