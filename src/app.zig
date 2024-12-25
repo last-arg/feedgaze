@@ -109,7 +109,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
 
                                 std.log.info("Next update in {d} second(s) [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
-                                    countdown,
+                                    // TODO: use more than seconds for relative time
+                                    countdown - now_ts,
                                     date.date.day,
                                     date.date.month,
                                     date.date.year,
