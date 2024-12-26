@@ -901,7 +901,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         const ts = now_sec + utc_sec;
         const date_for_machine = timestampToString(&date_buf, ts);
         try w.print(
-            \\<p>Next update in
+            \\<p>Next update
             \\<relative-time>
             \\<time datetime={s}>{s}</time>
             \\</relative-time>
@@ -910,6 +910,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             date_for_machine,
             date_readable(ts),
         });
+        // TODO: add update link/button if can update now 
     } else {
         try w.writeAll(
             \\<p>Next update unknown</p>
@@ -1272,7 +1273,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             );
         } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
-            try w.print("<p>Next update in <relative-time><time datetime={s}>{s}</time></relative-time> ({s})</p>", .{
+            try w.print("<p>Next update <relative-time><time datetime={s}>{s}</time></relative-time> ({s})</p>", .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
                 date_readable_str,
