@@ -887,7 +887,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         const date_for_machine = timestampToString(&date_buf, last_update);
         try w.print(
             \\<p>Last update was
-            \\<relative-time>
+            \\<relative-time update="false">
             \\<time datetime={s}>{s}</time>
             \\</relative-time>
             \\</p>
@@ -902,7 +902,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         const date_for_machine = timestampToString(&date_buf, ts);
         try w.print(
             \\<p>Next update
-            \\<relative-time>
+            \\<relative-time update="false">
             \\<time datetime={s}>{s}</time>
             \\</relative-time>
             \\</p>
@@ -1257,7 +1257,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
                 const date_readable_str = date_readable(recent_timestamp);
                 try w.print(
-                    \\<p>Last update was <relative-time><time datetime="{s}">{s}</time><relative-time>.</p>
+                    \\<p>Last update was <relative-time update="false"><time datetime="{s}">{s}</time></relative-time>.</p>
                 , .{
                     timestampToString(&date_buf, recent_timestamp),
                     date_readable_str,
@@ -1273,7 +1273,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             );
         } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
-            try w.print("<p>Next update <relative-time><time datetime={s}>{s}</time></relative-time> ({s})</p>", .{
+            try w.print("<p>Next update <relative-time update=false><time datetime={s}>{s}</time></relative-time> ({s})</p>", .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
                 date_readable_str,
