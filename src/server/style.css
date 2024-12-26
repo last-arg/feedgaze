@@ -576,14 +576,14 @@ input:where([type=text]) {
   margin-inline-start: var(--space-m);
 }
 
-.root-heading relative-time,
+.root-heading p,
 .heading-info {
   font-style: italic;
   color: var(--grey-10);
   font-size: var(--step--1);
 }
 
-.heading-info p {
+.root-heading p {
   margin: 0;
 }
 
