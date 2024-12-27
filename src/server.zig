@@ -558,6 +558,16 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+
+    // TODO: fetch favicon in another thread?
+    // probably need to copy (alloc) feed_url because request might clean (dealloc) up
+    if (add_opts.feed_opts.icon_url == null) {
+        add_opts.feed_opts.icon_url = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url) catch |err| blk: {
+            std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            break :blk null;
+        };
+    }
+
     const feed_id = try db.addFeed(req.arena, add_opts);
 
     if (tags_input) |raw| {
@@ -580,9 +590,6 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
         try db.tags_feed_add(feed_id, tags_ids);
     }
-
-    // TODO: check, fetch favicon
-    // TODO: push fetching favicon to another thread?
 
     try location_arr.writer().print("/feed/add?success={d}", .{feed_id});
     resp.header("Location", location_arr.items);

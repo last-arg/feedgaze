@@ -1215,7 +1215,7 @@ pub const App = struct {
         return .added;
     }
 
-    fn fetch_icon(allocator: Allocator, feed_url: []const u8) !?[]const u8 {
+    pub fn fetch_icon(allocator: Allocator, feed_url: []const u8) !?[]const u8 {
         var buf: [1024]u8 = undefined;
         const uri = try std.Uri.parse(mem.trim(u8, feed_url, &std.ascii.whitespace));
         const icon_path = "/favicon.ico";
