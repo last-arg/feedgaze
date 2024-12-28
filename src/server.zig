@@ -261,10 +261,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (feed_options.content_type == .html) {
         add_opts.html_opts = .{
             .selector_container = selector_container,
-            .selector_link = form_data.get("selector-link"),
-            .selector_heading = form_data.get("selector-heading"),
-            .selector_date = form_data.get("selector-date"),
-            .date_format = form_data.get("feed-date-format"),
+            .selector_link = try get_field(form_data, "selector-link"),
+            .selector_heading = try get_field(form_data, "selector-heading"),
+            .selector_date = try get_field(form_data, "selector-date"),
+            .date_format = try get_field(form_data, "feed-date-format"),
         };
     }
 
@@ -559,7 +559,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
 
-    // TODO: fetch favicon in another thread?
+    // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon_url == null) {
         add_opts.feed_opts.icon_url = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url) catch |err| blk: {
