@@ -5,10 +5,9 @@
       - root, feed, feeds
   - pages caching
     - tag update/add/remove should break all pages cache because sidebar
-    - tag page
-      - remove
-      - update (name)
-      - add
+    - what happens with cache when there is an query?
+    - feed_add_get
+    - tag_edit
   - tags page:
     - better styling
   - make feed items into 2 columns on wider screens?

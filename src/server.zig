@@ -23,6 +23,7 @@ const Global = struct {
     storage: Storage, 
     layout: Layout,
     is_updating: bool = false,
+    etag_out: []const u8,
 };
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
@@ -31,7 +32,14 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     const layout = Layout.init(allocator, storage); 
 
-    var global: Global = .{ .storage = storage, .layout = layout };
+    const etag_out = try std.fmt.allocPrint(allocator, "{x}", .{std.time.timestamp()});
+    defer allocator.free(etag_out);
+
+    var global: Global = .{
+        .storage = storage,
+        .layout = layout,
+        .etag_out = etag_out,
+    };
     const server_config: httpz.Config = .{
         .port = opts.port,  
         .request = .{
@@ -48,6 +56,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     router.get("/tag/:id/edit", tag_edit, .{});
     router.post("/tag/:id/edit", tag_edit_post, .{});
+    // TODO: this should be POST?
     router.get("/tag/:id/delete", tag_delete, .{});
 
     router.get("/feed/add", feed_add_get, .{});
@@ -1153,7 +1162,7 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
     }
 }
 
-fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
         src = try get_file(req.arena, "server/main.js");
@@ -1170,6 +1179,11 @@ fn public_get(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     if (src) |body| {
+        if (resp_cache(req, resp, global.etag_out)) {
+            resp.status = 304;
+            return;
+        }
+
         var al = std.ArrayList(u8).init(req.arena);
         var fbs = std.io.fixedBufferStream(body);
         try std.compress.gzip.compress(fbs.reader(), al.writer(), .{});
