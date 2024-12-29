@@ -94,7 +94,14 @@ export default class RelativeTime extends HTMLElement {
 			if (!datetime) {
 				return;
 			}
-			element.innerHTML = this.getRelativeTime(datetime, this.division);
+			let output = this.getRelativeTime(datetime, this.division);
+			if (datetime < Date.now() && element.closest(".feed-item-list")) {
+				const index = output.indexOf("ago");
+				if (index !== -1) {
+					output = output.slice(0, index - 1);
+				}
+			}
+			element.innerHTML = output;
 			const title = datetime.toLocaleString(undefined, {
 				timeZoneName: "short",
 			});

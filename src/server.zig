@@ -1102,6 +1102,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</div>");
 
     try w.writeAll("<h2>Feed items</h2>");
+    try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
     try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
     for (items) |item| {
         try w.print("<li class='feed-item {s}'>", .{""});
@@ -1109,6 +1110,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
+    try w.writeAll("</relative-time>");
 
     try w.writeAll("</main>");
     try Layout.write_foot(w);
@@ -1316,6 +1318,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         defer ids_al.deinit();
         for (items) |item| { ids_al.appendAssumeCapacity(item.feed_id); }
         const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
+        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
+
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-s)'>");
         for (items) |item| {
             try w.writeAll("<li class='feed-item'>");
@@ -1331,6 +1335,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
+        try w.writeAll("</relative-time>");
     } else {
         try w.writeAll("<p class='ml-m'>No feed items have been added in the previous 3 days</p>");
     }
@@ -1926,6 +1931,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
         }
 
+        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
         try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
         for (items, 0..) |item, i| {
             const hidden: []const u8 = blk: {
@@ -1942,6 +1948,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
+        try w.writeAll("</relative-time>");
         const aria_expanded = if (hide_index_start != null) "false" else "true";
         try w.print(
             \\<footer class="feed-footer">

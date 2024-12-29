@@ -1,8 +1,5 @@
 # Initial
 - website:
-  - cache problems
-    - items' relative times won't update
-      - root, feed, feeds
   - pages caching
     - tag update/add/remove should break all pages cache because sidebar
     - what happens with cache when there is an query?
