@@ -611,6 +611,16 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
+    var etag_buf: [64]u8 = undefined;
+
+    if (try db.get_tags_change()) |latest_created| {
+        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
+        }
+    }
+
     var compressor = try compressor_setup(req, resp);
     defer if (compressor) |*c| compressor_finish(c);
 
@@ -1446,6 +1456,16 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         resp.header("Location", "/tags?error=missing");
         return;
     };
+
+    var etag_buf: [64]u8 = undefined;
+
+    if (try db.get_tags_change()) |latest_created| {
+        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        if (resp_cache(req, resp, etag_out)) {
+            resp.status = 304;
+            return;
+        }
+    }
 
     resp.content_type = .HTML;
 
