@@ -15,7 +15,6 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
-  - cache page header? Save it into variable
 
 - keep track of 404 feeds
   - keep count how many times it has failed?

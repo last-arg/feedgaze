@@ -21,6 +21,7 @@ pub fn main() !void {
 
 const Global = struct {
     storage: Storage, 
+    layout: Layout,
     is_updating: bool = false,
 };
 
@@ -28,7 +29,9 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var global: Global = .{ .storage = storage };
+    const layout = Layout.init(allocator, storage); 
+
+    var global: Global = .{ .storage = storage, .layout = layout };
     const server_config: httpz.Config = .{
         .port = opts.port,  
         .request = .{
@@ -324,7 +327,8 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try Layout.write_head(w, "Pick feed", .{});
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='box'>");
     try w.writeAll("<h2>Add feed</h2>");
@@ -610,7 +614,8 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try Layout.write_head(w, "Add feed", .{});
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='box'>");
 
@@ -860,7 +865,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try Layout.write_head(w, "Feed", .{});
     }
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main>");
     try w.writeAll("<div class='feed-info'>");
@@ -1238,7 +1244,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     
     try Layout.write_head(w, "Home - latest added feed items", .{});
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='content-latest'>");
 
@@ -1435,7 +1442,8 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_head(w, "Edit tag: {s}", .{tag.name});
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
     
     try w.writeAll("<div class='ml-m'>");
     try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
@@ -1498,9 +1506,9 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_head(w, "Tags", .{});
 
-    try body_head_render(req, db, w, .{});
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    const tags = try db.tags_all_with_ids(req.arena);
     try w.writeAll("<main class='box'>");
     try w.writeAll("<h2>Tags</h2>");
 
@@ -1516,7 +1524,8 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     try w.writeAll("<ul role='list'>");
-    for (tags) |tag| {
+    const tag_ids = try db.tags_all_with_ids(req.arena);
+    for (tag_ids) |tag| {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped);
@@ -1538,6 +1547,21 @@ const Layout = struct {
     const head_top = head_splits[0];
     const head_bottom = head_splits[1].?;
 
+    tags_last_modified: i64 = 0,
+    sidebar_form_html: std.ArrayList(u8), 
+    storage: Storage,
+    allocator: std.mem.Allocator,
+
+    pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
+        const html_output = std.ArrayList(u8).init(allocator);
+        errdefer html_output.deinit();
+        return .{
+            .sidebar_form_html = html_output,
+            .storage = storage,
+            .allocator = allocator,
+        };
+    }
+
     pub fn write_head(writer: anytype, comptime fmt: []const u8, args: anytype) !void {
         if (head_top) |top| {
             try writer.writeAll(top);
@@ -1545,8 +1569,100 @@ const Layout = struct {
         }
         try writer.writeAll(head_bottom);
     }
+
     pub fn write_foot(writer: anytype) !void {
         try writer.writeAll(foot);
+    }
+
+    pub fn cache_sidebar_form(self: *@This()) !bool {
+        if (try self.storage.get_tags_change()) |last_modified| {
+            if (last_modified != self.tags_last_modified) {
+                const tags = try self.storage.tags_all(self.allocator);
+                defer self.allocator.free(tags);
+                try self.sidebar_form_html.resize(0);
+                try write_sidebar_form_new(
+                    self.sidebar_form_html.writer(), tags, .{}
+                );
+                self.tags_last_modified = last_modified; 
+            }
+            return true;
+        }
+        return false;
+    }
+
+    fn write_sidebar_form(self: *@This(), w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
+        const use_cached = opts.search.len == 0 and opts.tags_checked.len == 0 and !opts.has_untagged;
+        if (use_cached) {
+            if (try self.cache_sidebar_form()) {
+                try w.writeAll(self.sidebar_form_html.items);
+                return;
+            }
+        }
+
+        try write_sidebar_form_new(w, tags, opts);
+    }
+
+    fn write_sidebar_form_new(w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
+        try w.writeAll("<div class='filter-wrapper'>");
+        try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
+        try w.writeAll("<form action='/feeds' class='flow'>");
+        // NOTE: don't want tags-only button to be the 'default' button. This is
+        // used when enter is pressed in input (text) field.
+        try w.writeAll(
+        \\<button aria-hidden="true" style="display: none">Default form action</button>
+        );
+        try w.writeAll("<fieldset class='tags flow' style='--flow-space: var(--space-2xs)'>");
+        try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
+        try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
+
+        try w.writeAll("<div class='tag-list flow'>");
+        try untagged_label_render(w, opts.has_untagged);
+        for (tags, 0..) |tag, i| {
+            try tag_label_render(w, tag, i + 1, opts.tags_checked);
+        }
+        try w.writeAll("</div>");
+        try w.writeAll("</fieldset>");
+        try w.writeAll("<button name='tags-only'>Filter tags only</button>");
+
+        try w.print(
+        \\<div>
+        \\  <label class="form-heading" for="search_value">Filter term</label>
+        \\  <div><input type="search" name="search" id="search_value" value="{s}"></div>
+        \\  <button class="form-submit">Filter</button>
+        \\</div>
+        , .{ opts.search });
+
+        try w.writeAll("</form>");
+        try w.writeAll("</div>");
+    }
+
+    pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {
+        try w.writeAll("<header class='body-header flow'>");
+
+        try w.writeAll("<div>");
+        try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
+
+        const menu_items = [_]struct{path: []const u8, name: []const u8}{
+            .{.path = "/", .name = "Home"},
+            .{.path = "/feeds", .name = "Feeds"},
+            .{.path = "/tags", .name = "Tags"},
+            .{.path = "/feed/add", .name = "Add feed"},
+        };
+
+        try w.writeAll("<nav>");
+        const first_item = menu_items[0];
+        try nav_link_render(first_item.path, first_item.name, w, request_url_path);
+
+        for (menu_items[1..]) |item| {
+            try w.writeAll("<span>|</span>");
+            try nav_link_render(item.path, item.name, w, request_url_path);
+        }
+        try w.writeAll("</nav>");
+        try w.writeAll("</div>");
+
+        try self.write_sidebar_form(w, tags, opts);
+
+        try w.writeAll("</header>");
     }
 
     fn base_split() [2][]const u8 {
@@ -1624,7 +1740,9 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
 
     const has_untagged = query.get("untagged") != null;
-    try body_head_render(req, db, w, .{ 
+
+    const tags = try db.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{ 
         .search = search_value orelse "", 
         .tags_checked = tags_active.items, 
         .has_untagged = has_untagged,
@@ -1922,66 +2040,6 @@ fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []
         ;
         try w.print(fmt, .{path, name});
     }
-}
-
-fn body_head_render(req: *httpz.Request, db: *Storage, w: anytype, opts: HeadOptions) !void {
-    const allocator = req.arena;
-    try w.writeAll("<header class='body-header flow'>");
-
-    try w.writeAll("<div>");
-    try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
-
-    const menu_items = [_]struct{path: []const u8, name: []const u8}{
-        .{.path = "/", .name = "Home"},
-        .{.path = "/feeds", .name = "Feeds"},
-        .{.path = "/tags", .name = "Tags"},
-        .{.path = "/feed/add", .name = "Add feed"},
-    };
-
-    try w.writeAll("<nav>");
-    const first_item = menu_items[0];
-    try nav_link_render(first_item.path, first_item.name, w, req.url.path);
-
-    for (menu_items[1..]) |item| {
-        try w.writeAll("<span>|</span>");
-        try nav_link_render(item.path, item.name, w, req.url.path);
-    }
-    try w.writeAll("</nav>");
-    try w.writeAll("</div>");
-
-    try w.writeAll("<div class='filter-wrapper'>");
-    try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
-    const tags = try db.tags_all(allocator);
-    try w.writeAll("<form action='/feeds' class='flow'>");
-    // NOTE: don't want tags-only button to be the 'default' button. This is
-    // used when enter is pressed in input (text) field.
-    try w.writeAll(
-    \\<button aria-hidden="true" style="display: none">Default form action</button>
-    );
-    try w.writeAll("<fieldset class='tags flow' style='--flow-space: var(--space-2xs)'>");
-    try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
-    try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
-
-    try w.writeAll("<div class='tag-list flow'>");
-    try untagged_label_render(w, opts.has_untagged);
-    for (tags, 0..) |tag, i| {
-        try tag_label_render(w, tag, i + 1, opts.tags_checked);
-    }
-    try w.writeAll("</div>");
-    try w.writeAll("</fieldset>");
-    try w.writeAll("<button name='tags-only'>Filter tags only</button>");
-
-    try w.print(
-    \\<div>
-    \\  <label class="form-heading" for="search_value">Filter term</label>
-    \\  <div><input type="search" name="search" id="search_value" value="{s}"></div>
-    \\  <button class="form-submit">Filter</button>
-    \\</div>
-    , .{ opts.search });
-
-    try w.writeAll("</form>");
-    try w.writeAll("</div>");
-    try w.writeAll("</header>");
 }
 
 fn untagged_label_render(w: anytype, has_untagged: bool) !void {
