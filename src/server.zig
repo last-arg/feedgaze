@@ -24,7 +24,31 @@ const Global = struct {
     layout: Layout,
     is_updating: bool = false,
     etag_out: []const u8,
+    static_file_hashes: StaticFileHashes,
 };
+
+const StaticFileHashes = std.StaticStringMap([]const u8);
+const md5_len = std.crypto.hash.Md5.digest_length;
+
+fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
+    @setEvalBranchQuota(300000);
+    var buf: [md5_len]u8 = undefined; 
+    const c = @embedFile(path);
+    var hash = std.crypto.hash.Md5.init(.{});
+    hash.update(c);
+    hash.final(buf[0..]);
+    return buf;
+}
+
+const static_files = .{
+    .{ &hash_static_file("server/open-props-colors.css"), "open-props-colors.css" },
+    .{ &hash_static_file("server/style.css"), "style.css" },
+    .{ &hash_static_file("server/main.js"), "main.js" },
+    .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
+};
+
+// const static_file_hashes = if (builtin.mode == .Debug) .{} else StaticFileHashes.initComptime(static_files);
+const static_file_hashes = StaticFileHashes.initComptime(static_files);
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -39,6 +63,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
         .storage = storage,
         .layout = layout,
         .etag_out = etag_out,
+        .static_file_hashes = static_file_hashes,
     };
     const server_config: httpz.Config = .{
         .port = opts.port,  
@@ -615,7 +640,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     if (try db.get_tags_change()) |latest_created| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -847,7 +872,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     if (try db.get_latest_feed_change(id)) |latest| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -1020,8 +1045,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 \\</div>
             ;
 
-            // TODO: need to escape html_opts.* values. Those are user input so
-            // can be anything.
             try w.writeAll("<fieldset>");
             try w.writeAll("<legend>Html 'feed' options</legend>");
             try w.print(
@@ -1162,7 +1185,6 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
 
 
 fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
-    const builtin = @import("builtin");
     if (builtin.mode == .Debug) {
         var buf: [256]u8 = undefined;
         const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
@@ -1191,7 +1213,7 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     }
 
     if (src) |body| {
-        if (resp_cache(req, resp, global.etag_out)) {
+        if (resp_cache(req, resp, global.etag_out, .{.cache_control = "public,max-age=31536000,immutable"})) {
             resp.status = 304;
             return;
         }
@@ -1250,7 +1272,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}-{x}\"", .{latest_created, countdown});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -1461,7 +1483,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     if (try db.get_tags_change()) |latest_created| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -1525,7 +1547,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     if (try db.get_tags_change()) |latest_created| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -1584,7 +1606,8 @@ const Layout = struct {
     const foot = splits[1];
     const head_splits = head_split(head);
     const head_top = head_splits[0];
-    const head_bottom = head_splits[1].?;
+    const head_middle = head_splits[1];
+    const head_bottom = head_splits[2];
 
     tags_last_modified: i64 = 0,
     sidebar_form_html: std.ArrayList(u8), 
@@ -1601,11 +1624,45 @@ const Layout = struct {
         };
     }
 
-    pub fn write_head(writer: anytype, comptime fmt: []const u8, args: anytype) !void {
-        if (head_top) |top| {
-            try writer.writeAll(top);
-            try writer.print(fmt, args);
+    pub fn write_static_files(writer: anytype) !void {
+        // write <link> and <script>
+        for (static_file_hashes.keys()) |key| {
+            const name = static_file_hashes.get(key).?;
+
+            const last_dot_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse continue;
+            const filetype = name[last_dot_index + 1..];
+
+            if (mem.eql(u8, filetype, "css")) {
+                try writer.writeAll("<link rel=stylesheet type='text/css' href='/public/");
+            } else if (mem.eql(u8, filetype, "js")) {
+                try writer.writeAll("<script");
+                if (std.mem.eql(u8, name, "main.js")) {
+                    try writer.writeAll(" defer");
+                } else if (std.mem.eql(u8, name, "relative-time.js")) {
+                    try writer.writeAll(" async type=module");
+                }
+                try writer.writeAll(" src='/public/");
+            }
+
+            for (key) |c| {
+                try writer.print("{x}", .{c});
+            }
+
+            try writer.writeAll("-");
+            try writer.writeAll(name);
+
+            try writer.writeAll("'>");
+            if (mem.eql(u8, filetype, "js")) {
+                try writer.writeAll("</script>");
+            }
         }
+    }
+
+    pub fn write_head(writer: anytype, comptime fmt: []const u8, args: anytype) !void {
+        try writer.writeAll(head_top);
+        try writer.print(fmt, args);
+        try writer.writeAll(head_middle);
+        try write_static_files(writer);
         try writer.writeAll(head_bottom);
     }
 
@@ -1712,20 +1769,26 @@ const Layout = struct {
         return .{head_tmp, foot_tmp};
     }
 
-    fn head_split(input: []const u8) [2]?[]const u8 {
+    fn head_split(input: []const u8) [3][]const u8 {
+        @setEvalBranchQuota(2000);
         var base_iter = mem.splitSequence(u8, input, "[title]");
         const top = base_iter.next() orelse @compileError("Failed to split base.html");
-        if (base_iter.next()) |bottom| {
-            return .{top, bottom};
-        }
-        return .{null, top};
+        const tmp_bottom = base_iter.next() orelse @compileError("Failed to split base.html");
+        var bottom_iter = mem.splitSequence(u8, tmp_bottom, "[links_and_scripts]");
+        const middle = bottom_iter.next() orelse @compileError("Failed to split base.html");
+        const bottom = bottom_iter.next() orelse @compileError("Failed to split base.html");
+        return .{top, middle, bottom};
     }
 
 };
 
-fn resp_cache(req: *httpz.Request, resp: *httpz.Response, etag: []const u8) bool {
+const CacheOptions = struct {
+    cache_control: []const u8 = "no-cache",
+};
+
+fn resp_cache(req: *httpz.Request, resp: *httpz.Response, etag: []const u8, opts: CacheOptions) bool {
     resp.header("Etag", etag);
-    resp.header("Cache-control", "no-cache");
+    resp.header("Cache-control", opts.cache_control);
 
     if (req.method == .GET or req.method == .HEAD) {
         if (req.header("if-none-match")) |if_match| {
@@ -1743,7 +1806,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     if (try db.get_latest_change()) |latest_created| {
         const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
-        if (resp_cache(req, resp, etag_out)) {
+        if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
         }
@@ -2205,3 +2268,4 @@ const feed_types = @import("./feed_types.zig");
 const FeedOptions = feed_types.FeedOptions;
 const parse = @import("./app_parse.zig");
 const App = @import("app.zig").App;
+const builtin = @import("builtin");

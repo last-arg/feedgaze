@@ -18,13 +18,11 @@
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
   - also check favicon if found in feed file (rss/atom)
-- twitch integration
+- twitch and youtube integration for live streams
+  - and for twitch get latest broadcasts
 - save failed favicon requests
   - don't include them in missing request or all
   - make new flag for failed icons requests '--check-failed-icons'
-- could use /favicon.ico for default path. Or even /favicon.{ico,png,jpeg}.
-  And mark them in DB somehow. Rest would get full path. NULL for feeds
-  that don't have favicon?
 - add transactions
 - validate feed tags where needed
   - Need to figure out rules for valid tags
