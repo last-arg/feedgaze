@@ -1361,7 +1361,7 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     const title = feed.title orelse "";
     try w.print(
         \\<div class="item-extra">
-        \\<a href="/feed/{d}" class="truncate-1" title="{s}">{s}</a>
+        \\<a href="/feed/{d}" class="truncate-1" title="{s}" rel=noreferrer>{s}</a>
         \\<span class="feed-external-url">
     , .{ feed.feed_id, title, title });
 
@@ -2020,7 +2020,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
 
     if (item.link) |link| {
         const item_link_fmt =
-            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}">{[title]s}</a>
+            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}" rel=noreferrer>{[title]s}</a>
         ;
         const link_escaped = try parse.html_escape(allocator, link);
         try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped, .class = opts.class });
