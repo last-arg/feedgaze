@@ -628,6 +628,7 @@ input:where([type=text]) {
   align-self: flex-start;
   text-align: end;
   width: 3ch;
+  flex-shrink: 0;
 }
 
 .age-newest {
