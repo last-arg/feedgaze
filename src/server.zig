@@ -47,8 +47,8 @@ const static_files = .{
     .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
 };
 
-// const static_file_hashes = if (builtin.mode == .Debug) .{} else StaticFileHashes.initComptime(static_files);
-const static_file_hashes = StaticFileHashes.initComptime(static_files);
+const static_file_hashes = if (builtin.mode == .Debug) .{} else StaticFileHashes.initComptime(static_files);
+// const static_file_hashes = StaticFileHashes.initComptime(static_files);
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -306,6 +306,16 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     }
 
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+
+    // TODO: fetch and add favicon in another thread?
+    // probably need to copy (alloc) feed_url because request might clean (dealloc) up
+    if (add_opts.feed_opts.icon_url == null) {
+        add_opts.feed_opts.icon_url = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url) catch |err| blk: {
+            std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            break :blk null;
+        };
+    }
+    
     const feed_id = try db.addFeed(req.arena, add_opts);
 
     if (tags_input) |raw| {
