@@ -83,6 +83,27 @@ export default class RelativeTime extends HTMLElement {
 		}
 	}
 
+	getRelativeTimeParts(datetime, division) {
+		let difference = (datetime.getTime() - Date.now()) / 1000;
+
+		if (division) {
+			return this.rtf.format(Math.round(difference), division);
+		}
+
+		for (const division of RelativeTime.divisions) {
+			if (
+				this.maxDivision &&
+				division.name === this.maxDivision.replace(/s$/, "")
+			) {
+				return this.rtf.formatToParts(Math.round(difference), division.name);
+			}
+			if (Math.floor(Math.abs(difference)) < division.amount) {
+				return this.rtf.formatToParts(Math.round(difference), division.name);
+			}
+			difference /= division.amount;
+		}
+	}
+	
 	getDateTime(dateString) {
 		const datetime = new Date(dateString);
 		return !isNaN(datetime) ? datetime : null;
@@ -94,13 +115,21 @@ export default class RelativeTime extends HTMLElement {
 			if (!datetime) {
 				return;
 			}
-			let output = this.getRelativeTime(datetime, this.division);
-			if (datetime < Date.now() && element.closest(".feed-item-list")) {
-				const index = output.indexOf("ago");
-				if (index !== -1) {
-					output = output.slice(0, index - 1);
+			let output = "";
+			if (datetime > Date.now() || !element.closest(".feed-item-list")) {
+				output = this.getRelativeTime(datetime, this.division);
+			} else {
+				let parts = this.getRelativeTimeParts(datetime, this.division);
+				output += parts[0].value;
+				if (parts[0].unit === "month") {
+					output += "M"
+				if (parts[0].unit === "year") {
+					output += "Y"
+				} else {
+					output += parts[0].unit[0]
 				}
 			}
+
 			element.innerHTML = output;
 			const title = datetime.toLocaleString(undefined, {
 				timeZoneName: "short",
