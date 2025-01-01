@@ -4,7 +4,6 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
-  - smaller screens before "mobile" view there is horizontal scrollbar
 
 - keep track of 404 feeds
   - keep count how many times it has failed?

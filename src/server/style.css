@@ -607,6 +607,7 @@ input:where([type=text]) {
   max-width: 50ch;
   margin-inline-start: var(--space-m);
   width: 100%;
+  flex: 1;
 }
 
 .item-extra {
