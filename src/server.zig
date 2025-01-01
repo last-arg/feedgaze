@@ -40,15 +40,19 @@ fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
     return buf;
 }
 
-const static_files = .{
+const static_files = if (builtin.mode != .Debug) .{
     .{ &hash_static_file("server/open-props-colors.css"), "open-props-colors.css" },
     .{ &hash_static_file("server/style.css"), "style.css" },
     .{ &hash_static_file("server/main.js"), "main.js" },
     .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
+} else .{
+    .{ "open-props-colors.css", "open-props-colors.css" },
+    .{ "style.css", "style.css" },
+    .{ "main.js", "main.js" },
+    .{ "relative-time.js", "relative-time.js" },
 };
 
-const static_file_hashes = if (builtin.mode == .Debug) .{} else StaticFileHashes.initComptime(static_files);
-// const static_file_hashes = StaticFileHashes.initComptime(static_files);
+const static_file_hashes = StaticFileHashes.initComptime(static_files);
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
