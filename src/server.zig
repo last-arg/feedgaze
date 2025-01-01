@@ -1598,7 +1598,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<p>Tag deleted</p>");
     }
 
-    try w.writeAll("<ul role='list'>");
+    try w.writeAll("<ul class='tags-all' role='list'>");
     const tag_ids = try db.tags_all_with_ids(req.arena);
     for (tag_ids) |tag| {
         try w.writeAll("<li class='tag-item'>");

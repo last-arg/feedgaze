@@ -1,7 +1,5 @@
 # Initial
 - website:
-  - tags page:
-    - better styling
   - make feed items into 2 columns on wider screens?
   - minify html
   - purge and minify css

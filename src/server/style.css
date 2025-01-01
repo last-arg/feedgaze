@@ -668,9 +668,22 @@ input:where([type=text]) {
   display: block;
 }
 
+.tags-all {
+  width: min-content;
+}
+
 .tag-item {
   display: flex;
   gap: var(--space-xs);
+  padding: .4rem var(--step--2);
+}
+
+li.tag-item:nth-of-type(even) {
+  background: var(--surface-2);
+}
+
+.tag-item a:nth-child(2) {
+  margin-inline-start: auto;
 }
 
 .tag-list {
