@@ -1397,9 +1397,13 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     const title = feed.title orelse "";
     try w.print(
         \\<div class="item-extra">
-        \\<a href="/feed/{d}" class="truncate-1" title="{s}" rel=noreferrer>{s}</a>
-        \\<span class="feed-external-url">
+        \\<a href="/feed/{d}" title="{s}">{s}</a>
+        \\<div class="feed-external-url">
     , .{ feed.feed_id, title, title });
+
+    try w.print(
+        \\<a href="{}" rel=noreferrer>
+    , .{ url });
 
     if (feed.icon_url) |icon_url| {
         try w.print(
@@ -1408,10 +1412,10 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     }
 
     try w.print(
-        \\<a href="{}">{+}</a>
-        \\</span>
+        \\<span>{+}</span></a>
         \\</div>
-    , .{ url, url });
+        \\</div>
+    , .{ url });
 }
 
 fn timestamp_render(w: anytype, timestamp: ?i64) !void {

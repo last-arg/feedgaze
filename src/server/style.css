@@ -600,26 +600,29 @@ input:where([type=text]) {
 .feed-item {
   display: flex;
   align-items: baseline;
+  gap: var(--space-s-m);
 }
 
 .item-link,
 .feed-item p {
   max-width: 50ch;
-  margin-inline-start: var(--space-m);
   width: 100%;
-  flex: 1;
 }
 
 .item-extra {
   font-size: var(--step--1);
-  margin-inline-start: var(--space-m);
+  padding-inline-end: var(--space-3xs);
+  line-height: calc(var(--leading-standard) * var(--step-0));
+  min-width: 15ch;
   display: flex;
   flex-direction: column;
-  line-height: calc(var(--leading-standard) * var(--step-0));
 }
 
-.item-extra a {
+.item-extra a,
+.item-extra span {
   color: var(--grey-10);
+  text-overflow: ellipsis;
+  overflow: hidden;
 }
 
 .feed-item time,
@@ -654,8 +657,13 @@ input:where([type=text]) {
 
 .feed-external-url {
   display: flex;
-  align-items: center;
   gap: 4px;
+}
+
+.feed-external-url a {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3xs);
 }
 
 .feed-icon {

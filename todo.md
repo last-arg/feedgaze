@@ -4,6 +4,7 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
+  - break all pages cache if any *.js or *.css files change?
 
 - keep track of 404 feeds
   - keep count how many times it has failed?
@@ -13,6 +14,7 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
+- infosec.exchange favicon string is messed up
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
   - also check favicon if found in feed file (rss/atom)
