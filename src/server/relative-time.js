@@ -123,7 +123,7 @@ export default class RelativeTime extends HTMLElement {
 				output += parts[0].value;
 				if (parts[0].unit === "month") {
 					output += "M"
-				if (parts[0].unit === "year") {
+				} else if (parts[0].unit === "year") {
 					output += "Y"
 				} else {
 					output += parts[0].unit[0]
