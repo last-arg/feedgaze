@@ -1163,41 +1163,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try Layout.write_foot(w);
 }
 
-fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
-    if (seconds <= 0) {
-        return try std.fmt.bufPrint(buf, "now", .{});
-    }
-
-    const day = @divFloor(seconds, std.time.s_per_day);
-    const hour = @divFloor(seconds, std.time.s_per_hour);
-    const minute = @divFloor(seconds, std.time.s_per_min);
-    const second = seconds;
-
-    const year = @divFloor(day, 365);
-    const month = @divFloor(day, 365 / 12);
-
-    if (year > 0) {
-        const plural = if (year > 1) "s" else "";
-        return try std.fmt.bufPrint(buf, "{d} year{s}", .{year, plural});
-    } else if (month > 0) {
-        const plural = if (month > 1) "s" else "";
-        return try std.fmt.bufPrint(buf, "{d} month{s}", .{month, plural});
-    } else if (day > 0) {
-        const plural = if (day > 1) "s" else "";
-        return try std.fmt.bufPrint(buf, "{d} day{s}", .{day, plural});
-    } else if (hour > 0) {
-        const plural = if (hour > 1) "s" else "";
-        return try std.fmt.bufPrint(buf, "{d} hour{s}", .{hour, plural});
-    } else if (minute > 0) {
-        const plural = if (minute > 1) "s" else "";
-        return try std.fmt.bufPrint(buf, "{d} minute{s}", .{minute, plural});
-    }
-
-    const plural = if (second > 1) "s" else "";
-    return try std.fmt.bufPrint(buf, "{d} second{s}", .{second, plural});
-}
-
-
 fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
     if (builtin.mode == .Debug) {
         var buf: [256]u8 = undefined;
