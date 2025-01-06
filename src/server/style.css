@@ -668,6 +668,7 @@ input:where([type=text]) {
 
 .feed-icon {
   height: 1em;
+  width: 1em;
 }
 
 .html-feed-inputs {
