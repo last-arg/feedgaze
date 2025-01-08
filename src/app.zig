@@ -89,7 +89,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 },
                 .show => |opts| {
-                    try self.show(args.positionals, opts);
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+                    const inputs = try fix_args_type(arena.allocator(), args.positionals);
+                    try self.show(inputs, opts);
                 },
                 .update => |opts| {
                     const input = if (args.positionals.len > 0) args.positionals[0] else null;
@@ -133,7 +136,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
                     }
                 },
-                .tag => |opts| try self.tag(args.positionals, opts),
+                .tag => |opts| {
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+                    const inputs = try fix_args_type(arena.allocator(), args.positionals);
+                    try self.tag(inputs, opts);
+                },
                 .add => |opts| {
                     if (args.positionals.len == 0) {
                         try self.out.print("Please enter valid input you want to add or modify.\n", .{});
@@ -184,7 +192,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 },
                 .server => |opts| try self.server(opts),
-                .rule => |opts| try self.rule(args.positionals, opts),
+                .rule => |opts| {
+                    var arena = std.heap.ArenaAllocator.init(self.allocator);
+                    defer arena.deinit();
+                    const inputs = try fix_args_type(arena.allocator(), args.positionals);
+                    try self.rule(inputs, opts);
+                },
                 .batch => |opts| {
                     if (opts.@"check-all-icons") {
                         try self.check_icons(.all);
@@ -1283,4 +1296,14 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
 
     const plural = if (second > 1) "s" else "";
     return try std.fmt.bufPrint(buf, "{d} second{s}", .{second, plural});
+}
+
+fn fix_args_type(allocator: std.mem.Allocator, inputs: [][:0]const u8) ![][]const u8 {
+    var arr = try std.ArrayList([]const u8).initCapacity(allocator, inputs.len);
+    defer arr.deinit();
+    for (inputs) |pos| {
+        arr.appendAssumeCapacity(pos);
+    }
+
+    return arr.toOwnedSlice();
 }

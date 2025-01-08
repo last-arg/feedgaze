@@ -10,7 +10,7 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "12208c5781b9f325c5212b9d228511059f3970d878015d2da794b5d5441c1670085e",
+            .hash = "1220caab315c54e76dff7a60d8486c5fb4de216402d2efb6471763e2d49c194b4600",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
@@ -26,7 +26,7 @@
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "1220439f1f38b9cae2c587abeae8b1f573f966fbb6862d4854c4127a416f150e32e1",
+            .hash = "1220e9b279355ce92cd217684a2449bd8024274eb3fc09a576deb33ca1733b9f0a1f",
         },
         // NOTE: httz lib is modified to make it work with zig's new backend
         // Disabled @Vector code in src/url.zig isValid function

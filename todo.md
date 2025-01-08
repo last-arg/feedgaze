@@ -5,6 +5,9 @@
   - purge and minify css
   - need to url escape link paths?
   - break all pages cache if any *.js or *.css files change?
+  - root page: indicate/style already seen or not seen items
+  - unseen count?
+  - dark mode
 
 - keep track of 404 feeds
   - keep count how many times it has failed?
