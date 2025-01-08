@@ -22,7 +22,7 @@
         },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
-            .hash = "12200db01caa0380c3d87b16fb761c0c0c1ef8eeb9e27d25e6d1fcb1b678c51b4231",
+            .hash = "12203319d6230e1aaf8168a5fd05e9883f182373edc7e7a992ec50ec9a3e030e6fbd",
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
@@ -32,7 +32,7 @@
         // Disabled @Vector code in src/url.zig isValid function
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "12205e87292484619ed11d0e8113017827ec68ce2c9321bc43fc4685993321d4254d",
+            .hash = "1220bc8c725958787f24c69f011cd68455afd4eb777940b59872b03fbe0afb17a0c1",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
