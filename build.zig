@@ -26,7 +26,7 @@ pub fn build(b: *Build) !void {
     const optimize = b.standardOptimizeOption(.{});
 
     const use_llvm = blk: {
-        if (b.option(bool, "no-llvm", "Use Zig's llvm code backend")) |val| {
+        if (b.option(bool, "no-llvm", "Don't use LLVM backend")) |val| {
             break :blk !val;
         }
         break :blk true;
