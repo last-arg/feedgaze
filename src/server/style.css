@@ -177,10 +177,47 @@ legend {
   --tracking: .02em;
 
   --text-1: var(--grey-16);
-  --text-2: var(--grey-1);
+  --text-2: var(--grey-4);
+  --text-3: var(--grey-1);
+  --text-4: var(--grey-10);
+  --text-5: var(--grey-14);
   --surface-0: var(--white);
   --surface-1: var(--grey-1);
   --surface-2: var(--grey-2);
+  --surface-3: var(--grey-16);
+  --surface-4: var(--grey-9);
+  --surface-5: var(--grey-11);
+  --surface-6: var(--grey-13);
+  --surface-7: var(--grey-7);
+  --surface-8: var(--grey-11);
+  --surface-9: var(--grey-5);
+  --surface-10: var(--gray-2);
+  --surface-11: var(--green-3);
+  --surface-12: var(--red-3);
+  --surface-13: var(--grey-14);
+}
+
+:root {
+  /* dark mode */
+  --text-1: var(--grey-1);
+  --text-2: var(--grey-6);
+  --text-3: var(--grey-2);
+  --text-4: var(--grey-7);
+  --text-5: var(--grey-3);
+  --surface-0: var(--black);
+  --surface-1: var(--grey-16);
+  --surface-2: var(--grey-12);
+  --surface-3: var(--grey-14);
+  --surface-4: var(--grey-15);
+  --surface-5: var(--grey-13);
+  --surface-6: var(--grey-12);
+  --surface-7: var(--grey-7);
+  --surface-8: var(--grey-3);
+  --surface-9: var(--grey-7);
+  --surface-10: var(--grey-13);
+  --surface-11: var(--green-10);
+  --surface-12: var(--red-10);
+  --surface-13: var(--grey-3);
 }
 
 body {
@@ -214,7 +251,7 @@ a {
 }
 
 a[aria-current=page] {
-  text-decoration: underline var(--grey-4);
+  text-decoration: underline var(--text-2);
 }
 
 a:hover {
@@ -226,8 +263,8 @@ a:hover {
 .feed-item-list .no-date {
   font-family: monospace;
   font-size: var(--step--1);
-  color: var(--grey-1);
-  background: var(--grey-16);
+  color: var(--text-3);
+  background: var(--surface-3);
   padding-inline: 3px;
 }
 
@@ -262,8 +299,8 @@ input:where([type=text]) {
 }
 
 .main-header button {
-  --_text-color: var(--grey-10);
-  --_border-color: var(--grey-7);
+  --_text-color: var(--text-4);
+  --_border-color: var(--surface-7);
   color: var(--_text-color);
   background: transparent;
   border: none;
@@ -273,8 +310,8 @@ input:where([type=text]) {
 }
 
 .main-header button:hover {
-  --_text-color: var(--grey-14);
-  --_border-color: var(--grey-11);
+  --_text-color: var(--text-5);
+  --_border-color: var(--surface-13);
 }
 
 .main-footer {
@@ -290,12 +327,12 @@ input:where([type=text]) {
 .feed-tag-list {
   --flow-space: var(--space-3xs);
   columns: 160px;
-  background: var(--label-bg, var(--gray-2));
+  background: var(--label-bg, var(--surface-10));
   padding: var(--space-3xs) var(--space-2xs);
 }
 
 .tag-checkbox {
-  background: var(--label-bg, var(--gray-2));
+  background: var(--label-bg, var(--surface-10));
   display: block;
 }
 
@@ -316,17 +353,17 @@ input:where([type=text]) {
 
 .tag a:focus,
 .tag a:hover {
-  background: var(--gray-2);
+  background: var(--surface-10);
 }
 
 /* When new tag is added */
 .tag-checkbox:has(input[type="checkbox"]:checked:not(:default)) {
-  --label-bg: var(--green-3);
+  --label-bg: var(--surface-11);
 }
 
 /* When tag is removed */
 .tag-checkbox:has(input[type="checkbox"]:default:not(:checked)) {
-  --label-bg: var(--red-3);
+  --label-bg: var(--surface-12);
 }
 
 .body-header {
@@ -356,14 +393,14 @@ input:where([type=text]) {
 }
 
 .sidebar nav span {
-  color: var(--grey-6);
+  color: var(--text-2);
   margin-inline: var(--space-2xs);
 }
 
 .sidebar-heading {
   font-size: var(--step-0);
-  background: var(--grey-13);
-  color: var(--grey-1);
+  background: var(--surface-6);
+  color: var(--text-3);
   margin-inline-start: calc(-1 * var(--space-2xs));
   padding-inline-start: var(--space-2xs);
   padding-inline-end: var(--space-2xs);
@@ -377,8 +414,8 @@ input:where([type=text]) {
 }
 
 .filter-wrapper button {
-  border: 1px solid var(--grey-3);
-  background: var(--grey-2);
+  border: 1px solid var(--surface-8);
+  background: var(--surface-2);
   padding: var(--space-3xs) var(--space-2xs);
   min-width: 6rem;
   margin-top: var(--space-xs);
@@ -530,8 +567,8 @@ input:where([type=text]) {
 }
 
 .feed-item-toggle {
-  --_text-color: var(--grey-9);
-  --_border-color: var(--grey-5);
+  --_text-color: var(--text-4);
+  --_border-color: var(--surface-9);
   font-size: var(--step--1);
   padding: 3px var(--space-2xs);
   color: var(--_text-color);
@@ -543,8 +580,8 @@ input:where([type=text]) {
 }
 
 .feed-item-toggle:hover {
-  --_text-color: var(--grey-14);
-  --_border-color: var(--grey-11);
+  --_text-color: var(--text-5);
+  --_border-color: var(--surface-13);
 }
 
 .feed-item-toggle[aria-expanded=false] .toggle-collapse,
@@ -579,7 +616,7 @@ input:where([type=text]) {
 .root-heading p,
 .heading-info {
   font-style: italic;
-  color: var(--grey-10);
+  color: var(--text-4);
   font-size: var(--step--1);
 }
 
@@ -590,11 +627,11 @@ input:where([type=text]) {
 .heading-info a {
   font-style: normal;
   color: var(--text-1);
-  text-decoration: var(--grey-9) dotted underline;
+  text-decoration: var(--surface-4) dotted underline;
 }
 
 .heading-info a:hover {
-  text-decoration: var(--grey-10) underline;
+  text-decoration: var(--text-4) underline;
 }
 
 .feed-item {
@@ -620,7 +657,7 @@ input:where([type=text]) {
 
 .item-extra a,
 .item-extra span {
-  color: var(--grey-10);
+  color: var(--text-4);
   text-overflow: ellipsis;
   overflow: hidden;
 }
@@ -635,16 +672,16 @@ input:where([type=text]) {
   flex-shrink: 0;
 }
 
-.age-newest {
-  background: var(--grey-13);
+main .age-newest {
+  background: var(--surface-6);
 }
 
-.age-less-month {
-  background: var(--grey-11);
+main .age-less-month {
+  background: var(--surface-5);
 }
 
-.age-more-month {
-  background: var(--grey-9);
+main .age-more-month {
+  background: var(--surface-4);
 }
 
 .message {
