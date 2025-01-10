@@ -17,7 +17,6 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
-- infosec.exchange favicon string is messed up
 - some images (favicon) might be very large
   - check images when first time loaded? Or download icon url?
   - also check favicon if found in feed file (rss/atom)

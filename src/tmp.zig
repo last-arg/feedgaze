@@ -16,8 +16,24 @@ pub fn main() !void {
     // try find_dir();
     // try http_head();
     // try zig_http();
-    try tmp_progress();
+    // try tmp_progress();
+    try tmp_icon();
 }
+
+pub fn tmp_icon() !void {
+    const App = @import("app.zig").App;
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+    const feed_url = "https://infosec.exchange/@letoram";
+
+    const icon_url = App.fetch_icon(arena.allocator(), feed_url) catch |err| blk: {
+        std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
+        break :blk null;
+    };
+    print("url: |{?s}|\n", .{icon_url});
+}
+
 
 pub fn tmp_progress() !void {
     const progress_node = std.Progress.start(.{

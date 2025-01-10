@@ -98,7 +98,7 @@ pub const Feed = struct {
 
 pub fn url_create(alloc: std.mem.Allocator, input: []const u8, base_url: Uri) ![]const u8 {
     if (mem.startsWith(u8, input, "http")) {
-        return input;
+        return alloc.dupe(u8, input);
     } else if (mem.startsWith(u8, input, "//")) {
         return try std.fmt.allocPrint(alloc, "https:{s}", .{input});
     }
