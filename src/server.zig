@@ -650,10 +650,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    var etag_buf: [64]u8 = undefined;
-
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{latest_created});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -882,10 +880,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    var etag_buf: [64]u8 = undefined;
-
     if (try db.get_latest_feed_change(id)) |latest| {
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{latest});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1246,11 +1242,10 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     const db = &global.storage;
 
     var date_buf: [29]u8 = undefined;
-    var etag_buf: [64]u8 = undefined;
 
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}-{x}\"", .{latest_created, countdown});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, countdown});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1462,10 +1457,8 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         return;
     };
 
-    var etag_buf: [64]u8 = undefined;
-
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{latest_created});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1526,10 +1519,8 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    var etag_buf: [64]u8 = undefined;
-
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{latest_created});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1785,10 +1776,8 @@ fn resp_cache(req: *httpz.Request, resp: *httpz.Response, etag: []const u8, opts
 fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
-    var etag_buf: [64]u8 = undefined;
-
     if (try db.get_latest_change()) |latest_created| {
-        const etag_out = try std.fmt.bufPrint(&etag_buf, "\"{x}\"", .{latest_created});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{latest_created});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
