@@ -167,6 +167,8 @@ legend {
 }
 
 :root {
+  color-scheme: light dark;
+
   --font-base: Arial;
   --gutter: var(--space-s-l);
   --transition-base: 250ms ease;
@@ -181,6 +183,7 @@ legend {
   --text-3: var(--grey-1);
   --text-4: var(--grey-10);
   --text-5: var(--grey-14);
+  --text-6: var(--black);
   --surface-0: var(--white);
   --surface-1: var(--grey-1);
   --surface-2: var(--grey-2);
@@ -197,27 +200,30 @@ legend {
   --surface-13: var(--grey-14);
 }
 
-:root {
-  /* dark mode */
-  --text-1: var(--grey-1);
-  --text-2: var(--grey-6);
-  --text-3: var(--grey-2);
-  --text-4: var(--grey-7);
-  --text-5: var(--grey-3);
-  --surface-0: var(--black);
-  --surface-1: var(--grey-16);
-  --surface-2: var(--grey-12);
-  --surface-3: var(--grey-14);
-  --surface-4: var(--grey-15);
-  --surface-5: var(--grey-13);
-  --surface-6: var(--grey-12);
-  --surface-7: var(--grey-7);
-  --surface-8: var(--grey-3);
-  --surface-9: var(--grey-7);
-  --surface-10: var(--grey-13);
-  --surface-11: var(--green-10);
-  --surface-12: var(--red-10);
-  --surface-13: var(--grey-3);
+/* dark mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-1: var(--grey-1);
+    --text-2: var(--grey-6);
+    --text-3: var(--grey-2);
+    --text-4: var(--grey-7);
+    --text-5: var(--grey-3);
+    --text-6: var(--white);
+    --surface-0: var(--black);
+    --surface-1: var(--grey-16);
+    --surface-2: var(--grey-12);
+    --surface-3: var(--grey-14);
+    --surface-4: var(--grey-15);
+    --surface-5: var(--grey-13);
+    --surface-6: var(--grey-12);
+    --surface-7: var(--grey-7);
+    --surface-8: var(--grey-3);
+    --surface-9: var(--grey-7);
+    --surface-10: var(--grey-13);
+    --surface-11: var(--green-10);
+    --surface-12: var(--red-10);
+    --surface-13: var(--grey-3);
+  }
 }
 
 body {
@@ -466,7 +472,7 @@ input:where([type=text]) {
 }
 
 .feed-info a:hover {
-  color: black;
+  color: var(--text-6);
   text-decoration-style: solid;
 }
 

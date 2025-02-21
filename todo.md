@@ -11,7 +11,7 @@
 
 - keep track of 404 feeds
   - keep count how many times it has failed?
-  - save date when it failed first time?
+  - save date when it failed first time? Or last?
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
 - cli: 
   - try https://github.com/n0s4/flags
