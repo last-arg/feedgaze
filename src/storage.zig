@@ -1396,7 +1396,7 @@ pub const Storage = struct {
     }
 };
 
-// TODO: feed.title default value should be null
+// TODO: feed.title default value should be null. Or use empty string ("") as default value?
 const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed(
     \\  feed_id INTEGER PRIMARY KEY,

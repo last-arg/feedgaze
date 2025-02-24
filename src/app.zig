@@ -491,7 +491,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     },
                 };
                 if (try self.storage.has_rule(rule_new)) {
-                    try self.out.writeAll("Rule exists\n");
+                    try self.out.writeAll("Rule already exists\n");
                     return;
                 }
                 try self.storage.rule_add(rule_new);
