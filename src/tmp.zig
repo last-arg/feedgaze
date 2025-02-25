@@ -12,12 +12,12 @@ pub fn main() !void {
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
-    // try storage_test();
+    try storage_test();
     // try find_dir();
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    try tmp_icon();
+    // try tmp_icon();
 }
 
 pub fn tmp_icon() !void {
@@ -25,13 +25,14 @@ pub fn tmp_icon() !void {
     var gen = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(gen.allocator());
     defer arena.deinit();
-    const feed_url = "https://infosec.exchange/@letoram";
+    const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
 
     const icon_url = App.fetch_icon(arena.allocator(), feed_url) catch |err| blk: {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
         break :blk null;
     };
-    print("url: |{?s}|\n", .{icon_url});
+    print("data: |{any}|\n", .{icon_url.?.data});
+    print("url: |{s}|\n", .{icon_url.?.url});
 }
 
 
@@ -182,18 +183,13 @@ pub fn find_dir() !void {
 }
 
 pub fn storage_test() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
+    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    // defer arena.deinit();
     var storage = try Storage.init("./tmp/feeds.db");
-    {
-        const feeds = try storage.feed_icons_missing(alloc);
-        print("len: {d}\n", .{feeds.len});
-    }
-    {
-        const feeds = try storage.feed_icons_all(alloc);
-        print("len: {d}\n", .{feeds.len});
-    }
+    try storage.upsertIcon(.{
+        .url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA",
+        .data = "<data>1",
+    });
 }
 
 pub fn storage_item_interval() !void {

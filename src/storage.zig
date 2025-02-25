@@ -114,6 +114,7 @@ pub const Storage = struct {
         feed_opts: FeedOptions,
         html_opts: ?parse.HtmlOptions = null,
     };
+
     pub fn addFeed(self: *Self, allocator: Allocator, opts: AddOptions) !usize {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
@@ -122,9 +123,10 @@ pub const Storage = struct {
         if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
             parsed.feed.title = new_title;
         };
+
         // Faviour favicon from html over rss/atom contents
-        if (feed_opts.icon_url) |icon_url| {
-            parsed.feed.icon_url = icon_url;
+        if (feed_opts.icon) |icon| {
+            parsed.feed.icon_url = icon.url;
         }
 
         parsed.feed.feed_url = feed_opts.feed_url;
@@ -134,6 +136,9 @@ pub const Storage = struct {
         }
         try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
+        if (feed_opts.icon) |icon| {
+            try self.upsertIcon(icon);
+        }
         parsed.feed.feed_id = feed_id;
         if (opts.html_opts) |html_opts| {
             try self.html_selector_add(feed_id, html_opts);
@@ -544,6 +549,27 @@ pub const Storage = struct {
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
             .item_interval = feed_update.item_interval,
+        });
+    }
+
+    pub fn upsertIcon(self: *Self, icon: types.Icon) !void {
+        assert(if (std.Uri.parse(icon.url)) |_| true else |_| false);
+        assert(icon.data.len > 0);
+
+        const query =
+            \\INSERT INTO icon 
+            \\  (icon_url, icon_data)
+            \\VALUES 
+            \\  (@icon_url, @icon_data)
+            \\ ON CONFLICT DO UPDATE SET
+            \\  icon_data = @icon_data
+            \\ WHERE icon_url = @icon_url
+            \\ AND icon_data != @icon_data
+            \\;
+        ;
+        try self.sql_db.exec(query, .{}, .{
+            .icon_url = icon.url,
+            .icon_data = icon.data,
         });
     }
 
@@ -1405,6 +1431,11 @@ const tables = &[_][]const u8{
     \\  page_url TEXT DEFAULT NULL,
     \\  icon_url TEXT DEFAULT NULL,
     \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+    \\) STRICT;
+    ,
+    \\CREATE TABLE IF NOT EXISTS icon(
+    \\  icon_url TEXT NOT NULL PRIMARY KEY,
+    \\  icon_data TEXT NOT NULL
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS item(

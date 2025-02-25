@@ -17,9 +17,11 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
-- some images (favicon) might be very large
-  - check images when first time loaded? Or download icon url?
-  - also check favicon if found in feed file (rss/atom)
+- save favicons 
+  - avoid requests to all the different domains
+  - make sure size isn't too large
+  - use favicon from rss/atom file or from html head?
+    - check html head if rss/atom icon is over certain size?
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - save failed favicon requests

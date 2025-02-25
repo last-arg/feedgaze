@@ -548,13 +548,18 @@ pub const FeedToUpdate = struct {
     etag: ?[]const u8 = null,
 };
 
+pub const Icon = struct {
+    url: []const u8 = "",
+    data: []const u8 = "",
+};
+
 pub const FeedOptions = struct {
     body: []const u8 = "",
     content_type: ?ContentType = null,
     feed_updates: FeedUpdate = .{},
     feed_url: []const u8 = "",
     title: ?[]const u8 = null,
-    icon_url: ?[]const u8 = null,
+    icon: ?Icon = null,
 
     pub fn fromResponse(resp: curl.Easy.Response) @This() {
         const header_value = resp.getHeader("content-type") catch null;

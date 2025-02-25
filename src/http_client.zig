@@ -69,15 +69,14 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     // try self.client.setVerbose(true);
 
     var buf = curl.Buffer.init(self.allocator);
-    try self.client.setWritefunction(curl.bufferWriteCallback);
-    try self.client.setWritedata(&buf);
+    try self.client.setWritefunction(curl.bufferWriteCallback); try self.client.setWritedata(&buf);
 
     var resp = try self.client.perform();
     resp.body = buf;
     return resp;
 }
 
-pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
+pub fn fetch_image(self: *@This(), url: []const u8) !curl.Easy.Response {
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
@@ -89,39 +88,39 @@ pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
     const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
     try self.client.setUrl(url_with_null);
     try self.client.setMaxRedirects(3);
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 1)));
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
     const user_agent = "feedgaze/" ++ config.version;
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    const resp = try self.client.perform();
+    var buf = curl.Buffer.init(self.allocator);
+    try self.client.setWritefunction(curl.bufferWriteCallback);
+    try self.client.setWritedata(&buf);
+
+    var resp = try self.client.perform();
+    resp.body = buf;
     return resp;
 }
 
-pub fn check_icon_path(self: *@This(), url_full: []const u8) !bool {
-    const resp = self.head(url_full) catch |err| {
-        std.log.err("Failed to make request to '{s}'", .{url_full});
-        return err;
+pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 {
+    const body = resp.body orelse {
+        std.log.warn("Icon url '{s}' returned no content.", .{url});
+        return null;
     };
-    resp.deinit();
 
-    if (try resp.getHeader("content-length")) |cl| {
-        const val = mem.trim(u8, cl.get(), &std.ascii.whitespace);
-        const content_len = std.fmt.parseUnsigned(u32, val, 10) catch blk: {
-            std.log.warn("Failed to parse number from HTTP header 'Content-Length'. Value: '{s}'", .{val});
-            break :blk 0;
-        };
-        const max_size = 100 * 1024;
-        if (content_len == 0) {
-            return false;
-        } else if (content_len >= max_size) {
-            std.log.warn("Favicon '{s}' exceeds 100kb size.", .{url_full});
-            return false;
-        }
+    if (body.items.len == 0) {
+        std.log.warn("Icon url '{s}' returned no content.", .{url});
+        return null;
     }
-    
-    return resp.status_code == 200;
+
+    const max_size = 100 * 1024;
+    if (body.items.len >= max_size) {
+        std.log.warn("Icon url '{s}' exceeds 100kb size.", .{url});
+        return null;
+    }
+
+    return body.items;
 }
 
 pub fn get_url_slice(self: *const @This()) ![]const u8 {
