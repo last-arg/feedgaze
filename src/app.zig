@@ -697,6 +697,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
+            var icon_url: ?[]const u8 = null;
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
@@ -741,22 +742,15 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 }
 
-                if (html_parsed.icon_url) |icon_url| {
-                    add_opts.feed_opts.icon = .{ .url = icon_url };
-                }
+                icon_url = html_parsed.icon_url;
             } else {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            if (add_opts.feed_opts.icon == null) {
-                // @continue
-                // TODO: sometimes I already have icon_url 
-                // Need to change things above and in App.fetch_icon
-                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url) catch |err| blk: {
-                    std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
-                    break :blk null;
-                };
-            }
+            add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, icon_url) catch |err| blk: {
+                std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+                break :blk null;
+            };
 
             const feed_id = try self.storage.addFeed(self.allocator, add_opts);
             return feed_id;
@@ -1239,11 +1233,13 @@ pub const App = struct {
         return .added;
     }
 
-    pub fn fetch_icon(allocator: Allocator, feed_url: []const u8) !?feed_types.Icon {
+    // icon_url_opt usually comes from parsing html head.
+    pub fn fetch_icon(allocator: Allocator, feed_url: []const u8, icon_url_opt: ?[]const u8) !?feed_types.Icon {
+        std.debug.assert(!mem.startsWith(u8, icon_url_opt orelse "", "data:"));
+
         var buf: [1024]u8 = undefined;
         const uri = try std.Uri.parse(mem.trim(u8, feed_url, &std.ascii.whitespace));
-        const icon_path = "/favicon.ico";
-        const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
+        const url_request = try std.fmt.bufPrint(&buf, "{;+}/favicon.ico", .{uri});
 
         var req = try http_client.init(allocator);
         defer req.deinit();
@@ -1266,32 +1262,12 @@ pub const App = struct {
             }
         }
 
-        const url_root = url_request[0..url_request.len - icon_path.len];
-        var resp_html = try req.fetch(url_root, .{});
-        defer resp_html.deinit();
-
-        if (resp_html.status_code != 200) {
-            std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp_html.status_code});
-            return error.InvalidStatusCode;
-        }
-
-        const body_html = resp_html.body orelse return error.MissingHTTPBody;
-        // TODO: replace this with function that only parses favicon?
-        const html_parsed = try html.parse_html(allocator, body_html.items);
-        const icon_url = html_parsed.icon_url orelse return null;
-
-        if (mem.startsWith(u8, icon_url, "data:")) {
-            return .{
-                .url = "data",
-                .data = try allocator.dupe(u8, icon_url),
-            };
-        }
-
+        const icon_url = icon_url_opt orelse return null;
         var resp_icon = try req.fetch(icon_url, .{});
         defer resp_icon.deinit();
 
         if (resp_icon.status_code != 200) {
-            std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp_html.status_code});
+            std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{icon_url, resp_icon.status_code});
             return error.InvalidStatusCode;
         }
 
