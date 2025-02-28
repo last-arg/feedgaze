@@ -76,6 +76,20 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     return resp;
 }
 
+pub fn response_200_and_has_body(resp: curl.Easy.Response, req_url: []const u8) ?[]const u8 {
+    if (resp.status_code != 200) {
+        std.log.warn("Request to '{s}' failed. Status code: {}", .{req_url, resp.status_code});
+        return null;
+    }
+
+    if (resp.body == null or resp.body.?.items.len == 0) {
+        std.log.warn("Request to '{s}' failed. There is no body", .{req_url, resp.status_code});
+        return null;
+    }
+
+    return resp.body.?.items;
+}
+
 pub fn fetch_image(self: *@This(), url: []const u8) !curl.Easy.Response {
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
@@ -121,6 +135,28 @@ pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 
     }
 
     return body.items;
+}
+
+pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
+    const url_buf_len = 1024;
+    var url_buf: [url_buf_len]u8 = undefined;
+    std.debug.assert(url.len < url_buf_len);
+
+    // NOTE: currently head() is only used to check if favicon.ico exists.
+    // If in the future am going to use it for something else need to change this.
+    try self.headers.add("Accept", "image/*");
+    
+    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
+    try self.client.setUrl(url_with_null);
+    try self.client.setMaxRedirects(3);
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 1)));
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
+    const user_agent = "feedgaze/" ++ config.version;
+    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
+    // try self.client.setVerbose(true);
+
+    const resp = try self.client.perform();
+    return resp;
 }
 
 pub fn get_url_slice(self: *const @This()) ![]const u8 {

@@ -214,96 +214,154 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         };
 
         fn check_icons(self: *Self, check_type: IconCheckType) !void {
-            var buf: [1024]u8 = undefined;
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
-            var map = std.StringArrayHashMap([]const u8).init(arena.allocator());
-            defer map.deinit();
-            const feeds = switch (check_type) {
-                // TODO: redo how checking all icons works.
-                // - get all existing icons and check them
-                // - get all missing icons (not in 'icon' table) and check them
-                // beware of "data:..." icons
-                .all => try self.storage.feed_icons_all(arena.allocator()),
-                // TODO: .missing icons will be icons that are not in 'icon' table
-                // beware of "data:..." icons
-                .missing => try self.storage.feed_icons_missing(arena.allocator()),
-            };
+            const progress_node = self.progress.start("Checking icons", 0);
+            defer { progress_node.end(); }
+            var total: usize = 0;
+            if (check_type == .all) {
+                const icons_existing = try self.storage.feed_icons_existing(arena.allocator());
+                total += icons_existing.len;
+                progress_node.setEstimatedTotalItems(total);
+                for (icons_existing) |icon| {
+                    var req = try http_client.init(arena.allocator());
+                    defer req.deinit();
 
-            if (feeds.len == 0) {
+                    const have_icon = blk: {
+                        if (!mem.startsWith(u8, icon.icon_url, "data:")) {
+                            const resp = req.head(icon.icon_url) catch |err| {
+                                std.log.err("Failed to request '{s}'. Error: {}", .{icon.icon_url, err});
+                                break :blk false;
+                            };
+                            defer resp.deinit();
+
+                            if (resp.status_code != 200) {
+                                std.log.warn("Failed to validate icon for '{s}'. Status code: {d}", .{icon.icon_url, resp.status_code});
+                                break :blk false;
+                            }
+
+                            const resp_url = try req.get_url_slice();
+                            if (!mem.eql(u8, icon.icon_url, resp_url)) {
+                                try self.storage.feed_icon_update(icon.feed_id, resp_url);
+                            }
+                        }
+
+                        break :blk true;
+                    };
+
+                    if (have_icon) { continue; }
+
+                    // Check inline icon
+                    const resp = req.fetch(icon.page_url, .{}) catch |err| {
+                        std.log.err("Request to '{s}' failed. Error: {}", .{icon.page_url, err});
+                        try self.storage.feed_icon_update(icon.feed_id, null);
+                        try self.storage.icon_failed_add(icon.feed_id);
+                        continue;
+                    };
+                    defer resp.deinit();
+
+                    const body = http_client.response_200_and_has_body(resp, icon.page_url) orelse {
+                        try self.storage.feed_icon_update(icon.feed_id, null);
+                        try self.storage.icon_failed_add(icon.feed_id);
+                        continue;
+                    };
+
+                    const html_parsed = try html.parse_html(arena.allocator(), body);
+                    if (html_parsed.icon_url) |icon_url| {
+                        if (mem.startsWith(u8, icon_url, "data:")) {
+                            if (!mem.eql(u8, icon.icon_url, icon_url)) {
+                                try self.storage.icon_update(.{
+                                    .url = try req.get_url_slice(),
+                                    .data = icon_url,
+                                });
+                            }
+                        } else {
+                            const resp_image = req.fetch_image(icon_url) catch |err| {
+                                std.log.warn("Request to '{s}' failed. Error: {}", .{icon_url, err});
+                                try self.storage.feed_icon_update(icon.feed_id, null);
+                                try self.storage.icon_failed_add(icon.feed_id);
+                                continue;
+                            };
+                            defer resp_image.deinit();
+                            const body_image = http_client.response_200_and_has_body(resp_image, icon_url) orelse {
+                                try self.storage.feed_icon_update(icon.feed_id, null);
+                                try self.storage.icon_failed_add(icon.feed_id);
+                                continue;
+                            };
+                            try self.storage.icon_update(.{
+                                .url = icon_url,
+                                .data = body_image,
+                            });
+                        }
+                    } else {
+                        try self.storage.feed_icon_update(icon.feed_id, null);
+                        try self.storage.icon_failed_add(icon.feed_id);
+                    }
+                }
+            }
+
+            const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
+            total += icons_missing.len;
+
+            if (total == 0) {
                 std.log.info("No feed icons to check", .{});
                 return;
             }
 
-            var count_updated: u32 = 0;
-            const progress_node = self.progress.start("Checking icons", feeds.len);
-            defer {
-                progress_node.end();
-                std.log.info("Icons checked: [{}/{}]", .{count_updated, feeds.len});
-            }
+            progress_node.setEstimatedTotalItems(total);
 
-            for (feeds) |feed| {
-                const uri = std.Uri.parse(mem.trim(u8, feed.page_url, &std.ascii.whitespace)) catch |err| {
-                    std.log.warn("Failed to parse feed page url '{s}'. Error: {}", .{feed.page_url, err});
-                    continue;
-                };
-                const icon_path = "/favicon.ico";
-                const url_request = try std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_path});
-                const url_root = url_request[0..url_request.len - icon_path.len];
-                if (map.get(url_request)) |value| {
-                    try self.storage.feed_icon_update(feed.feed_id, value);
-                    progress_node.completeOne();
-                    count_updated += 1;
-                    continue;
-                }
-
+            for (icons_missing) |icon| {
                 var req = try http_client.init(arena.allocator());
                 defer req.deinit();
 
-                // Check domain's '/favicon.ico' path
-                if (try req.check_icon_path(url_request)) {
-                    const key = try arena.allocator().dupe(u8, url_root);
-                    const value = try arena.allocator().dupe(u8, url_request);
-                    try map.put(key, value);
-                    try self.storage.feed_icon_update(feed.feed_id, value);
-                    progress_node.completeOne();
-                    count_updated += 1;
+                const resp = req.fetch(icon.page_url, .{}) catch |err| {
+                    std.log.err("Request to '{s}' failed. Error: {}", .{icon.page_url, err});
                     continue;
-                }
-
-                var resp = req.fetch(url_root, .{}) catch |err| {
-                    std.log.err("Failed to fetch '{s}'", .{url_root});
-                    return err;
                 };
                 defer resp.deinit();
 
-                if (resp.status_code == 200) {
-                    const body = resp.body orelse {
-                        std.log.warn("There is no body for '{s}'", .{url_root});
-                        continue;
-                    };
-                    // TODO: replace this with function that only parses favicon
-                    const html_parsed = try html.parse_html(arena.allocator(), body.items);
-                    const icon_url = html_parsed.icon_url orelse continue;
-
-                    const url_or_data = blk: {
-                        if (mem.startsWith(u8, icon_url, "data:")) {
-                            break :blk icon_url;
-                        }
-
-                        break :blk try feed_types.url_create(arena.allocator(), icon_url, uri);
-                    };
-
-                    const key = try arena.allocator().dupe(u8, url_root);
-                    const value = try arena.allocator().dupe(u8, url_or_data);
-                    try map.put(key, value);
-                    try self.storage.feed_icon_update(feed.feed_id, value);
-                    progress_node.completeOne();
-                    count_updated += 1;
-                } else {
-                    std.log.warn("Failed to get favicon from '{s}'. Status code: {d}", .{url_root, resp.status_code});
+                const body = http_client.response_200_and_has_body(resp, icon.page_url) orelse {
+                    try self.storage.feed_icon_update(icon.feed_id, null);
+                    try self.storage.icon_failed_add(icon.feed_id);
                     continue;
+                };
+
+                const html_parsed = try html.parse_html(arena.allocator(), body);
+                if (html_parsed.icon_url) |icon_url| blk_if: {
+                    if (mem.startsWith(u8, icon_url, "data:")) {
+                        try self.storage.icon_update(.{
+                            .url = try req.get_url_slice(),
+                            .data = icon_url,
+                        });
+                    } else {
+                        const resp_image = req.fetch_image(icon_url) catch |err| {
+                            std.log.warn("Request to '{s}' failed. Error: {}", .{icon_url, err});
+                            break :blk_if;
+                        };
+                        defer resp_image.deinit();
+
+                        const body_image = http_client.response_200_and_has_body(resp_image, icon_url) orelse {
+                            try self.storage.feed_icon_update(icon.feed_id, null);
+                            try self.storage.icon_failed_add(icon.feed_id);
+                            continue;
+                        };
+
+                        try self.storage.icon_update(.{
+                            .url = icon_url,
+                            .data = body_image,
+                        });
+                    }
+                }
+
+                // Check if there is favicon
+                const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch |err| {
+                    std.log.warn("Failed to fetch favicon from page '{s}'. Error: {}", .{icon.page_url, err});
+                    continue;
+                };
+
+                if (new_icon_opt) |new_icon| {
+                    try self.storage.icon_update(new_icon);
                 }
             }
         }
@@ -697,7 +755,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-            var icon_url: ?[]const u8 = null;
+            var icon_url_opt: ?[]const u8 = null;
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
@@ -742,15 +800,21 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 }
 
-                icon_url = html_parsed.icon_url;
+                icon_url_opt = html_parsed.icon_url;
             } else {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, icon_url) catch |err| blk: {
-                std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
-                break :blk null;
-            };
+            if (icon_url_opt) |icon_url| {
+                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(add_opts.feed_opts.feed_url, icon_url);
+            }
+
+            if (add_opts.feed_opts.icon == null) {
+                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, icon_url_opt) catch |err| blk: {
+                    std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+                    break :blk null;
+                };
+            }
 
             const feed_id = try self.storage.addFeed(self.allocator, add_opts);
             return feed_id;

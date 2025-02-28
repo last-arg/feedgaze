@@ -1326,7 +1326,16 @@ pub const Storage = struct {
     pub const FeedIcon = struct {
         feed_id: usize,
         page_url: []const u8,
+        icon_url: []const u8
     };
+
+    pub fn feed_icons_existing(self: *Self, allocator: Allocator) ![]FeedIcon {
+        const query =
+        \\SELECT feed_id, page_url, icon_url 
+        \\FROM feed where icon_url IS NOT NULL AND page_url IS NOT NULL
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+    }
 
     pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
         const query =
@@ -1336,23 +1345,58 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
 
-    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedIcon {
+    const FeedPageUrl = struct {
+        feed_id: usize,
+        page_url: []const u8,
+    };
+
+    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedPageUrl {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_url IS NULL AND page_url IS NOT NULL
         ;
-        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+        return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
     }
 
-    pub fn feed_icon_update(self: *Self, feed_id: usize, icon_url: []const u8) !void {
+
+    pub fn icon_update(self: *Self, icon_opt: ?types.Icon) !void {
+        _ = self; // autofix
+        if (icon_opt) |icon| {
+            assert(icon.url.len > 0 and icon.data.len > 0);
+            // Is and url or and inline icon that stars with 'data:'
+            assert(
+                (if (std.Uri.parse(icon.url)) |_| true else |_| false)
+                or mem.startsWith(u8, icon.url, "data:")
+            );
+            @panic("TODO: add icon");
+        } else {
+            @panic("TODO: remove icon");
+        }
+    }
+
+    pub fn feed_icon_update(self: *Self, feed_id: usize, icon_url: ?[]const u8) !void {
+        if (icon_url) |val| {
+            assert(
+                (if (std.Uri.parse(val)) |_| true else |_| false)
+                or mem.startsWith(u8,val, "data:")
+            );
+        }
+
         const query = 
         \\UPDATE feed SET
         \\  icon_url = ?
         \\WHERE feed_id = ?;
         ;
+
         try self.sql_db.exec(query, .{}, .{icon_url, feed_id});
     }
 
+    pub fn icon_failed_add(self: *Self, feed_id: usize) !void {
+        _ = self; // autofix
+        _ = feed_id; // autofix
+        @panic("TODO: icon_failed_add()");
+    }
+    
     pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
         const query =
             \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)

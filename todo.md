@@ -25,6 +25,7 @@
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - save failed favicon requests
+  - IconCheckType: add 'failed' enum?
   - don't include them in missing request or all
   - make new flag for failed icons requests '--check-failed-icons'
 - add transactions

@@ -551,6 +551,17 @@ pub const FeedToUpdate = struct {
 pub const Icon = struct {
     url: []const u8 = "",
     data: []const u8 = "",
+
+    pub fn init_if_data(url: []const u8, data: []const u8) ?@This() {
+        if (!mem.startsWith(u8, data, "data:")) {
+            return null;
+        }
+
+        return .{
+            .url = url,
+            .data = data,
+        };
+    }
 };
 
 pub const FeedOptions = struct {
