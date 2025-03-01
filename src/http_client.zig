@@ -90,7 +90,7 @@ pub fn response_200_and_has_body(resp: curl.Easy.Response, req_url: []const u8) 
     return resp.body.?.items;
 }
 
-pub fn fetch_image(self: *@This(), url: []const u8) !curl.Easy.Response {
+pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, []const u8} {
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
@@ -114,7 +114,12 @@ pub fn fetch_image(self: *@This(), url: []const u8) !curl.Easy.Response {
 
     var resp = try self.client.perform();
     resp.body = buf;
-    return resp;
+
+    const body = response_200_and_has_body(resp, url) orelse {
+        return error.NoBody;
+    };
+    
+    return .{ resp, body };
 }
 
 pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 {

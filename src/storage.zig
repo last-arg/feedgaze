@@ -1388,27 +1388,37 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
     }
 
+    fn is_url(url: []const u8) bool {
+        return if (std.Uri.parse(url)) |_| true else |_| false;
+    }
 
-    pub fn icon_update(self: *Self, icon_opt: ?types.Icon) !void {
-        _ = self; // autofix
-        if (icon_opt) |icon| {
-            assert(icon.url.len > 0 and icon.data.len > 0);
-            // Is and url or and inline icon that stars with 'data:'
-            assert(
-                (if (std.Uri.parse(icon.url)) |_| true else |_| false)
-                or mem.startsWith(u8, icon.url, "data:")
-            );
-            @panic("TODO: add icon");
-        } else {
-            @panic("TODO: remove icon");
-        }
+    pub fn icon_update(self: *Self, curr_icon_url: []const u8, icon: types.Icon) !void {
+        assert(is_url(curr_icon_url));
+        assert(is_url(icon.url));
+        assert(icon.data.len > 0);
+
+        const query = 
+        \\UPDATE icon SET
+        \\  icon_url = ?
+        \\  icon_data = ?
+        \\WHERE icon_url = ?;
+        ;
+
+        try self.sql_db.exec(query, .{}, .{icon.url, icon.data, curr_icon_url});
+    }
+
+    pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
+        assert(is_url(icon_url));
+        const query = 
+        \\DELETE FROM icon WHERE icon_url = ?;
+        ;
+        try self.sql_db.exec(query, .{}, .{icon_url});
     }
 
     pub fn feed_icon_update(self: *Self, feed_id: usize, icon_url: ?[]const u8) !void {
         if (icon_url) |val| {
             assert(
-                (if (std.Uri.parse(val)) |_| true else |_| false)
-                or mem.startsWith(u8,val, "data:")
+                is_url(val) or mem.startsWith(u8,val, "data:")
             );
         }
 

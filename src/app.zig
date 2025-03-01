@@ -246,7 +246,17 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                             const resp_url = try req.get_url_slice();
                             if (!mem.eql(u8, icon.icon_url, resp_url)) {
-                                try self.storage.feed_icon_update(icon.feed_id, resp_url);
+                                const resp_image, const resp_body = req.fetch_image(resp_url) catch |err| {
+                                    std.log.warn("Failed to fetch image '{s}'. Error: {}", .{resp_url, err});
+                                    try self.storage.icon_failed_add(icon.feed_id);
+                                    break :blk false;
+                                };
+                                defer resp_image.deinit();
+
+                                try self.storage.icon_update(icon.icon_url, .{
+                                    .url = resp_url,
+                                    .data = resp_body,
+                                });
                             }
                         }
 
@@ -258,14 +268,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     // Check inline icon
                     const resp = req.fetch(icon.page_url, .{}) catch |err| {
                         std.log.err("Request to '{s}' failed. Error: {}", .{icon.page_url, err});
-                        try self.storage.feed_icon_update(icon.feed_id, null);
                         try self.storage.icon_failed_add(icon.feed_id);
                         continue;
                     };
                     defer resp.deinit();
 
                     const body = http_client.response_200_and_has_body(resp, icon.page_url) orelse {
-                        try self.storage.feed_icon_update(icon.feed_id, null);
                         try self.storage.icon_failed_add(icon.feed_id);
                         continue;
                     };
@@ -274,31 +282,25 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     if (html_parsed.icon_url) |icon_url| {
                         if (mem.startsWith(u8, icon_url, "data:")) {
                             if (!mem.eql(u8, icon.icon_url, icon_url)) {
-                                try self.storage.icon_update(.{
+                                try self.storage.icon_update(icon.icon_url, .{
                                     .url = try req.get_url_slice(),
                                     .data = icon_url,
                                 });
                             }
                         } else {
-                            const resp_image = req.fetch_image(icon_url) catch |err| {
-                                std.log.warn("Request to '{s}' failed. Error: {}", .{icon_url, err});
-                                try self.storage.feed_icon_update(icon.feed_id, null);
+                            const resp_image, const resp_body = req.fetch_image(icon_url) catch |err| {
+                                std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url, err});
                                 try self.storage.icon_failed_add(icon.feed_id);
                                 continue;
                             };
                             defer resp_image.deinit();
-                            const body_image = http_client.response_200_and_has_body(resp_image, icon_url) orelse {
-                                try self.storage.feed_icon_update(icon.feed_id, null);
-                                try self.storage.icon_failed_add(icon.feed_id);
-                                continue;
-                            };
-                            try self.storage.icon_update(.{
+
+                            try self.storage.icon_update(icon.icon_url, .{
                                 .url = icon_url,
-                                .data = body_image,
+                                .data = resp_body,
                             });
                         }
                     } else {
-                        try self.storage.feed_icon_update(icon.feed_id, null);
                         try self.storage.icon_failed_add(icon.feed_id);
                     }
                 }
@@ -328,35 +330,29 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 defer resp.deinit();
 
                 const body = http_client.response_200_and_has_body(resp, icon.page_url) orelse {
-                    try self.storage.feed_icon_update(icon.feed_id, null);
-                    try self.storage.icon_failed_add(icon.feed_id);
                     continue;
                 };
 
                 const html_parsed = try html.parse_html(arena.allocator(), body);
-                if (html_parsed.icon_url) |icon_url| blk_if: {
+                if (html_parsed.icon_url) |icon_url| {
                     if (mem.startsWith(u8, icon_url, "data:")) {
-                        try self.storage.icon_update(.{
+                        try self.storage.upsertIcon(.{
                             .url = try req.get_url_slice(),
                             .data = icon_url,
                         });
+                        try self.storage.feed_icon_update(icon.feed_id, icon_url);
                     } else {
-                        const resp_image = req.fetch_image(icon_url) catch |err| {
-                            std.log.warn("Request to '{s}' failed. Error: {}", .{icon_url, err});
-                            break :blk_if;
+                        const resp_image, const resp_body = req.fetch_image(icon_url) catch |err| {
+                            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url, err});
+                            continue;
                         };
                         defer resp_image.deinit();
 
-                        const body_image = http_client.response_200_and_has_body(resp_image, icon_url) orelse {
-                            try self.storage.feed_icon_update(icon.feed_id, null);
-                            try self.storage.icon_failed_add(icon.feed_id);
-                            continue;
-                        };
-
-                        try self.storage.icon_update(.{
+                        try self.storage.upsertIcon(.{
                             .url = icon_url,
-                            .data = body_image,
+                            .data = resp_body,
                         });
+                        try self.storage.feed_icon_update(icon.feed_id, icon_url);
                     }
                 }
 
@@ -367,7 +363,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
 
                 if (new_icon_opt) |new_icon| {
-                    try self.storage.icon_update(new_icon);
+                    try self.storage.upsertIcon(new_icon);
+                    try self.storage.feed_icon_update(icon.feed_id, new_icon.url);
                 }
             }
         }
@@ -1315,21 +1312,17 @@ pub const App = struct {
         defer req.deinit();
 
         { // Check domain's '/favicon.ico' path
-            const resp = req.fetch_image(url_request) catch |err| {
+            const resp, const body = req.fetch_image(url_request) catch |err| {
                 std.log.err("Failed to make request to '{s}'", .{url_request});
                 return err;
             };
             defer resp.deinit();
 
-            if (resp.status_code == 200) {
-                if (http_client.resp_to_icon_body(resp, url_request)) |body| {
-                    const url_favicon = try req.get_url_slice();
-                    return .{
-                        .url = try allocator.dupe(u8, url_favicon),
-                        .data = try allocator.dupe(u8, body),
-                    };
-                }
-            }
+            const url_favicon = try req.get_url_slice();
+            return .{
+                .url = try allocator.dupe(u8, url_favicon),
+                .data = try allocator.dupe(u8, body),
+            };
         }
 
         const icon_url = icon_url_opt orelse return null;
