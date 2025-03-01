@@ -164,11 +164,11 @@ pub const Storage = struct {
         if (opts.html_opts) |_| {
             parsed.feed.page_url = parsed.feed.feed_url;
         }
-        try parsed.feed.prepareAndValidate(arena.allocator());
-        const feed_id = try self.insertFeed(parsed.feed);
         if (feed_opts.icon) |icon| {
             try self.upsertIcon(icon);
         }
+        try parsed.feed.prepareAndValidate(arena.allocator());
+        const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
         if (opts.html_opts) |html_opts| {
             try self.html_selector_add(feed_id, html_opts);
@@ -229,7 +229,7 @@ pub const Storage = struct {
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
         const query =
-            \\INSERT INTO feed (title, feed_url, page_url, icon_url, updated_timestamp)
+            \\INSERT INTO feed (title, feed_url, page_url, icon_url_fk, updated_timestamp)
             \\VALUES (
             \\  @title,
             \\  @feed_url,
@@ -258,7 +258,7 @@ pub const Storage = struct {
     
     pub fn get_feed_with_url(self: *Self, allocator: Allocator, url: []const u8) !?Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
         return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -266,7 +266,7 @@ pub const Storage = struct {
 
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -474,7 +474,7 @@ pub const Storage = struct {
         // Update feed_title and page_url
         const query = 
         \\UPDATE feed 
-        \\SET title = ?, page_url = ?, icon_url = ?
+        \\SET title = ?, page_url = ?, icon_url_fk = ?
         \\WHERE feed_id = ?
         ;
         try self.sql_db.exec(query, .{}, .{
@@ -1336,7 +1336,7 @@ pub const Storage = struct {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
-            \\select feed_id, title, feed_url, page_url, icon_url, updated_timestamp from feed where feed_id in (
+            \\select feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp from feed where feed_id in (
         );
         // u64 numbers max length
         var buf: [20]u8 = undefined;
@@ -1361,8 +1361,8 @@ pub const Storage = struct {
 
     pub fn feed_icons_existing(self: *Self, allocator: Allocator) ![]FeedIcon {
         const query =
-        \\SELECT feed_id, page_url, icon_url 
-        \\FROM feed where icon_url IS NOT NULL AND page_url IS NOT NULL
+        \\SELECT feed_id, page_url, icon_url_fk as icon_url
+        \\FROM feed where icon_url_fk IS NOT NULL AND page_url IS NOT NULL
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
@@ -1383,7 +1383,7 @@ pub const Storage = struct {
     pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedPageUrl {
         const query =
         \\SELECT feed_id, page_url 
-        \\FROM feed WHERE icon_url IS NULL AND page_url IS NOT NULL
+        \\FROM feed WHERE icon_url_fk IS NULL AND page_url IS NOT NULL
         ;
         return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
     }
@@ -1414,7 +1414,7 @@ pub const Storage = struct {
 
         const query = 
         \\UPDATE feed SET
-        \\  icon_url = ?
+        \\  icon_url_fk = ?
         \\WHERE feed_id = ?;
         ;
 
@@ -1618,7 +1618,7 @@ const tables = &[_][]const u8{
     \\    OLD.title != NEW.title OR
     \\    OLD.feed_url != NEW.feed_url OR
     \\    OLD.page_url != NEW.page_url OR
-    \\    OLD.icon_url != NEW.icon_url
+    \\    OLD.icon_url_fk != NEW.icon_url_fk
     \\  );
     \\END;
     ,
