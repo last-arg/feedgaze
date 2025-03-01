@@ -65,6 +65,7 @@ pub const Storage = struct {
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
+
         if (user_version == 0) {
             // NOTE: permanent pragmas:
             // - application_id
@@ -86,18 +87,30 @@ pub const Storage = struct {
         try setupTables(db);
         try migrate(db, user_version);
         try initData(db);
+        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
+        _ = try db.pragma(usize, .{}, "user_version", db_version_str);
     }
 
     fn migrate(db: *sql.Db, version: usize) !void {
         const config_version = app_config.db_version;
-        if (version <= config_version) {
-            const query =
+        if (version == config_version) {
+            return;
+        }
+        if (1 > version) {
+            const query1 =
                 \\ALTER TABLE feed ADD COLUMN icon_url_fk TEXT DEFAULT NULL
                 \\  REFERENCES icon (icon_url) ON DELETE SET NULL ON UPDATE CASCADE;
+            ;
+            db.exec(query1, .{}, .{}) catch |err| {
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query1 });
+                return err;
+            };
+
+            const query2 =
                 \\ALTER TABLE feed DROP COLUMN icon_url;
             ;
-            db.exec(query, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+            db.exec(query2, .{}, .{}) catch |err| {
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
                 return err;
             };
         }
@@ -261,7 +274,7 @@ pub const Storage = struct {
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
         const query_start =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
             \\FROM feed 
         ;
 
