@@ -288,15 +288,26 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 });
                             }
                         } else {
-                            const resp_image, const resp_body = req.fetch_image(icon_url) catch |err| {
-                                std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url, err});
+                            var buf: [1024]u8 = undefined;
+                            const icon_url_full = blk: {
+                                if (icon_url[0] == '/') {
+                                    // All feed.page_urls coming from database should be valid.
+                                    var url = std.Uri.parse(icon.page_url) catch unreachable;
+                                    url.path = .{.raw = icon_url };
+                                    break :blk try std.fmt.bufPrint(&buf, "{}", .{url});
+                                }
+
+                                break :blk icon_url;
+                            };
+                            const resp_image, const resp_body = req.fetch_image(icon_url_full) catch |err| {
+                                std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url_full, err});
                                 try self.storage.icon_failed_add(icon.feed_id);
                                 continue;
                             };
                             defer resp_image.deinit();
 
                             try self.storage.icon_update(icon.icon_url, .{
-                                .url = icon_url,
+                                .url = icon_url_full,
                                 .data = resp_body,
                             });
                         }
@@ -336,23 +347,38 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const html_parsed = try html.parse_html(arena.allocator(), body);
                 if (html_parsed.icon_url) |icon_url| {
                     if (mem.startsWith(u8, icon_url, "data:")) {
+                        const page_url = try req.get_url_slice();
                         try self.storage.icon_upsert(.{
-                            .url = try req.get_url_slice(),
+                            .url = page_url,
                             .data = icon_url,
                         });
-                        try self.storage.feed_icon_update(icon.feed_id, icon_url);
+                        try self.storage.feed_icon_update(icon.feed_id, page_url);
+                        continue;
                     } else {
-                        const resp_image, const resp_body = req.fetch_image(icon_url) catch |err| {
-                            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url, err});
+                        var buf: [1024]u8 = undefined;
+                        const icon_url_full = blk: {
+                            if (icon_url[0] == '/') {
+                                // All feed.page_urls coming from database should be valid.
+                                var url = std.Uri.parse(icon.page_url) catch unreachable;
+                                url.path = .{.raw = icon_url };
+                                break :blk try std.fmt.bufPrint(&buf, "{}", .{url});
+                            }
+
+                            break :blk icon_url;
+                        };
+
+                        const resp_image, const resp_body = req.fetch_image(icon_url_full) catch |err| {
+                            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url_full, err});
                             continue;
                         };
                         defer resp_image.deinit();
 
                         try self.storage.icon_upsert(.{
-                            .url = icon_url,
+                            .url = icon_url_full,
                             .data = resp_body,
                         });
-                        try self.storage.feed_icon_update(icon.feed_id, icon_url);
+                        try self.storage.feed_icon_update(icon.feed_id, icon_url_full);
+                        continue;
                     }
                 }
 
@@ -1313,7 +1339,6 @@ pub const App = struct {
 
         { // Check domain's '/favicon.ico' path
             const resp, const body = req.fetch_image(url_request) catch |err| {
-                std.log.err("Failed to make request to '{s}'", .{url_request});
                 return err;
             };
             defer resp.deinit();
