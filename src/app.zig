@@ -226,7 +226,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 progress_node.setEstimatedTotalItems(total);
                 for (icons_existing) |icon| {
                     var req = try http_client.init(arena.allocator());
-                    defer req.deinit();
+                    defer {
+                        progress_node.completeOne();
+                        req.deinit();
+                    }
 
                     const have_icon = blk: {
                         if (!mem.startsWith(u8, icon.icon_url, "data:")) {
@@ -313,7 +316,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             for (icons_missing) |icon| {
                 var req = try http_client.init(arena.allocator());
-                defer req.deinit();
+                defer {
+                    progress_node.completeOne();
+                    req.deinit();
+                }
 
                 const resp = req.fetch(icon.page_url, .{}) catch |err| {
                     std.log.err("Request to '{s}' failed. Error: {}", .{icon.page_url, err});
