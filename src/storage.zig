@@ -74,6 +74,7 @@ pub const Storage = struct {
             // - wal_checkpoint
             _ = try db.pragma(void, .{}, "user_version", "1");
         }
+
         _ = try db.pragma(void, .{}, "foreign_keys", "1");
         _ = try db.pragma(void, .{}, "journal_mode", "WAL");
         _ = try db.pragma(void, .{}, "synchronous", "normal");
@@ -83,7 +84,23 @@ pub const Storage = struct {
         _ = try db.pragma(void, .{}, "cache_size", "-32000");
 
         try setupTables(db);
+        try migrate(db, user_version);
         try initData(db);
+    }
+
+    fn migrate(db: *sql.Db, version: usize) !void {
+        const config_version = app_config.db_version;
+        if (version <= config_version) {
+            const query =
+                \\ALTER TABLE feed ADD COLUMN icon_url_fk TEXT DEFAULT NULL
+                \\  REFERENCES icon (icon_url) ON DELETE SET NULL ON UPDATE CASCADE;
+                \\ALTER TABLE feed DROP COLUMN icon_url;
+            ;
+            db.exec(query, .{}, .{}) catch |err| {
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+                return err;
+            };
+        }
     }
 
     fn setupTables(db: *sql.Db) !void {
@@ -1473,13 +1490,15 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  feed_url TEXT NOT NULL UNIQUE,
     \\  page_url TEXT DEFAULT NULL,
-    \\  icon_url TEXT DEFAULT NULL,
+    \\  icon_url_fk TEXT DEFAULT NULL REFERENCES icon (icon_url)
+    \\    ON DELETE SET NULL
+    \\    ON UPDATE CASCADE,
     \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS icon(
     \\  icon_url TEXT NOT NULL PRIMARY KEY,
-    \\  icon_data TEXT NOT NULL
+    \\  icon_data BLOB NOT NULL
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS item(
