@@ -336,7 +336,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 const html_parsed = try html.parse_html(arena.allocator(), body);
                 if (html_parsed.icon_url) |icon_url| {
                     if (mem.startsWith(u8, icon_url, "data:")) {
-                        try self.storage.upsertIcon(.{
+                        try self.storage.icon_upsert(.{
                             .url = try req.get_url_slice(),
                             .data = icon_url,
                         });
@@ -348,7 +348,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         };
                         defer resp_image.deinit();
 
-                        try self.storage.upsertIcon(.{
+                        try self.storage.icon_upsert(.{
                             .url = icon_url,
                             .data = resp_body,
                         });
@@ -363,7 +363,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
 
                 if (new_icon_opt) |new_icon| {
-                    try self.storage.upsertIcon(new_icon);
+                    try self.storage.icon_upsert(new_icon);
                     try self.storage.feed_icon_update(icon.feed_id, new_icon.url);
                 }
             }

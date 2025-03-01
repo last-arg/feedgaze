@@ -165,7 +165,7 @@ pub const Storage = struct {
             parsed.feed.page_url = parsed.feed.feed_url;
         }
         if (feed_opts.icon) |icon| {
-            try self.upsertIcon(icon);
+            try self.icon_upsert(icon);
         }
         try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
@@ -582,7 +582,7 @@ pub const Storage = struct {
         });
     }
 
-    pub fn upsertIcon(self: *Self, icon: types.Icon) !void {
+    pub fn icon_upsert(self: *Self, icon: types.Icon) !void {
         assert(if (std.Uri.parse(icon.url)) |_| true else |_| false);
         assert(icon.data.len > 0);
 
@@ -597,9 +597,10 @@ pub const Storage = struct {
             \\ AND icon_data != @icon_data
             \\;
         ;
+
         try self.sql_db.exec(query, .{}, .{
             .icon_url = icon.url,
-            .icon_data = icon.data,
+            .icon_data = sql.Blob{ .data = icon.data },
         });
     }
 
@@ -1404,7 +1405,7 @@ pub const Storage = struct {
         \\WHERE icon_url = ?;
         ;
 
-        try self.sql_db.exec(query, .{}, .{icon.url, icon.data, curr_icon_url});
+        try self.sql_db.exec(query, .{}, .{icon.url, sql.Blob{ .data = icon.data }, curr_icon_url});
     }
 
     pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
@@ -1434,7 +1435,8 @@ pub const Storage = struct {
     pub fn icon_failed_add(self: *Self, feed_id: usize) !void {
         _ = self; // autofix
         _ = feed_id; // autofix
-        @panic("TODO: icon_failed_add()");
+        std.log.info("icon failed\n", .{});
+        // @panic("TODO: icon_failed_add()");
     }
     
     pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
