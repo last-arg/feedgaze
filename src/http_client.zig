@@ -83,7 +83,7 @@ pub fn response_200_and_has_body(resp: curl.Easy.Response, req_url: []const u8) 
     }
 
     if (resp.body == null or resp.body.?.items.len == 0) {
-        std.log.warn("Request to '{s}' failed. There is no body", .{req_url, resp.status_code});
+        std.log.warn("Request to '{s}' failed. There is no body", .{req_url});
         return null;
     }
 
