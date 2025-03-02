@@ -23,6 +23,7 @@ const fs = std.fs;
 const http_client = @import("./http_client.zig");
 const html = @import("./html.zig");
 const AddRule = @import("add_rule.zig");
+const is_url = @import("util.zig").is_url; 
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -356,19 +357,24 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         continue;
                     } else {
                         var buf: [1024]u8 = undefined;
+                        var buf_path: [256]u8 = undefined;
                         const icon_url_full = blk: {
-                            if (icon_url[0] == '/') {
-                                // All feed.page_urls coming from database should be valid.
-                                var url = std.Uri.parse(icon.page_url) catch unreachable;
-                                url.path = .{.raw = icon_url };
-                                break :blk try std.fmt.bufPrint(&buf, "{}", .{url});
+                            if (is_url(icon_url)) {
+                                break :blk icon_url;
                             }
 
-                            break :blk icon_url;
+                            // Is a path. Need url.
+                            var url = std.Uri.parse(icon.page_url) catch @panic("All urls coming from database should be valid.");
+                            var new_path = icon_url;
+                            if (icon_url[0] != '/') {
+                                new_path = try std.fmt.bufPrint(&buf_path, "/{s}", .{icon_url});
+                            }
+                            url.path = .{.raw = new_path };
+                            break :blk try std.fmt.bufPrint(&buf, "{}", .{url});
                         };
 
                         const resp_image, const resp_body = req.fetch_image(icon_url_full) catch |err| {
-                            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url_full, err});
+                            std.log.warn("Failed to fetch image '{s}' from page '{s}'. Error: {}", .{icon_url_full, icon.page_url, err});
                             continue;
                         };
                         defer resp_image.deinit();

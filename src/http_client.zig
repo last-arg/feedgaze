@@ -116,7 +116,7 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     resp.body = buf;
 
     const body = response_200_and_has_body(resp, url) orelse {
-        return error.NoBody;
+        return error.Non200StatusOrNoBody;
     };
     
     return .{ resp, body };

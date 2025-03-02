@@ -17,6 +17,7 @@ const ShowOptions = types.ShowOptions;
 const UpdateOptions = types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 const app_config = @import("app_config.zig");
+const is_url = @import("util.zig").is_url; 
 
 const seconds_in_1_day = std.time.s_per_day;
 const seconds_in_3_hours = std.time.s_per_hour * 3;
@@ -1387,10 +1388,6 @@ pub const Storage = struct {
         \\FROM feed WHERE icon_url_fk IS NULL AND page_url IS NOT NULL
         ;
         return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
-    }
-
-    fn is_url(url: []const u8) bool {
-        return if (std.Uri.parse(url)) |_| true else |_| false;
     }
 
     pub fn icon_update(self: *Self, curr_icon_url: []const u8, icon: types.Icon) !void {

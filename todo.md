@@ -17,6 +17,7 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
+- when parsing html check <link> icons sizes attribute
 - save favicons 
   - avoid requests to all the different domains
   - make sure size isn't too large
