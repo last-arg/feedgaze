@@ -17,7 +17,19 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    try tmp_icon();
+    // try tmp_icon();
+    try tmp_parse_icon();
+}
+
+pub fn tmp_parse_icon() !void {
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+
+    const input = @embedFile("tmp_file");
+
+    const html = @import("html.zig");
+    _ = try html.parse_icon(input); 
 }
 
 pub fn tmp_icon() !void {

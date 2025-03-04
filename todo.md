@@ -17,7 +17,18 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
+- <link> rel attribute can also containt "apple-touch-icon"
 - when parsing html check <link> icons sizes attribute
+  - "any" - can scale to any size. Like svg
+  - can contain multiple size values separated by whitespace
+    - "<width>x<height>"
+    - "<width>X<height>"
+  - 64x64 recommended/wanted size?
+  - favor svg over raster images?
+  - can gzip/br .ico and svg
+    - If I request gzip/br I should not have to compress myself
+    - If there is no compressed icon then need to compress myself
+  - allow list file types?
 - save favicons 
   - avoid requests to all the different domains
   - make sure size isn't too large

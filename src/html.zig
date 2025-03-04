@@ -53,6 +53,136 @@ fn isValidTag(content: []const u8, tag: []const u8) bool {
     return false;
 }
 
+const LinkIcon = struct {
+    href: []const u8,
+    size: ?struct {width: u32, height: u32} = null,
+};
+
+pub fn parse_icon(content: []const u8) !?[]const u8 {
+    var current_index: usize = 0;
+    var current_icon: ?LinkIcon = null;
+
+    while (current_index < content.len) {
+        const start_index = mem.indexOfScalarPos(u8, content, current_index, '<') orelse return null;
+        current_index = start_index + 1;
+        if (current_index > content.len) { return null; }
+
+        const content_slice = content[current_index..];
+        if (skip_comment(content_slice)) |end_index| {
+            current_index += end_index;
+            continue;
+        } else if (std.ascii.startsWithIgnoreCase(content_slice, "link")) {
+            current_index += 4;
+            if (mem.indexOfScalar(u8, content[current_index..], '>')) |end_index| {
+                // TODO: check <link> attributes
+                const attr_start = current_index;
+                current_index += end_index + 1;
+                const attr_raw = content[attr_start..current_index - 1];
+                print("attrs: |{s}|\n", .{attr_raw});
+                if (attr_to_icon(attr_raw)) |icon| {
+                    // TODO: compare to current_icon
+                    current_icon = null;
+                    _ = icon;
+                }
+            }
+            continue;
+        } 
+
+        if (mem.indexOfScalar(u8, content[current_index..], '>')) |end_index| {
+            current_index += end_index + 1;
+        }
+    }
+
+    return null;
+}
+
+pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
+    var rel: ?[]const u8 = null; 
+    var href: ?[]const u8 = null;
+    var sizes: ?[]const u8 = null;
+
+    const trim_values = .{'\'', '"'} ++ std.ascii.whitespace;
+    var content = raw;
+    while (content.len > 0) {
+        content = skip_whitespace(content);
+        if (std.ascii.startsWithIgnoreCase(content, "rel")) {
+            content = content[3..];
+            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
+                const start = eql_index + 1;
+                if (start > content.len) { return null; }
+                content = content[start..];
+                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                const value = content[0..end_index];
+                rel = mem.trim(u8, value, &trim_values);
+                content = content[end_index..];
+            }
+        } else if (std.ascii.startsWithIgnoreCase(content, "href")) {
+            content = content[4..];
+            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
+                const start = eql_index + 1;
+                if (start > content.len) { return null; }
+                content = content[start..];
+                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                const value = content[0..end_index];
+                href = mem.trim(u8, value, &trim_values);
+                content = content[end_index..];
+            }
+        } else if (std.ascii.startsWithIgnoreCase(content, "sizes")) {
+            content = content[5..];
+            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
+                const start = eql_index + 1;
+                if (start > content.len) { return null; }
+                content = content[start..];
+                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                const value = content[0..end_index];
+                sizes = mem.trim(u8, value, &trim_values);
+                content = content[end_index..];
+            }
+        }
+    }
+
+    if (rel != null and is_valid_icon(rel.?)
+        and href != null and href.?.len > 0
+    ) {
+        var result: LinkIcon = .{
+            .href = href.?,
+        };
+        if (sizes) |value| blk: {
+            const end_index = mem.indexOfAny(u8, value, &std.ascii.whitespace) orelse value.len;
+            const v = value[0..end_index];
+            if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
+                const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
+                    std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
+                    break :blk;
+                };
+                const height = std.fmt.parseUnsigned(u32, v[sep_index + 1..], 10) catch {
+                    std.log.warn("Failed to parse attribute sizes height value from '{s}'", .{v});
+                    break :blk;
+                };
+                result.size = .{.width = width, .height = height};
+            }
+        }
+        return result;
+    }
+
+    return null;
+}
+
+pub fn is_valid_icon(rel: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(rel, "icon") or std.ascii.eqlIgnoreCase(rel, "apple-touch-icon");
+}
+
+// Will return index of '>' end comment
+pub fn skip_comment(input: []const u8) ?usize {
+    if (mem.startsWith(u8, input, "!--")) {
+        if (mem.indexOf(u8, input[3..], "-->")) |index| {
+            // '-->'.len
+            return index + 3;
+        }
+    }
+    return null;
+}
+
 pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
     var result: HtmlParsed = .{};
     var feed_arr = FeedLinkArray.init(allocator);
