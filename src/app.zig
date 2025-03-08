@@ -220,6 +220,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             const progress_node = self.progress.start("Checking icons", 0);
             defer { progress_node.end(); }
+
             var total: usize = 0;
             if (check_type == .all) {
                 const icons_existing = try self.storage.feed_icons_existing(arena.allocator());
@@ -279,8 +280,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         continue;
                     };
 
-                    const html_parsed = try html.parse_html(arena.allocator(), body);
-                    if (html_parsed.icon_url) |icon_url| {
+                    const icon_opt = html.parse_icon(body);
+                    if (icon_opt) |icon_url| {
                         if (mem.startsWith(u8, icon_url, "data:")) {
                             if (!mem.eql(u8, icon.icon_url, icon_url)) {
                                 try self.storage.icon_update(icon.icon_url, .{
@@ -345,8 +346,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     continue;
                 };
 
-                const html_parsed = try html.parse_html(arena.allocator(), body);
-                if (html_parsed.icon_url) |icon_url| {
+                const icon_opt = html.parse_icon(body);
+                if (icon_opt) |icon_url| {
                     if (mem.startsWith(u8, icon_url, "data:")) {
                         const page_url = try req.get_url_slice();
                         try self.storage.icon_upsert(.{
