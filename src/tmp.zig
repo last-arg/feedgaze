@@ -29,7 +29,7 @@ pub fn tmp_parse_icon() !void {
     const input = @embedFile("tmp_file");
 
     const html = @import("html.zig");
-    _ = try html.parse_icon(input); 
+    _ = html.parse_icon(input); 
 }
 
 pub fn tmp_icon() !void {

@@ -78,7 +78,7 @@ const LinkIcon = struct {
     size: IconSize = .{},
 };
 
-pub fn parse_icon(content: []const u8) !?LinkIcon {
+pub fn parse_icon(content: []const u8) ?[]const u8 {
     var current_index: usize = 0;
     var current_icon: ?LinkIcon = null;
 
@@ -134,7 +134,11 @@ pub fn parse_icon(content: []const u8) !?LinkIcon {
         }
     }
 
-    return current_icon;
+    if (current_icon) |icon| {
+        return icon.href;
+    }
+
+    return null;
 }
 
 pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
@@ -143,7 +147,7 @@ pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
     var sizes: ?[]const u8 = null;
 
     const trim_values = .{'\'', '"'} ++ std.ascii.whitespace;
-    var content = raw;
+    var content = mem.trim(u8, raw, &(.{'/'} ++ std.ascii.whitespace));
     while (content.len > 0) {
         content = skip_whitespace(content);
         if (std.ascii.startsWithIgnoreCase(content, "rel")) {
@@ -179,6 +183,25 @@ pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
                 sizes = mem.trim(u8, value, &trim_values);
                 content = content[end_index..];
             }
+        } else {
+            var index_end = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse break;
+            const index_equal = mem.indexOf(u8, content, "=") orelse break;
+            if (index_equal < index_end) {
+                const index_next = index_equal + 1;
+                if (index_next >= content.len) {
+                    break;
+                }
+                const sym = content[index_next];
+                if (sym == '"' or sym == '\'') {
+                    if (mem.indexOf(u8, content, &.{sym})) |index_quote| {
+                        const index_next_1 = index_quote + 1;
+                        if (index_next_1 < content.len) {
+                            index_end = index_next_1;
+                        }
+                    }
+                }
+            }
+            content = content[index_end..];
         }
     }
 
