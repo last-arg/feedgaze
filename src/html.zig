@@ -4,6 +4,7 @@ const std = @import("std");
 const print = std.debug.print;
 const mem = std.mem;
 const Allocator = mem.Allocator;
+const app_config = @import("app_config.zig");
 
 pub const FeedLink = struct {
     link: []const u8,
@@ -53,19 +54,38 @@ fn isValidTag(content: []const u8, tag: []const u8) bool {
     return false;
 }
 
-const LinkIcon = struct {
-    href: []const u8,
-    size: ?struct {width: u32, height: u32} = null,
+const IconSize = struct {
+    width: u32 = 0,
+    height: u32 = 0,
+
+    pub fn in_range(self: *const @This()) bool {
+        return app_config.icon_size_min < self.width and self.width < app_config.icon_size_max;
+    }
+
+    pub fn has_size(self: *const @This()) bool {
+        return self.width != 0 and self.height != 0;
+    }
+
+    // NOTE: negative result: self.width < app_config.icon_size
+    // NOTE: positive result: self.width > app_config.icon_size
+    pub fn dist_from_icon_size(self: *const @This()) i32 {
+        return @as(i32, @intCast(self.width)) - @as(i32, @intCast(app_config.icon_size));
+    }
 };
 
-pub fn parse_icon(content: []const u8) !?[]const u8 {
+const LinkIcon = struct {
+    href: []const u8,
+    size: IconSize = .{},
+};
+
+pub fn parse_icon(content: []const u8) !?LinkIcon {
     var current_index: usize = 0;
     var current_icon: ?LinkIcon = null;
 
     while (current_index < content.len) {
-        const start_index = mem.indexOfScalarPos(u8, content, current_index, '<') orelse return null;
+        const start_index = mem.indexOfScalarPos(u8, content, current_index, '<') orelse break;
         current_index = start_index + 1;
-        if (current_index > content.len) { return null; }
+        if (current_index > content.len) { break; }
 
         const content_slice = content[current_index..];
         if (skip_comment(content_slice)) |end_index| {
@@ -74,15 +94,36 @@ pub fn parse_icon(content: []const u8) !?[]const u8 {
         } else if (std.ascii.startsWithIgnoreCase(content_slice, "link")) {
             current_index += 4;
             if (mem.indexOfScalar(u8, content[current_index..], '>')) |end_index| {
-                // TODO: check <link> attributes
                 const attr_start = current_index;
                 current_index += end_index + 1;
                 const attr_raw = content[attr_start..current_index - 1];
-                print("attrs: |{s}|\n", .{attr_raw});
-                if (attr_to_icon(attr_raw)) |icon| {
-                    // TODO: compare to current_icon
-                    current_icon = null;
-                    _ = icon;
+                const new_icon = attr_to_icon(attr_raw) orelse continue;
+                if (current_icon == null) {
+                    current_icon = new_icon;
+                    continue;
+                }
+
+                const curr_icon = current_icon.?;
+                if (curr_icon.size.has_size() and new_icon.size.has_size()) {
+                    const curr_dist = curr_icon.size.dist_from_icon_size();
+                    const new_dist = new_icon.size.dist_from_icon_size();
+
+                    if (new_dist <= 0
+                        and (new_dist > curr_dist or curr_dist > 0)
+                    ) {
+                        current_icon = new_icon;
+                    } else if (new_dist > 0
+                        and curr_dist > 0 
+                        and new_dist < curr_dist
+                    ) {
+                        current_icon = new_icon;
+                    }
+                } else if (new_icon.size.has_size()) {
+                    current_icon = new_icon;
+                }
+
+                if (curr_icon.size.width == app_config.icon_size) {
+                    break;
                 }
             }
             continue;
@@ -93,7 +134,7 @@ pub fn parse_icon(content: []const u8) !?[]const u8 {
         }
     }
 
-    return null;
+    return current_icon;
 }
 
 pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
