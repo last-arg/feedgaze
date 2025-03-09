@@ -141,67 +141,54 @@ pub fn parse_icon(content: []const u8) ?[]const u8 {
     return null;
 }
 
+const LinkAttribute = enum {
+    rel,
+    href,
+    title,
+    sizes,
+    @"type",
+
+    pub fn from_str(str: []const u8) ?@This() {
+        return std.meta.stringToEnum(@This(), str);
+    }
+};
+
+// NOTE: function arguement is raw string of element attributes
+// <link [raw attrs]>
 pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
     var rel: ?[]const u8 = null; 
     var href: ?[]const u8 = null;
     var sizes: ?[]const u8 = null;
+    var title: ?[]const u8 = null;
+    var attr_type: ?[]const u8 = null;
 
     const trim_values = .{'\'', '"'} ++ std.ascii.whitespace;
     var content = mem.trim(u8, raw, &(.{'/'} ++ std.ascii.whitespace));
     while (content.len > 0) {
         content = skip_whitespace(content);
-        if (std.ascii.startsWithIgnoreCase(content, "rel")) {
-            content = content[3..];
-            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
-                const start = eql_index + 1;
-                if (start > content.len) { return null; }
-                content = content[start..];
-                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-                const value = content[0..end_index];
-                rel = mem.trim(u8, value, &trim_values);
-                content = content[end_index..];
+
+        const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+        // Only want attributes with values
+        const index_equal = mem.indexOfScalar(u8, content, '=') orelse break;
+        if (index_equal < index_whitespace) {
+            const attr_raw = content[0..index_equal];
+            const index_next = index_equal + 1;
+            if (index_next >= content.len) { return null; }
+            content = content[index_next..];
+            const attr_name = LinkAttribute.from_str(attr_raw) orelse continue;
+            content = skip_whitespace(content);
+            const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+            const value = mem.trim(u8, content[0..end_index], &trim_values);
+            switch (attr_name) {
+                .rel => { rel = value; },
+                .href => { href = value; },
+                .@"type" => { attr_type = value; },
+                .title => { title = value; },
+                .sizes => { sizes = value; },
             }
-        } else if (std.ascii.startsWithIgnoreCase(content, "href")) {
-            content = content[4..];
-            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
-                const start = eql_index + 1;
-                if (start > content.len) { return null; }
-                content = content[start..];
-                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-                const value = content[0..end_index];
-                href = mem.trim(u8, value, &trim_values);
-                content = content[end_index..];
-            }
-        } else if (std.ascii.startsWithIgnoreCase(content, "sizes")) {
-            content = content[5..];
-            if (mem.indexOfScalar(u8, content, '=')) |eql_index| {
-                const start = eql_index + 1;
-                if (start > content.len) { return null; }
-                content = content[start..];
-                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-                const value = content[0..end_index];
-                sizes = mem.trim(u8, value, &trim_values);
-                content = content[end_index..];
-            }
+            content = content[end_index..];
         } else {
-            var index_end = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse break;
-            const index_equal = mem.indexOf(u8, content, "=") orelse break;
-            if (index_equal < index_end) {
-                const index_next = index_equal + 1;
-                if (index_next >= content.len) {
-                    break;
-                }
-                const sym = content[index_next];
-                if (sym == '"' or sym == '\'') {
-                    if (mem.indexOf(u8, content, &.{sym})) |index_quote| {
-                        const index_next_1 = index_quote + 1;
-                        if (index_next_1 < content.len) {
-                            index_end = index_next_1;
-                        }
-                    }
-                }
-            }
-            content = content[index_end..];
+            content = content[index_whitespace..];
         }
     }
 
