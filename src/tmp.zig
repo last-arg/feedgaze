@@ -18,7 +18,21 @@ pub fn main() !void {
     // try zig_http();
     // try tmp_progress();
     // try tmp_icon();
-    try tmp_parse_icon();
+    // try tmp_parse_icon();
+    try tmp_parse_html();
+}
+
+pub fn tmp_parse_html() !void {
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+
+    const input = @embedFile("tmp_file");
+
+    const html = @import("html.zig");
+    const r = try html.parse_html(arena.allocator(), input); 
+    print("tmp.zig html.links.len: {}\n", .{r.links.len});
+    print("tmp.zig html.icon_url: {?s}\n", .{r.icon_url});
 }
 
 pub fn tmp_parse_icon() !void {
@@ -29,7 +43,8 @@ pub fn tmp_parse_icon() !void {
     const input = @embedFile("tmp_file");
 
     const html = @import("html.zig");
-    _ = html.parse_icon(input); 
+    const icon = html.parse_icon(input); 
+    print("tmp.zig icon_url: {?s}\n", .{icon});
 }
 
 pub fn tmp_icon() !void {
