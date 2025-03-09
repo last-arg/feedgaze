@@ -76,7 +76,11 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
         }
     };
     var server = try httpz.Server(*Global).init(allocator, server_config, &global);
-    var router = server.router(.{});
+    defer {
+        server.stop();
+        server.deinit();
+    }
+    var router = try server.router(.{});
 
     router.get("/", latest_added_get, .{});
     router.get("/feeds", feeds_get, .{});
