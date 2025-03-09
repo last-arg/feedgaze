@@ -205,7 +205,7 @@ pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
         }
     }
 
-    if (rel != null and is_valid_icon(rel.?)
+    if (rel != null and is_favicon(rel.?)
         and href != null and href.?.len > 0
     ) {
         var result: LinkIcon = .{
@@ -230,10 +230,6 @@ pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
     }
 
     return null;
-}
-
-pub fn is_valid_icon(rel: []const u8) bool {
-    return std.ascii.eqlIgnoreCase(rel, "icon") or std.ascii.eqlIgnoreCase(rel, "apple-touch-icon");
 }
 
 // Will return index of '>' end comment
