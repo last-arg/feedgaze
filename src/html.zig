@@ -76,6 +76,37 @@ const IconSize = struct {
 const LinkIcon = struct {
     href: []const u8,
     size: IconSize = .{},
+
+    pub fn from_str(raw: []const u8) ?LinkIcon {
+        const link_attr = LinkRaw.from_str(raw);
+
+        const rel = link_attr.rel orelse return null;
+        const href = link_attr.href orelse return null;
+
+        if (is_favicon(rel) and href.len > 0) {
+            var result: LinkIcon = .{
+                .href = href,
+            };
+            if (link_attr.sizes) |value| blk: {
+                const end_index = mem.indexOfAny(u8, value, &std.ascii.whitespace) orelse value.len;
+                const v = value[0..end_index];
+                if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
+                    const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
+                        std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
+                        break :blk;
+                    };
+                    const height = std.fmt.parseUnsigned(u32, v[sep_index + 1..], 10) catch {
+                        std.log.warn("Failed to parse attribute sizes height value from '{s}'", .{v});
+                        break :blk;
+                    };
+                    result.size = .{.width = width, .height = height};
+                }
+            }
+            return result;
+        }
+
+        return null;
+    }
 };
 
 pub fn parse_icon(content: []const u8) ?[]const u8 {
@@ -97,7 +128,7 @@ pub fn parse_icon(content: []const u8) ?[]const u8 {
                 const attr_start = current_index;
                 current_index += end_index + 1;
                 const attr_raw = content[attr_start..current_index - 1];
-                const new_icon = attr_to_icon(attr_raw) orelse continue;
+                const new_icon = LinkIcon.from_str(attr_raw) orelse continue;
                 if (current_icon == null) {
                     current_icon = new_icon;
                     continue;
@@ -153,75 +184,6 @@ const LinkAttribute = enum {
     }
 };
 
-pub fn attr_to_icon(raw: []const u8) ?LinkIcon {
-    const link_attr = link_attribute_from_raw(raw);
-
-    const rel = link_attr.rel orelse return null;
-    const href = link_attr.href orelse return null;
-
-    if (is_favicon(rel) and href.len > 0) {
-        var result: LinkIcon = .{
-            .href = href,
-        };
-        if (link_attr.sizes) |value| blk: {
-            const end_index = mem.indexOfAny(u8, value, &std.ascii.whitespace) orelse value.len;
-            const v = value[0..end_index];
-            if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
-                const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
-                    std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
-                    break :blk;
-                };
-                const height = std.fmt.parseUnsigned(u32, v[sep_index + 1..], 10) catch {
-                    std.log.warn("Failed to parse attribute sizes height value from '{s}'", .{v});
-                    break :blk;
-                };
-                result.size = .{.width = width, .height = height};
-            }
-        }
-        return result;
-    }
-
-    return null;
-}
-
-// NOTE: function arguement is raw string of element attributes
-// <link [raw attrs]>
-pub fn link_attribute_from_raw(raw: []const u8) LinkRaw {
-    var result: LinkRaw = .{};
-
-    const trim_values = .{'\'', '"'} ++ std.ascii.whitespace;
-    var content = mem.trim(u8, raw, &(.{'/'} ++ std.ascii.whitespace));
-    while (content.len > 0) {
-        content = skip_whitespace(content);
-
-        const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-        // Only want attributes with values
-        const index_equal = mem.indexOfScalar(u8, content, '=') orelse break;
-        if (index_equal < index_whitespace) {
-            const attr_raw = content[0..index_equal];
-            const index_next = index_equal + 1;
-            if (index_next >= content.len) { return result; }
-            content = content[index_next..];
-            const attr_name = LinkAttribute.from_str(attr_raw) orelse continue;
-            content = skip_whitespace(content);
-            const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-            const value = mem.trim(u8, content[0..end_index], &trim_values);
-            switch (attr_name) {
-                .rel => { result.rel = value; },
-                .href => { result.href = value; },
-                .@"type" => { result.@"type" = value; },
-                .title => { result.title = value; },
-                .sizes => { result.sizes = value; },
-            }
-            content = content[end_index..];
-        } else {
-            content = content[index_whitespace..];
-        }
-    }
-
-    return result;
-}
-
 // Will return index of '>' end comment
 pub fn skip_comment(input: []const u8) ?usize {
     if (mem.startsWith(u8, input, "!--")) {
@@ -240,9 +202,41 @@ const LinkRaw = struct {
     title: ?[]const u8 = null,
     sizes: ?[]const u8 = null,
 
-    // pub fn init_raw(attr_str: []const u8) ?@This() {
-    //     return null;
-    // }
+    pub fn from_str(raw: []const u8) LinkRaw {
+        var result: LinkRaw = .{};
+
+        const trim_values = .{'\'', '"'} ++ std.ascii.whitespace;
+        var content = mem.trim(u8, raw, &(.{'/'} ++ std.ascii.whitespace));
+        while (content.len > 0) {
+            content = skip_whitespace(content);
+
+            const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+            // Only want attributes with values
+            const index_equal = mem.indexOfScalar(u8, content, '=') orelse break;
+            if (index_equal < index_whitespace) {
+                const attr_raw = content[0..index_equal];
+                const index_next = index_equal + 1;
+                if (index_next >= content.len) { return result; }
+                content = content[index_next..];
+                const attr_name = LinkAttribute.from_str(attr_raw) orelse continue;
+                content = skip_whitespace(content);
+                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                const value = mem.trim(u8, content[0..end_index], &trim_values);
+                switch (attr_name) {
+                    .rel => { result.rel = value; },
+                    .href => { result.href = value; },
+                    .@"type" => { result.@"type" = value; },
+                    .title => { result.title = value; },
+                    .sizes => { result.sizes = value; },
+                }
+                content = content[end_index..];
+            } else {
+                content = content[index_whitespace..];
+            }
+        }
+
+        return result;
+    }
 };
 
 fn attr_contains(rel: []const u8, wanted: []const u8) bool {
@@ -279,7 +273,7 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
         content = skip_whitespace(content);
 
         const index_tag_end = mem.indexOfAny(u8, content, &.{'>'}) orelse break;
-        const link_attr = link_attribute_from_raw(content[0..index_tag_end]);
+        const link_attr = LinkRaw.from_str(content[0..index_tag_end]);
 
         index_next = index_tag_end + 1;
         if (index_next > content.len) { break; }
