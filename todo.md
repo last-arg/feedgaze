@@ -17,7 +17,6 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
-- <link> rel attribute can also containt "apple-touch-icon"
 - when parsing html check <link> icons sizes attribute
   - favor svg over raster images?
   - can gzip/br .ico and svg

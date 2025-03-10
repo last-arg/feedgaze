@@ -345,7 +345,7 @@ fn skip_whitespace(content: []const u8) []const u8 {
 }
 
 fn is_favicon(rel: []const u8) bool {
-    return attr_contains(rel, "icon");
+    return attr_contains(rel, "icon") or attr_contains(rel, "apple-touch-icon");
 }
 
 fn isDuplicate(items: []FeedLink, link: []const u8) bool {
