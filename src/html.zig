@@ -58,6 +58,24 @@ const IconSize = struct {
     width: u32 = 0,
     height: u32 = 0,
 
+    pub fn from_str(raw: []const u8) IconSize {
+        var result: IconSize = .{};
+        const end_index = mem.indexOfAny(u8, raw, &std.ascii.whitespace) orelse raw.len;
+        const v = raw[0..end_index];
+        if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
+            const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
+                std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
+                return result;
+            };
+            const height = std.fmt.parseUnsigned(u32, v[sep_index + 1..], 10) catch {
+                std.log.warn("Failed to parse attribute sizes height value from '{s}'", .{v});
+                return result;
+            };
+            result = .{.width = width, .height = height};
+        }
+        return result;
+    }
+
     pub fn in_range(self: *const @This()) bool {
         return app_config.icon_size_min < self.width and self.width < app_config.icon_size_max;
     }
@@ -77,6 +95,14 @@ const LinkIcon = struct {
     href: []const u8,
     size: IconSize = .{},
 
+    pub fn from_link_raw(link_raw: LinkRaw) ?LinkIcon {
+        const href = link_raw.href orelse return null;
+        return .{
+            .href = href,
+            .size = if (link_raw.sizes) |v| IconSize.from_str(v) else .{},
+        };
+    }
+
     pub fn from_str(raw: []const u8) ?LinkIcon {
         const link_attr = LinkRaw.from_str(raw);
 
@@ -87,25 +113,38 @@ const LinkIcon = struct {
             var result: LinkIcon = .{
                 .href = href,
             };
-            if (link_attr.sizes) |value| blk: {
-                const end_index = mem.indexOfAny(u8, value, &std.ascii.whitespace) orelse value.len;
-                const v = value[0..end_index];
-                if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
-                    const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
-                        std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
-                        break :blk;
-                    };
-                    const height = std.fmt.parseUnsigned(u32, v[sep_index + 1..], 10) catch {
-                        std.log.warn("Failed to parse attribute sizes height value from '{s}'", .{v});
-                        break :blk;
-                    };
-                    result.size = .{.width = width, .height = height};
-                }
+            if (link_attr.sizes) |value| {
+                result.size = IconSize.from_str(value);
             }
             return result;
         }
 
         return null;
+    }
+
+    pub fn pick_icon(a: ?@This(), b: ?@This()) ?@This() {
+        const curr_icon = a orelse return b;
+        const new_icon = b orelse return curr_icon;
+
+        if (curr_icon.size.has_size() and new_icon.size.has_size()) {
+            const curr_dist = curr_icon.size.dist_from_icon_size();
+            const new_dist = new_icon.size.dist_from_icon_size();
+
+            if (new_dist <= 0
+                and (new_dist > curr_dist or curr_dist > 0)
+            ) {
+                return new_icon;
+            } else if (new_dist > 0
+                and curr_dist > 0 
+                and new_dist < curr_dist
+            ) {
+                return new_icon;
+            }
+        } else if (new_icon.size.has_size()) {
+            return new_icon;
+        }
+
+        return curr_icon;
     }
 };
 
@@ -129,31 +168,10 @@ pub fn parse_icon(content: []const u8) ?[]const u8 {
                 current_index += end_index + 1;
                 const attr_raw = content[attr_start..current_index - 1];
                 const new_icon = LinkIcon.from_str(attr_raw) orelse continue;
-                if (current_icon == null) {
-                    current_icon = new_icon;
-                    continue;
-                }
 
-                const curr_icon = current_icon.?;
-                if (curr_icon.size.has_size() and new_icon.size.has_size()) {
-                    const curr_dist = curr_icon.size.dist_from_icon_size();
-                    const new_dist = new_icon.size.dist_from_icon_size();
+                current_icon = LinkIcon.pick_icon(current_icon, new_icon) orelse continue;
 
-                    if (new_dist <= 0
-                        and (new_dist > curr_dist or curr_dist > 0)
-                    ) {
-                        current_icon = new_icon;
-                    } else if (new_dist > 0
-                        and curr_dist > 0 
-                        and new_dist < curr_dist
-                    ) {
-                        current_icon = new_icon;
-                    }
-                } else if (new_icon.size.has_size()) {
-                    current_icon = new_icon;
-                }
-
-                if (curr_icon.size.width == app_config.icon_size) {
+                if (current_icon.?.size.width == app_config.icon_size) {
                     break;
                 }
             }
@@ -250,8 +268,8 @@ fn attr_contains(rel: []const u8, wanted: []const u8) bool {
 }
 
 pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
-    var result: HtmlParsed = .{};
     var feed_arr = FeedLinkArray.init(allocator);
+    var icon: ?LinkIcon = null;
     var content = input;
 
     while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
@@ -294,13 +312,17 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
             }
         }
 
-        // TODO: choose icon based on desired size
-        if (is_favicon(rel_value) and result.icon_url == null) {
-            result.icon_url = link_value;
+        if (is_favicon(rel_value)) {
+            icon = LinkIcon.pick_icon(icon, LinkIcon.from_link_raw(link_attr));
         }
     }
 
-    result.links = feed_arr.items;
+    var result: HtmlParsed = .{
+        .links = feed_arr.items,
+    };
+    if (icon) |val| {
+        result.icon_url = val.href;
+    }
     return result;
 }
 
