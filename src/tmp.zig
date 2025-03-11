@@ -20,6 +20,19 @@ pub fn main() !void {
     // try tmp_icon();
     // try tmp_parse_icon();
     try tmp_parse_html();
+    // try tmp_iter_attrs();
+}
+
+pub fn tmp_iter_attrs() !void {
+    const input =
+    // \\value="hello" more=values and='also this' ><span>more</span>
+    \\  rel="icon"
+    \\  href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩‍💻</text></svg>"
+    \\/><span>REST </span>
+    ;
+
+    const html = @import("html.zig");
+    html.iter_attributes(input); 
 }
 
 pub fn tmp_parse_html() !void {
@@ -30,9 +43,7 @@ pub fn tmp_parse_html() !void {
     const input = @embedFile("tmp_file");
 
     const html = @import("html.zig");
-    const r = try html.parse_html(arena.allocator(), input); 
-    print("tmp.zig html.links.len: {}\n", .{r.links.len});
-    print("tmp.zig html.icon_url: {?s}\n", .{r.icon_url});
+    html.parse_simple(arena.allocator(), input); 
 }
 
 pub fn tmp_parse_icon() !void {

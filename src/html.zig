@@ -277,6 +277,127 @@ fn attr_contains(rel: []const u8, wanted: []const u8) bool {
     return false;
 }
 
+pub fn comment_range_pos(input: []const u8, pos: usize) ?struct{start: usize, end: usize} {
+    const start = mem.indexOfPos(u8, input, pos, "<!--") orelse return null;
+    const end = mem.indexOfPos(u8, input, start + 4, "-->") orelse return null;
+    return .{.start = start, .end = end + 2};
+}
+
+pub fn parse_simple(allocator: Allocator, input: []const u8) void {
+    _ = allocator;
+    var index_link_opt: ?usize = std.ascii.indexOfIgnoreCase(input, "<link") orelse return;
+    const index_end = index_link_opt.? + 5;
+    const tag_link = input[index_link_opt.?..index_end];
+
+    var comment_range = comment_range_pos(input, 0);
+    var index_curr = index_link_opt.?;
+
+    while (index_link_opt) |index| : (index_link_opt = mem.indexOfPos(u8, input, index_curr, tag_link)) {
+        if (comment_range) |range| {
+            if (range.start < index and index < range.end) {
+                index_curr = range.end + 1;
+                continue;
+            } else if (index > range.end) {
+                index_curr = index;
+                comment_range = comment_range_pos(input, range.end);
+                continue;
+            }
+        }
+
+        const index_after_name = index + tag_link.len;
+        // Skip <link> if it doesn't have attributes
+        if (mem.indexOfScalar(u8, &(.{'/'} ++ std.ascii.whitespace), input[index_after_name]) == null) {
+            index_curr = index_after_name;
+            continue;
+        }
+
+        // Have possible link with attributes
+        var iter = AttributeIterator.init(input[index_after_name..]);
+        print("index: |{}|\n", .{index_after_name});
+        while (iter.next()) |attr| {
+            print("name: |{s}| = value: |{s}|\n", .{attr.name, attr.value});
+        }
+
+        const end = index_after_name + iter.pos_curr;
+        index_curr = end + 1;
+    }
+}
+
+const AttributeIterator = struct {
+    input: []const u8,
+    pos_curr: usize = 0, 
+
+    const NameValue = struct {
+        name: []const u8,
+        value: []const u8 = "",
+    };
+
+    pub fn init(input: []const u8) @This() {
+        return .{
+            .input = input,
+        };
+    }
+
+    pub fn next(iter: *@This()) ?NameValue {
+        var content = iter.input[iter.pos_curr..];
+        const content_whitespace = skip_whitespace(content);
+        iter.pos_curr += content.len - content_whitespace.len;
+        content = content_whitespace;
+        if (content[0] == '>') {
+            iter.pos_curr += 1;
+            return null;
+        } else if (content.len >= 2 and content[0] == '/' and content[1] == '>') {
+            iter.pos_curr += 2;
+            return null;
+        }
+
+        const index_equal = mem.indexOfScalar(u8, content, '=') orelse content.len;
+        const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+        const index_min = @min(index_equal, index_whitespace);
+
+        if (index_min >= content.len) {
+            iter.pos_curr = content.len - 1;
+            return null;
+        }
+
+
+        if (content[index_min] == '=') {
+            var attr_result: NameValue = .{
+                .name = content[0..index_min],
+            };
+            const index_start = index_min + 1;
+            if (index_start >= content.len) {
+                iter.pos_curr = content.len - 1;
+                return null;
+            }
+            var index_content = index_start;
+            const first = content[index_start];
+            if (first == '\'' or first == '"') {
+                const index_quote = mem.indexOfScalarPos(u8, content, index_start + 1, first) orelse index_whitespace;
+                attr_result.value = mem.trim(u8, content[index_start..index_quote], &.{first});
+
+                index_content = index_quote;
+                if (content[index_quote] == first) {
+                    index_content += 1;
+                }
+            } else {
+                index_content = index_whitespace;
+            }
+            if (index_content >= content.len) {
+                iter.pos_curr = content.len - 1;
+                return null;
+            }
+            iter.pos_curr += index_content;
+
+            return attr_result;
+        }
+
+        iter.pos_curr += index_min;
+
+        return null;
+    }
+};
+
 pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
     var feed_arr = FeedLinkArray.init(allocator);
     var icon: ?LinkIcon = null;
@@ -301,7 +422,8 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
         content = skip_whitespace(content);
 
         const index_tag_end = mem.indexOfAny(u8, content, &.{'>'}) orelse break;
-        const link_attr = LinkRaw.from_str(content[0..index_tag_end]);
+        const attr_raw = content[0..index_tag_end];
+        const link_attr = LinkRaw.from_str(attr_raw);
 
         index_next = index_tag_end + 1;
         if (index_next > content.len) { break; }
