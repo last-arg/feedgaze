@@ -237,8 +237,18 @@ const LinkRaw = struct {
                 if (index_next >= content.len) { return result; }
                 content = content[index_next..];
                 const attr_name = LinkAttribute.from_str(attr_raw) orelse continue;
-                content = skip_whitespace(content);
-                const end_index = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                const start_sym = content[0];
+                if (mem.indexOfScalar(u8, &std.ascii.whitespace, start_sym)) |_| {
+                    continue;
+                }
+                const end_index = blk: {
+                    if (start_sym == '\'' or start_sym == '"') {
+                        if (mem.indexOfScalarPos(u8, content, 1, start_sym)) |val| {
+                            break :blk val;
+                        }
+                    }
+                    break :blk mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
+                };
                 const value = mem.trim(u8, content[0..end_index], &trim_values);
                 switch (attr_name) {
                     .rel => { result.rel = value; },
