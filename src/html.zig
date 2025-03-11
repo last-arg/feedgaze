@@ -220,6 +220,23 @@ const LinkRaw = struct {
     title: ?[]const u8 = null,
     sizes: ?[]const u8 = null,
 
+    pub fn from_iter(iter: *AttributeIterator) LinkRaw {
+        var result: LinkRaw = .{};
+
+        while (iter.next()) |attr| {
+            const attr_name = LinkAttribute.from_str(attr.name) orelse continue;
+            switch (attr_name) {
+                .rel => { result.rel = attr.value; },
+                .href => { result.href = attr.value; },
+                .@"type" => { result.@"type" = attr.value; },
+                .title => { result.title = attr.value; },
+                .sizes => { result.sizes = attr.value; },
+            }
+        }
+
+        return result;
+    }
+
     pub fn from_str(raw: []const u8) LinkRaw {
         var result: LinkRaw = .{};
 
@@ -283,9 +300,13 @@ pub fn comment_range_pos(input: []const u8, pos: usize) ?struct{start: usize, en
     return .{.start = start, .end = end + 2};
 }
 
-pub fn parse_simple(allocator: Allocator, input: []const u8) void {
-    _ = allocator;
-    var index_link_opt: ?usize = std.ascii.indexOfIgnoreCase(input, "<link") orelse return;
+pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
+    var feed_arr = FeedLinkArray.init(allocator);
+    defer feed_arr.deinit();
+    var icon: ?LinkIcon = null;
+    var result: HtmlParsed = .{};
+
+    var index_link_opt: ?usize = std.ascii.indexOfIgnoreCase(input, "<link") orelse return result;
     const index_end = index_link_opt.? + 5;
     const tag_link = input[index_link_opt.?..index_end];
 
@@ -313,14 +334,32 @@ pub fn parse_simple(allocator: Allocator, input: []const u8) void {
 
         // Have possible link with attributes
         var iter = AttributeIterator.init(input[index_after_name..]);
-        print("index: |{}|\n", .{index_after_name});
-        while (iter.next()) |attr| {
-            print("name: |{s}| = value: |{s}|\n", .{attr.name, attr.value});
-        }
+        const link_raw = LinkRaw.from_iter(&iter);
 
-        const end = index_after_name + iter.pos_curr;
-        index_curr = end + 1;
+        index_curr = index_after_name + iter.pos_curr + 1;
+
+        const rel = link_raw.rel orelse continue;
+        const href = link_raw.href orelse continue;
+
+        if (link_raw.@"type" != null and
+            attr_contains(rel, "alternate") and !isDuplicate(feed_arr.items, href)) {
+            if (ContentType.fromString(link_raw.@"type".?)) |valid_type| {
+                try feed_arr.append(.{
+                    .title = link_raw.title,
+                    .link = href,
+                    .type = valid_type,
+                });
+            }
+        } else if (is_favicon(rel)) {
+            icon = LinkIcon.pick_icon(icon, LinkIcon.from_link_raw(link_raw));
+        }
     }
+
+    result.links = try feed_arr.toOwnedSlice();
+    if (icon) |val| {
+        result.icon_url = val.href;
+    }
+    return result;
 }
 
 const AttributeIterator = struct {
@@ -397,66 +436,6 @@ const AttributeIterator = struct {
         return null;
     }
 };
-
-pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
-    var feed_arr = FeedLinkArray.init(allocator);
-    var icon: ?LinkIcon = null;
-    var content = input;
-
-    while (std.mem.indexOfScalar(u8, content, '<')) |start_index| {
-        var index_next = start_index + 1;
-        if (index_next > content.len) { break; }
-
-        content = content[start_index + 1 ..];
-
-        if (skip_comment(content)) |end_index| {
-            index_next = end_index + 1;
-            if (index_next > content.len) { break; }
-            content = content[end_index..];
-            continue;
-        }
-
-        const index_tag_name_end = mem.indexOfAny(u8, content, &(.{'>'} ++ std.ascii.whitespace)) orelse break;
-        const tag_name = content[0..index_tag_name_end];
-        content = content[tag_name.len..];
-        content = skip_whitespace(content);
-
-        const index_tag_end = mem.indexOfAny(u8, content, &.{'>'}) orelse break;
-        const attr_raw = content[0..index_tag_end];
-        const link_attr = LinkRaw.from_str(attr_raw);
-
-        index_next = index_tag_end + 1;
-        if (index_next > content.len) { break; }
-        content = content[index_next..];
-
-        const rel_value = link_attr.rel orelse continue;
-        const link_value = link_attr.href orelse continue;
-        const link_type = link_attr.@"type";
-
-        if (link_type != null and
-            attr_contains(rel_value, "alternate") and !isDuplicate(feed_arr.items, link_value)) {
-            if (ContentType.fromString(link_type.?)) |valid_type| {
-                try feed_arr.append(.{
-                    .title = if (link_attr.title) |t| try allocator.dupe(u8, t) else null,
-                    .link = try allocator.dupe(u8, link_value),
-                    .type = valid_type,
-                });
-            }
-        }
-
-        if (is_favicon(rel_value)) {
-            icon = LinkIcon.pick_icon(icon, LinkIcon.from_link_raw(link_attr));
-        }
-    }
-
-    var result: HtmlParsed = .{
-        .links = feed_arr.items,
-    };
-    if (icon) |val| {
-        result.icon_url = val.href;
-    }
-    return result;
-}
 
 fn tag_end_index(content: []const u8) usize {
     if (content[0] == '>') {

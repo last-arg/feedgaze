@@ -43,7 +43,11 @@ pub fn tmp_parse_html() !void {
     const input = @embedFile("tmp_file");
 
     const html = @import("html.zig");
-    html.parse_simple(arena.allocator(), input); 
+    const r = try html.parse_html(arena.allocator(), input); 
+    print("r.len: {}\n", .{r.links.len});
+    if (r.icon_url) |icon|{
+        print("url: {s}\n", .{icon});
+    }
 }
 
 pub fn tmp_parse_icon() !void {
