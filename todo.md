@@ -25,6 +25,8 @@
   - allow list file types?
   - resize bigger icons?
 - save favicons 
+  - save http etag or last-modified
+    - make own out of content if no http etag or last-modified?
   - avoid requests to all the different domains
   - make sure size isn't too large
   - use favicon from rss/atom file or from html head?

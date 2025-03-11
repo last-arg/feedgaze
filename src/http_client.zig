@@ -95,6 +95,11 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
 
+    errdefer |err| {
+        if (err != error.InvalidResponse) {
+            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{url, err});
+        }
+    }
     // NOTE: currently head() is only used to check if favicon.ico exists.
     // If in the future am going to use it for something else need to change this.
     try self.headers.add("Accept", "image/*");
@@ -115,9 +120,8 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     var resp = try self.client.perform();
     resp.body = buf;
 
-    const body = response_200_and_has_body(resp, url) orelse {
-        return error.Non200StatusOrNoBody;
-    };
+    const body = response_200_and_has_body(resp, url)
+        orelse return error.InvalidResponse;
     
     return .{ resp, body };
 }

@@ -1365,6 +1365,8 @@ pub const Storage = struct {
         const query =
         \\SELECT feed_id, page_url, icon_url_fk as icon_url
         \\FROM feed where icon_url_fk IS NOT NULL AND page_url IS NOT NULL
+        \\ AND icon_url_fk like '%youtube%'
+        \\LIMIT 1;
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }

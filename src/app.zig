@@ -233,39 +233,24 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         req.deinit();
                     }
 
-                    const have_icon = blk: {
-                        if (!mem.startsWith(u8, icon.icon_url, "data:")) {
-                            const resp = req.head(icon.icon_url) catch |err| {
-                                std.log.err("Failed to request '{s}'. Error: {}", .{icon.icon_url, err});
-                                break :blk false;
-                            };
-                            defer resp.deinit();
+                    if (!mem.startsWith(u8, icon.icon_url, "data:")) blk: {
+                        const resp_image, const resp_body = req.fetch_image(icon.icon_url) catch {
+                            try self.storage.icon_failed_add(icon.feed_id);
+                            break :blk;
+                        };
+                        defer resp_image.deinit();
 
-                            if (resp.status_code != 200) {
-                                std.log.warn("Failed to validate icon for '{s}'. Status code: {d}", .{icon.icon_url, resp.status_code});
-                                break :blk false;
-                            }
+                        const resp_url = req.get_url_slice() catch |err| {
+                            std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
+                            break :blk;
+                        };
 
-                            const resp_url = try req.get_url_slice();
-                            if (!mem.eql(u8, icon.icon_url, resp_url)) {
-                                const resp_image, const resp_body = req.fetch_image(resp_url) catch |err| {
-                                    std.log.warn("Failed to fetch image '{s}'. Error: {}", .{resp_url, err});
-                                    try self.storage.icon_failed_add(icon.feed_id);
-                                    break :blk false;
-                                };
-                                defer resp_image.deinit();
-
-                                try self.storage.icon_update(icon.icon_url, .{
-                                    .url = resp_url,
-                                    .data = resp_body,
-                                });
-                            }
-                        }
-
-                        break :blk true;
-                    };
-
-                    if (have_icon) { continue; }
+                        try self.storage.icon_update(icon.icon_url, .{
+                            .url = resp_url,
+                            .data = resp_body,
+                        });
+                        continue;
+                    }
 
                     // Check inline icon
                     const resp = req.fetch(icon.page_url, .{}) catch |err| {
@@ -301,8 +286,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
                                 break :blk icon_url;
                             };
-                            const resp_image, const resp_body = req.fetch_image(icon_url_full) catch |err| {
-                                std.log.warn("Failed to fetch image '{s}'. Error: {}", .{icon_url_full, err});
+                            const resp_image, const resp_body = req.fetch_image(icon_url_full) catch {
                                 try self.storage.icon_failed_add(icon.feed_id);
                                 continue;
                             };
