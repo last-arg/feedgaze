@@ -1395,14 +1395,26 @@ pub const Storage = struct {
         assert(is_url(icon.url));
         assert(icon.data.len > 0);
 
-        const query = 
-        \\UPDATE icon SET
-        \\  icon_url = ?
-        \\  icon_data = ?
-        \\WHERE icon_url = ?;
-        ;
+        const data = sql.Blob{ .data = icon.data };
+        if (mem.eql(u8, curr_icon_url, icon.url)) {
+            const query = 
+            \\UPDATE icon SET
+            \\  icon_data = ?
+            \\WHERE icon_url = ? AND icon_data != ?;
+            ;
+            const values = .{data, curr_icon_url, data};
+            try self.sql_db.exec(query, .{}, values);
+        } else {
+            const query = 
+            \\UPDATE icon SET
+            \\  icon_url = ?
+            \\  icon_data = ?
+            \\WHERE icon_url = ? AND icon_data != ?;
+            ;
 
-        try self.sql_db.exec(query, .{}, .{icon.url, sql.Blob{ .data = icon.data }, curr_icon_url});
+            const values = .{icon.url, data, curr_icon_url, data};
+            try self.sql_db.exec(query, .{}, values);
+        }
     }
 
     pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
