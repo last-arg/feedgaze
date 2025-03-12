@@ -775,10 +775,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-            var icon_url_opt: ?[]const u8 = null;
             if (feed_options.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
                 const links = html_parsed.links;
+
+                if (html_parsed.icon_url) |icon_url| {
+                    add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(), icon_url);
+                }
 
                 switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
                     .html => |html_opts| {
@@ -809,8 +812,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         if (feed_options.content_type == .html) {
                             // Let's make sure it is html, wrong content-type might be given.
                             add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
-                            const ct = feed_options.content_type;
-                            if (ct == null or ct == .html) {
+                            if (feed_options.content_type == .html) {
                                 std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
                                 return error.UnexpectedContentTypeHtml;
                             }
@@ -820,17 +822,12 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     }
                 }
 
-                icon_url_opt = html_parsed.icon_url;
             } else {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            if (icon_url_opt) |icon_url| {
-                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(add_opts.feed_opts.feed_url, icon_url);
-            }
-
             if (add_opts.feed_opts.icon == null) {
-                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, icon_url_opt) catch |err| blk: {
+                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, null) catch |err| blk: {
                     std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
                     break :blk null;
                 };
