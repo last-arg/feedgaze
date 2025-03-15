@@ -584,17 +584,21 @@ pub const Storage = struct {
             \\  (icon_url, icon_data)
             \\VALUES 
             \\  (@icon_url, @icon_data)
-            \\ ON CONFLICT DO UPDATE SET
+            \\ON CONFLICT DO UPDATE SET
             \\  icon_data = @icon_data
             \\ WHERE icon_url = @icon_url
             \\ AND icon_data != @icon_data
             \\RETURNING icon_id;
         ;
 
-        return try self.sql_db.one(u64, query, .{}, .{
+        const icon_id = try self.sql_db.one(u64, query, .{}, .{
             .icon_url = icon.url,
             .icon_data = sql.Blob{ .data = icon.data },
+        }) orelse try self.sql_db.one(u64, "select icon_id from icon where icon_url = ?", .{}, .{
+            icon.url,
         });
+
+        return icon_id;
     }
 
     pub fn updateLastUpdate(self: *Self, feed_id: usize) !void {
