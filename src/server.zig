@@ -2054,7 +2054,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         \\</header>
     );
     if (feeds.len > 0) {
-        try feeds_and_items_print(w, req.arena, db, feeds);
+        try feeds_and_items_print(w, req.arena, db, feeds, global);
         if (feeds.len == config.query_feed_limit) {
             var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
             defer new_url_arr.deinit();
@@ -2118,16 +2118,24 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     try Layout.write_foot(w);
 }
 
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.FeedRender) !void {
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {
     try w.writeAll("<div>");
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
         try w.writeAll("<header class='feed-header'>");
 
         try w.writeAll("<div class='icon-wrapper'>");
-        if (feed.icon_url) |icon_url| {
-            try w.print("<img class='feed-icon' src='{s}'>", .{icon_url});
+        if (feed.icon_id) |icon_id| {
+            if (global.icon_manage.index_by_id(icon_id)) |index| {
+                const icon = global.icon_manage.storage.get(index);
+                if (icon.file_type) |ft| {
+                    try w.print(
+                        \\<img class="feed-icon" src="/icons/{x}{s}" alt="" aria-hidden="true">
+                    , .{icon.data_hash, ft.to_string()});
+                }
+            }
         }
+
         try w.writeAll("</div>");
 
         try w.writeAll("<div class='feed-and-tags'>");
@@ -2245,8 +2253,15 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
     }
 }
 
-fn feed_render(w: anytype, feed: types.FeedRender) !void {
-    const title = if (feed.title.len > 0) feed.title else title_placeholder;
+fn feed_render(w: anytype, feed: types.Feed) !void {
+    const title = blk: {
+        if (feed.title) |title| {
+            if (title.len > 0) {
+                break :blk title;
+            }
+        }
+        break :blk title_placeholder;
+    };
 
     if (feed.page_url) |page_url| {
         const feed_link_fmt = 

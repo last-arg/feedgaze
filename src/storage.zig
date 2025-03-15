@@ -1010,7 +1010,7 @@ pub const Storage = struct {
         return query_where.toOwnedSlice();
     }
 
-    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.FeedRender {
+    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.Feed {
         assert(
             (args.before == null and args.after == null) or
             (args.before != null and args.after == null) or
@@ -1029,7 +1029,7 @@ pub const Storage = struct {
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
-        const result =  try stmt.all(types.FeedRender, allocator, .{}, .{});
+        const result = try stmt.all(types.Feed, allocator, .{}, .{});
         savepoint.commit();
         return result;
     }
@@ -1335,7 +1335,7 @@ pub const Storage = struct {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
-            \\select feed_id, title, feed_url, page_url, icon_id, updated_timestamp from feed where feed_id in (
+            \\select feed_id, title, feed_url, page_url, updated_timestamp, icon_id from feed where feed_id in (
         );
         // u64 numbers max length
         var buf: [20]u8 = undefined;
