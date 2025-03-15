@@ -286,8 +286,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 };
 
                 if (new_icon_opt) |new_icon| {
-                    try self.storage.icon_upsert(new_icon);
-                    try self.storage.feed_icon_update(icon.feed_id, new_icon.url);
+                    const icon_id_opt = try self.storage.icon_upsert(new_icon);
+                    if (icon_id_opt) |icon_id| {
+                        try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                    }
                 }
             }
         }

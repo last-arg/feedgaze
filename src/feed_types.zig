@@ -71,7 +71,7 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
-    icon_url: ?[]const u8 = null,
+    icon_id: ?u64 = null,
     updated_timestamp: ?i64 = null,
 
     pub const Error = error{
@@ -86,12 +86,6 @@ pub const Feed = struct {
                 const feed_uri = try Uri.parse(self.feed_url);
                 self.*.page_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, page_url});
             }
-        }
-
-        if (self.icon_url) |icon_url| {
-            self.icon_url = std.Uri.percentDecodeInPlace(@constCast(icon_url));
-            const uri = try Uri.parse(self.page_url orelse self.feed_url);
-            self.*.icon_url = try url_create(alloc, icon_url, uri);
         }
     }
 };

@@ -97,10 +97,10 @@ pub const Storage = struct {
         if (version == config_version) {
             return;
         }
-        if (1 > version) {
+        if (version < 1) {
             const query1 =
-                \\ALTER TABLE feed ADD COLUMN icon_url_fk TEXT DEFAULT NULL
-                \\  REFERENCES icon (icon_url) ON DELETE SET NULL ON UPDATE CASCADE;
+                \\ALTER TABLE feed ADD COLUMN icon_id INTEGER DEFAULT NULL
+                \\  REFERENCES icon (icon_id) ON DELETE SET NULL ON UPDATE CASCADE;
             ;
             db.exec(query1, .{}, .{}) catch |err| {
                 std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query1 });
@@ -155,19 +155,15 @@ pub const Storage = struct {
             parsed.feed.title = new_title;
         };
 
-        // Faviour favicon from html over rss/atom contents
-        if (feed_opts.icon) |icon| {
-            parsed.feed.icon_url = icon.url;
-        }
-
         parsed.feed.feed_url = feed_opts.feed_url;
         parsed.feed_updated_timestamp(feed_opts.feed_updates.last_modified_utc);
         if (opts.html_opts) |_| {
             parsed.feed.page_url = parsed.feed.feed_url;
         }
-        if (feed_opts.icon) |icon| {
-            try self.icon_upsert(icon);
-        }
+        parsed.feed.icon_id = if (feed_opts.icon) |icon|
+            try self.icon_upsert(icon)
+        else null;
+
         try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
@@ -229,22 +225,25 @@ pub const Storage = struct {
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
+        // icon_upsert()
+
         const query =
-            \\INSERT INTO feed (title, feed_url, page_url, icon_url_fk, updated_timestamp)
+            \\INSERT INTO feed (title, feed_url, page_url, icon_id, updated_timestamp)
             \\VALUES (
             \\  @title,
             \\  @feed_url,
             \\  @page_url,
-            \\  @icon_url,
+            \\  @icon_id,
             \\  @updated_timestamp
             \\) ON CONFLICT(feed_url) DO NOTHING
             \\RETURNING feed_id;
         ;
+
         const feed_id = try one(&self.sql_db, usize, query, .{
             .title = feed.title orelse "",
             .feed_url = feed.feed_url,
             .page_url = feed.page_url,
-            .icon_url = feed.icon_url,
+            .icon_id = feed.icon_id,
             .updated_timestamp = feed.updated_timestamp,
         });
         return feed_id orelse Error.FeedExists;
@@ -259,7 +258,7 @@ pub const Storage = struct {
     
     pub fn get_feed_with_url(self: *Self, allocator: Allocator, url: []const u8) !?Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
         return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -267,7 +266,7 @@ pub const Storage = struct {
 
     pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
         return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
@@ -275,7 +274,7 @@ pub const Storage = struct {
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
         const query_start =
-            \\SELECT feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp 
+            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed 
         ;
 
@@ -464,24 +463,20 @@ pub const Storage = struct {
             });
         }
 
-        const icon_url = blk: {
-            const value = mem.trim(u8, fields.icon_url, &std.ascii.whitespace);
-            if (value.len == 0) {
-                break :blk null;
-            }
-            break :blk value;
-        };
-
         // Update feed_title and page_url
         const query = 
         \\UPDATE feed 
-        \\SET title = ?, page_url = ?, icon_url_fk = ?
+        \\SET title = ?, page_url = ?, icon_id = ?
         \\WHERE feed_id = ?
         ;
+
         try self.sql_db.exec(query, .{}, .{
             fields.title,
             fields.page_url,
-            icon_url,
+            // TODO: get icon_id
+            // check if icon exists before calling this fn
+            // if not get icon content
+            null,
             fields.feed_id,
         });
 
@@ -583,7 +578,7 @@ pub const Storage = struct {
         });
     }
 
-    pub fn icon_upsert(self: *Self, icon: types.Icon) !void {
+    pub fn icon_upsert(self: *Self, icon: types.Icon) !?u64 {
         assert(if (std.Uri.parse(icon.url)) |_| true else |_| false);
         assert(icon.data.len > 0);
 
@@ -596,10 +591,10 @@ pub const Storage = struct {
             \\  icon_data = @icon_data
             \\ WHERE icon_url = @icon_url
             \\ AND icon_data != @icon_data
-            \\;
+            \\RETURNING icon_id;
         ;
 
-        try self.sql_db.exec(query, .{}, .{
+        return try self.sql_db.one(u64, query, .{}, .{
             .icon_url = icon.url,
             .icon_data = sql.Blob{ .data = icon.data },
         });
@@ -1338,7 +1333,7 @@ pub const Storage = struct {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
-            \\select feed_id, title, feed_url, page_url, icon_url_fk as icon_url, updated_timestamp from feed where feed_id in (
+            \\select feed_id, title, feed_url, page_url, icon_id, updated_timestamp from feed where feed_id in (
         );
         // u64 numbers max length
         var buf: [20]u8 = undefined;
@@ -1363,10 +1358,10 @@ pub const Storage = struct {
 
     pub fn feed_icons_existing(self: *Self, allocator: Allocator) ![]FeedIcon {
         const query =
-        \\SELECT feed_id, page_url, icon_url_fk as icon_url
-        \\FROM feed where icon_url_fk IS NOT NULL AND page_url IS NOT NULL
-        \\ AND icon_url_fk like '%youtube%'
-        \\LIMIT 1;
+        \\SELECT feed_id, page_url, icon.icon_url
+        \\FROM feed
+        \\JOIN icon ON icon.icon_id = feed.icon_id
+        \\WHERE feed.icon_id IS NOT NULL AND page_url IS NOT NULL;
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
@@ -1387,7 +1382,7 @@ pub const Storage = struct {
     pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedPageUrl {
         const query =
         \\SELECT feed_id, page_url 
-        \\FROM feed WHERE icon_url_fk IS NULL AND page_url IS NOT NULL
+        \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
         ;
         return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
     }
@@ -1427,20 +1422,14 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{icon_url});
     }
 
-    pub fn feed_icon_update(self: *Self, feed_id: usize, icon_url: ?[]const u8) !void {
-        if (icon_url) |val| {
-            assert(
-                is_url(val) or mem.startsWith(u8,val, "data:")
-            );
-        }
-
+    pub fn feed_icon_update(self: *Self, feed_id: usize, icon_id: u64) !void {
         const query = 
         \\UPDATE feed SET
-        \\  icon_url_fk = ?
+        \\  icon_id = ?
         \\WHERE feed_id = ?;
         ;
 
-        try self.sql_db.exec(query, .{}, .{icon_url, feed_id});
+        try self.sql_db.exec(query, .{}, .{icon_id, feed_id});
     }
 
     pub fn icon_failed_add(self: *Self, feed_id: usize) !void {
@@ -1526,14 +1515,15 @@ const tables = &[_][]const u8{
     \\  title TEXT NOT NULL,
     \\  feed_url TEXT NOT NULL UNIQUE,
     \\  page_url TEXT DEFAULT NULL,
-    \\  icon_url_fk TEXT DEFAULT NULL REFERENCES icon (icon_url)
+    \\  icon_id INTEGER DEFAULT NULL REFERENCES icon (icon_id)
     \\    ON DELETE SET NULL
     \\    ON UPDATE CASCADE,
     \\  updated_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS icon(
-    \\  icon_url TEXT NOT NULL PRIMARY KEY,
+    \\  icon_id INTEGER PRIMARY KEY,
+    \\  icon_url TEXT NOT NULL UNIQUE,
     \\  icon_data BLOB NOT NULL
     \\) STRICT;
     ,
@@ -1641,7 +1631,7 @@ const tables = &[_][]const u8{
     \\    OLD.title != NEW.title OR
     \\    OLD.feed_url != NEW.feed_url OR
     \\    OLD.page_url != NEW.page_url OR
-    \\    OLD.icon_url_fk != NEW.icon_url_fk
+    \\    OLD.icon_id != NEW.icon_id
     \\  );
     \\END;
     ,

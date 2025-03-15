@@ -473,13 +473,9 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
                             },
                             .url, .image => {},
                         },
+                        // TODO: remove .image?
                         .image => switch (new_tag) {
-                            .url => {
-                                if (feed.icon_url == null) {
-                                    const url_str = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
-                                    feed.icon_url = try allocator.dupe(u8, url_str);
-                                }
-                            },
+                            .url => {},
                             .title, .description, .link, .guid, .pubDate, .@"dc:date", .image => {}
                         },
                     }

@@ -1367,10 +1367,12 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
         \\<a href="{}" rel=noreferrer>
     , .{ url });
 
-    if (feed.icon_url) |icon_url| {
-        try w.print(
-            \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-        , .{icon_url});
+    if (feed.icon_id) |icon_id| {
+        _ = icon_id;
+        // TODO: get icon path using icon_id
+        // try w.print(
+        //     \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+        // , .{icon_url});
     }
 
     try w.print(
