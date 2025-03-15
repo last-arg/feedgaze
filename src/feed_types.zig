@@ -490,7 +490,9 @@ pub const ContentType = enum {
     xml,
     html,
 
-    pub fn fromString(input: []const u8) ?@This() {
+    pub fn fromString(raw: []const u8) ?@This() {
+        var iter = mem.splitScalar(u8, raw, ';');
+        const input = iter.first();
         const index_split = mem.indexOfScalar(u8, input, '/')
             orelse mem.indexOf(u8, input, "&#43;")
             orelse return null;
