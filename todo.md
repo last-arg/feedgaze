@@ -22,6 +22,9 @@
   - when to validate and prepare feed data?
   - use icon/image returned from feed parsing if there is no icon?
     - use if before last fallback /favicon.ico?
+- page /feed/:id:
+  - fix icon_url when icon is "data:..."
+  - and saving that field
 - parsing icons from html 
   - can gzip/br .ico and svg
     - If I request gzip/br I should not have to compress myself
