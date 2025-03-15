@@ -1446,7 +1446,7 @@ pub const Storage = struct {
     pub fn icon_failed_add(self: *Self, feed_id: usize) !void {
         _ = self; // autofix
         _ = feed_id; // autofix
-        std.log.info("icon failed\n", .{});
+        std.log.info("TODO: icon_faile_add()\n", .{});
         // @panic("TODO: icon_failed_add()");
     }
     

@@ -17,7 +17,12 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
-- when parsing html check <link> icons sizes attribute
+- redo app.zig add() fn
+  - when to parse feed?
+  - when to validate and prepare feed data?
+  - use icon/image returned from feed parsing if there is no icon?
+    - use if before last fallback /favicon.ico?
+- parsing icons from html 
   - favor svg over raster images?
   - can gzip/br .ico and svg
     - If I request gzip/br I should not have to compress myself

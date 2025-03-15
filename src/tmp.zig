@@ -17,9 +17,9 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    // try tmp_icon();
+    try tmp_icon();
     // try tmp_parse_icon();
-    try tmp_parse_html();
+    // try tmp_parse_html();
     // try tmp_iter_attrs();
 }
 
@@ -73,7 +73,7 @@ pub fn tmp_icon() !void {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
         break :blk null;
     };
-    print("data: |{any}|\n", .{icon_url.?.data});
+    print("data: |{}|\n", .{icon_url.?.data.len});
     print("url: |{s}|\n", .{icon_url.?.url});
 }
 
