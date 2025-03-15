@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
+const uri_component_val = @import("util.zig").uri_component_val;
 
 pub const AddRule = @This();
 
@@ -182,10 +183,3 @@ pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWi
     tmp_uri.path.percent_encoded = output_arr.items;
     return try std.fmt.allocPrint(allocator, "{}", .{tmp_uri});
 }
-
-pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
-    return switch (uri_comp) {
-        .raw, .percent_encoded => |val| val,
-    };
-}
-

@@ -23,7 +23,8 @@ const fs = std.fs;
 const http_client = @import("./http_client.zig");
 const html = @import("./html.zig");
 const AddRule = @import("add_rule.zig");
-const is_url = @import("util.zig").is_url; 
+const util = @import("util.zig"); 
+const is_url = util.is_url; 
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -1093,7 +1094,7 @@ pub const App = struct {
         var fetch_url = input_url;
 
         if (uri.host) |host| {
-            const host_str = AddRule.uri_component_val(host);
+            const host_str = util.uri_component_val(host);
             const rules = try self.storage.get_rules_for_host(allocator, host_str);
             defer allocator.free(rules);
             if (try AddRule.find_rule_match(uri, rules)) |rule| {

@@ -17,10 +17,29 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    try tmp_icon();
+    // try tmp_icon();
     // try tmp_parse_icon();
     // try tmp_parse_html();
     // try tmp_iter_attrs();
+    try tmp_icon_cache();
+}
+
+
+
+pub fn tmp_icon_cache() !void {
+    var gen: std.heap.DebugAllocator(.{}) = .init;
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+
+    var storage = try Storage.init("./tmp/feeds.db");
+    const icons = try storage.feed_icons_all(arena.allocator());
+
+    print("icons.len: {}\n", .{icons.len});
+
+    var icon_cache = try @import("server.zig").IconManage.init(icons, arena.allocator());
+    for (icon_cache.storage.items(.data_hash)) |val| {
+        print("hashed filename: {x}\n", .{val});
+    }
 }
 
 pub fn tmp_iter_attrs() !void {

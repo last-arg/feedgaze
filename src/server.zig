@@ -25,6 +25,124 @@ const Global = struct {
     is_updating: bool = false,
     etag_out: []const u8,
     static_file_hashes: StaticFileHashes,
+    icon_manage: IconManage,
+};
+
+const IconFileType = enum {
+    png,
+    jpeg,
+    jpg,
+    webp,
+    avif,
+    svg,
+    ico,
+
+    fn from_string(str: []const u8) ?@This() {
+        return std.meta.stringToEnum(@This(), str);
+    }
+
+    pub fn to_string(value: ?@This()) []const u8 {
+        const val = value orelse return "";
+        return switch (val) {
+            .png => ".png",
+            .jpeg => ".jpeg",
+            .jpg => ".jpg",
+            .webp => ".webp",
+            .avif => ".avif",
+            .svg => ".svg",
+            .ico => ".ico",
+        };
+    }
+};
+
+pub const IconManage = struct {
+    storage: Cache,
+
+    const Cache = std.MultiArrayList(struct{
+        icon_id: u64,
+        icon_data: []const u8,
+        file_type: ?IconFileType = null,
+        data_hash: u64,
+    });
+
+    pub fn init(icons: []Storage.Icon, allocator: std.mem.Allocator) !@This() {
+        var cache: Cache = .empty;
+        errdefer cache.deinit(allocator);
+        try cache.ensureTotalCapacity(allocator, icons.len);
+        var hasher = std.hash.Wyhash.init(0);
+
+        for (icons) |icon| {
+            const file_type = file_type_from_url(icon.icon_url)
+                orelse file_type_from_data(icon.icon_data);
+
+            std.hash.autoHashStrat(&hasher, icon.icon_data, .Deep);
+            cache.appendAssumeCapacity(.{
+                .icon_id = icon.icon_id,
+                .icon_data = icon.icon_data,
+                .file_type = file_type,
+                .data_hash = hasher.final(),
+            });
+        } 
+
+        return .{
+            .storage = cache,
+        };
+    }
+
+    fn file_type_from_url(input: []const u8) ?IconFileType {
+        // print("url: {s}\n", .{input});
+        const url = std.Uri.parse(input) catch return null;
+        const path = util.uri_component_val(url.path);
+        // print("path: {s}\n", .{path});
+        var iter = mem.splitBackwardsScalar(u8, path, '.');
+        const filetype_raw = iter.first();
+        return IconFileType.from_string(filetype_raw);
+    }
+
+    fn file_type_from_data(data: []const u8) ?IconFileType {
+        if (!mem.startsWith(u8, data, "data:")) {
+            return null;
+        }
+
+        var rest = data[5..];
+
+        var index_end = mem.indexOfAny(u8, rest, ";,") orelse return null;
+        rest = rest[0..index_end];
+
+        const start = mem.indexOfScalar(u8, rest, '/') orelse return null;
+        rest = rest[start + 1..];
+
+        index_end = mem.indexOfScalar(u8, rest, '+') orelse rest.len;
+        rest = rest[0..index_end];
+
+        return IconFileType.from_string(rest);
+    }
+
+    pub fn index_by_id(self: *const @This(), id: u64) ?usize {
+        for (self.storage.items(.icon_id), 0..) |icon_id, i| {
+            if (id == icon_id) {
+                return i;
+            }
+        }
+
+        return null;
+    }
+
+    pub fn index_by_hash(self: *const @This(), hash_raw: []const u8) !?usize {
+        const hash = std.fmt.parseUnsigned(u64, hash_raw, 16) catch return error.InvalidHash;
+
+        for (self.storage.items(.data_hash), 0..) |data_hash, i| {
+            if (data_hash == hash) {
+                return i;
+            }
+        }
+
+        return null;
+    }
+    
+    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
+        self.storage.deinit(allocator);
+    }
 };
 
 const StaticFileHashes = std.StaticStringMap([]const u8);
@@ -63,11 +181,18 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     const etag_out = try std.fmt.allocPrint(allocator, "{x}", .{std.time.timestamp()});
     defer allocator.free(etag_out);
 
+    const db = @constCast(&storage);
+    const icons = try db.feed_icons_all(allocator);
+    defer allocator.free(icons);
+    var icon_manage = try IconManage.init(icons, allocator);
+    defer icon_manage.deinit(allocator);
+
     var global: Global = .{
         .storage = storage,
         .layout = layout,
         .etag_out = etag_out,
         .static_file_hashes = static_file_hashes,
+        .icon_manage = icon_manage,
     };
     const server_config: httpz.Config = .{
         .port = opts.port,  
@@ -103,6 +228,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.post("/feed/:id/delete", feed_delete, .{});
 
     router.get("/public/*", public_get, .{});
+    router.get("/icons/:filename", icons_get, .{});
     router.get("/favicon.ico", favicon_get, .{});
 
     std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
@@ -1227,6 +1353,27 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     }
 }
 
+fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const filename_raw = req.params.get("filename") orelse return error.NoFileName;
+    var iter = mem.splitScalar(u8, filename_raw, '.');
+    const filename_hash = iter.first();
+
+    if (try global.icon_manage.index_by_hash(filename_hash)) |index| blk: {
+        // Check if file type matches
+        const file_type = global.icon_manage.storage.items(.file_type)[index];
+        if (iter.next()) |file_type_raw| if (IconFileType.from_string(file_type_raw)) |ft_req| {
+            if (file_type != ft_req) {
+                break :blk;
+            }
+        };
+
+        resp.header("Cache-control", "public,max-age=31536000,immutable");
+        resp.body = global.icon_manage.storage.items(.icon_data)[index];
+        return;
+    }
+    resp.status = 404;
+}
+
 fn favicon_get(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
     resp.status = 404;
     // resp.content_type = .ICO;
@@ -1363,7 +1510,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 }
                 unreachable;
             };
-            try item_latest_render(w, req.arena, item, feed);
+            try item_latest_render(w, req.arena, item, feed, global);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -1376,7 +1523,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try Layout.write_foot(w);
 }
 
-fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed) !void {
+fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global,) !void {
     try item_render(w, allocator, item, .{.class = "truncate-2"});
 
     const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
@@ -1392,11 +1539,14 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     , .{ url });
 
     if (feed.icon_id) |icon_id| {
-        _ = icon_id;
-        // TODO: get icon path using icon_id
-        // try w.print(
-        //     \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-        // , .{icon_url});
+        if (global.icon_manage.index_by_id(icon_id)) |index| {
+            const icon = global.icon_manage.storage.get(index);
+            if (icon.file_type) |ft| {
+                try w.print(
+                    \\<img class="feed-icon" src="/icons/{x}{s}" alt="" aria-hidden="true">
+                , .{icon.data_hash, ft.to_string()});
+            }
+        }
     }
 
     try w.print(
@@ -2269,3 +2419,4 @@ const FeedOptions = feed_types.FeedOptions;
 const parse = @import("./app_parse.zig");
 const App = @import("app.zig").App;
 const builtin = @import("builtin");
+const util = @import("util.zig");

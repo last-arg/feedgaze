@@ -1363,12 +1363,18 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
 
-    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
+    pub const Icon = struct {
+        icon_id: u64,
+        icon_url: []const u8,
+        icon_data: []const u8,
+    };
+
+    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]Icon {
         const query =
-        \\SELECT feed_id, page_url 
-        \\FROM feed where page_url IS NOT NULL
+        \\SELECT icon_id, icon_url, icon_data
+        \\FROM icon
         ;
-        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+        return try selectAll(&self.sql_db, allocator, Icon, query, .{});
     }
 
     const FeedPageUrl = struct {

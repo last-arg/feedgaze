@@ -23,11 +23,12 @@
   - use icon/image returned from feed parsing if there is no icon?
     - use if before last fallback /favicon.ico?
 - parsing icons from html 
-  - favor svg over raster images?
   - can gzip/br .ico and svg
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself
-  - allow list file types?
+  - icon file types
+    - favour some file types?
+    - favor svg over raster images?
   - resize bigger icons?
 - save favicons 
   - save http etag or last-modified
