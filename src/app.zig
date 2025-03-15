@@ -672,6 +672,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var arena = std.heap.ArenaAllocator.init(self.allocator);
             defer arena.deinit();
 
+            var fetch_2: ?App.RequestResponse = null;
+            defer if (fetch_2) |*f| f.deinit();
+
             var fetch = try app.fetch_response(arena.allocator(), url);
             defer fetch.deinit();
 
@@ -710,22 +713,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         }
 
                         // Need to create new curl request
-                        var fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
-                        defer fetch_2.deinit();
+                        fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
 
-                        const req_2 = fetch_2.req;
-                        const resp_2 = fetch_2.resp;
-
-                        add_opts.feed_opts = FeedOptions.fromResponse(resp_2);
-                        if (feed_options.content_type == .html) {
-                            // Let's make sure it is html, wrong content-type might be given.
-                            add_opts.feed_opts.content_type = parse.getContentType(feed_options.body) orelse .html;
-                            if (feed_options.content_type == .html) {
-                                std.log.err("Got unexpected content type 'html' from response. Expected 'atom' or 'rss'.", .{});
-                                return error.UnexpectedContentTypeHtml;
-                            }
-                        }
-                        add_opts.feed_opts.feed_url = try req_2.get_url_slice();
+                        add_opts.feed_opts = FeedOptions.fromResponse(fetch_2.?.resp);
+                        add_opts.feed_opts.feed_url = try fetch_2.?.req.get_url_slice();
                         add_opts.feed_opts.title = link.title;
                     }
                 }

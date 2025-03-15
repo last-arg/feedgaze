@@ -1473,8 +1473,8 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     // Server might return wrong content type. Like 'https://jakearchibald.com/'
 
     // TODO: could first try to parse base on content type that http response had.
-    // And if erros use getContentType() and try to parse then again.
-    const ct = getContentType(content) orelse return error.UnknownContentType;
+    // And if errors use getContentType() and try to parse then again.
+    const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
         .rss => parseRss(allocator, content),
