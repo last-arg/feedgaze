@@ -41,9 +41,8 @@ const IconFileType = enum {
         return std.meta.stringToEnum(@This(), str);
     }
 
-    pub fn to_string(value: ?@This()) []const u8 {
-        const val = value orelse return "";
-        return switch (val) {
+    pub fn to_string(value: @This()) []const u8 {
+        return switch (value) {
             .png => ".png",
             .jpeg => ".jpeg",
             .jpg => ".jpg",
