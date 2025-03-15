@@ -1065,14 +1065,12 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, types.FeedRender, query_fmt, .{});
     }
 
-    // TODO: if url is "data:...'
-    pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.FeedRender {
+    pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.Feed {
         const query = 
-        \\SELECT feed_id, title, feed_url, page_url, updated_timestamp, icon.icon_url FROM feed
-        \\JOIN icon ON icon.icon_id = feed.icon_id
+        \\SELECT feed_id, title, feed_url, page_url, updated_timestamp, icon_id FROM feed
         \\WHERE feed_id = ?;
         ;
-        return oneAlloc(&self.sql_db, allocator, types.FeedRender, query, .{id});
+        return oneAlloc(&self.sql_db, allocator, types.Feed, query, .{id});
     }
 
     const FeedModifty = struct {

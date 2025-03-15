@@ -89,10 +89,8 @@ pub const IconManage = struct {
     }
 
     fn file_type_from_url(input: []const u8) ?IconFileType {
-        // print("url: {s}\n", .{input});
         const url = std.Uri.parse(input) catch return null;
         const path = util.uri_component_val(url.path);
-        // print("path: {s}\n", .{path});
         var iter = mem.splitBackwardsScalar(u8, path, '.');
         const filetype_raw = iter.first();
         return IconFileType.from_string(filetype_raw);
@@ -1081,8 +1079,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk resp.writer().any();
     };
 
-    if (feed.title.len > 0) {
-        try Layout.write_head(w, "Feed - {s}", .{feed.title});
+    const title = feed.title orelse "";
+    if (title.len > 0) {
+        try Layout.write_head(w, "Feed - {s}", .{title});
     } else {
         try Layout.write_head(w, "Feed", .{});
     }
@@ -1093,10 +1092,15 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<main>");
     try w.writeAll("<div class='feed-info'>");
     try w.writeAll("<h2>");
-    if (feed.icon_url) |icon_url| {
-        try w.print("<img src='{s}'>", .{icon_url});
+    if (feed.icon_id) |icon_id| {
+        var buf: [128]u8 = undefined;
+        if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+            try w.print(
+                \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+            , .{path});
+        }
     }
-    try w.writeAll(if (feed.title.len > 0) feed.title else feed.page_url orelse feed.feed_url);
+    try w.writeAll(if (title.len > 0) title else feed.page_url orelse feed.feed_url);
     try w.writeAll("</h2>");
     try w.writeAll("<p>Page url: ");
     if (feed.page_url) |page_url| {
@@ -1201,15 +1205,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     const icon_url = blk: {
-        if (feed.icon_url) |icon_url| {
-            const icon_url_escaped = try parse.html_escape(req.arena, icon_url);
-            break :blk icon_url_escaped;
-        }
-        break :blk "";
+        // TODO: use global.icon_manage to get icon_url or icon_data
+        break :blk "TODO: render icon_url or icon_data";
     };
 
     try w.print(inputs_fmt, .{
-        .title = try parse.html_escape(req.arena, feed.title), 
+        .title = try parse.html_escape(req.arena, title), 
         .page_url = page_url,
         .icon_url = icon_url,
     });
