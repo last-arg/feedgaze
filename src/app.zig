@@ -614,7 +614,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             try self.out.print("{s} tags from feeds:\n", .{flag_upper_str});
 
             for (feeds) |feed| {
-                try self.out.print("{s} | {s}\n", .{feed.title, feed.page_url orelse feed.feed_url});
+                try self.out.print("{s} | {s}\n", .{feed.title orelse "<no-title>", feed.page_url orelse feed.feed_url});
             }
 
             var buf: [16]u8 = undefined;
