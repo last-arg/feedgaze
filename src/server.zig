@@ -128,6 +128,23 @@ pub const IconManage = struct {
         return null;
     }
 
+    pub fn icon_src_by_id(self: *const @This(), buf: []u8, id: u64) ?[]const u8 {
+        const index = self.index_by_id(id) orelse return null;
+
+        const icon = self.storage.get(index);
+        if (mem.startsWith(u8, icon.icon_data, "data:")) {
+            return icon.icon_data;
+        }
+
+
+        if (icon.file_type) |ft| {
+            return std.fmt.bufPrint(buf, "/icons/{x}{s}", .{icon.data_hash, ft.to_string()})
+                catch null;
+        }
+
+        return null;
+    }
+
     pub fn index_by_hash(self: *const @This(), hash_raw: []const u8) !?usize {
         const hash = std.fmt.parseUnsigned(u64, hash_raw, 16) catch return error.InvalidHash;
 
@@ -1538,14 +1555,12 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
         \\<a href="{}" rel=noreferrer>
     , .{ url });
 
+    var buf: [128]u8 = undefined;
     if (feed.icon_id) |icon_id| {
-        if (global.icon_manage.index_by_id(icon_id)) |index| {
-            const icon = global.icon_manage.storage.get(index);
-            if (icon.file_type) |ft| {
-                try w.print(
-                    \\<img class="feed-icon" src="/icons/{x}{s}" alt="" aria-hidden="true">
-                , .{icon.data_hash, ft.to_string()});
-            }
+        if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+            try w.print(
+                \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+            , .{path});
         }
     }
 
@@ -2120,19 +2135,17 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {
     try w.writeAll("<div>");
+    var buf: [128]u8 = undefined;
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
         try w.writeAll("<header class='feed-header'>");
 
         try w.writeAll("<div class='icon-wrapper'>");
         if (feed.icon_id) |icon_id| {
-            if (global.icon_manage.index_by_id(icon_id)) |index| {
-                const icon = global.icon_manage.storage.get(index);
-                if (icon.file_type) |ft| {
-                    try w.print(
-                        \\<img class="feed-icon" src="/icons/{x}{s}" alt="" aria-hidden="true">
-                    , .{icon.data_hash, ft.to_string()});
-                }
+            if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+                try w.print(
+                    \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+                , .{path});
             }
         }
 
