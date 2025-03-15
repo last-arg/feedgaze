@@ -1249,7 +1249,8 @@ pub const App = struct {
                 } else {
                     const req_icon_url = blk: {
                         if (icon_url[0] == '/' or icon_url[0] == '.') {
-                            break :blk (std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, icon_url})
+                            const url = std.mem.trimLeft(u8, icon_url, ".");
+                            break :blk (std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, url})
                                 catch |err| break :failed err);
                         }
                         break :blk icon_url;
