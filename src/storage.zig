@@ -412,7 +412,7 @@ pub const Storage = struct {
         feed_id: usize,
         title: []const u8,
         page_url: []const u8,
-        icon_url: []const u8,
+        icon_id: ?u64 = null,
         tags: [][]const u8,
     };
 
@@ -473,10 +473,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{
             fields.title,
             fields.page_url,
-            // TODO: get icon_id
-            // check if icon exists before calling this fn
-            // if not get icon content
-            null,
+            fields.icon_id,
             fields.feed_id,
         });
 
@@ -1420,6 +1417,14 @@ pub const Storage = struct {
         \\DELETE FROM icon WHERE icon_url = ?;
         ;
         try self.sql_db.exec(query, .{}, .{icon_url});
+    }
+
+    pub fn icon_get_id(self: *Self, icon_url: []const u8) !?u64 {
+        assert(is_url(icon_url));
+        const query = 
+        \\select icon_id FROM icon WHERE icon_url = ? LIMIT 1;
+        ;
+        return try self.sql_db.one(u64, query, .{}, .{icon_url});
     }
 
     pub fn feed_icon_update(self: *Self, feed_id: usize, icon_id: u64) !void {

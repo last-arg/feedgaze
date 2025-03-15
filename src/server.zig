@@ -793,15 +793,39 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
     }
 
+    const db = &global.storage;
+
+    const icon_id = blk: {
+        if (try db.icon_get_id(icon_url)) |icon_id| {
+            break :blk icon_id;
+        } 
+
+        const http_client = @import("./http_client.zig");
+        var req_http = try http_client.init(req.arena);
+        defer req_http.deinit();
+
+        const resp_image, const resp_body = req_http.fetch_image(icon_url) catch break :blk null;
+        defer resp_image.deinit();
+
+        const resp_url = req_http.get_url_slice() catch |err| {
+            std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});
+            break :blk null;
+        };
+
+        break :blk try db.icon_upsert(.{
+            .url = resp_url,
+            .data = resp_body,
+        });
+    };
+
     resp.status = 303;
     const fields: Storage.FeedFields = .{
         .feed_id = feed_id,
         .title = title,
         .page_url = page_url,
-        .icon_url = icon_url,
+        .icon_id = icon_id,
         .tags = tags.items,
     };
-    const db = &global.storage;
     db.update_feed_fields(req.arena, fields) catch {
         const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=feed", .{req.url.path});
         resp.header("Location", url_redirect);
