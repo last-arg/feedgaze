@@ -1168,7 +1168,7 @@ pub const App = struct {
                     const raw = remaining.get();
                     std.debug.assert(raw.len > 0);
                     const value = try std.fmt.parseFloat(f32, raw);
-                    if (value == 0.0) {
+                    if (value <= 0.0) {
                         if (try resp.getHeader("x-ratelimit-reset")) |header| {
                             if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
                                 std.log.debug("x-ratelimit-reset", .{});
