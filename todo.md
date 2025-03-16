@@ -9,6 +9,7 @@
   - unseen count?
   - dark mode
 
+- change icon manually https://signals-threads.simplecast.com
 - keep track of 404 feeds
   - keep count how many times it has failed?
   - save date when it failed first time? Or last?

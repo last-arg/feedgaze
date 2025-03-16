@@ -1265,7 +1265,7 @@ pub const App = struct {
         };
 
         if (error_icon) {
-            std.log.info("Did not find icon for '{s}'.", .{input_url});
+            std.log.info("Did not find icon in page's html. Page: '{s}'.", .{input_url});
         } else |err| {
             std.log.warn("Failed to fetch icon from html. Request url: '{s}'. Error: {}", .{input_url, err});
         }
