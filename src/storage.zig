@@ -221,7 +221,16 @@ pub const Storage = struct {
     }
 
     pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
-        try self.sql_db.exec("INSERT OR REPLACE INTO rate_limit (feed_id, utc_sec) VALUES (?, ?)", .{}, .{feed_id, utc_sec});
+        const query =
+        \\INSERT INTO rate_limit 
+        \\  (feed_id, next_utc_sec) VALUES (@feed_id, @next_utc_sec)
+        \\ON CONFLICT(feed_id) DO UPDATE SET
+        \\  next_utc_sec = @next_utc_sec,
+        \\  count = count + 1,
+        \\  last_utc_sec = strftime('%s', 'now')
+        ;
+        
+        try self.sql_db.exec(query, .{}, .{.feed_id = feed_id, .next_utc_sec = utc_sec});
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
@@ -341,9 +350,11 @@ pub const Storage = struct {
 
         if (!options.force) {
             has_where = true;
+            // TODO: rate_limit tables changes
+            // have to check count and check last_utc_sec
             storage_arr.appendSliceAssumeCapacity( 
                 \\WHERE ifnull(
-                \\  (select strftime('%s', 'now') >= utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id),
+                \\  (select strftime('%s', 'now') >= next_utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id),
                 \\  (strftime('%s', 'now') - last_update >= item_interval)
                 \\)
             );
@@ -1260,12 +1271,14 @@ pub const Storage = struct {
     }
 
     pub fn next_update_timestamp(self: *Self) !?i64 {
+        // TODO: have to update query because changes to rate_limit table
+        // need to update select query after union
         const query = 
         \\select min((
         \\  select last_update + item_interval from feed_update
         \\    where feed_id not in (select feed_id from rate_limit)
         \\  UNION
-        \\  select utc_sec from rate_limit
+        \\  select next_utc_sec from rate_limit
         \\))
         ;
         return try one(&self.sql_db, i64, query, .{});
@@ -1281,10 +1294,11 @@ pub const Storage = struct {
     }
 
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
+        // TODO: make changes where rate_limit table is used
         const query = 
         \\select 
         \\  coalesce(
-        \\    (select utc_sec from rate_limit where feed_id = feed_update.feed_id), 
+        \\    (select next_utc_sec from rate_limit where feed_id = feed_update.feed_id), 
         \\    last_update + item_interval
         \\  ) - strftime('%s', 'now')
         \\from feed_update where feed_update.feed_id = ?;
@@ -1601,7 +1615,9 @@ const tables = &[_][]const u8{
     ,
     \\CREATE TABLE IF NOT EXISTS rate_limit(
     \\  feed_id INTEGER UNIQUE NOT NULL,
-    \\  utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    \\  next_utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    \\  count INTEGER NOT NULL DEFAULT 1,
+    \\  last_utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
