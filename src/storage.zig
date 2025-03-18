@@ -350,14 +350,12 @@ pub const Storage = struct {
 
         if (!options.force) {
             has_where = true;
-            // TODO: rate_limit tables changes
-            // have to check count and check last_utc_sec
-            storage_arr.appendSliceAssumeCapacity( 
+            storage_arr.appendSliceAssumeCapacity(comptimePrint(
                 \\WHERE ifnull(
-                \\  (select strftime('%s', 'now') >= next_utc_sec from rate_limit where rate_limit.feed_id = feed.feed_id),
+                \\  (select strftime('%s', 'now') >= {s} from rate_limit where rate_limit.feed_id = feed.feed_id),
                 \\  (strftime('%s', 'now') - last_update >= item_interval)
                 \\)
-            );
+            , .{rate_limit_iif_utc_sec}));
         }
 
         if (search_term) |term| {
@@ -1270,16 +1268,24 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{});
     }
 
+    // 259200 - 3 days in seconds
+    const rate_limit_iif_utc_sec =
+    \\cast(iif(count < 3, next_utc_sec, 
+    \\  max(next_utc_sec,
+    \\    last_utc_sec + min(3600 * CAST(pow(2,count) as INTEGER), 259200)
+    \\  )
+    \\) as INTEGER) as utc_sec
+    ;
+
     pub fn next_update_timestamp(self: *Self) !?i64 {
-        // TODO: have to update query because changes to rate_limit table
-        // need to update select query after union
-        const query = 
+        const query = comptimePrint(
         \\select min((
         \\  select last_update + item_interval from feed_update
         \\    where feed_id not in (select feed_id from rate_limit)
         \\  UNION
-        \\  select next_utc_sec from rate_limit
+        \\  select {s} from rate_limit
         \\))
+        , .{rate_limit_iif_utc_sec})
         ;
         return try one(&self.sql_db, i64, query, .{});
     }
@@ -1294,14 +1300,14 @@ pub const Storage = struct {
     }
 
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
-        // TODO: make changes where rate_limit table is used
-        const query = 
+        const query = comptimePrint(
         \\select 
         \\  coalesce(
-        \\    (select next_utc_sec from rate_limit where feed_id = feed_update.feed_id), 
+        \\    (select {s} from rate_limit where feed_id = feed_update.feed_id), 
         \\    last_update + item_interval
         \\  ) - strftime('%s', 'now')
         \\from feed_update where feed_update.feed_id = ?;
+        , .{rate_limit_iif_utc_sec})
         ;
         return try one(&self.sql_db, i64, query, .{feed_id});
     }
