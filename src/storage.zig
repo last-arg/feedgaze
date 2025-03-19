@@ -1272,9 +1272,9 @@ pub const Storage = struct {
     const rate_limit_iif_utc_sec =
     \\cast(iif(count < 3, next_utc_sec, 
     \\  max(next_utc_sec,
-    \\    last_utc_sec + min(3600 * CAST(pow(2,count) as INTEGER), 259200)
+    \\    last_utc_sec + min(3600 * (count * count), 259200)
     \\  )
-    \\) as INTEGER) as utc_sec
+    \\) as INTEGER)
     ;
 
     pub fn next_update_timestamp(self: *Self) !?i64 {
