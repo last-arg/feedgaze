@@ -14,7 +14,7 @@
   - keep count how many times it has failed?
   - save date when it failed first time? Or last?
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
-- cli: 
+- cli:
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
@@ -23,10 +23,7 @@
   - when to validate and prepare feed data?
   - use icon/image returned from feed parsing if there is no icon?
     - use if before last fallback /favicon.ico?
-- page /feed/:id:
-  - fix icon_url when icon is "data:..."
-  - and saving that field
-- parsing icons from html 
+- icons 
   - can gzip/br .ico and svg
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself
@@ -34,7 +31,7 @@
     - favour some file types?
     - favor svg over raster images?
   - resize bigger icons?
-- save favicons 
+- icons http 
   - save http etag or last-modified
     - make own out of content if no http etag or last-modified?
   - avoid requests to all the different domains

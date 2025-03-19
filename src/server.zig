@@ -60,6 +60,7 @@ pub const IconManage = struct {
     const Cache = std.MultiArrayList(struct{
         icon_id: u64,
         icon_data: []const u8,
+        icon_url: []const u8,
         file_type: ?IconFileType = null,
         data_hash: u64,
     });
@@ -78,6 +79,7 @@ pub const IconManage = struct {
             cache.appendAssumeCapacity(.{
                 .icon_id = icon.icon_id,
                 .icon_data = icon.icon_data,
+                .icon_url = icon.icon_url,
                 .file_type = file_type,
                 .data_hash = hasher.final(),
             });
@@ -1205,8 +1207,16 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     const icon_url = blk: {
-        // TODO: use global.icon_manage to get icon_url or icon_data
-        break :blk "TODO: render icon_url or icon_data";
+        if (feed.icon_id) |icon_id| {
+            if (global.icon_manage.index_by_id(icon_id)) |index| {
+                const icon_data = global.icon_manage.storage.items(.icon_data)[index];
+                if (mem.startsWith(u8, icon_data, "data:")) {
+                    break :blk icon_data;
+                }
+                break :blk global.icon_manage.storage.items(.icon_url)[index];
+            }
+        }
+        break :blk "";
     };
 
     try w.print(inputs_fmt, .{
