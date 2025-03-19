@@ -17,7 +17,9 @@ const ShowOptions = types.ShowOptions;
 const UpdateOptions = types.UpdateOptions;
 const parse = @import("./app_parse.zig");
 const app_config = @import("app_config.zig");
-const is_url = @import("util.zig").is_url; 
+const util = @import("util.zig"); 
+const is_url = util.is_url; 
+const is_url_or_data = util.is_url_or_data; 
 
 const seconds_in_1_day = std.time.s_per_day;
 const seconds_in_3_hours = std.time.s_per_hour * 3;
@@ -1453,11 +1455,13 @@ pub const Storage = struct {
     }
 
     pub fn icon_get_id(self: *Self, icon_url: []const u8) !?u64 {
-        assert(is_url(icon_url));
+        assert(is_url_or_data(icon_url));
         const query = 
-        \\select icon_id FROM icon WHERE icon_url = ? LIMIT 1;
+        \\select icon_id FROM icon
+        \\WHERE icon_url = ? or icon_data = ?
+        \\LIMIT 1;
         ;
-        return try self.sql_db.one(u64, query, .{}, .{icon_url});
+        return try self.sql_db.one(u64, query, .{}, .{icon_url, icon_url});
     }
 
     pub fn feed_icon_update(self: *Self, feed_id: usize, icon_id: u64) !void {

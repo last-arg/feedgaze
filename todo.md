@@ -9,12 +9,11 @@
   - unseen count?
   - dark mode
 
-- change icon manually https://signals-threads.simplecast.com
 - keep track of 404 feeds
   - keep count how many times it has failed?
   - save date when it failed first time? Or last?
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
-- cli:
+- cli: 
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
@@ -24,20 +23,16 @@
   - use icon/image returned from feed parsing if there is no icon?
     - use if before last fallback /favicon.ico?
 - icons 
-  - can gzip/br .ico and svg
+  - compress (gzip/br) .ico and svg?
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself
+  - resize bigger icons?
   - icon file types
     - favour some file types?
     - favor svg over raster images?
-  - resize bigger icons?
 - icons http 
   - save http etag or last-modified
     - make own out of content if no http etag or last-modified?
-  - avoid requests to all the different domains
-  - make sure size isn't too large
-  - use favicon from rss/atom file or from html head?
-    - check html head if rss/atom icon is over certain size?
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - save failed favicon requests

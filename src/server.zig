@@ -938,7 +938,12 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const db = &global.storage;
 
     const icon_id = blk: {
-        if (try db.icon_get_id(icon_url)) |icon_id| {
+        const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
+        if (!util.is_url_or_data(icon_url_trimmed)) {
+            break :blk null;
+        }
+
+        if (try db.icon_get_id(icon_url_trimmed)) |icon_id| {
             break :blk icon_id;
         } 
 
@@ -946,7 +951,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         var req_http = try http_client.init(req.arena);
         defer req_http.deinit();
 
-        const resp_image, const resp_body = req_http.fetch_image(icon_url) catch break :blk null;
+        const resp_image, const resp_body = req_http.fetch_image(icon_url_trimmed) catch break :blk null;
         defer resp_image.deinit();
 
         const resp_url = req_http.get_url_slice() catch |err| {
