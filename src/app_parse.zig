@@ -1469,11 +1469,7 @@ test "getContentType" {
 }
 
 pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions) !FeedAndItems {
-    // Figure out content type based on file content
-    // Server might return wrong content type. Like 'https://jakearchibald.com/'
-
-    // TODO: could first try to parse base on content type that http response had.
-    // And if errors use getContentType() and try to parse then again.
+    // Server might return worng content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
     return switch (ct) {
         .atom => parseAtom(allocator, content),
