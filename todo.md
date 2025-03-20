@@ -9,6 +9,8 @@
   - unseen count?
   - dark mode
 
+- Make sqlite returned primary keys into u64.
+  - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html
 - failed feed requests
   - keep count how many times it has failed?
   - save date when it failed first time? Or last?
@@ -23,6 +25,7 @@
   - use icon/image returned from feed parsing if there is no icon?
     - use if before last fallback /favicon.ico?
 - icons 
+  - decode icon_data if 'data:'. Maybe if svg (just in case)?
   - compress (gzip/br) .ico and svg?
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself

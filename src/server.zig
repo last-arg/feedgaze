@@ -46,6 +46,18 @@ const IconFileType = enum {
         return std.meta.stringToEnum(@This(), str);
     }
 
+    pub fn to_content_type(self: @This()) []const u8 {
+        return switch (self) {
+            .png => "image/png",
+            .jpeg => "image/jpeg",
+            .jpg => "image/jpeg",
+            .webp => "image/webp",
+            .avif => "image/avif",
+            .svg => "image/svg+xml",
+            .ico => "image/x-icon",
+        };
+    }
+
     pub fn to_string(value: @This()) []const u8 {
         return switch (value) {
             .png => ".png",
@@ -76,9 +88,14 @@ pub const IconManage = struct {
         try cache.ensureTotalCapacity(allocator, icons.len);
         var hasher = std.hash.Wyhash.init(0);
 
-        for (icons) |icon| {
+        for (icons) |*icon| {
             const file_type = file_type_from_url(icon.icon_url)
                 orelse file_type_from_data(icon.icon_data);
+
+            // FIX: TODO: remove if saved icon_data can't be encode anymore
+            if (mem.startsWith(u8, icon.icon_data, "data:")) {
+                icon.icon_data = std.Uri.percentDecodeInPlace(@constCast(icon.icon_data));
+            }
 
             std.hash.autoHashStrat(&hasher, icon.icon_data, .Deep);
             cache.appendAssumeCapacity(.{
@@ -138,13 +155,7 @@ pub const IconManage = struct {
 
     pub fn icon_src_by_id(self: *const @This(), buf: []u8, id: u64) ?[]const u8 {
         const index = self.index_by_id(id) orelse return null;
-
         const icon = self.storage.get(index);
-        if (mem.startsWith(u8, icon.icon_data, "data:")) {
-            return icon.icon_data;
-        }
-
-
         if (icon.file_type) |ft| {
             return std.fmt.bufPrint(buf, "/icons/{x}{s}", .{icon.data_hash, ft.to_string()})
                 catch null;
@@ -1404,12 +1415,25 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         const file_type = global.icon_manage.storage.items(.file_type)[index];
         if (iter.next()) |file_type_raw| if (IconFileType.from_string(file_type_raw)) |ft_req| {
             if (file_type != ft_req) {
+                std.log.warn("Request icon file type and current icon type don't match. Request icon type: {s}. Current icon type: {}.", .{file_type_raw, ft_req});
                 break :blk;
             }
+            resp.header("Content-Type", ft_req.to_content_type());
         };
 
         resp.header("Cache-control", "public,max-age=31536000,immutable");
-        resp.body = global.icon_manage.storage.items(.icon_data)[index];
+        const body = body: {
+            const data = global.icon_manage.storage.items(.icon_data)[index];
+            if (mem.startsWith(u8, data, "data:")) {
+                const index_comma = mem.indexOfScalarPos(u8, data, 5, ',') orelse data.len;
+                const start = index_comma + 1;
+                if (start < data.len) {
+                    break :body data[start..];
+                }
+            }
+            break :body data;
+        };
+        resp.body = body;
         return;
     }
     resp.status = 404;
