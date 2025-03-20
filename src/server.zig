@@ -29,15 +29,20 @@ const Global = struct {
 };
 
 const IconFileType = enum {
-    png,
-    jpeg,
-    jpg,
-    webp,
-    avif,
-    svg,
-    ico,
+    png, // image/png
+    jpeg, // image/jpeg
+    jpg, // image/jpeg
+    webp, // image/webp
+    avif, // image/avif
+    svg, // image/svg+xml
+    ico, // image/x-icon
 
     fn from_string(str: []const u8) ?@This() {
+        if (mem.eql(u8, str, "x-icon")) {
+            return .ico;
+        } else if (mem.eql(u8, str, "jpg")) {
+            return .jpg;
+        }
         return std.meta.stringToEnum(@This(), str);
     }
 
@@ -103,18 +108,22 @@ pub const IconManage = struct {
             return null;
         }
 
-        var rest = data[5..];
+        const index_end = mem.indexOfScalarPos(u8, data, 5, ',') orelse return null;
 
-        var index_end = mem.indexOfAny(u8, rest, ";,") orelse return null;
-        rest = rest[0..index_end];
+        const info_raw = data[5..index_end];
+        var iter = mem.splitScalar(u8, info_raw, ';');
+        while (iter.next()) |kv| {
+            if (!mem.startsWith(u8, kv, "image/")) {
+                continue;
+            }
+            const value = kv[6..];
+            const end = mem.indexOfScalar(u8, value, '+') orelse value.len;
+            if (IconFileType.from_string(value[0..end])) |file_type| {
+                return file_type;
+            }
+        }
 
-        const start = mem.indexOfScalar(u8, rest, '/') orelse return null;
-        rest = rest[start + 1..];
-
-        index_end = mem.indexOfScalar(u8, rest, '+') orelse rest.len;
-        rest = rest[0..index_end];
-
-        return IconFileType.from_string(rest);
+        return null;
     }
 
     pub fn index_by_id(self: *const @This(), id: u64) ?usize {
