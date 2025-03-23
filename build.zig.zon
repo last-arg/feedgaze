@@ -19,7 +19,7 @@
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.zip",
-            .hash = "datetime-0.8.0-cJNXzJSJAQB5RKwPglxoEq875GmehZoLjuAlKzvWp4_O",
+            .hash = "datetime-0.8.0-cJNXzNiMAQBz4RV6Gz7qUNeE-xLDNLs_jNU5_zIZ48as",
         },
         .xml = .{
             .url = "https://github.com/ianprime0509/zig-xml/archive/refs/heads/main.tar.gz",
@@ -27,13 +27,13 @@
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "curl-0.1.0-P4tT4ajAAABXSVzNUCk4dhXmeGpWYmqIzTlhS06-sL9V",
+            .hash = "curl-0.1.1-P4tT4WzAAAD0MGbSfsyGV1hPdooNwZ5odcQYUB9iYlHe",
         },
         // NOTE: httz lib is modified to make it work with zig's new backend
         // Disabled @Vector code in src/url.zig isValid function
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrJSuBgDFvO7mtd2qDzaq8_hXIu1BqFuL1jwAV8Ac",
+            .hash = "httpz-0.0.0-PNVzrJ-0BgAp8WPkVfsFGNPRlRpBoU-8w0LxMDXBp37t",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
@@ -41,7 +41,7 @@
         },
         .superhtml = .{
             .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
-            .hash = "superhtml-0.4.0-Y7MdPAO-DQCNkEfeCBPPAqiISmjpUMEZDKj41YW3_oFc",
+            .hash = "superhtml-0.4.0-Y7MdPF6WDQDa7hxWC6LpPwxXo4YA2OJzNEE5jsaCROLX",
         },
     },
 }
