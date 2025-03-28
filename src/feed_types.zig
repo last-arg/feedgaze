@@ -50,6 +50,7 @@ pub const AddOptions = struct {
 pub const BatchOptions = struct {
     @"check-all-icons": bool = false,
     @"check-missing-icons": bool = false,
+    @"check-failed-icons": bool = false,
 };
 
 pub const UpdateOptions = struct {

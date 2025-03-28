@@ -218,7 +218,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     defer allocator.free(etag_out);
 
     const db = @constCast(&storage);
-    const icons = try db.feed_icons_all(allocator);
+    const icons = try db.icon_all(allocator);
     defer allocator.free(icons);
     var icon_manage = try IconManage.init(icons, allocator);
     defer icon_manage.deinit(allocator);

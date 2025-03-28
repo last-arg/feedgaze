@@ -1382,12 +1382,11 @@ pub const Storage = struct {
         icon_url: []const u8
     };
 
-    pub fn feed_icons_existing(self: *Self, allocator: Allocator) ![]FeedIcon {
+    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
         const query =
         \\SELECT feed_id, page_url, icon.icon_url
         \\FROM feed
         \\JOIN icon ON icon.icon_id = feed.icon_id
-        \\WHERE feed.icon_id IS NOT NULL AND page_url IS NOT NULL;
         ;
         return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
     }
@@ -1398,7 +1397,7 @@ pub const Storage = struct {
         icon_data: []const u8,
     };
 
-    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]Icon {
+    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data
         \\FROM icon
@@ -1415,10 +1414,21 @@ pub const Storage = struct {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
+        \\AND feed.feed_id NOT IN (select feed_id from icon_failed);
         ;
         return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
     }
 
+    pub fn feed_icons_failed(self: *Self, allocator: Allocator) ![]FeedPageUrl {
+        const query =
+        \\SELECT feed.feed_id, feed.page_url 
+        \\FROM icon_failed
+        \\JOIN feed ON icon_failed.feed_id = feed.feed_id
+        \\AND feed.page_url IS NOT NULL
+        ;
+        return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
+    }
+    
     pub fn icon_update(self: *Self, curr_icon_url: []const u8, icon: types.Icon) !void {
         assert(is_url(curr_icon_url));
         assert(is_url(icon.url));
@@ -1474,13 +1484,19 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{icon_id, feed_id});
     }
 
-    pub fn icon_failed_add(self: *Self, feed_id: usize) !void {
-        _ = self; // autofix
-        _ = feed_id; // autofix
-        std.log.info("TODO: icon_faile_add()\n", .{});
-        // @panic("TODO: icon_failed_add()");
+    pub const IconFailedInsert = struct {
+        feed_id: u64,
+        last_msg: ?[]const u8 = null,
+    };
+
+    pub fn icon_failed_add(self: *Self, icon_failed: IconFailedInsert) !void {
+        const query =
+        \\insert into icon_failed (feed_id, last_msg)
+        \\values (@feed_id, @last_msg)
+        ;
+        try self.sql_db.exec(query, .{}, icon_failed);
     }
-    
+
     pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
         const query =
             \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)
@@ -1646,6 +1662,15 @@ const tables = &[_][]const u8{
     \\  last_update_timestamp INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
     \\) STRICT;
     ,
+    \\CREATE TABLE IF NOT EXISTS icon_failed(
+    \\  feed_id INTEGER NOT NULL UNIQUE,
+    \\  last_failed_utc INTEGER DEFAULT (strftime('%s', 'now')),
+    \\  last_msg TEXT DEFAULT NULL,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
+    \\) STRICT;
+    ,
+
+    // Create triggers
     \\CREATE TRIGGER IF NOT EXISTS tag_update_trigger
     \\   AFTER UPDATE ON tag
     \\BEGIN

@@ -205,6 +205,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         try self.check_icons(.all);
                     } else if (opts.@"check-missing-icons") {
                         try self.check_icons(.missing);
+                    } else if (opts.@"check-failed-icons") {
+                        try self.check_icons(.failed);
                     }
                 }
             }
@@ -213,6 +215,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
         const IconCheckType = enum {
             all,
             missing,
+            failed,
         };
 
         fn check_icons(self: *Self, check_type: IconCheckType) !void {
@@ -222,76 +225,103 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             const progress_node = self.progress.start("Checking icons", 0);
             defer { progress_node.end(); }
 
-            var total: usize = 0;
-            if (check_type == .all) {
-                const icons_existing = try self.storage.feed_icons_existing(arena.allocator());
-                total += icons_existing.len;
-                progress_node.setEstimatedTotalItems(total);
-                for (icons_existing) |icon| {
-                    var req = try http_client.init(arena.allocator());
-                    defer {
-                        progress_node.completeOne();
-                        req.deinit();
-                    }
+            switch (check_type) {
+                .all => {
+                    const icons_existing = try self.storage.feed_icons_all(arena.allocator());
+                    progress_node.setEstimatedTotalItems(icons_existing.len);
+                    for (icons_existing) |icon| {
+                        var req = try http_client.init(arena.allocator());
+                        defer {
+                            progress_node.completeOne();
+                            req.deinit();
+                        }
 
-                    if (!mem.startsWith(u8, icon.icon_url, "data:")) blk: {
-                        const resp_image, const resp_body = req.fetch_image(icon.icon_url) catch {
-                            try self.storage.icon_failed_add(icon.feed_id);
-                            break :blk;
+                        if (!mem.startsWith(u8, icon.icon_url, "data:")) blk: {
+                            const resp_image, const resp_body = req.fetch_image(icon.icon_url) catch {
+                                try self.storage.icon_failed_add(.{
+                                    .feed_id = icon.feed_id,
+                                    .last_msg = "Failed to fetch existing image"
+                                });
+                                break :blk;
+                            };
+                            defer resp_image.deinit();
+
+                            const resp_url = req.get_url_slice() catch |err| {
+                                std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
+                                break :blk;
+                            };
+
+                            try self.storage.icon_update(icon.icon_url, .{
+                                .url = resp_url,
+                                .data = resp_body,
+                            });
+                            continue;
+                        }
+
+                        const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                            try self.storage.icon_failed_add(.{
+                                .feed_id = icon.feed_id,
+                                .last_msg = "Failed to fetch icon's html page to find inline icon",
+                            });
+                            continue;
                         };
-                        defer resp_image.deinit();
 
-                        const resp_url = req.get_url_slice() catch |err| {
-                            std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
-                            break :blk;
+                        if (icon_opt) |icon_obj| {
+                            try self.storage.icon_update(icon.icon_url, icon_obj);
+                        } else {
+                            try self.storage.icon_failed_add(.{
+                                .feed_id = icon.feed_id,
+                                .last_msg = "Didn't find inline icon in html page",
+                            });
+                        }
+                    }
+                },
+                .missing => {
+                    const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
+                    progress_node.setEstimatedTotalItems(icons_missing.len);
+
+                    for (icons_missing) |icon| {
+                        defer progress_node.completeOne();
+
+                        const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                            try self.storage.icon_failed_add(.{
+                                .feed_id = icon.feed_id,
+                                .last_msg = "Failed to fetch missing icon",
+                            });
+                            continue;
                         };
 
-                        try self.storage.icon_update(icon.icon_url, .{
-                            .url = resp_url,
-                            .data = resp_body,
-                        });
-                        continue;
+                        if (new_icon_opt) |new_icon| {
+                            const icon_id_opt = try self.storage.icon_upsert(new_icon);
+                            if (icon_id_opt) |icon_id| {
+                                try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                            }
+                        }
                     }
+                },
+                .failed => {
+                    const icons_failed = try self.storage.feed_icons_failed(arena.allocator());
+                    progress_node.setEstimatedTotalItems(icons_failed.len);
 
-                    const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
-                        try self.storage.icon_failed_add(icon.feed_id);
-                        continue;
-                    };
+                    for (icons_failed) |icon| {
+                        defer progress_node.completeOne();
 
-                    if (icon_opt) |icon_obj| {
-                        try self.storage.icon_update(icon.icon_url, icon_obj);
-                    } else {
-                        try self.storage.icon_failed_add(icon.feed_id);
+                        const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                            try self.storage.icon_failed_add(.{
+                                .feed_id = icon.feed_id,
+                                .last_msg = "Failed to fetch missing icon",
+                            });
+                            continue;
+                        };
+
+                        if (new_icon_opt) |new_icon| {
+                            const icon_id_opt = try self.storage.icon_upsert(new_icon);
+                            if (icon_id_opt) |icon_id| {
+                                try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                            }
+                        }
                     }
-                }
-            }
-
-            const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
-            total += icons_missing.len;
-
-            if (total == 0) {
-                std.log.info("No feed icons to check", .{});
-                return;
-            }
-
-            progress_node.setEstimatedTotalItems(total);
-
-            for (icons_missing) |icon| {
-                defer {
-                    progress_node.completeOne();
-                }
-
-                const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
-                    try self.storage.icon_failed_add(icon.feed_id);
-                    continue;
-                };
-
-                if (new_icon_opt) |new_icon| {
-                    const icon_id_opt = try self.storage.icon_upsert(new_icon);
-                    if (icon_id_opt) |icon_id| {
-                        try self.storage.feed_icon_update(icon.feed_id, icon_id);
-                    }
-                }
+                },
             }
         }
 
