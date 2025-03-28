@@ -13,9 +13,15 @@
         let
           # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2024-03-26"; };
           pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
-        in
-        {
-          devShell = import ./shell.nix { inherit pkgs; };
+        in {
+          devShell = pkgs.mkShell {
+            packages = with pkgs; [
+              pkgs.zig
+              sqlite
+              pkg-config
+              curl
+            ];
+          };
         }
       );
 }
