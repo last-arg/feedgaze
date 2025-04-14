@@ -19,6 +19,7 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
+- can I allocate and decode string after parsing feed?
 - redo app.zig add() fn
   - when to parse feed?
   - when to validate and prepare feed data?

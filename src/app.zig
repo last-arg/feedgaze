@@ -10,7 +10,7 @@ const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
 const parse = @import("./app_parse.zig");
-const FeedAndItems = parse.FeedAndItems;
+const ParsedFeed = parse.ParsedFeed;
 const ContentType = parse.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
@@ -711,14 +711,13 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             const resp = fetch.resp;
 
-            var feed_options = FeedOptions.fromResponse(resp);
-            if (feed_options.content_type == .html) {
-                feed_options.content_type = parse.getContentType(feed_options.body) orelse .html;
+            var add_opts: Storage.AddOptions = .{ .feed_opts = FeedOptions.fromResponse(resp) };
+            if (add_opts.feed_opts.content_type == .html) {
+                add_opts.feed_opts.content_type = parse.getContentType(add_opts.feed_opts.body) orelse .html;
             }
 
-            var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-            if (feed_options.content_type == .html) {
-                const html_parsed = try html.parse_html(arena.allocator(), feed_options.body);
+            if (add_opts.feed_opts.content_type == .html) {
+                const html_parsed = try html.parse_html(arena.allocator(), add_opts.feed_opts.body);
                 const links = html_parsed.links;
 
                 if (html_parsed.icon_url) |icon_url| {
@@ -760,7 +759,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            const feed_id = try self.storage.addFeed(self.allocator, add_opts);
+            const parsed = try parse.parse(arena.allocator(), add_opts.feed_opts.body, add_opts.html_opts, .{
+                .feed_url = add_opts.feed_opts.feed_url,
+            });
+ 
+            const feed_id = try self.storage.addFeed(parsed, add_opts);
             return feed_id;
         }
 

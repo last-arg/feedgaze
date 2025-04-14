@@ -485,7 +485,11 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         };
     }
     
-    const feed_id = try db.addFeed(req.arena, add_opts);
+    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, add_opts.html_opts, .{
+        .feed_url = add_opts.feed_opts.feed_url,
+    });
+  
+    const feed_id = try db.addFeed(parsed_feed, add_opts);
 
     if (tags_input) |raw| {
         errdefer |err| {
@@ -784,7 +788,11 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         };
     }
 
-    const feed_id = try db.addFeed(req.arena, add_opts);
+    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, add_opts.html_opts, .{
+        .feed_url = add_opts.feed_opts.feed_url,
+    });
+
+    const feed_id = try db.addFeed(parsed_feed, add_opts);
 
     if (tags_input) |raw| {
         errdefer |err| {

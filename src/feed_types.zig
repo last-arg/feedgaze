@@ -78,17 +78,6 @@ pub const Feed = struct {
     pub const Error = error{
         InvalidUri,
     };
-
-    pub fn prepareAndValidate(self: *Self, alloc: std.mem.Allocator) !void {
-        self.feed_url = std.Uri.percentDecodeInPlace(@constCast(self.feed_url));
-        if (self.page_url) |page_url| {
-            self.page_url = std.Uri.percentDecodeInPlace(@constCast(page_url));
-            if (page_url[0] == '/' or page_url[0] == '.') {
-                const feed_uri = try Uri.parse(self.feed_url);
-                self.*.page_url = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, page_url});
-            }
-        }
-    }
 };
 
 pub fn url_create(alloc: std.mem.Allocator, input: []const u8, base_url: Uri) ![]const u8 {

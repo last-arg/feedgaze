@@ -10,6 +10,9 @@ const print = std.debug.print;
 const dt = @import("zig-datetime"); 
 const datetime = dt.datetime;
 const assert = std.debug.assert;
+const Uri = std.Uri;
+const util = @import("util.zig"); 
+const is_url = util.is_url; 
 
 // pub const std_options: std.Options = .{
 //     // This sets log level based on scope.
@@ -25,42 +28,9 @@ const assert = std.debug.assert;
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
 
-pub const FeedAndItems = struct {
+pub const ParsedFeed = struct {
     feed: Feed,
     items: []FeedItem,
-
-    pub fn feed_updated_timestamp(self: *FeedAndItems, fallback_timestamp: ?i64) void {
-        if (self.items.len > 0 and self.items[0].updated_timestamp != null) {
-            // make feed date newest item date
-            self.feed.updated_timestamp = self.items[0].updated_timestamp;
-        } else if (fallback_timestamp != null) {
-            self.feed.updated_timestamp = fallback_timestamp;
-        } else {
-            self.feed.updated_timestamp = std.time.timestamp();
-        }
-    }
-
-    pub fn prepareAndValidate(self: *FeedAndItems, alloc: std.mem.Allocator, fallback_timestamp: ?i64) !void {
-        try self.feed.prepareAndValidate(alloc);
-        if (self.items.len > 0) {
-            self.feed_updated_timestamp(fallback_timestamp);
-
-            const item_first = self.items[0];
-            // Set all items ids
-            if (item_first.feed_id == 0 and self.feed.feed_id != 0) { 
-                for (self.items) |*item| {
-                    item.*.feed_id = self.feed.feed_id;
-                }
-            }
-
-            const feed_uri = try std.Uri.parse(self.feed.feed_url);
-            for (self.items) |*item| {
-                if (item.link) |*link| if (link.len > 0 and link.*[0] == '/') {
-                    link.* = try std.fmt.allocPrint(alloc, "{;+}{s}", .{feed_uri, link.*});
-                };
-            }
-        }
-    }
 };
 
 const AtomParseState = enum {
@@ -221,7 +191,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     return out.toOwnedSlice();
 }
 
-pub fn parseAtom(allocator: Allocator, content: []const u8) !FeedAndItems {
+pub fn parseAtom(allocator: Allocator, content: []const u8) !ParsedFeed {
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
@@ -406,7 +376,7 @@ const RssParseTag = enum {
     }
 };
 
-pub fn parseRss(allocator: Allocator, content: []const u8) !FeedAndItems {
+pub fn parseRss(allocator: Allocator, content: []const u8) !ParsedFeed {
     var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
     defer entries.deinit();
     var feed = Feed{ .feed_url = "" };
@@ -898,7 +868,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
-pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !FeedAndItems {
+pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !ParsedFeed {
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
@@ -1468,18 +1438,91 @@ test "getContentType" {
     try std.testing.expectEqual(ContentType.html, html_type.?);
 }
 
-pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions) !FeedAndItems {
-    // Server might return worng content/file type for content. Like: 'https://jakearchibald.com/'
+const ParseOptions = struct {
+    feed_url: []const u8,
+    fallback_title: ?[]const u8 = null,
+    fallback_timestamp: ?i64 = null,
+};
+
+pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
+    assert(util.is_url(opts.feed_url));
+    // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
-    return switch (ct) {
-        .atom => parseAtom(allocator, content),
-        .rss => parseRss(allocator, content),
-        .html => if (html_options) |opts| parse_html(allocator, content, opts) else {
+
+    // TODO?: where to allocate and decode string fields?
+    // remove allocations from parse* functions, if possible
+
+    var result = switch (ct) {
+        .atom => try parseAtom(allocator, content),
+        .rss => try parseRss(allocator, content),
+        .html => if (html_options) |h_opts| try parse_html(allocator, content, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
             return error.NoHtmlOptions;
         },
-        .xml => error.NotAtomOrRss,
+        .xml => return error.NotAtomOrRss,
     };
+
+    // Prepare Feed
+    result.feed.feed_url = opts.feed_url;
+
+    if (result.feed.title == null) if (opts.fallback_title) |new_title| {
+        result.feed.title = new_title;
+    };
+
+    if (ct == .html) {
+        result.feed.page_url = result.feed.feed_url;
+    }
+
+    const base = try Uri.parse(result.feed.feed_url);
+
+    var buf_arr: [2 * 1024]u8 = undefined;
+
+    if (result.feed.page_url) |page_url| if (is_relative_path(page_url)) {
+        var buf: []u8 = &buf_arr;
+        const page_url_decoded = std.Uri.percentDecodeBackwards(buf, page_url);
+        buf = buf[page_url_decoded.len..];
+        const page_url_new = try Uri.resolve_inplace(base, page_url_decoded, &buf);
+        result.feed.page_url = try std.fmt.allocPrint(allocator, "{}", .{page_url_new});
+    };
+
+    if (result.items.len > 0 and result.items[0].updated_timestamp != null) {
+        // make feed date newest item date
+        result.feed.updated_timestamp = result.items[0].updated_timestamp;
+    } else if (opts.fallback_timestamp != null) {
+        result.feed.updated_timestamp = opts.fallback_timestamp;
+    } else {
+        result.feed.updated_timestamp = std.time.timestamp();
+    }
+    
+    // Prepare []Item
+    if (result.items.len > 0) {
+        // Set all items' feed ids
+        if (result.items[0].feed_id == 0 and result.feed.feed_id != 0) {
+            for (result.items) |*item| {
+                item.*.feed_id = result.feed.feed_id;
+            }
+        }
+
+        for (result.items) |*item| {
+            if (item.link) |link| if (is_relative_path(link)) {
+                var buf: []u8 = &buf_arr;
+                const link_decoded = std.Uri.percentDecodeBackwards(buf, link);
+                buf = buf[link_decoded.len..];
+                const link_new = try Uri.resolve_inplace(base, link_decoded, &buf);
+                item.*.link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
+            };
+        }
+    }
+
+    return result;
+}
+
+fn is_relative_path(path: []const u8) bool {
+    if (path.len == 0 or path[0] == '/' or path[0] == '.') {
+        return true;
+    }
+
+    return false;
 }
 
 const zig_xml = @import("xml");

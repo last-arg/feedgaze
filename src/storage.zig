@@ -148,31 +148,24 @@ pub const Storage = struct {
         html_opts: ?parse.HtmlOptions = null,
     };
 
-    pub fn addFeed(self: *Self, allocator: Allocator, opts: AddOptions) !usize {
-        var arena = std.heap.ArenaAllocator.init(allocator);
-        defer arena.deinit();
+    pub fn addFeed(self: *Self, parsed_feed: parse.ParsedFeed, opts: AddOptions) !usize {
+        var parsed = parsed_feed;
         var feed_opts = opts.feed_opts;
-        var parsed = try parse.parse(arena.allocator(), feed_opts.body, opts.html_opts);
-        if (parsed.feed.title == null) if (feed_opts.title) |new_title| {
-            parsed.feed.title = new_title;
-        };
 
-        parsed.feed.feed_url = feed_opts.feed_url;
-        parsed.feed_updated_timestamp(feed_opts.feed_updates.last_modified_utc);
-        if (opts.html_opts) |_| {
-            parsed.feed.page_url = parsed.feed.feed_url;
-        }
         parsed.feed.icon_id = if (feed_opts.icon) |icon|
             try self.icon_upsert(icon)
         else null;
 
-        try parsed.feed.prepareAndValidate(arena.allocator());
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
         if (opts.html_opts) |html_opts| {
             try self.html_selector_add(feed_id, html_opts);
         }
-        try parsed.prepareAndValidate(arena.allocator(), feed_opts.feed_updates.last_modified_utc);
+
+        for (parsed.items) |*item| {
+            item.*.feed_id = feed_id;
+        }
+         
         _ = try self.insertFeedItems(parsed.items);
         feed_opts.feed_updates.set_item_interval(parsed.items, null, parsed.feed.updated_timestamp);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
@@ -188,10 +181,11 @@ pub const Storage = struct {
 
         const feed_id = feed_info.feed_id;
         const html_options = try self.html_selector_get(arena.allocator(), feed_id);
-        var parsed = try parse.parse(arena.allocator(), content, html_options);
+        var parsed = try parse.parse(arena.allocator(), content, html_options, .{
+            .feed_url = feed_info.feed_url
+        });
         parsed.feed.feed_url = feed_info.feed_url;
         parsed.feed.feed_id = feed_id;
-        try parsed.prepareAndValidate(arena.allocator(), feed_update.last_modified_utc);
 
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
