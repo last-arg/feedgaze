@@ -68,17 +68,14 @@ pub const Storage = struct {
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
+        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
 
-        if (user_version == 0) {
-            // NOTE: permanent pragmas:
-            // - application_id
-            // - journal_mode (when enabling or disabling WAL mode)
-            // - schema_version
-            // - user_version
-            // - wal_checkpoint
-            _ = try db.pragma(void, .{}, "user_version", "1");
-        }
-
+        // NOTE: permanent pragmas:
+        // - application_id
+        // - journal_mode (when enabling or disabling WAL mode)
+        // - schema_version
+        // - user_version
+        // - wal_checkpoint
         _ = try db.pragma(void, .{}, "foreign_keys", "1");
         _ = try db.pragma(void, .{}, "journal_mode", "WAL");
         _ = try db.pragma(void, .{}, "synchronous", "normal");
@@ -88,9 +85,10 @@ pub const Storage = struct {
         _ = try db.pragma(void, .{}, "cache_size", "-32000");
 
         try setupTables(db);
-        try migrate(db, user_version);
+        if (user_version > 0) {
+            try migrate(db, user_version);
+        }
         try initData(db);
-        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
         _ = try db.pragma(usize, .{}, "user_version", db_version_str);
     }
 
@@ -1759,12 +1757,15 @@ fn testAddFeed(storage: *Storage) !void {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const content_type = types.ContentType.rss;
     const url = "http://localhost:8282/rss2.xml";
-    var headers = try std.http.Headers.initList(allocator, &.{});
-    defer headers.deinit();
 
-    try storage.addFeed(&arena, content, content_type, url, headers);
+    const parsed = try parse.parse(arena.allocator(), content, null, .{
+        .feed_url = url,
+    });
+
+    const add_opts: Storage.AddOptions = .{ .feed_opts = .{} };
+
+    _ = try storage.addFeed(parsed, add_opts);
 
     {
         const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
