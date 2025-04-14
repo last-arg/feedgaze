@@ -237,6 +237,7 @@ body {
 
 main {
   background: var(--surface-0);
+  padding-bottom: var(--space-m);
 }
 
 ul {
