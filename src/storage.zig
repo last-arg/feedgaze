@@ -145,7 +145,6 @@ pub const Storage = struct {
 
     pub const AddOptions = struct {
         feed_opts: FeedOptions,
-        html_opts: ?parse.HtmlOptions = null,
     };
 
     pub fn addFeed(self: *Self, parsed_feed: parse.ParsedFeed, opts: AddOptions) !usize {
@@ -158,7 +157,8 @@ pub const Storage = struct {
 
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
-        if (opts.html_opts) |html_opts| {
+        if (parsed.html_opts) |html_opts| {
+            assert(feed_opts.content_type == .html);
             try self.html_selector_add(feed_id, html_opts);
         }
 

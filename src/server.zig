@@ -464,18 +464,15 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     const feed_options = FeedOptions.fromResponse(fetch.resp);
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-
-    if (feed_options.content_type == .html) {
-        add_opts.html_opts = .{
-            .selector_container = selector_container,
-            .selector_link = try get_field(form_data, "selector-link"),
-            .selector_heading = try get_field(form_data, "selector-heading"),
-            .selector_date = try get_field(form_data, "selector-date"),
-            .date_format = try get_field(form_data, "feed-date-format"),
-        };
-    }
-
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+
+    const html_opts: ?parse.HtmlOptions = if (feed_options.content_type == .html) .{
+        .selector_container = selector_container,
+        .selector_link = try get_field(form_data, "selector-link"),
+        .selector_heading = try get_field(form_data, "selector-heading"),
+        .selector_date = try get_field(form_data, "selector-date"),
+        .date_format = try get_field(form_data, "feed-date-format"),
+    } else null;
 
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
@@ -485,7 +482,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         };
     }
     
-    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, add_opts.html_opts, .{
+    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, html_opts, .{
         .feed_url = add_opts.feed_opts.feed_url,
     });
   
@@ -788,7 +785,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         };
     }
 
-    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, add_opts.html_opts, .{
+    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, null, .{
         .feed_url = add_opts.feed_opts.feed_url,
     });
 

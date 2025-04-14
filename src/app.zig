@@ -716,6 +716,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 add_opts.feed_opts.content_type = parse.getContentType(add_opts.feed_opts.body) orelse .html;
             }
 
+            var html_opts: ?parse.HtmlOptions = null;
+
             if (add_opts.feed_opts.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), add_opts.feed_opts.body);
                 const links = html_parsed.links;
@@ -725,9 +727,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
-                    .html => |html_opts| {
+                    .html => |user_html_opts| {
                         add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
-                        add_opts.html_opts = html_opts;
+                        html_opts = user_html_opts;
                     },
                     .index => |index| {
                         const link = links[index];
@@ -759,7 +761,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            const parsed = try parse.parse(arena.allocator(), add_opts.feed_opts.body, add_opts.html_opts, .{
+            const parsed = try parse.parse(arena.allocator(), add_opts.feed_opts.body, html_opts, .{
                 .feed_url = add_opts.feed_opts.feed_url,
             });
  

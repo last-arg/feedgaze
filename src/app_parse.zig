@@ -31,6 +31,7 @@ const default_item_count = @import("./app_config.zig").max_items;
 pub const ParsedFeed = struct {
     feed: Feed,
     items: []FeedItem,
+    html_opts: ?HtmlOptions = null,
 };
 
 const AtomParseState = enum {
@@ -1470,6 +1471,8 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     };
 
     if (ct == .html) {
+        assert(html_options != null);
+        result.html_opts = html_options;
         result.feed.page_url = result.feed.feed_url;
     }
 
