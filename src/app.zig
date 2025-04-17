@@ -1249,7 +1249,7 @@ pub const App = struct {
         });
 
         const feed_update = FeedUpdate.fromCurlHeaders(resp);
-        self.storage.updateFeedAndItems(arena, parsed, feed_update, f_update) catch |err| {
+        self.storage.updateFeedAndItems(parsed, feed_update, f_update) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});

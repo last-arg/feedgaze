@@ -174,7 +174,6 @@ pub const Storage = struct {
     const ContentType = parse.ContentType;
     pub fn updateFeedAndItems(
         self: *Self,
-        arena: *std.heap.ArenaAllocator,
         parsed: parse.ParsedFeed,
         feed_update_input: FeedUpdate,
         feed_info: FeedToUpdate,
@@ -188,27 +187,16 @@ pub const Storage = struct {
             return;
         }
 
-        const items_all = parsed.items;
-        const latest_item_opt = blk: {
-            const query = "SELECT id, link, updated_timestamp FROM item WHERE feed_id = ? ORDER BY updated_timestamp DESC LIMIT 1";
-            break :blk try oneAlloc(&self.sql_db, arena.allocator(), LatestItem, query, .{feed_id});
-        };
-
         var feed_update = feed_update_input;
-        const timestamp_max = if (latest_item_opt) |item| item.updated_timestamp else null;
-        feed_update.set_item_interval(parsed.items, timestamp_max);
+        feed_update.set_item_interval(parsed.items, feed_info.latest_updated_timestamp);
         try self.updateFeedUpdate(feed_id, feed_update);
 
-        const items = if (latest_item_opt) |latest_item|
-            try new_items(items_all, latest_item)
-        else
-            items_all
-        ;
+        const items = try new_items(parsed.items, feed_info);
 
         if (items.len == 0) {
             return;
         }
-
+        
         try self.updateAndRemoveFeedItems(items);
     }
 
@@ -329,14 +317,18 @@ pub const Storage = struct {
 
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
         const query =
-            \\SELECT 
-            \\  feed.feed_id,
-            \\  feed.feed_url,
-            \\  feed_update.last_modified_utc,
-            \\  feed_update.etag 
-            \\FROM feed 
-            \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-            \\
+        \\select 
+        \\  item.id as latest_item_id,
+        \\  item.link as latest_item_link,
+        \\  max(item.updated_timestamp) as latest_updated_timestamp,
+        \\  feed.feed_id,
+        \\  feed.feed_url,
+        \\  feed_update.last_modified_utc,
+        \\  feed_update.etag
+        \\from item
+        \\LEFT JOIN feed_update ON item.feed_id = feed_update.feed_id
+        \\LEFT JOIN feed ON feed.feed_id = item.feed_id
+        \\
         ;
 
         storage_arr.resize(0) catch unreachable;
@@ -365,6 +357,7 @@ pub const Storage = struct {
             }
         }
 
+        storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
         var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
         defer stmt.deinit();
         return try stmt.all(FeedToUpdate, allocator, .{}, .{});
@@ -381,28 +374,6 @@ pub const Storage = struct {
 
     pub fn deleteFeed(self: *Self, id: usize) !void {
         try self.sql_db.exec("DELETE FROM feed WHERE feed_id = ?", .{}, .{id});
-    }
-
-    pub fn updateFeed(self: *Self, feed: Feed) !void {
-        assert(feed.feed_url.len > 0);
-        if (!try self.hasFeedWithId(feed.feed_id)) {
-            return Error.FeedNotFound;
-        }
-
-        const query =
-            \\UPDATE feed SET
-            \\  title = @title,
-            \\  page_url = @page_url,
-            \\  updated_timestamp = @updated_timestamp
-            \\WHERE feed_id = @feed_id;
-        ;
-        const values = .{
-            .feed_id = feed.feed_id,
-            .title = feed.title,
-            .page_url = feed.page_url,
-            .updated_timestamp = feed.updated_timestamp,
-        };
-        try self.sql_db.exec(query, .{}, values);
     }
 
     pub fn update_feed_timestamp(self: *Self, feed: Feed) !void {
@@ -544,19 +515,6 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{feed_id});
     }
 
-    pub fn updateFeedItem(self: *Self, item: FeedItem) !void {
-        const query =
-            \\update item set 
-            \\  title = @title, 
-            \\  feed_id = @feed_id, 
-            \\  link = @link, 
-            \\  id = @id, 
-            \\  updated_timestamp = @updated_timestamp
-            \\where item_id = @item_id;
-        ;
-        try self.sql_db.exec(query, .{}, item);
-    }
-
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
         const query =
             \\INSERT INTO feed_update 
@@ -627,16 +585,11 @@ pub const Storage = struct {
         try self.cleanFeedItems(feed_id);
     }
 
-    const LatestItem = struct {
-        id: ?[]const u8,
-        link: ?[]const u8,
-        updated_timestamp: ?i64,
-    };
-    fn new_items(inserts: []FeedItem, latest_item: LatestItem) ![]FeedItem {
+    fn new_items(inserts: []FeedItem, feed_to_update: FeedToUpdate) ![]FeedItem {
         assert(inserts.len > 0);
         var len = inserts.len;
 
-        const timestamp_max = latest_item.updated_timestamp;
+        const timestamp_max = feed_to_update.latest_updated_timestamp;
         if (inserts[0].updated_timestamp != null and timestamp_max != null) {
             const timestamp = timestamp_max.?;
             for (inserts, 0..) |item, i| {
@@ -647,7 +600,7 @@ pub const Storage = struct {
                 }
             }
         } else {
-            if (latest_item.id) |id| {
+            if (feed_to_update.latest_item_id) |id| {
                 for (inserts, 0..) |item, i| {
                     const item_id = item.id orelse continue;
                     if (mem.eql(u8, item_id, id)) {
@@ -655,7 +608,7 @@ pub const Storage = struct {
                         break;
                     }
                 }
-            } else if (latest_item.link) |link| {
+            } else if (feed_to_update.latest_item_link) |link| {
                 for (inserts, 0..) |item, i| {
                     const item_link = item.link orelse continue;
                     if (mem.eql(u8, item_link, link)) {
@@ -1806,7 +1759,7 @@ test "Storage.updateFeedAndItems" {
     });
 
     const feed_update: FeedUpdate = .{};
-    try storage.updateFeedAndItems(&arena, parsed, feed_update, feed_info);
+    try storage.updateFeedAndItems(parsed, feed_update, feed_info);
 
     {
         const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});

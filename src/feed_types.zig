@@ -496,6 +496,9 @@ pub const ContentType = enum {
 };
 
 pub const FeedToUpdate = struct {
+    latest_item_id: ?[]const u8 = null,
+    latest_item_link: ?[]const u8 = null,
+    latest_updated_timestamp: ?i64 = null,
     feed_id: usize,
     feed_url: []const u8,
     last_modified_utc: ?i64 = null,
