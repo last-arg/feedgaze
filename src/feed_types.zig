@@ -418,57 +418,44 @@ pub const FeedUpdate = struct {
     }
 
     // Assumes items is ordered by updated_timestamp DESC
-    pub fn set_item_interval(self: *@This(), items: []FeedItem, timestamp_max: ?i64, timestamp_fallback: ?i64) void {
-        var first: ?i64 = null;
-        var second: ?i64 = null;
-        for (items) |item| {
-            if (item.updated_timestamp) |ts| {
-                if (first == null) {
-                    first = ts;
-                } else {
-                    second = ts;
-                    if (first.? != second.?) {
-                        break;
-                    }
-                }
+    // TODO?: move to parse() fn?
+    pub fn set_item_interval(self: *@This(), items: []FeedItem, timestamp_max: ?i64) void {
+        std.debug.assert(items.len > 1);
+        
+        const first: i64 = items[0].updated_timestamp.?;
+        var second_opt: ?i64 = timestamp_max;
+        for (items[1..]) |item| {
+            second_opt = item.updated_timestamp.?;
+            if (first != second_opt) {
+                break;
             }
         }
 
-        if (first == null) {
-            first = timestamp_fallback;
-        }
+        // Incase null use default value: seconds_in_10_days
+        var second = second_opt orelse return;
 
-        if (first) |a_val| {
-            const now = std.time.timestamp();
+        if (first == second) if (timestamp_max) |ts_max| {
+            second = ts_max;
+        };
 
-            var a = a_val;
-            if (second == null) {
-                if (timestamp_max) |ts| {
-                    second = ts;
-                } else {
-                    second = a;
-                    a = std.time.timestamp();
-                }
-            }
+        const now = std.time.timestamp();
+        const diff_now = now - first;
+        const diff_ab = first - second;
+        const diff_min = @min(diff_now, diff_ab);
 
-            const diff_now = now - a_val;
-            const diff_item = a - second.?;
-
-            const result = if (diff_now > diff_item) diff_now else diff_item;
-            if (result >= 0) {
-                if (result < seconds_in_6_hours) {
-                    self.item_interval = seconds_in_3_hours;
-                } else if (result < seconds_in_12_hours) {
-                    self.item_interval = seconds_in_6_hours;
-                } else if (result < seconds_in_1_day) {
-                    self.item_interval = seconds_in_12_hours;
-                } else if (result < seconds_in_2_days) {
-                    self.item_interval = seconds_in_1_day;
-                } else if (result < seconds_in_7_days) {
-                    self.item_interval = seconds_in_3_days;
-                } else if (result < seconds_in_30_days) {
-                    self.item_interval = seconds_in_5_days;
-                }
+        if (diff_min >= 0) {
+            if (diff_min < seconds_in_6_hours) {
+                self.item_interval = seconds_in_3_hours;
+            } else if (diff_min < seconds_in_12_hours) {
+                self.item_interval = seconds_in_6_hours;
+            } else if (diff_min < seconds_in_1_day) {
+                self.item_interval = seconds_in_12_hours;
+            } else if (diff_min < seconds_in_2_days) {
+                self.item_interval = seconds_in_1_day;
+            } else if (diff_min < seconds_in_7_days) {
+                self.item_interval = seconds_in_3_days;
+            } else if (diff_min < seconds_in_30_days) {
+                self.item_interval = seconds_in_5_days;
             }
         }
     }

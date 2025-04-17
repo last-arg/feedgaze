@@ -1443,6 +1443,7 @@ const ParseOptions = struct {
     feed_url: []const u8,
     fallback_title: ?[]const u8 = null,
     fallback_timestamp: ?i64 = null,
+    feed_id: ?u64 = null,
 };
 
 pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
@@ -1463,6 +1464,9 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
         .xml => return error.NotAtomOrRss,
     };
 
+    if (opts.feed_id) |feed_id| {
+        result.feed.feed_id = feed_id;
+    }
     // Prepare Feed
     result.feed.feed_url = opts.feed_url;
 
@@ -1506,6 +1510,7 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
             }
         }
 
+        const now = std.time.timestamp();
         for (result.items) |*item| {
             if (item.link) |link| if (is_relative_path(link)) {
                 var buf: []u8 = &buf_arr;
@@ -1514,6 +1519,10 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
                 const link_new = try Uri.resolve_inplace(base, link_decoded, &buf);
                 item.*.link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
             };
+
+            if (item.updated_timestamp == null) {
+                item.*.updated_timestamp = result.feed.updated_timestamp orelse now;
+            }
         }
     }
 

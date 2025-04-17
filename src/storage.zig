@@ -165,44 +165,46 @@ pub const Storage = struct {
         }
          
         _ = try self.insertFeedItems(parsed.items);
-        feed_opts.feed_updates.set_item_interval(parsed.items, null, parsed.feed.updated_timestamp);
+        feed_opts.feed_updates.set_item_interval(parsed.items, null);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
         return feed_id;
     }
 
     const curl = @import("curl");
     const ContentType = parse.ContentType;
-    pub fn updateFeedAndItems(self: *Self, arena: *std.heap.ArenaAllocator, resp: curl.Easy.Response, feed_info: FeedToUpdate) !void {
-        const body = resp.body orelse return error.NoBody;
-        const content = body.items;
-        var feed_update = FeedUpdate.fromCurlHeaders(resp);
-
+    pub fn updateFeedAndItems(
+        self: *Self,
+        arena: *std.heap.ArenaAllocator,
+        parsed: parse.ParsedFeed,
+        feed_update_input: FeedUpdate,
+        feed_info: FeedToUpdate,
+    ) !void {
         const feed_id = feed_info.feed_id;
-        const html_options = try self.html_selector_get(arena.allocator(), feed_id);
-        var parsed = try parse.parse(arena.allocator(), content, html_options, .{
-            .feed_url = feed_info.feed_url
-        });
-        parsed.feed.feed_url = feed_info.feed_url;
-        parsed.feed.feed_id = feed_id;
 
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
 
-        const items_all = parsed.items;
-        const timestamp_max = try self.get_timestamp_max(feed_id);
-        const id_and_link = blk: {
-            if (items_all.len > 0 and items_all[0].updated_timestamp == null) {
-                const query = "select id, link from item where feed_id = ? order by position limit 1";
-                break :blk try oneAlloc(&self.sql_db, arena.allocator(), IdAndLink, query, .{feed_id});
-            }
+        if (parsed.items.len == 0) {
+            return;
+        }
 
-            break :blk null;
+        const items_all = parsed.items;
+        const latest_item_opt = blk: {
+            const query = "SELECT id, link, updated_timestamp FROM item WHERE feed_id = ? ORDER BY updated_timestamp DESC LIMIT 1";
+            break :blk try oneAlloc(&self.sql_db, arena.allocator(), LatestItem, query, .{feed_id});
         };
-        const timestamp_fallback = parsed.feed.updated_timestamp;
-        feed_update.set_item_interval(parsed.items, timestamp_max, timestamp_fallback);
+
+        var feed_update = feed_update_input;
+        const timestamp_max = if (latest_item_opt) |item| item.updated_timestamp else null;
+        feed_update.set_item_interval(parsed.items, timestamp_max);
         try self.updateFeedUpdate(feed_id, feed_update);
 
-        const items = try items_prepared(items_all, timestamp_max, id_and_link, timestamp_fallback);
+        const items = if (latest_item_opt) |latest_item|
+            try new_items(items_all, latest_item)
+        else
+            items_all
+        ;
+
         if (items.len == 0) {
             return;
         }
@@ -614,10 +616,6 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{sec, feed_id});
     }
 
-    const IdAndLink = struct {
-        id: ?[]const u8,
-        link: ?[]const u8,
-    };
     pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
         assert(items.len > 0);
         const feed_id = items[0].feed_id;
@@ -629,15 +627,16 @@ pub const Storage = struct {
         try self.cleanFeedItems(feed_id);
     }
 
-    pub fn get_timestamp_max(self: *Self, feed_id: usize) !?i64 {
-        const query_item_timestamp = "select max(updated_timestamp) from item where feed_id = ?";
-        return try one(&self.sql_db, i64, query_item_timestamp, .{feed_id});
-    }
-
-    fn items_prepared(inserts: []FeedItem, timestamp_max: ?i64, id_and_link_opt: ?IdAndLink, fallback_timestamp: ?i64) ![]FeedItem {
+    const LatestItem = struct {
+        id: ?[]const u8,
+        link: ?[]const u8,
+        updated_timestamp: ?i64,
+    };
+    fn new_items(inserts: []FeedItem, latest_item: LatestItem) ![]FeedItem {
         assert(inserts.len > 0);
         var len = inserts.len;
 
+        const timestamp_max = latest_item.updated_timestamp;
         if (inserts[0].updated_timestamp != null and timestamp_max != null) {
             const timestamp = timestamp_max.?;
             for (inserts, 0..) |item, i| {
@@ -648,41 +647,26 @@ pub const Storage = struct {
                 }
             }
         } else {
-            if (id_and_link_opt) |id_and_link| {
-                if (id_and_link.id) |id| {
-                    for (inserts, 0..) |item, i| {
-                        const item_id = item.id orelse continue;
-                        if (mem.eql(u8, item_id, id)) {
-                            len = i;
-                            break;
-                        }
+            if (latest_item.id) |id| {
+                for (inserts, 0..) |item, i| {
+                    const item_id = item.id orelse continue;
+                    if (mem.eql(u8, item_id, id)) {
+                        len = i;
+                        break;
                     }
-                } else if (id_and_link.link) |link| {
-                    for (inserts, 0..) |item, i| {
-                        const item_link = item.link orelse continue;
-                        if (mem.eql(u8, item_link, link)) {
-                            len = i;
-                            break;
-                        }
+                }
+            } else if (latest_item.link) |link| {
+                for (inserts, 0..) |item, i| {
+                    const item_link = item.link orelse continue;
+                    if (mem.eql(u8, item_link, link)) {
+                        len = i;
+                        break;
                     }
                 }
             }
-
-            const ts = fallback_timestamp orelse std.time.timestamp();
-            for (inserts[0..len]) |*item| {
-                item.*.updated_timestamp = ts;
-            }
         }
 
-        const items = inserts[0..len];
-
-        for (items) |*item| {
-            if (item.link) |link| {
-                item.*.link = std.Uri.percentDecodeInPlace(@constCast(link));
-            }
-        }
-
-        return items;
+        return inserts[0..len];
     }
 
     // Initial item table state
@@ -718,12 +702,8 @@ pub const Storage = struct {
         ;
 
         const query_without_id =
-            \\update item set 
-            \\  title = @u_title,
-            \\  updated_timestamp = @u_timestamp
-            \\where feed_id = @u_feed_id and position = @u_position;
             \\INSERT INTO item (feed_id, title, updated_timestamp, position)
-            \\select @feed_id, @title, @updated_timestamp, @position where (select changes() = 0)
+            \\VALUES (@feed_id, @title, @updated_timestamp, @position)
             \\;
         ;
         
@@ -739,14 +719,9 @@ pub const Storage = struct {
                 });
             } else {
                 try self.sql_db.exec(query_without_id, .{}, .{
-                    .u_title = item.title,
-                    .u_timestamp = item.updated_timestamp,
-                    .u_feed_id = item.feed_id,
-                    .u_position = i,
-
                     .feed_id = item.feed_id,
                     .title = item.title,
-                    .updated_timestamp = item.updated_timestamp,
+                    .timestamp = item.updated_timestamp,
                     .position = i,
                 });
             }
@@ -1810,10 +1785,7 @@ test "Storage.updateFeedAndItems" {
     try testAddFeed(&storage);
 
     const content = @embedFile("rss2.xml");
-    const content_type = types.ContentType.rss;
     const url = "http://localhost:8282/rss2.xml";
-    var headers = try std.http.Headers.initList(allocator, &.{});
-    defer headers.deinit();
 
     const query = "DELETE FROM item WHERE feed_id = 1;";
     try storage.sql_db.exec(query, .{}, .{});
@@ -1823,12 +1795,18 @@ test "Storage.updateFeedAndItems" {
         try std.testing.expectEqual(@as(usize, 0), count.?);
     }
 
-    const feed_info = .{
+    const feed_info: FeedToUpdate = .{
         .feed_id = 1,
         .feed_url = url,
     };
 
-    try storage.updateFeedAndItems(&arena, content, content_type, feed_info, headers);
+    const parsed = try parse.parse(arena.allocator(), content, null, .{
+        .feed_url = feed_info.feed_url,
+        .feed_id = feed_info.feed_id,
+    });
+
+    const feed_update: FeedUpdate = .{};
+    try storage.updateFeedAndItems(&arena, parsed, feed_update, feed_info);
 
     {
         const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});
@@ -1837,6 +1815,6 @@ test "Storage.updateFeedAndItems" {
 
     {
         const count = try storage.sql_db.one(usize, "select count(*) from item", .{}, .{});
-        try std.testing.expectEqual(@as(usize, 3), count.?);
+        try std.testing.expectEqual(parsed.items.len, count.?);
     }
 }

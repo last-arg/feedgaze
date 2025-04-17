@@ -1237,7 +1237,19 @@ pub const App = struct {
             return .failed;
         }
 
-        self.storage.updateFeedAndItems(arena, resp, f_update) catch |err| {
+        const body_arr = resp.body orelse {
+            std.log.err("Failed to update feed '{s}'. HTTP response has no body.", .{f_update.feed_url});
+            return .failed;
+        };
+
+        const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
+        const parsed = try parse.parse(arena.allocator(), body_arr.items, html_options, .{
+            .feed_url = f_update.feed_url,
+            .feed_id = f_update.feed_id,
+        });
+
+        const feed_update = FeedUpdate.fromCurlHeaders(resp);
+        self.storage.updateFeedAndItems(arena, parsed, feed_update, f_update) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
