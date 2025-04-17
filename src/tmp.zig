@@ -270,7 +270,7 @@ fn run_parse_atom() !void {
     const alloc = arena.allocator();
 
     const content = @embedFile("tmp_file"); 
-    const feed = try @import("app_parse.zig").parseAtom(alloc, content);
+    const feed = try @import("feed_parse.zig").parseAtom(alloc, content);
     print("\nSTART {d}\n", .{feed.items.len});
     // for (feed.items) |item| {
     //     print("title: |{s}|\n", .{item.title});

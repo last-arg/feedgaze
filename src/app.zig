@@ -9,7 +9,7 @@ const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
-const parse = @import("./app_parse.zig");
+const parse = @import("./feed_parse.zig");
 const ParsedFeed = parse.ParsedFeed;
 const ContentType = parse.ContentType;
 const builtin = @import("builtin");
@@ -1246,10 +1246,12 @@ pub const App = struct {
         const parsed = try parse.parse(arena.allocator(), body_arr.items, html_options, .{
             .feed_url = f_update.feed_url,
             .feed_id = f_update.feed_id,
+            .feed_to_update = f_update,
         });
 
         const feed_update = FeedUpdate.fromCurlHeaders(resp);
-        self.storage.updateFeedAndItems(parsed, feed_update, f_update) catch |err| {
+
+        self.storage.updateFeedAndItems(parsed, feed_update) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});

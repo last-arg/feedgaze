@@ -15,7 +15,7 @@ const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
 const ShowOptions = types.ShowOptions;
 const UpdateOptions = types.UpdateOptions;
-const parse = @import("./app_parse.zig");
+const parse = @import("./feed_parse.zig");
 const app_config = @import("app_config.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
@@ -147,7 +147,7 @@ pub const Storage = struct {
 
     pub fn addFeed(self: *Self, parsed_feed: parse.ParsedFeed, opts: AddOptions) !usize {
         var parsed = parsed_feed;
-        var feed_opts = opts.feed_opts;
+        const feed_opts = opts.feed_opts;
 
         parsed.feed.icon_id = if (feed_opts.icon) |icon|
             try self.icon_upsert(icon)
@@ -165,8 +165,7 @@ pub const Storage = struct {
         }
          
         _ = try self.insertFeedItems(parsed.items);
-        feed_opts.feed_updates.set_item_interval(parsed.items, null);
-        try self.updateFeedUpdate(feed_id, feed_opts.feed_updates);
+        try self.updateFeedUpdate(feed_id, feed_opts.feed_updates, parsed.item_interval);
         return feed_id;
     }
 
@@ -176,10 +175,8 @@ pub const Storage = struct {
         self: *Self,
         parsed: parse.ParsedFeed,
         feed_update_input: FeedUpdate,
-        feed_info: FeedToUpdate,
     ) !void {
-        const feed_id = feed_info.feed_id;
-
+        const feed_id = parsed.feed.feed_id;
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
 
@@ -187,17 +184,8 @@ pub const Storage = struct {
             return;
         }
 
-        var feed_update = feed_update_input;
-        feed_update.set_item_interval(parsed.items, feed_info.latest_updated_timestamp);
-        try self.updateFeedUpdate(feed_id, feed_update);
-
-        const items = try new_items(parsed.items, feed_info);
-
-        if (items.len == 0) {
-            return;
-        }
-        
-        try self.updateAndRemoveFeedItems(items);
+        try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
+        try self.updateAndRemoveFeedItems(parsed.items);
     }
 
     pub fn rate_limit_remove(self: *Self, feed_id: usize) !void {
@@ -515,7 +503,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{feed_id});
     }
 
-    pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate) !void {
+    pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate, item_interval: i64) !void {
         const query =
             \\INSERT INTO feed_update 
             \\  (feed_id, update_interval, last_modified_utc, etag, item_interval)
@@ -534,7 +522,7 @@ pub const Storage = struct {
             .update_interval = feed_update.update_interval,
             .last_modified_utc = feed_update.last_modified_utc,
             .etag = feed_update.etag,
-            .item_interval = feed_update.item_interval,
+            .item_interval = item_interval,
         });
     }
 
@@ -583,43 +571,6 @@ pub const Storage = struct {
         }
         try self.upsertFeedItems(items);
         try self.cleanFeedItems(feed_id);
-    }
-
-    fn new_items(inserts: []FeedItem, feed_to_update: FeedToUpdate) ![]FeedItem {
-        assert(inserts.len > 0);
-        var len = inserts.len;
-
-        const timestamp_max = feed_to_update.latest_updated_timestamp;
-        if (inserts[0].updated_timestamp != null and timestamp_max != null) {
-            const timestamp = timestamp_max.?;
-            for (inserts, 0..) |item, i| {
-                const item_timestamp = item.updated_timestamp orelse continue;
-                if (item_timestamp <= timestamp) {
-                    len = i;
-                    break;
-                }
-            }
-        } else {
-            if (feed_to_update.latest_item_id) |id| {
-                for (inserts, 0..) |item, i| {
-                    const item_id = item.id orelse continue;
-                    if (mem.eql(u8, item_id, id)) {
-                        len = i;
-                        break;
-                    }
-                }
-            } else if (feed_to_update.latest_item_link) |link| {
-                for (inserts, 0..) |item, i| {
-                    const item_link = item.link orelse continue;
-                    if (mem.eql(u8, item_link, link)) {
-                        len = i;
-                        break;
-                    }
-                }
-            }
-        }
-
-        return inserts[0..len];
     }
 
     // Initial item table state
@@ -1756,10 +1707,11 @@ test "Storage.updateFeedAndItems" {
     const parsed = try parse.parse(arena.allocator(), content, null, .{
         .feed_url = feed_info.feed_url,
         .feed_id = feed_info.feed_id,
+        .feed_to_update = feed_info,
     });
 
     const feed_update: FeedUpdate = .{};
-    try storage.updateFeedAndItems(parsed, feed_update, feed_info);
+    try storage.updateFeedAndItems(parsed, feed_update);
 
     {
         const count = try storage.sql_db.one(usize, "select count(*) from feed", .{}, .{});

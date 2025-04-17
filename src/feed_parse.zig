@@ -32,6 +32,7 @@ pub const ParsedFeed = struct {
     feed: Feed,
     items: []FeedItem,
     html_opts: ?HtmlOptions = null,
+    item_interval: i64 = feed_types.seconds_in_10_days,
 };
 
 const AtomParseState = enum {
@@ -1440,10 +1441,10 @@ test "getContentType" {
 }
 
 const ParseOptions = struct {
-    feed_url: []const u8,
-    fallback_title: ?[]const u8 = null,
-    fallback_timestamp: ?i64 = null,
     feed_id: ?u64 = null,
+    feed_url: []const u8,
+    feed_to_update: ?feed_types.FeedToUpdate = null,
+    latest_updated_timestamp: ?i64 = null,
 };
 
 pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
@@ -1470,10 +1471,6 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     // Prepare Feed
     result.feed.feed_url = opts.feed_url;
 
-    if (result.feed.title == null) if (opts.fallback_title) |new_title| {
-        result.feed.title = new_title;
-    };
-
     if (ct == .html) {
         assert(html_options != null);
         result.html_opts = html_options;
@@ -1495,8 +1492,6 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     if (result.items.len > 0 and result.items[0].updated_timestamp != null) {
         // make feed date newest item date
         result.feed.updated_timestamp = result.items[0].updated_timestamp;
-    } else if (opts.fallback_timestamp != null) {
-        result.feed.updated_timestamp = opts.fallback_timestamp;
     } else {
         result.feed.updated_timestamp = std.time.timestamp();
     }
@@ -1510,7 +1505,6 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
             }
         }
 
-        const now = std.time.timestamp();
         for (result.items) |*item| {
             if (item.link) |link| if (is_relative_path(link)) {
                 var buf: []u8 = &buf_arr;
@@ -1521,12 +1515,106 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
             };
 
             if (item.updated_timestamp == null) {
+                const now = std.time.timestamp();
                 item.*.updated_timestamp = result.feed.updated_timestamp orelse now;
             }
         }
     }
 
+    if (result.items.len > 1) {
+        const ts = if (opts.feed_to_update) |f| f.latest_updated_timestamp else null;
+        result.item_interval = get_item_interval(result.items, ts);
+    }
+
+    if (opts.feed_to_update) |f_update| {
+        result.items = try filter_items(result.items, f_update);
+    }
+
+
     return result;
+}
+
+pub fn get_item_interval(items: []FeedItem, timestamp_max: ?i64) i64 {
+    std.debug.assert(items.len > 1);
+    
+    const first: i64 = items[0].updated_timestamp.?;
+    var second_opt: ?i64 = timestamp_max;
+    for (items[1..]) |item| {
+        second_opt = item.updated_timestamp.?;
+        if (first != second_opt) {
+            break;
+        }
+    }
+
+    const ft = feed_types;
+
+    var result: i64 = ft.seconds_in_10_days;
+    // Incase null use default value: seconds_in_10_days
+    var second = second_opt orelse return result;
+
+    if (first == second) if (timestamp_max) |ts_max| {
+        second = ts_max;
+    };
+
+    const now = std.time.timestamp();
+    const diff_now = now - first;
+    const diff_ab = first - second;
+    const diff_min = @min(diff_now, diff_ab);
+
+    if (diff_min >= 0) {
+        if (diff_min < ft.seconds_in_6_hours) {
+            result = ft.seconds_in_3_hours;
+        } else if (diff_min < ft.seconds_in_12_hours) {
+            result = ft.seconds_in_6_hours;
+        } else if (diff_min < ft.seconds_in_1_day) {
+            result = ft.seconds_in_12_hours;
+        } else if (diff_min < ft.seconds_in_2_days) {
+            result = ft.seconds_in_1_day;
+        } else if (diff_min < ft.seconds_in_7_days) {
+            result = ft.seconds_in_3_days;
+        } else if (diff_min < ft.seconds_in_30_days) {
+            result = ft.seconds_in_5_days;
+        }
+    }
+
+    return result;
+}
+
+fn filter_items(inserts: []FeedItem, feed_to_update: feed_types.FeedToUpdate) ![]FeedItem {
+    assert(inserts.len > 0);
+    var len = inserts.len;
+
+    const timestamp_max = feed_to_update.latest_updated_timestamp;
+    if (inserts[0].updated_timestamp != null and timestamp_max != null) {
+        const timestamp = timestamp_max.?;
+        for (inserts, 0..) |item, i| {
+            const item_timestamp = item.updated_timestamp orelse continue;
+            if (item_timestamp <= timestamp) {
+                len = i;
+                break;
+            }
+        }
+    } else {
+        if (feed_to_update.latest_item_id) |id| {
+            for (inserts, 0..) |item, i| {
+                const item_id = item.id orelse continue;
+                if (mem.eql(u8, item_id, id)) {
+                    len = i;
+                    break;
+                }
+            }
+        } else if (feed_to_update.latest_item_link) |link| {
+            for (inserts, 0..) |item, i| {
+                const item_link = item.link orelse continue;
+                if (mem.eql(u8, item_link, link)) {
+                    len = i;
+                    break;
+                }
+            }
+        }
+    }
+
+    return inserts[0..len];
 }
 
 fn is_relative_path(path: []const u8) bool {

@@ -4,16 +4,16 @@ const dt = @import("zig-datetime").datetime;
 const curl = @import("curl");
 const mem = std.mem;
 
-const seconds_in_3_hours = std.time.s_per_hour * 3;
-const seconds_in_6_hours = std.time.s_per_hour * 6;
-const seconds_in_12_hours = std.time.s_per_hour * 12;
-const seconds_in_1_day = std.time.s_per_day;
-const seconds_in_2_days = seconds_in_1_day * 2;
-const seconds_in_3_days = seconds_in_1_day * 3;
-const seconds_in_5_days = seconds_in_1_day * 5;
-const seconds_in_7_days = seconds_in_1_day * 7;
-const seconds_in_10_days = seconds_in_1_day * 10;
-const seconds_in_30_days = seconds_in_1_day * 30;
+pub const seconds_in_3_hours = std.time.s_per_hour * 3;
+pub const seconds_in_6_hours = std.time.s_per_hour * 6;
+pub const seconds_in_12_hours = std.time.s_per_hour * 12;
+pub const seconds_in_1_day = std.time.s_per_day;
+pub const seconds_in_2_days = seconds_in_1_day * 2;
+pub const seconds_in_3_days = seconds_in_1_day * 3;
+pub const seconds_in_5_days = seconds_in_1_day * 5;
+pub const seconds_in_7_days = seconds_in_1_day * 7;
+pub const seconds_in_10_days = seconds_in_1_day * 10;
+pub const seconds_in_30_days = seconds_in_1_day * 30;
 
 pub const FetchHeaderOptions = struct {
     etag: ?[]const u8 = null,
@@ -303,7 +303,6 @@ pub const FeedUpdate = struct {
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
-    item_interval: i64 = seconds_in_10_days,
 
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
@@ -416,49 +415,6 @@ pub const FeedUpdate = struct {
             .etag = headers.getFirstValue("etag"),
         };
     }
-
-    // Assumes items is ordered by updated_timestamp DESC
-    // TODO?: move to parse() fn?
-    pub fn set_item_interval(self: *@This(), items: []FeedItem, timestamp_max: ?i64) void {
-        std.debug.assert(items.len > 1);
-        
-        const first: i64 = items[0].updated_timestamp.?;
-        var second_opt: ?i64 = timestamp_max;
-        for (items[1..]) |item| {
-            second_opt = item.updated_timestamp.?;
-            if (first != second_opt) {
-                break;
-            }
-        }
-
-        // Incase null use default value: seconds_in_10_days
-        var second = second_opt orelse return;
-
-        if (first == second) if (timestamp_max) |ts_max| {
-            second = ts_max;
-        };
-
-        const now = std.time.timestamp();
-        const diff_now = now - first;
-        const diff_ab = first - second;
-        const diff_min = @min(diff_now, diff_ab);
-
-        if (diff_min >= 0) {
-            if (diff_min < seconds_in_6_hours) {
-                self.item_interval = seconds_in_3_hours;
-            } else if (diff_min < seconds_in_12_hours) {
-                self.item_interval = seconds_in_6_hours;
-            } else if (diff_min < seconds_in_1_day) {
-                self.item_interval = seconds_in_12_hours;
-            } else if (diff_min < seconds_in_2_days) {
-                self.item_interval = seconds_in_1_day;
-            } else if (diff_min < seconds_in_7_days) {
-                self.item_interval = seconds_in_3_days;
-            } else if (diff_min < seconds_in_30_days) {
-                self.item_interval = seconds_in_5_days;
-            }
-        }
-    }
 };
 
 pub const ContentType = enum {
@@ -496,13 +452,13 @@ pub const ContentType = enum {
 };
 
 pub const FeedToUpdate = struct {
-    latest_item_id: ?[]const u8 = null,
-    latest_item_link: ?[]const u8 = null,
-    latest_updated_timestamp: ?i64 = null,
     feed_id: usize,
     feed_url: []const u8,
     last_modified_utc: ?i64 = null,
     etag: ?[]const u8 = null,
+    latest_item_id: ?[]const u8 = null,
+    latest_item_link: ?[]const u8 = null,
+    latest_updated_timestamp: ?i64 = null,
 };
 
 pub const Icon = struct {
