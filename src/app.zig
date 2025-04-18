@@ -9,9 +9,9 @@ const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
-const parse = @import("./feed_parse.zig");
-const ParsedFeed = parse.ParsedFeed;
-const ContentType = parse.ContentType;
+const FeedParser = @import("./feed_parse.zig");
+const ParsedFeed = FeedParser.ParsedFeed;
+const ContentType = FeedParser.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
@@ -713,10 +713,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
             var add_opts: Storage.AddOptions = .{ .feed_opts = FeedOptions.fromResponse(resp) };
             if (add_opts.feed_opts.content_type == .html) {
-                add_opts.feed_opts.content_type = parse.getContentType(add_opts.feed_opts.body) orelse .html;
+                add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
             }
 
-            var html_opts: ?parse.HtmlOptions = null;
+            var html_opts: ?FeedParser.HtmlOptions = null;
 
             if (add_opts.feed_opts.content_type == .html) {
                 const html_parsed = try html.parse_html(arena.allocator(), add_opts.feed_opts.body);
@@ -761,7 +761,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
             }
 
-            const parsed = try parse.parse(arena.allocator(), add_opts.feed_opts.body, html_opts, .{
+            var parser: FeedParser = try .init(arena.allocator(), add_opts.feed_opts.body);
+            defer parser.deinit(arena.allocator());
+
+            const parsed = try parser.parse(arena.allocator(), add_opts.feed_opts.body, html_opts, .{
                 .feed_url = add_opts.feed_opts.feed_url,
             });
  
@@ -771,7 +774,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
 
         const UserInput = union(enum) {
             index: usize,
-            html: parse.HtmlOptions,
+            html: FeedParser.HtmlOptions,
         };
 
         fn getUserInput(allocator: Allocator, links: []html.FeedLink, writer: Writer, reader: Reader) !UserInput {
@@ -808,8 +811,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             return .{ .index = index - 1 };
         }
 
-        fn html_options(allocator: Allocator, writer: Writer, reader: Reader) !parse.HtmlOptions {
-            var opts: parse.HtmlOptions = .{ .selector_container = undefined };
+        fn html_options(allocator: Allocator, writer: Writer, reader: Reader) !FeedParser.HtmlOptions {
+            var opts: FeedParser.HtmlOptions = .{ .selector_container = undefined };
             var buf: [1024]u8 = undefined;
             var fix_buf = std.io.fixedBufferStream(&buf);
 
@@ -1162,6 +1165,7 @@ pub const App = struct {
     pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
         errdefer |err| {
             std.log.err("Update loop error: {}", .{err});
+            std.log.debug("feed: {} {s}\n", .{f_update.feed_id, f_update.feed_url});
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             self.storage.rate_limit_add(f_update.feed_id, retry_ts) catch {
                 @panic("Failed to update (increase) feed's next update");
@@ -1243,7 +1247,10 @@ pub const App = struct {
         };
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
-        const parsed = try parse.parse(arena.allocator(), body_arr.items, html_options, .{
+        var parsing: FeedParser = try .init(arena.allocator(), body_arr.items);
+        defer parsing.deinit(arena.allocator());
+
+        const parsed = try parsing.parse(arena.allocator(), body_arr.items, html_options, .{
             .feed_url = f_update.feed_url,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,

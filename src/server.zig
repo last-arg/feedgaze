@@ -482,7 +482,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         };
     }
     
-    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, html_opts, .{
+    var parsing: parse = try .init(req.arena, add_opts.feed_opts.body);
+    defer parsing.deinit(req.arena);
+
+    const parsed_feed = try parsing.parse(req.arena, add_opts.feed_opts.body, html_opts, .{
         .feed_url = add_opts.feed_opts.feed_url,
     });
   
@@ -785,7 +788,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         };
     }
 
-    const parsed_feed = try parse.parse(req.arena, add_opts.feed_opts.body, null, .{
+    var parsing: parse = try .init(req.arena, add_opts.feed_opts.body);
+    defer parsing.deinit(req.arena);
+
+    const parsed_feed = try parsing.parse(req.arena, add_opts.feed_opts.body, null, .{
         .feed_url = add_opts.feed_opts.feed_url,
     });
 

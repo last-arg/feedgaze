@@ -28,6 +28,22 @@ const is_url = util.is_url;
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
 
+items: std.ArrayListUnmanaged(FeedItem) = .empty,
+token_reader: zig_xml.GenericReader(error{}),
+
+pub fn init(allocator: Allocator, content: []const u8) !@This() {
+    var doc = zig_xml.StaticDocument.init(content);
+    return .{
+        .items = try .initCapacity(allocator, default_item_count),
+        .token_reader = doc.reader(allocator, .{ .namespace_aware = false, }),
+    };
+}
+
+pub fn deinit(self: *@This(), allocator: Allocator) void {
+    self.items.deinit(allocator);
+    self.token_reader.deinit();
+}
+
 pub const ParsedFeed = struct {
     feed: Feed,
     items: []FeedItem,
@@ -193,17 +209,13 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     return out.toOwnedSlice();
 }
 
-pub fn parseAtom(allocator: Allocator, content: []const u8) !ParsedFeed {
-    var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
-    defer entries.deinit();
+pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
+    var entries = self.items;
     var feed = Feed{ .feed_url = "" };
     var state: AtomParseState = .feed;
     var current_entry: FeedItem = .{ .title = "" };
 
-    var doc = zig_xml.StaticDocument.init(content);
-    var token_reader = doc.reader(allocator, .{ .namespace_aware = false, });
-    defer token_reader.deinit();
-
+    var token_reader = self.token_reader;
     var token = try token_reader.read();
     while (token != .eof) : (token = try token_reader.read()) {
         switch (token) {
@@ -311,10 +323,8 @@ pub fn parseAtom(allocator: Allocator, content: []const u8) !ParsedFeed {
         }
     }
 
-    const items = try entries.toOwnedSlice();
-    sortItems(items);
 
-    return .{ .feed = feed, .items = items };
+    return .{ .feed = feed, .items = entries.items };
 }
 
 test "parseAtom" {
@@ -378,17 +388,13 @@ const RssParseTag = enum {
     }
 };
 
-pub fn parseRss(allocator: Allocator, content: []const u8) !ParsedFeed {
-    var entries = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
-    defer entries.deinit();
+pub fn parseRss(self: @This(), allocator: Allocator) !ParsedFeed {
+    var entries = self.items;
     var feed = Feed{ .feed_url = "" };
     var state: RssParseState = .channel;
     var current_item: FeedItem = .{.title = ""};
 
-    var doc = zig_xml.StaticDocument.init(content);
-    var token_reader = doc.reader(allocator, .{ .namespace_aware = false, });
-    defer token_reader.deinit();
-
+    var token_reader = self.token_reader;
     var token = try token_reader.read();
     while (token != .eof) : (token = try token_reader.read()) {
         switch (token) {
@@ -469,10 +475,7 @@ pub fn parseRss(allocator: Allocator, content: []const u8) !ParsedFeed {
         }
     }
 
-    const items = try entries.toOwnedSlice();
-    sortItems(items);
-
-    return .{ .feed = feed, .items = items };
+    return .{ .feed = feed, .items = entries.items };
 }
 
 // Sorting item.updated_timestamp
@@ -505,7 +508,7 @@ fn sortItems(items: []FeedItem) void {
     }
 }
 
-fn add_or_replace_item(entries: *std.ArrayList(FeedItem), current_item: FeedItem) void {
+fn add_or_replace_item(entries: *std.ArrayListUnmanaged(FeedItem), current_item: FeedItem) void {
     // Don't allow duplicate links. This is a contraint in sqlite DB also.
     // Maybe change this in the future? For example in 'https://gitlab.com/dejawu/ectype.atom'
     // there can be several same links. They are same links because two
@@ -544,7 +547,7 @@ fn add_or_replace_item(entries: *std.ArrayList(FeedItem), current_item: FeedItem
             }
         }
     } else {
-        entries.append(current_item) catch {};
+        entries.appendAssumeCapacity(current_item);
     }    
 }
 
@@ -870,7 +873,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
-pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlOptions) !ParsedFeed {
+pub fn parse_html(self: @This(), allocator: Allocator, content: []const u8, html_options: HtmlOptions) !ParsedFeed {
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
@@ -888,8 +891,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
 
-    var feed_items = try std.ArrayList(FeedItem).initCapacity(allocator, default_item_count);
-    defer feed_items.deinit();
+    var feed_items = self.items;
 
     while (container_iter.next()) |node_container| {
         var item_link: ?[]const u8 = null;
@@ -1038,7 +1040,7 @@ pub fn parse_html(allocator: Allocator, content: []const u8, html_options: HtmlO
 
     return .{
         .feed = feed,
-        .items = try feed_items.toOwnedSlice(),
+        .items = feed_items.items,
     };
 }
 
@@ -1406,6 +1408,7 @@ pub fn getContentType(content: []const u8) ?ContentType {
     if (std.ascii.startsWithIgnoreCase(trimmed, "<!doctype html")) {
         return .html;
     }
+
     return null;
 }
 
@@ -1447,7 +1450,7 @@ const ParseOptions = struct {
     latest_updated_timestamp: ?i64 = null,
 };
 
-pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
+pub fn parse(self: @This(), allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
     assert(util.is_url(opts.feed_url));
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
@@ -1456,14 +1459,15 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
     // remove allocations from parse* functions, if possible
 
     var result = switch (ct) {
-        .atom => try parseAtom(allocator, content),
-        .rss => try parseRss(allocator, content),
-        .html => if (html_options) |h_opts| try parse_html(allocator, content, h_opts) else {
+        .atom => try self.parseAtom(allocator),
+        .rss => try self.parseRss(allocator),
+        .html => if (html_options) |h_opts| try self.parse_html(allocator, content, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
             return error.NoHtmlOptions;
         },
         .xml => return error.NotAtomOrRss,
     };
+    sortItems(result.items);
 
     if (opts.feed_id) |feed_id| {
         result.feed.feed_id = feed_id;
@@ -1530,7 +1534,6 @@ pub fn parse(allocator: Allocator, content: []const u8, html_options: ?HtmlOptio
         result.items = try filter_items(result.items, f_update);
     }
 
-
     return result;
 }
 
@@ -1581,8 +1584,10 @@ pub fn get_item_interval(items: []FeedItem, timestamp_max: ?i64) i64 {
 }
 
 fn filter_items(inserts: []FeedItem, feed_to_update: feed_types.FeedToUpdate) ![]FeedItem {
-    assert(inserts.len > 0);
     var len = inserts.len;
+    if (len == 0) {
+        return inserts;
+    }
 
     const timestamp_max = feed_to_update.latest_updated_timestamp;
     if (inserts[0].updated_timestamp != null and timestamp_max != null) {
@@ -1647,7 +1652,10 @@ pub fn tmp_test() !void {
     defer arena.deinit();
 
     const content = @embedFile("tmp_file");
-    const result = try parse(arena.allocator(), content, null);
+    const parsing: @This() = try .init(arena.allocator());
+    const result = try parsing.parse(arena.allocator(), content, null, .{
+        .feed_url = "http://reddit.com",
+    });
 
     // Wanted output. Line breaks are spaces
     // Had a ton of fun speaking and 
