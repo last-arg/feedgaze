@@ -875,7 +875,8 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
-pub fn parse_html(self: @This(), allocator: Allocator, content: []const u8, html_options: HtmlOptions) !ParsedFeed {
+pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions) !ParsedFeed {
+    const content = self.doc.data;
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
@@ -1463,7 +1464,7 @@ pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, op
     var result = switch (ct) {
         .atom => try self.parseAtom(allocator),
         .rss => try self.parseRss(allocator),
-        .html => if (html_options) |h_opts| try self.parse_html(allocator, self.doc.data, h_opts) else {
+        .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
             return error.NoHtmlOptions;
         },
