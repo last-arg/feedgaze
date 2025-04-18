@@ -1165,7 +1165,6 @@ pub const App = struct {
     pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
         errdefer |err| {
             std.log.err("Update loop error: {}", .{err});
-            std.log.debug("feed: {} {s}\n", .{f_update.feed_id, f_update.feed_url});
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             self.storage.rate_limit_add(f_update.feed_id, retry_ts) catch {
                 @panic("Failed to update (increase) feed's next update");
@@ -1250,11 +1249,16 @@ pub const App = struct {
         var parsing: FeedParser = try .init(arena.allocator(), body_arr.items);
         defer parsing.deinit(arena.allocator());
 
-        const parsed = try parsing.parse(arena.allocator(), body_arr.items, html_options, .{
+        const parsed = parsing.parse(arena.allocator(), body_arr.items, html_options, .{
             .feed_url = f_update.feed_url,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,
-        });
+        }) catch |err| {
+            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+            std.log.err("Failed to parse feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            return .failed;
+        };
 
         const feed_update = FeedUpdate.fromCurlHeaders(resp);
 
