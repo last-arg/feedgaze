@@ -179,12 +179,12 @@ pub const Storage = struct {
         const feed_id = parsed.feed.feed_id;
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
+        try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
 
         if (parsed.items.len == 0) {
             return;
         }
 
-        try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
         try self.updateAndRemoveFeedItems(parsed.items);
     }
 
