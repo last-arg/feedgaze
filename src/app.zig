@@ -764,7 +764,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             var parser: FeedParser = try .init(arena.allocator(), add_opts.feed_opts.body);
             defer parser.deinit(arena.allocator());
 
-            const parsed = try parser.parse(arena.allocator(), add_opts.feed_opts.body, html_opts, .{
+            const parsed = try parser.parse(arena.allocator(), html_opts, .{
                 .feed_url = add_opts.feed_opts.feed_url,
             });
  
@@ -1249,7 +1249,7 @@ pub const App = struct {
         var parsing: FeedParser = try .init(arena.allocator(), body_arr.items);
         defer parsing.deinit(arena.allocator());
 
-        const parsed = parsing.parse(arena.allocator(), body_arr.items, html_options, .{
+        const parsed = parsing.parse(arena.allocator(), html_options, .{
             .feed_url = f_update.feed_url,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,

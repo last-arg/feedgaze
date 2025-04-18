@@ -29,12 +29,14 @@ const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
 
 items: std.ArrayListUnmanaged(FeedItem) = .empty,
+doc: zig_xml.StaticDocument,
 token_reader: zig_xml.GenericReader(error{}),
 
 pub fn init(allocator: Allocator, content: []const u8) !@This() {
     var doc = zig_xml.StaticDocument.init(content);
     return .{
         .items = try .initCapacity(allocator, default_item_count),
+        .doc = doc,
         .token_reader = doc.reader(allocator, .{ .namespace_aware = false, }),
     };
 }
@@ -1450,10 +1452,10 @@ const ParseOptions = struct {
     latest_updated_timestamp: ?i64 = null,
 };
 
-pub fn parse(self: @This(), allocator: Allocator, content: []const u8, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
+pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
     assert(util.is_url(opts.feed_url));
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
-    const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
+    const ct = getContentType(mem.trim(u8, self.doc.data, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 
     // TODO?: where to allocate and decode string fields?
     // remove allocations from parse* functions, if possible
@@ -1461,7 +1463,7 @@ pub fn parse(self: @This(), allocator: Allocator, content: []const u8, html_opti
     var result = switch (ct) {
         .atom => try self.parseAtom(allocator),
         .rss => try self.parseRss(allocator),
-        .html => if (html_options) |h_opts| try self.parse_html(allocator, content, h_opts) else {
+        .html => if (html_options) |h_opts| try self.parse_html(allocator, self.doc.data, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
             return error.NoHtmlOptions;
         },
@@ -1652,8 +1654,9 @@ pub fn tmp_test() !void {
     defer arena.deinit();
 
     const content = @embedFile("tmp_file");
-    const parsing: @This() = try .init(arena.allocator());
-    const result = try parsing.parse(arena.allocator(), content, null, .{
+    var parser: @This() = try .init(arena.allocator(), content);
+    defer parser.deinit(arena.allocator());
+    const result = try parser.parse(arena.allocator(), null, .{
         .feed_url = "http://reddit.com",
     });
 
