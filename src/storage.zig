@@ -306,13 +306,13 @@ pub const Storage = struct {
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
         const query =
         \\select 
-        \\  item.id as latest_item_id,
-        \\  item.link as latest_item_link,
-        \\  max(item.updated_timestamp) as latest_updated_timestamp,
         \\  feed.feed_id,
         \\  feed.feed_url,
         \\  feed_update.last_modified_utc,
-        \\  feed_update.etag
+        \\  feed_update.etag,
+        \\  item.id as latest_item_id,
+        \\  item.link as latest_item_link,
+        \\  max(item.updated_timestamp) as latest_updated_timestamp
         \\from item
         \\LEFT JOIN feed_update ON item.feed_id = feed_update.feed_id
         \\LEFT JOIN feed ON feed.feed_id = item.feed_id
