@@ -451,7 +451,8 @@ pub fn parseRss(self: *@This()) !ParsedFeed {
                                 const date_raw = try self.token_reader.readElementText();
                                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                                 feed.updated_timestamp = RssDateTime.parse(date_str) catch 
-                                    AtomDateTime.parse(date_str) catch null;
+                                    AtomDateTime.parse(date_str) catch
+                                    parse_wrong_rss_date(date_str) orelse null;
                             },
                             .guid, .description, .url, .image => {},
                         },
@@ -474,7 +475,8 @@ pub fn parseRss(self: *@This()) !ParsedFeed {
                                 const date_raw = try self.token_reader.readElementText();
                                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                                 current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
-                                    AtomDateTime.parse(date_str) catch null;
+                                    AtomDateTime.parse(date_str) catch
+                                    parse_wrong_rss_date(date_str) orelse null;
                             },
                             .url, .image => {},
                         },
@@ -557,10 +559,10 @@ fn add_or_replace_item(entries: *std.BoundedArray(FeedItem.Parsed, default_item_
 
             if (oldest_ts) |ts| {
                 if (current_ts > ts)  {
-                    entries.insert(replace_index, current_item) catch unreachable;
+                    entries.replaceRange(replace_index, 1, &[_]FeedItem.Parsed{current_item}) catch unreachable;
                 }
             } else {
-                entries.insert(replace_index, current_item) catch unreachable;
+                entries.replaceRange(replace_index, 1, &[_]FeedItem.Parsed{current_item}) catch unreachable;
             }
         }
     } else {
@@ -1062,6 +1064,13 @@ pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions
     };
 }
 
+// ddd MMMM DD YYYY HH:mm:ss GMT+0000 <some long string>
+// Example: Sun Feb 19 2023 00:00:00 GMT+0000 (Coordinated Universal Time)
+// Used in https://aralroca.com/ feed
+pub fn parse_wrong_rss_date(raw: []const u8) ?i64 {
+    return seconds_from_date_format(raw, "xxx MMM DD YYYY HH:mm:ss GMTZZZZZ");
+}
+
 pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
     assert(raw.len > 0);
     assert(date_format.len > 0);
@@ -1200,7 +1209,7 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
         if (raw[index] == '-') {
             sign = -1;
         } else if (raw[index] != '+') {
-            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone value", .{raw});
+            std.log.warn("Try to parse timezone value in date '{s}'", .{raw});
             break :blk;
         }
         end += 1;
@@ -1595,7 +1604,11 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
 }
 
 pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
-    std.debug.assert(items.len > 1);
+    const ft = feed_types;
+    var result: i64 = ft.seconds_in_10_days;
+    if (items.len == 0) {
+        return result;
+    }
     
     const first: i64 = items[0].updated_timestamp.?;
     var second_opt: ?i64 = timestamp_max;
@@ -1606,9 +1619,6 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
         }
     }
 
-    const ft = feed_types;
-
-    var result: i64 = ft.seconds_in_10_days;
     // Incase null use default value: seconds_in_10_days
     var second = second_opt orelse return result;
 
