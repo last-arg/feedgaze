@@ -56,6 +56,18 @@ pub fn text_loc(self: *@This()) !feed_types.Location {
     return .{.offset = @intCast(start), .len = @intCast(self.text_arr.items.len - start)};
 }
 
+pub fn attr_loc(self: *@This(), attr_key: []const u8) !?feed_types.Location {
+    if (self.token_reader.attributeIndex(attr_key)) |idx| {
+        const start = self.text_arr.items.len;
+        const value = mem.trim(u8, try self.token_reader.attributeValue(idx), &std.ascii.whitespace);
+        try self.text_arr.appendSlice(self.allocator, value);
+        return .{.offset = @intCast(start), .len = @intCast(self.text_arr.items.len - start)};
+    }
+
+    return null;
+}
+
+
 pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
     return self.text_arr.items[loc.offset..loc.offset + loc.len];
 }
@@ -234,11 +246,11 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     return out.toOwnedSlice();
 }
 
-pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
+pub fn parseAtom(self: *@This()) !ParsedFeed {
     var entries = self.items;
-    var feed = Feed.Parsed{ .feed_url = "" };
+    var feed = Feed.Parsed{};
     var state: AtomParseState = .feed;
-    var current_entry: FeedItem = .{ .title = "" };
+    var current_entry: FeedItem.Parsed = .{};
 
     var token_reader = self.token_reader;
     var token = try token_reader.read();
@@ -256,8 +268,7 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
                    switch (state) {
                         .feed => switch (new_tag) {
                             .title => {
-                                const text = try token_reader.readElementText();
-                                feed.title = try text_truncate_alloc(allocator, text);
+                                feed.title = try self.text_loc();
                             },
                             .link => {
                                 const rel = blk: {
@@ -268,9 +279,8 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
                                 };
 
                                 if (std.ascii.eqlIgnoreCase("alternate", rel)) {
-                                    if (token_reader.attributeIndex("href")) |idx| {
-                                        const value = try token_reader.attributeValue(idx);
-                                        feed.page_url = mem.trim(u8, value, &std.ascii.whitespace);
+                                    if (try self.attr_loc("href")) |loc| {
+                                        feed.page_url = loc;
                                     }
                                 }
                             },
@@ -284,8 +294,7 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
                         },
                         .entry => switch (new_tag) {
                             .title => {
-                                const text = try token_reader.readElementText();
-                                current_entry.title = try text_truncate_alloc(allocator, text);
+                                current_entry.title = try self.text_loc();
                             },
                             .link => {
                                 const rel = blk: {
@@ -296,15 +305,14 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
                                 };
 
                                 if (std.ascii.eqlIgnoreCase("alternate", rel)) {
-                                    if (token_reader.attributeIndex("href")) |idx| {
-                                        const value = try token_reader.attributeValue(idx);
-                                        current_entry.link = try allocator.dupe(u8, mem.trim(u8, value, &std.ascii.whitespace));
+                                    if (try self.attr_loc("href")) |loc| {
+                                        current_entry.link = loc;
                                     }
                                 }
                             },
                             .id => {
-                                if (token_reader.readElementText()) |id_raw| {
-                                    current_entry.id = try allocator.dupe(u8, mem.trim(u8, id_raw, &std.ascii.whitespace));
+                                if (self.text_loc()) |loc| {
+                                    current_entry.id = loc;
                                 } else |err| {
                                     std.log.warn("Failed to read entry's id from atom feed's entry. Error: {}", .{err});
                                 }
@@ -334,7 +342,7 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
                 const tag_str = token_reader.elementName();
                 if (mem.eql(u8, "entry", tag_str)) {
                     add_or_replace_item(&entries, current_entry);
-                    current_entry = .{ .title = "" };
+                    current_entry = .{ .title = null };
                     state = .feed;
                     continue;
                 }
@@ -349,7 +357,7 @@ pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
     }
 
 
-    return .{ .feed = feed, .items = entries.items };
+    return .{ .feed = feed, .items = entries.slice() };
 }
 
 test "parseAtom" {
@@ -413,8 +421,7 @@ const RssParseTag = enum {
     }
 };
 
-pub fn parseRss(self: *@This(), allocator: Allocator) !ParsedFeed {
-    _ = allocator;
+pub fn parseRss(self: *@This()) !ParsedFeed {
     var feed: Feed.Parsed = .{};
     var state: RssParseState = .channel;
     var state_item: ?RssParseTag = null;
@@ -1470,8 +1477,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     // remove allocations from parse* functions, if possible
 
     const parsed = switch (ct) {
-        // .atom => try self.parseAtom(allocator),
-        .rss => try self.parseRss(allocator),
+        .atom => try self.parseAtom(),
+        .rss => try self.parseRss(),
         // .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
         //     std.log.err("Failed to parse html because there are no html options.", .{});
         //     return error.NoHtmlOptions;
