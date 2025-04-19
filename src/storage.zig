@@ -145,7 +145,7 @@ pub const Storage = struct {
         feed_opts: FeedOptions,
     };
 
-    pub fn addFeed(self: *Self, parsed_feed: parse.ParsedFeed, opts: AddOptions) !usize {
+    pub fn addFeed(self: *Self, parsed_feed: parse.ValidFeed, opts: AddOptions) !usize {
         var parsed = parsed_feed;
         const feed_opts = opts.feed_opts;
 
@@ -173,7 +173,7 @@ pub const Storage = struct {
     const ContentType = parse.ContentType;
     pub fn updateFeedAndItems(
         self: *Self,
-        parsed: parse.ParsedFeed,
+        parsed: parse.ValidFeed,
         feed_update_input: FeedUpdate,
     ) !void {
         const feed_id = parsed.feed.feed_id;

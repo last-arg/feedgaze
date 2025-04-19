@@ -66,8 +66,12 @@ pub const ServerOptions = struct {
     };
 };
 
+pub const Location = struct {
+    offset: u32,
+    len: u32,
+};
+
 pub const Feed = struct {
-    const Self = @This();
     feed_id: usize = 0,
     title: ?[]const u8 = null,
     feed_url: []const u8,
@@ -75,8 +79,11 @@ pub const Feed = struct {
     updated_timestamp: ?i64 = null,
     icon_id: ?u64 = null,
 
-    pub const Error = error{
-        InvalidUri,
+    pub const Parsed = struct {
+        title: ?Location = null,
+        page_url: ?Location = null,
+        updated_timestamp: ?i64 = null,
+        icon_id: ?u64 = null,
     };
 };
 
@@ -279,7 +286,12 @@ pub const FeedItem = struct {
     link: ?[]const u8 = null,
     updated_timestamp: ?i64 = null,
 
-    const Self = @This();
+    pub const Parsed = struct {
+        title: ?Location = null,
+        id: ?Location = null,
+        link: ?Location = null,
+        updated_timestamp: ?i64 = null,
+    };
 };
 
 pub const FeedItemRender = struct {

@@ -14,41 +14,62 @@ const Uri = std.Uri;
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
 
-// pub const std_options: std.Options = .{
-//     // This sets log level based on scope.
-//     // This overrides global log_level
-//     .log_scope_levels = &.{ 
-//         .{.level = .err, .scope = .@"html/tokenizer"},
-//         .{.level = .err, .scope = .@"html/ast"} 
-//     },
-//     // This set global log level
-//     .log_level = .err,
-// };
+pub const std_options: std.Options = .{
+    // This sets log level based on scope.
+    // This overrides global log_level
+    // .log_scope_levels = &.{ 
+    //     .{.level = .info, .scope = .@"html/tokenizer"},
+    //     .{.level = .info, .scope = .@"html/ast"} 
+    // },
+    // This set global log level
+    .log_level = .info,
+};
 
 const max_title_len = 512;
 const default_item_count = @import("./app_config.zig").max_items;
 
-items: std.ArrayListUnmanaged(FeedItem) = .empty,
+items: std.BoundedArray(FeedItem.Parsed, default_item_count),
 doc: zig_xml.StaticDocument,
 token_reader: zig_xml.GenericReader(error{}),
+text_arr: std.ArrayListUnmanaged(u8) = .empty,
+allocator: Allocator,
 
 pub fn init(allocator: Allocator, content: []const u8) !@This() {
     var doc = zig_xml.StaticDocument.init(content);
     return .{
-        .items = try .initCapacity(allocator, default_item_count),
+        .items = try .init(0),
         .doc = doc,
         .token_reader = doc.reader(allocator, .{ .namespace_aware = false, }),
+        .allocator = allocator,
     };
 }
 
 pub fn deinit(self: *@This(), allocator: Allocator) void {
-    self.items.deinit(allocator);
+    _ = allocator;
     self.token_reader.deinit();
 }
 
+pub fn text_loc(self: *@This()) !feed_types.Location {
+    const start = self.text_arr.items.len;
+    const text = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
+    try self.text_arr.appendSlice(self.allocator, text);
+    return .{.offset = @intCast(start), .len = @intCast(self.text_arr.items.len - start)};
+}
+
+pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
+    return self.text_arr.items[loc.offset..loc.offset + loc.len];
+}
+
 pub const ParsedFeed = struct {
+    feed: Feed.Parsed,
+    items: []FeedItem.Parsed,
+    html_opts: ?HtmlOptions = null,
+    item_interval: i64 = feed_types.seconds_in_10_days,
+};
+
+pub const ValidFeed = struct {
     feed: Feed,
-    items: []FeedItem,
+    items: []FeedItem = &.{},
     html_opts: ?HtmlOptions = null,
     item_interval: i64 = feed_types.seconds_in_10_days,
 };
@@ -186,11 +207,13 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         input = try html_unescape(arr.writer(), input);
     }
 
-    if (input[0] == '<') {
-        const ast = try super.html.Ast.init(allocator, input, .html);
-        defer ast.deinit(allocator);
+    const ast = try super.html.Ast.init(allocator, input, .html);
+    defer ast.deinit(allocator);
+    if (ast.errors.len == 0) {
         input = try text_from_node(allocator, ast, input, ast.nodes[0]);
-    } 
+    } else {
+        std.log.warn("Possible invalid html: '{s}'", .{input});
+    }
 
     var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer out.deinit();
@@ -213,7 +236,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 
 pub fn parseAtom(self: @This(), allocator: Allocator) !ParsedFeed {
     var entries = self.items;
-    var feed = Feed{ .feed_url = "" };
+    var feed = Feed.Parsed{ .feed_url = "" };
     var state: AtomParseState = .feed;
     var current_entry: FeedItem = .{ .title = "" };
 
@@ -390,36 +413,35 @@ const RssParseTag = enum {
     }
 };
 
-pub fn parseRss(self: @This(), allocator: Allocator) !ParsedFeed {
-    var entries = self.items;
-    var feed = Feed{ .feed_url = "" };
+pub fn parseRss(self: *@This(), allocator: Allocator) !ParsedFeed {
+    _ = allocator;
+    var feed: Feed.Parsed = .{};
     var state: RssParseState = .channel;
-    var current_item: FeedItem = .{.title = ""};
+    var state_item: ?RssParseTag = null;
+    var current_item: FeedItem.Parsed = .{};
 
-    var token_reader = self.token_reader;
-    var token = try token_reader.read();
-    while (token != .eof) : (token = try token_reader.read()) {
+    var token = try self.token_reader.read();
+    while (token != .eof) : (token = try self.token_reader.read()) {
         switch (token) {
             .eof => break,
             .element_start => {
-                const tag = token_reader.elementName();
+                const tag = self.token_reader.elementName();
                 if (RssParseState.fromString(tag)) |new_state| {
                     state = new_state;
                 }
 
-                if (RssParseTag.fromString(tag)) |new_tag| {
+                state_item = RssParseTag.fromString(tag);
+                if (state_item) |new_tag| {
                     switch (state) {
                         .channel => switch (new_tag) {
                             .title => {
-                                const text = try token_reader.readElementText();
-                                feed.title = try text_truncate_alloc(allocator, text);
+                                feed.title = try self.text_loc();
                             },
                             .link => {
-                                const text = try token_reader.readElementText();
-                                feed.page_url = try allocator.dupe(u8, mem.trim(u8, text, &std.ascii.whitespace));
+                                feed.page_url = try self.text_loc();
                             },
                             .pubDate, .@"dc:date" => {
-                                const date_raw = try token_reader.readElementText();
+                                const date_raw = try self.token_reader.readElementText();
                                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                                 feed.updated_timestamp = RssDateTime.parse(date_str) catch 
                                     AtomDateTime.parse(date_str) catch null;
@@ -428,25 +450,21 @@ pub fn parseRss(self: @This(), allocator: Allocator) !ParsedFeed {
                         },
                         .item => switch (new_tag) {
                             .title => {
-                                const text = try token_reader.readElementText();
-                                current_item.title = try text_truncate_alloc(allocator, text);
+                                current_item.title = try self.text_loc();
                             },
                             .description => {
-                                if (current_item.title.len == 0) {
-                                    const text = try token_reader.readElementText();
-                                    current_item.title = try text_truncate_alloc(allocator, text);
+                                if (current_item.title == null) {
+                                    current_item.title = try self.text_loc();
                                 }
                             },
                             .guid => {
-                                const text = try token_reader.readElementText();
-                                current_item.id = try allocator.dupe(u8, mem.trim(u8, text, &std.ascii.whitespace));
+                                current_item.id = try self.text_loc();
                             },
                             .link => {
-                                const text = try token_reader.readElementText();
-                                current_item.link = try allocator.dupe(u8, mem.trim(u8, text, &std.ascii.whitespace));
+                                current_item.link = try self.text_loc();
                             },
                             .pubDate, .@"dc:date" => {
-                                const date_raw = try token_reader.readElementText();
+                                const date_raw = try self.token_reader.readElementText();
                                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                                 current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
                                     AtomDateTime.parse(date_str) catch null;
@@ -462,29 +480,31 @@ pub fn parseRss(self: @This(), allocator: Allocator) !ParsedFeed {
                 }
             },
             .element_end => {
-                const tag_str = token_reader.elementName();
+                const tag_str = self.token_reader.elementName();
                 if (mem.eql(u8, "item", tag_str)) {
-                    add_or_replace_item(&entries, current_item);
-                    current_item = .{ .title = "" };
+                    add_or_replace_item(&self.items, current_item);
+                    current_item = .{};
                     state = .channel;
+                    state_item = null;
                     continue;
                 } else if (mem.eql(u8, "image", tag_str)) {
                     state = .channel;
                     continue;
                 }
             },
-            .xml_declaration, .comment, .pi, .text, .cdata, .character_reference, .entity_reference  => {},
+            .text => {},
+            .xml_declaration, .comment, .pi, .cdata, .character_reference, .entity_reference  => {},
         }
     }
 
-    return .{ .feed = feed, .items = entries.items };
+    return .{ .feed = feed, .items = self.items.slice() };
 }
 
 // Sorting item.updated_timestamp
 // 1) if all values are null, no sorting
 // 2) if mix of nulls and values push nulls to the bottom
 
-fn sortItems(items: []FeedItem) void {
+fn sortItems(items: []FeedItem.Parsed) void {
     var has_date = false;
 
     for (items) |item| {
@@ -496,36 +516,24 @@ fn sortItems(items: []FeedItem) void {
 
     if (has_date) {
         const S = struct {
-            pub fn less_than(_: void, lhs: FeedItem, rhs: FeedItem) bool {
-                if (lhs.updated_timestamp == null) {
-                    return false;
-                } else if (rhs.updated_timestamp == null) {
-                    return true;
-                }
-                return lhs.updated_timestamp.? > rhs.updated_timestamp.?;
+            pub fn less_than(_: void, lhs: FeedItem.Parsed, rhs: FeedItem.Parsed) bool {
+                const lhs_ts = lhs.updated_timestamp orelse return false;
+                const rhs_ts = rhs.updated_timestamp orelse return true;
+                return lhs_ts > rhs_ts;
             }
         };
 
-        mem.sort(FeedItem, items, {}, S.less_than);
+        mem.sort(FeedItem.Parsed, items, {}, S.less_than);
     }
 }
 
-fn add_or_replace_item(entries: *std.ArrayListUnmanaged(FeedItem), current_item: FeedItem) void {
-    // Don't allow duplicate links. This is a contraint in sqlite DB also.
-    // Maybe change this in the future? For example in 'https://gitlab.com/dejawu/ectype.atom'
-    // there can be several same links. They are same links because two
-    // different actions (push, delete) were taken in connection with the link.
-    for (entries.items) |item| {
-        if (item.link != null and current_item.link != null and
-            mem.eql(u8, item.link.?, current_item.link.?)) {
-            return;
-        }
-    }
-    if (entries.items.len == default_item_count) {
+fn add_or_replace_item(entries: *std.BoundedArray(FeedItem.Parsed, default_item_count), current_item: FeedItem.Parsed) void {
+    const items = entries.constSlice();
+    if (entries.constSlice().len == default_item_count) {
         if (current_item.updated_timestamp) |current_ts| {
-            var iter = std.mem.reverseIterator(entries.items);
+            var iter = std.mem.reverseIterator(items);
             var oldest_ts: ?i64 = null;
-            const oldest: ?FeedItem = iter.next();
+            const oldest: ?FeedItem.Parsed = iter.next();
             var replace_index: usize = iter.index;
             if (oldest != null and oldest.?.updated_timestamp != null) {
                 oldest_ts = oldest.?.updated_timestamp.?;
@@ -542,10 +550,10 @@ fn add_or_replace_item(entries: *std.ArrayListUnmanaged(FeedItem), current_item:
 
             if (oldest_ts) |ts| {
                 if (current_ts > ts)  {
-                    entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+                    entries.insert(replace_index, current_item) catch unreachable;
                 }
             } else {
-                entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem{current_item});
+                entries.insert(replace_index, current_item) catch unreachable;
             }
         }
     } else {
@@ -1453,7 +1461,7 @@ const ParseOptions = struct {
     latest_updated_timestamp: ?i64 = null,
 };
 
-pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ParsedFeed {
+pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
     assert(util.is_url(opts.feed_url));
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, self.doc.data, &std.ascii.whitespace)) orelse return error.UnknownContentType;
@@ -1461,22 +1469,23 @@ pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, op
     // TODO?: where to allocate and decode string fields?
     // remove allocations from parse* functions, if possible
 
-    var result = switch (ct) {
-        .atom => try self.parseAtom(allocator),
+    const parsed = switch (ct) {
+        // .atom => try self.parseAtom(allocator),
         .rss => try self.parseRss(allocator),
-        .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
-            std.log.err("Failed to parse html because there are no html options.", .{});
-            return error.NoHtmlOptions;
-        },
+        // .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
+        //     std.log.err("Failed to parse html because there are no html options.", .{});
+        //     return error.NoHtmlOptions;
+        // },
         .xml => return error.NotAtomOrRss,
+        else => unreachable,
     };
-    sortItems(result.items);
+    var result: ValidFeed = .{
+        .feed = .{ .feed_url = opts.feed_url },
+    };
 
     if (opts.feed_id) |feed_id| {
         result.feed.feed_id = feed_id;
     }
-    // Prepare Feed
-    result.feed.feed_url = opts.feed_url;
 
     if (ct == .html) {
         assert(html_options != null);
@@ -1488,13 +1497,21 @@ pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, op
 
     var buf_arr: [2 * 1024]u8 = undefined;
 
-    if (result.feed.page_url) |page_url| if (is_relative_path(page_url)) {
-        var buf: []u8 = &buf_arr;
-        const page_url_decoded = std.Uri.percentDecodeBackwards(buf, page_url);
-        buf = buf[page_url_decoded.len..];
-        const page_url_new = try Uri.resolve_inplace(base, page_url_decoded, &buf);
-        result.feed.page_url = try std.fmt.allocPrint(allocator, "{}", .{page_url_new});
-    };
+    if (parsed.feed.title) |loc| {
+        // TODO?: maybe overwrite/trash existing location?
+        result.feed.title = try text_truncate_alloc(allocator, self.slice_from_loc(loc));
+    }
+
+    if (parsed.feed.page_url) |loc| {
+        const page_url = self.slice_from_loc(loc);
+        if (is_relative_path(page_url)) {
+            var buf: []u8 = &buf_arr;
+            const page_url_decoded = std.Uri.percentDecodeBackwards(buf, page_url);
+            buf = buf[page_url_decoded.len..];
+            const page_url_new = try Uri.resolve_inplace(base, page_url_decoded, &buf);
+            result.feed.page_url = try std.fmt.allocPrint(allocator, "{}", .{page_url_new});
+        }
+    }
 
     if (result.items.len > 0 and result.items[0].updated_timestamp != null) {
         // make feed date newest item date
@@ -1503,50 +1520,80 @@ pub fn parse(self: @This(), allocator: Allocator, html_options: ?HtmlOptions, op
         result.feed.updated_timestamp = std.time.timestamp();
     }
     
-    // Prepare []Item
-    if (result.items.len > 0) {
-        // Set all items' feed ids
-        if (result.items[0].feed_id == 0 and result.feed.feed_id != 0) {
-            for (result.items) |*item| {
-                item.*.feed_id = result.feed.feed_id;
-            }
+    sortItems(parsed.items);
+
+    if (parsed.items.len > 1) {
+        const ts = if (opts.feed_to_update) |f| f.latest_updated_timestamp else null;
+        result.item_interval = get_item_interval(parsed.items, ts);
+    }
+
+    var feed_items: std.ArrayListUnmanaged(FeedItem) = try .initCapacity(allocator, parsed.items.len);
+    errdefer feed_items.deinit(allocator);
+
+    const timestamp_max = opts.latest_updated_timestamp orelse 0;
+    outer: for (parsed.items) |item| {
+        if (item.updated_timestamp) |ts| if (ts <= timestamp_max) {
+            break :outer;
+        };
+
+        var new_item: FeedItem = .{
+            .title = "",
+            .feed_id = result.feed.feed_id,
+            .updated_timestamp = item.updated_timestamp,
+        };
+
+        if (item.id) |loc| {
+            const item_id = self.slice_from_loc(loc);
+            if (opts.feed_to_update) |f| if (mem.eql(u8, item_id, f.latest_item_id orelse "")) {
+                break :outer;
+            };
+
+            new_item.id = item_id;
         }
 
-        for (result.items) |*item| {
-            if (item.link) |link| if (is_relative_path(link)) {
+        if (item.link) |link_loc| {
+            const link = self.slice_from_loc(link_loc);
+            if (is_relative_path(link)) {
                 var buf: []u8 = &buf_arr;
                 const link_decoded = std.Uri.percentDecodeBackwards(buf, link);
                 buf = buf[link_decoded.len..];
                 const link_new = try Uri.resolve_inplace(base, link_decoded, &buf);
-                item.*.link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
-            };
+                const new_link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
 
-            if (item.updated_timestamp == null) {
-                const now = std.time.timestamp();
-                item.*.updated_timestamp = result.feed.updated_timestamp orelse now;
+                if (opts.feed_to_update) |f| if (mem.eql(u8, new_link, f.latest_item_link orelse "")) {
+                    break :outer;
+                };
+
+                // Don't add feed items with duplicate links
+                for (feed_items.items) |feed_item| {
+                    if (mem.eql(u8, feed_item.link.?, new_link)) {
+                        continue :outer;
+                    }
+                }
+
+                new_item.link = new_link;
             }
         }
+
+        if (item.title) |loc| {
+            new_item.title = try text_truncate_alloc(allocator, self.slice_from_loc(loc));
+        }
+
+        feed_items.appendAssumeCapacity(new_item);
     }
 
-    if (result.items.len > 1) {
-        const ts = if (opts.feed_to_update) |f| f.latest_updated_timestamp else null;
-        result.item_interval = get_item_interval(result.items, ts);
-    }
-
-    if (opts.feed_to_update) |f_update| {
-        result.items = try filter_items(result.items, f_update);
-    }
-
+    result.items = feed_items.items;
+    
     return result;
 }
 
-pub fn get_item_interval(items: []FeedItem, timestamp_max: ?i64) i64 {
+pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
     std.debug.assert(items.len > 1);
     
     const first: i64 = items[0].updated_timestamp.?;
     var second_opt: ?i64 = timestamp_max;
     for (items[1..]) |item| {
-        second_opt = item.updated_timestamp.?;
+        second_opt = item.updated_timestamp orelse continue;
         if (first != second_opt) {
             break;
         }
@@ -1586,45 +1633,6 @@ pub fn get_item_interval(items: []FeedItem, timestamp_max: ?i64) i64 {
     return result;
 }
 
-fn filter_items(inserts: []FeedItem, feed_to_update: feed_types.FeedToUpdate) ![]FeedItem {
-    var len = inserts.len;
-    if (len == 0) {
-        return inserts;
-    }
-
-    const timestamp_max = feed_to_update.latest_updated_timestamp;
-    if (inserts[0].updated_timestamp != null and timestamp_max != null) {
-        const timestamp = timestamp_max.?;
-        for (inserts, 0..) |item, i| {
-            const item_timestamp = item.updated_timestamp orelse continue;
-            if (item_timestamp <= timestamp) {
-                len = i;
-                break;
-            }
-        }
-    } else {
-        if (feed_to_update.latest_item_id) |id| {
-            for (inserts, 0..) |item, i| {
-                const item_id = item.id orelse continue;
-                if (mem.eql(u8, item_id, id)) {
-                    len = i;
-                    break;
-                }
-            }
-        } else if (feed_to_update.latest_item_link) |link| {
-            for (inserts, 0..) |item, i| {
-                const item_link = item.link orelse continue;
-                if (mem.eql(u8, item_link, link)) {
-                    len = i;
-                    break;
-                }
-            }
-        }
-    }
-
-    return inserts[0..len];
-}
-
 fn is_relative_path(path: []const u8) bool {
     if (path.len == 0 or path[0] == '/' or path[0] == '.') {
         return true;
@@ -1660,6 +1668,7 @@ pub fn tmp_test() !void {
     const result = try parser.parse(arena.allocator(), null, .{
         .feed_url = "http://reddit.com",
     });
+    // print("slice: |{s}|\n", .{parser.text_arr.items});
 
     // Wanted output. Line breaks are spaces
     // Had a ton of fun speaking and 
