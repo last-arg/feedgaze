@@ -1610,7 +1610,7 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
         return result;
     }
     
-    const first: i64 = items[0].updated_timestamp.?;
+    const first: i64 = items[0].updated_timestamp orelse return result;
     var second_opt: ?i64 = timestamp_max;
     for (items[1..]) |item| {
         second_opt = item.updated_timestamp orelse continue;
