@@ -33,14 +33,19 @@ doc: zig_xml.StaticDocument,
 token_reader: zig_xml.GenericReader(error{}),
 text_arr: std.ArrayListUnmanaged(u8) = .empty,
 allocator: Allocator,
+content_type: ContentType,
 
 pub fn init(allocator: Allocator, content: []const u8) !@This() {
+    // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
+    const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
+
     var doc = zig_xml.StaticDocument.init(content);
     return .{
         .items = try .init(0),
         .doc = doc,
         .token_reader = doc.reader(allocator, .{ .namespace_aware = false, }),
         .allocator = allocator,
+        .content_type = ct,
     };
 }
 
@@ -69,7 +74,8 @@ pub fn attr_loc(self: *@This(), attr_key: []const u8) !?feed_types.Location {
 
 
 pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
-    return self.text_arr.items[loc.offset..loc.offset + loc.len];
+    const loc_source = if (self.content_type == .html) self.doc.data else self.text_arr.items;
+    return loc_source[loc.offset..loc.offset + loc.len];
 }
 
 pub const ParsedFeed = struct {
@@ -666,6 +672,20 @@ fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, n
     return try allocator.dupe(u8, text_arr.slice());
 }
 
+fn text_location_from_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?feed_types.Location {
+    var iter_text_node = IteratorTextNode.init(ast, code, node);
+
+    const start, var end = if (iter_text_node.next()) |text_node| 
+        .{ text_node.open.start, text_node.open.end }
+    else return null;
+
+    while (iter_text_node.next()) |text_node| {
+        end = text_node.open.end;
+    }
+
+    return feed_types.Location{.offset = start, .len = end - start };
+}
+
 const IteratorTextNode = struct {
     ast: super.html.Ast,
     code: []const u8,
@@ -777,7 +797,7 @@ const NodeIterator = struct {
     }
     
     pub fn next(self: *@This()) ?super.html.Ast.Node {
-            if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
+        if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
             return null;
         }
         
@@ -892,7 +912,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
     return false;
 }
 
-pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions) !ParsedFeed {
+pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOptions) !ParsedFeed {
     const content = self.doc.data;
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
@@ -900,22 +920,20 @@ pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions
         // ast.printErrors(code, "<STRING>");
     }
 
-    var feed: Feed = .{ .feed_url = undefined };
+    var feed: Feed.Parsed = .{};
     const root_node = ast.nodes[0];
     // ast.debug(content);
 
     var title_iter = NodeIterator.init(ast, content, root_node, "title");
     if (title_iter.next()) |n| {
-        feed.title = try text_from_node(allocator, ast, content, n);
+        feed.title = try text_location_from_node(ast, content, n);
     }
 
     var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
 
-    var feed_items = self.items;
-
     while (container_iter.next()) |node_container| {
-        var item_link: ?[]const u8 = null;
-        var item_title: []const u8 = "";
+        var item_link: ?feed_types.Location = null;
+        var item_title: ?feed_types.Location = null;
         const node = node_container;
 
         const link_node = blk: {
@@ -945,45 +963,45 @@ pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions
                 if (attr.value) |value| {
                     const name = attr.name.slice(content);
                     if (std.ascii.eqlIgnoreCase("href", name)) {
-                        item_link = value.span.slice(content);
+                        item_link = .{ .offset = value.span.start, .len = value.span.end - value.span.start };
                     }
                 }
             }
 
-            item_title = try text_from_node(allocator, ast, content, n);
+            item_title = try text_location_from_node(ast, content, n);
         }
 
         if (html_options.selector_heading) |heading| {
             if (is_single_selector_match(content, node, heading)) {
-                item_title = try text_from_node(allocator, ast, content, node);
+                item_title = try text_location_from_node(ast, content, node);
             } else {
                 var heading_iter = NodeIterator.init(ast, content, node, heading);
                 if (heading_iter.next()) |node_match| {
-                    item_title = try text_from_node(allocator, ast, content, node_match);
+                    item_title = try text_location_from_node(ast, content, node_match);
                 } else {
                     std.log.warn("Could not find heading node with selector '{s}'", .{heading});
                 }
             }
         }
 
-        if (item_title.len == 0) {
+        if (item_title == null) {
             for (&[_][]const u8{"h1", "h2", "h3", "h4", "h5", "h6"}) |tag| {
                 if (is_single_selector_match(content, node, tag)) {
-                    item_title = try text_from_node(allocator, ast, content, node);
+                    item_title = try text_location_from_node(ast, content, node);
                     break;
                 }
 
                 var heading_iter = NodeIterator.init(ast, content, node, tag);
                 if (heading_iter.next()) |node_match| {
-                    item_title = try text_from_node(allocator, ast, content, node_match);
+                    item_title = try text_location_from_node(ast, content, node_match);
                     break;
                 }
             }
         }
 
         // Find any text inside node
-        if (item_title.len == 0) {
-            item_title = try text_from_node(allocator, ast, content, node);
+        if (item_title == null) {
+            item_title = try text_location_from_node(ast, content, node);
         }
         
         var item_updated_ts: ?i64 = null;
@@ -1041,26 +1059,20 @@ pub fn parse_html(self: @This(), allocator: Allocator, html_options: HtmlOptions
             }
         }
 
-        var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
-
-        if (item_title.len > 0 and mem.indexOfScalar(u8, item_title, '&') != null and mem.indexOfScalar(u8, item_title, ';') != null) {
-            item_title = try html_unescape(arr.writer(), item_title);
-        }
-
-        feed_items.appendAssumeCapacity(.{
+        self.items.appendAssumeCapacity(.{
             .title = item_title,
             .link = item_link,
             .updated_timestamp = item_updated_ts,
         });
 
-        if (feed_items.items.len == default_item_count) {
+        if (self.items.len == default_item_count) {
             break;
         }
     }
 
     return .{
         .feed = feed,
-        .items = feed_items.items,
+        .items = self.items.slice(),
     };
 }
 
@@ -1479,21 +1491,18 @@ const ParseOptions = struct {
 
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
     assert(util.is_url(opts.feed_url));
-    // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
-    const ct = getContentType(mem.trim(u8, self.doc.data, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 
     // TODO?: where to allocate and decode string fields?
     // remove allocations from parse* functions, if possible
 
-    const parsed = switch (ct) {
+    const parsed = switch (self.content_type) {
         .atom => try self.parseAtom(),
         .rss => try self.parseRss(),
-        // .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
-        //     std.log.err("Failed to parse html because there are no html options.", .{});
-        //     return error.NoHtmlOptions;
-        // },
+        .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
+            std.log.err("Failed to parse html because there are no html options.", .{});
+            return error.NoHtmlOptions;
+        },
         .xml => return error.NotAtomOrRss,
-        else => unreachable,
     };
     var result: ValidFeed = .{
         .feed = .{ .feed_url = opts.feed_url },
@@ -1503,7 +1512,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         result.feed.feed_id = feed_id;
     }
 
-    if (ct == .html) {
+    if (self.content_type == .html) {
         assert(html_options != null);
         result.html_opts = html_options;
         result.feed.page_url = result.feed.feed_url;
@@ -1682,7 +1691,11 @@ pub fn tmp_test() !void {
     const content = @embedFile("tmp_file");
     var parser: @This() = try .init(arena.allocator(), content);
     defer parser.deinit(arena.allocator());
-    const result = try parser.parse(arena.allocator(), null, .{
+    const html_opts: HtmlOptions = .{
+        .selector_container = ".FrontList",
+        // .date_format = "YYYY-MM-DDTHH:mm:ssZ",
+    };
+    const result = try parser.parse(arena.allocator(), html_opts, .{
         .feed_url = "http://reddit.com",
     });
     // print("slice: |{s}|\n", .{parser.text_arr.items});
