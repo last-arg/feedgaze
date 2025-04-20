@@ -21,9 +21,8 @@
       <item>
          <title>First date</title>
          <link>http://liftoff.msfc.nasa.gov/news/2003/first-date.asp</link>
-         <pubDate>Tue, 03 Jun 2004 09:39:21 GMT</pubDate>
+         <pubDate><![CDATA[Tue, 03 Jun 2004 09:39:21 GMT]]></pubDate>
       </item>
-   
       <item>
          <description>Sky watchers in Europe, Asia, and parts of Alaska and Canada will experience a &lt;a href="http://science.nasa.gov/headlines/y2003/30may_solareclipse.htm"&gt;partial eclipse of the Sun&lt;/a&gt; on Saturday, May 31st.</description>
       </item>

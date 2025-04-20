@@ -1,18 +1,24 @@
 const std = @import("std");
 const mem = std.mem;
 const Allocator = mem.Allocator;
+const print = std.debug.print;
+const assert = std.debug.assert;
+const Uri = std.Uri;
+
+const dt = @import("zig-datetime");
+const datetime = dt.datetime;
+const super = @import("superhtml");
+const zig_xml = @import("xml");
+
+const default_item_count = @import("./app_config.zig").max_items;
 const feed_types = @import("./feed_types.zig");
 const RssDateTime = feed_types.RssDateTime;
 const AtomDateTime = feed_types.AtomDateTime;
 const Feed = feed_types.Feed;
 const FeedItem = feed_types.FeedItem;
-const print = std.debug.print;
-const dt = @import("zig-datetime"); 
-const datetime = dt.datetime;
-const assert = std.debug.assert;
-const Uri = std.Uri;
-const util = @import("util.zig"); 
-const is_url = util.is_url; 
+pub const ContentType = feed_types.ContentType;
+const util = @import("util.zig");
+const is_url = util.is_url;
 
 pub const std_options: std.Options = .{
     // This sets log level based on scope.
@@ -26,8 +32,6 @@ pub const std_options: std.Options = .{
 };
 
 const max_title_len = 512;
-const default_item_count = @import("./app_config.zig").max_items;
-
 items: std.BoundedArray(FeedItem.Parsed, default_item_count),
 doc: zig_xml.StaticDocument,
 token_reader: zig_xml.GenericReader(error{}),
@@ -74,7 +78,7 @@ pub fn attr_loc(self: *@This(), attr_key: []const u8) !?feed_types.Location {
 
 
 pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
-    const loc_source = if (self.content_type == .html) self.doc.data else self.text_arr.items;
+    const loc_source = if (self.content_type == .html or self.content_type == .rss) self.doc.data else self.text_arr.items;
     return loc_source[loc.offset..loc.offset + loc.len];
 }
 
@@ -399,7 +403,6 @@ test "parseAtom" {
 const RssParseState = enum {
     channel,
     item,
-    image,
 
     const Self = @This();
 
@@ -415,8 +418,6 @@ const RssParseTag = enum {
     pubDate,
     @"dc:date",
     guid,
-    image,
-    url,
 
     const Self = @This();
 
@@ -424,94 +425,6 @@ const RssParseTag = enum {
         return std.meta.stringToEnum(Self, str);
     }
 };
-
-pub fn parseRss(self: *@This()) !ParsedFeed {
-    var feed: Feed.Parsed = .{};
-    var state: RssParseState = .channel;
-    var state_item: ?RssParseTag = null;
-    var current_item: FeedItem.Parsed = .{};
-
-    var token = try self.token_reader.read();
-    while (token != .eof) : (token = try self.token_reader.read()) {
-        switch (token) {
-            .eof => break,
-            .element_start => {
-                const tag = self.token_reader.elementName();
-                if (RssParseState.fromString(tag)) |new_state| {
-                    state = new_state;
-                }
-
-                state_item = RssParseTag.fromString(tag);
-                if (state_item) |new_tag| {
-                    switch (state) {
-                        .channel => switch (new_tag) {
-                            .title => {
-                                feed.title = try self.text_loc();
-                            },
-                            .link => {
-                                feed.page_url = try self.text_loc();
-                            },
-                            .pubDate, .@"dc:date" => {
-                                const date_raw = try self.token_reader.readElementText();
-                                const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
-                                feed.updated_timestamp = RssDateTime.parse(date_str) catch 
-                                    AtomDateTime.parse(date_str) catch
-                                    parse_wrong_rss_date(date_str) orelse null;
-                            },
-                            .guid, .description, .url, .image => {},
-                        },
-                        .item => switch (new_tag) {
-                            .title => {
-                                current_item.title = try self.text_loc();
-                            },
-                            .description => {
-                                if (current_item.title == null) {
-                                    current_item.title = try self.text_loc();
-                                }
-                            },
-                            .guid => {
-                                current_item.id = try self.text_loc();
-                            },
-                            .link => {
-                                current_item.link = try self.text_loc();
-                            },
-                            .pubDate, .@"dc:date" => {
-                                const date_raw = try self.token_reader.readElementText();
-                                const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
-                                current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
-                                    AtomDateTime.parse(date_str) catch
-                                    parse_wrong_rss_date(date_str) orelse null;
-                            },
-                            .url, .image => {},
-                        },
-                        // TODO: remove .image?
-                        .image => switch (new_tag) {
-                            .url => {},
-                            .title, .description, .link, .guid, .pubDate, .@"dc:date", .image => {}
-                        },
-                    }
-                }
-            },
-            .element_end => {
-                const tag_str = self.token_reader.elementName();
-                if (mem.eql(u8, "item", tag_str)) {
-                    add_or_replace_item(&self.items, current_item);
-                    current_item = .{};
-                    state = .channel;
-                    state_item = null;
-                    continue;
-                } else if (mem.eql(u8, "image", tag_str)) {
-                    state = .channel;
-                    continue;
-                }
-            },
-            .text => {},
-            .xml_declaration, .comment, .pi, .cdata, .character_reference, .entity_reference  => {},
-        }
-    }
-
-    return .{ .feed = feed, .items = self.items.slice() };
-}
 
 // Sorting item.updated_timestamp
 // 1) if all values are null, no sorting
@@ -606,8 +519,6 @@ test "parseRss" {
     start = 0;
     // try std.testing.expectEqualDeep(expect_items[start..expect_items.len], result.items);
 }
-
-const super = @import("superhtml");
 
 pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const u8) bool {
     if (selector[0] != '.' and selector.len <= 1) {
@@ -1406,8 +1317,6 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
     return @intCast(@divFloor(item_datetime.toTimestamp(), 1000));
 }
 
-pub const ContentType = feed_types.ContentType;
-
 pub fn getContentType(content: []const u8) ?ContentType {
     var buf: [4096]u8 = undefined;
     var fixed = std.heap.FixedBufferAllocator.init(&buf);
@@ -1495,7 +1404,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
 
     const parsed = switch (self.content_type) {
         .atom => try self.parseAtom(),
-        .rss => try self.parseRss(),
+        .rss => self.parse_rss(),
         .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
             return error.NoHtmlOptions;
@@ -1667,7 +1576,6 @@ fn is_relative_path(path: []const u8) bool {
     return false;
 }
 
-const zig_xml = @import("xml");
 fn printEvent(event: zig_xml.Event) !void {
     switch (event) {
         .xml_declaration => |xml_declaration| print("<!xml {s} {?s} {?}\n", .{ xml_declaration.version, xml_declaration.encoding, xml_declaration.standalone }),
@@ -1681,6 +1589,122 @@ fn printEvent(event: zig_xml.Event) !void {
         .element_end => |element_end| print("/{?s}({?s}):{s}\n", .{ element_end.name.prefix, element_end.name.ns, element_end.name.local }),
         .comment => |comment| print("<!--{s}\n", .{comment.content}),
         .pi => |pi| print("<?{s} {s}\n", .{ pi.target, pi.content }),
+    }
+}
+
+fn parse_rss(self: *@This()) ParsedFeed {
+    const content = self.doc.data;
+
+    var feed: Feed.Parsed = .{};
+    var state: RssParseState = .channel;
+    var state_item: ?RssParseTag = null;
+    var current_item: FeedItem.Parsed = .{};
+
+    var tokenizer: super.html.Tokenizer = .{
+        .language = .xml,
+    };
+
+    while (tokenizer.next(content)) |token| {
+        switch (token) {
+            .tag_name,
+            .attr => unreachable,
+            .doctype => {},
+            .tag => |tag| {
+                const tag_str = tag.name.slice(content);
+                switch (tag.kind) {
+                    .start => {
+                        state_item = RssParseTag.fromString(tag_str);
+                        if (state_item != null) {
+                            continue;
+                        }
+                        state = RssParseState.fromString(tag_str) orelse .channel;
+                    },
+                    .end => {
+                        if (RssParseState.fromString(tag_str)) |new_state| {
+                            if (new_state != .item) {
+                                continue;
+                            }
+                            add_or_replace_item(&self.items, current_item);
+                            current_item = .{};
+
+                            state = .channel;
+                            state_item = null;
+                        }
+                    },
+                    .start_self,
+                    .end_self => {},
+                }
+            },
+            .comment => |span| {
+                const cdata_str = "<![CDATA[";
+                if (!mem.startsWith(u8, span.slice(content), cdata_str)) {
+                    continue;
+                }
+
+                const offset = span.start + cdata_str.len;
+                const loc: feed_types.Location = .{
+                    .offset = @intCast(offset),
+                    .len = @intCast(span.end - offset - 3),
+                };
+                parse_rss_current_state(&feed, &current_item, state, state_item, loc, content);
+            },
+            .text => |span| {
+                const loc: feed_types.Location = .{.offset = span.start, .len = span.end - span.start };
+                parse_rss_current_state(&feed, &current_item, state, state_item, loc, content);
+            },
+            .parse_error => |err| {
+                std.log.warn("RSS parsing error: {}", .{err});
+            },
+        }
+
+    }
+
+    return .{ .feed = feed, .items = self.items.slice() };
+}
+
+fn parse_rss_current_state(
+    feed: *Feed.Parsed,
+    current_item: *FeedItem.Parsed,
+    state: RssParseState,
+    state_item: ?RssParseTag,
+    loc: feed_types.Location,
+    content: []const u8,
+) void {
+    switch (state) {
+        .channel => if (state_item) |s| switch (s) {
+            .title => {
+                feed.title = loc;
+            },
+            .link => {
+                feed.page_url = loc;
+            },
+            .pubDate, .@"dc:date" => {
+                const date_raw = content[loc.offset..loc.offset + loc.len];
+                const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
+                feed.updated_timestamp = RssDateTime.parse(date_str) catch 
+                    AtomDateTime.parse(date_str) catch
+                    parse_wrong_rss_date(date_str) orelse null;
+            },
+            .guid, .description => {},
+
+        },
+        .item => if (state_item) |s| switch (s) {
+            .title => current_item.title = loc,
+            .description => {
+                if (current_item.title == null) {
+                    current_item.title = loc;
+                }
+            },
+            .guid => current_item.id = loc,
+            .link => current_item.link = loc,
+            .pubDate, .@"dc:date" => {
+                const date_raw = content[loc.offset..loc.offset + loc.len];
+                const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
+                current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
+                    AtomDateTime.parse(date_str) catch
+                    parse_wrong_rss_date(date_str) orelse null;
+            },
+        },
     }
 }
 
@@ -1700,15 +1724,9 @@ pub fn tmp_test() !void {
     });
     // print("slice: |{s}|\n", .{parser.text_arr.items});
 
-    // Wanted output. Line breaks are spaces
-    // Had a ton of fun speaking and 
-    // watching https://fitc.ca/event/webu24_inperson/ #WebUnleashed 
-    // today—thank you for having me! I’ll post my slides when 
-    // I get some time!
-
     for (result.items[0..]) |item| {
-        // print("|{s}|\n", .{item.title});
-        print("|{?s}|\n", .{item.link});
+        print("|{s}|\n", .{item.title});
+        // print("|{?s}|\n", .{item.link});
     }
 }
 
