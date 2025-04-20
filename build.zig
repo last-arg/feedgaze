@@ -7,13 +7,13 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/adactio.html" },
-    .{ .name = "tmp_file", .path = "./test/rss2.xml" },
+    // .{ .name = "tmp_file", .path = "./test/rss2.xml" },
+    .{ .name = "tmp_file", .path = "./tmp/reddit.rss" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
     .{ .name = "json_feed.json", .path = "./test/json_feed.json" },
     .{ .name = "many-links.html", .path = "./test/many-links.html" },
-    .{ .name = "baldurbjarnason.com.html", .path = "./tmp/baldurbjarnason.com.html" },
 };
 
 pub fn build(b: *Build) !void {
@@ -54,11 +54,9 @@ pub fn build(b: *Build) !void {
     b.installArtifact(exe);
 
     const exe_check = b.addExecutable(opts_exe);
-    commonModules(b, exe_check, .{ .target = target, .optimize = optimize });
+    commonModules(b, exe_check, .{ .target = target });
 
-    // These two lines you might want to copy
-    // (make sure to rename 'exe_check')
-    const check = b.step("check", "Check if foo compiles");
+    const check = b.step("check", "Check if app compiles");
     check.dependOn(&exe_check.step);
 
     const run_cmd = b.addRunArtifact(exe);
