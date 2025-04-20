@@ -78,7 +78,7 @@ pub fn attr_loc(self: *@This(), attr_key: []const u8) !?feed_types.Location {
 
 
 pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
-    const loc_source = if (self.content_type == .html or self.content_type == .rss) self.doc.data else self.text_arr.items;
+    const loc_source = self.doc.data;
     return loc_source[loc.offset..loc.offset + loc.len];
 }
 
@@ -117,7 +117,6 @@ const AtomParseTag = enum {
     updated,
     published,
     id,
-    icon,
 
     const Self = @This();
 
@@ -1403,7 +1402,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     // remove allocations from parse* functions, if possible
 
     const parsed = switch (self.content_type) {
-        .atom => try self.parseAtom(),
+        .atom => self.parse_atom(),
         .rss => self.parse_rss(),
         .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
             std.log.err("Failed to parse html because there are no html options.", .{});
@@ -1710,6 +1709,178 @@ fn parse_rss_current_state(
     }
 }
 
+fn parse_atom(self: *@This()) ParsedFeed {
+    const content = self.doc.data;
+
+    var feed: Feed.Parsed = .{};
+    var state: AtomParseState = .feed;
+    var state_item: ?AtomParseTag = null;
+    var current_item: FeedItem.Parsed = .{};
+
+    var tokenizer: super.html.Tokenizer = .{
+        .language = .xml,
+    };
+
+    while (tokenizer.next(content)) |token| {
+        switch (token) {
+            .tag_name,
+            .attr => unreachable,
+            .doctype => {},
+            .tag => |tag| {
+                const tag_str = tag.name.slice(content);
+                switch (tag.kind) {
+                    .start => {
+                        state_item = AtomParseTag.fromString(tag_str);
+                        if (state_item != null) {
+                            continue;
+                        }
+                        state = AtomParseState.fromString(tag_str) orelse .feed;
+                    },
+                    .end => {
+                        if (AtomParseState.fromString(tag_str)) |new_state| {
+                            if (new_state != .entry) {
+                                continue;
+                            }
+                            add_or_replace_item(&self.items, current_item);
+                            current_item = .{};
+
+                            state = .feed;
+                            state_item = null;
+                        }
+                    },
+                    .start_self => {
+                        state_item = AtomParseTag.fromString(tag_str);
+                        if (state_item == .link) {
+                            const loc: feed_types.Location = .{.offset = tag.span.start, .len = tag.span.end - tag.span.start};
+                            parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                        }
+                    },
+                    .end_self => {},
+                }
+            },
+            .comment => |span| {
+                const cdata_str = "<![CDATA[";
+                if (!mem.startsWith(u8, span.slice(content), cdata_str)) {
+                    continue;
+                }
+
+                const offset = span.start + cdata_str.len;
+                const loc: feed_types.Location = .{
+                    .offset = @intCast(offset),
+                    .len = @intCast(span.end - offset - 3),
+                };
+                parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+            },
+            .text => |span| {
+                const loc: feed_types.Location = .{.offset = span.start, .len = span.end - span.start };
+                parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+            },
+            .parse_error => |err| {
+                std.log.warn("RSS parsing error: {}", .{err});
+            },
+        }
+
+    }
+
+    return .{ .feed = feed, .items = self.items.slice() };
+}
+
+fn parse_atom_current_state(
+    feed: *Feed.Parsed,
+    current_item: *FeedItem.Parsed,
+    state: AtomParseState,
+    state_item: ?AtomParseTag,
+    loc: feed_types.Location,
+    content: []const u8,
+) void {
+    switch (state) {
+        .feed => if (state_item) |s| switch (s) {
+            .title => {
+                feed.title = loc;
+            },
+            .link => {
+                if (parse_atom_link(content, loc.offset)) |loc_val| {
+                    feed.page_url = loc_val;
+                }
+            },
+            .updated => {
+                const date_raw = content[loc.offset..loc.offset + loc.len];
+                feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+            },
+            .published, .id => {},
+        },
+        .entry => if (state_item) |s| switch (s) {
+            .title => current_item.title = loc,
+            .id => current_item.id = loc,
+            .link => {
+                if (parse_atom_link(content, loc.offset)) |loc_val| {
+                    current_item.link = loc_val;
+                }
+            },
+            .updated, .published => {
+                if (current_item.updated_timestamp != null and s == .updated) {
+                    return;
+                }
+
+                const date_raw = content[loc.offset..loc.offset + loc.len];
+                if (AtomDateTime.parse(date_raw)) |new_date| {
+                    current_item.updated_timestamp = new_date;
+                } else |err| {
+                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
+                }
+            },
+        },
+    }
+}
+
+pub fn parse_atom_link(
+    content: []const u8,
+    start_index: u32,
+) ?feed_types.Location {
+    var rel: []const u8 = "alternative";
+    var link_span: ?super.Span = null;
+
+    var tt: super.html.Tokenizer = .{
+        .language = .xml,
+        .idx = start_index,
+        .return_attrs = true,
+    };
+
+    while (tt.next(content)) |maybe_attr| {
+        switch (maybe_attr) {
+            else => {
+                std.log.warn("found unexpected: '{s}' {any}", .{
+                    @tagName(maybe_attr),
+                    maybe_attr,
+                });
+                unreachable;
+            },
+            .tag_name => {},
+            .tag => break,
+            .parse_error => {},
+            .attr => |attr| {
+                const attr_name = attr.name.slice(content);
+                if (std.ascii.eqlIgnoreCase(attr_name, "rel")) {
+                    if (attr.value) |val| {
+                        rel = content[val.span.start..val.span.end];
+                    }
+                } else if (std.ascii.eqlIgnoreCase(attr_name, "href")) {
+                    if (attr.value) |val| {
+                        link_span = val.span;
+                    }
+                }
+            },
+        }
+    }
+
+
+    if (link_span) |span| if (std.ascii.eqlIgnoreCase(rel, "alternative")) {
+        return .{.offset = span.start, .len = span.len()};
+    };
+
+    return null;
+}
+
 pub fn tmp_test() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
     defer arena.deinit();
@@ -1726,9 +1897,10 @@ pub fn tmp_test() !void {
     });
     // print("slice: |{s}|\n", .{parser.text_arr.items});
 
+    print("link: |{?s}|\n", .{result.feed.page_url});
     for (result.items[0..]) |item| {
-        print("|{s}|\n", .{item.title});
-        // print("|{?s}|\n", .{item.link});
+        // print("|{s}|\n", .{item.title});
+        print("|{?s}|\n", .{item.link});
     }
 }
 
