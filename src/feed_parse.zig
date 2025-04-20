@@ -1575,27 +1575,29 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         }
 
         if (item.link) |link_loc| {
-            const link = self.slice_from_loc(link_loc);
+            var link = self.slice_from_loc(link_loc);
+
             if (is_relative_path(link)) {
                 var buf: []u8 = &buf_arr;
                 const link_decoded = std.Uri.percentDecodeBackwards(buf, link);
                 buf = buf[link_decoded.len..];
                 const link_new = try Uri.resolve_inplace(base, link_decoded, &buf);
-                const new_link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
+                link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
 
-                if (opts.feed_to_update) |f| if (mem.eql(u8, new_link, f.latest_item_link orelse "")) {
-                    break :outer;
-                };
-
-                // Don't add feed items with duplicate links
-                for (feed_items.items) |feed_item| {
-                    if (mem.eql(u8, feed_item.link.?, new_link)) {
-                        continue :outer;
-                    }
-                }
-
-                new_item.link = new_link;
             }
+
+            if (opts.feed_to_update) |f| if (mem.eql(u8, link, f.latest_item_link orelse "")) {
+                break :outer;
+            };
+
+            // Don't add feed items with duplicate links
+            for (feed_items.items) |feed_item| {
+                if (mem.eql(u8, feed_item.link.?, link)) {
+                    continue :outer;
+                }
+            }
+
+            new_item.link = link;
         }
 
         if (item.title) |loc| {
@@ -1705,7 +1707,8 @@ pub fn tmp_test() !void {
     // I get some time!
 
     for (result.items[0..]) |item| {
-        print("|{s}|\n", .{item.title});
+        // print("|{s}|\n", .{item.title});
+        print("|{?s}|\n", .{item.link});
     }
 }
 
