@@ -253,18 +253,16 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 }
 
 pub fn parseAtom(self: *@This()) !ParsedFeed {
-    var entries = self.items;
     var feed = Feed.Parsed{};
     var state: AtomParseState = .feed;
     var current_entry: FeedItem.Parsed = .{};
 
-    var token_reader = self.token_reader;
-    var token = try token_reader.read();
-    while (token != .eof) : (token = try token_reader.read()) {
+    var token = try self.token_reader.read();
+    while (token != .eof) : (token = try self.token_reader.read()) {
         switch (token) {
             .eof => break,
             .element_start => {
-                const tag = token_reader.elementName();
+                const tag = self.token_reader.elementName();
 
                 if (AtomParseState.fromString(tag)) |new_state| {
                     state = new_state;
@@ -278,8 +276,8 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                             },
                             .link => {
                                 const rel = blk: {
-                                    if (token_reader.attributeIndex("rel")) |idx| {
-                                        break :blk try token_reader.attributeValue(idx);
+                                    if (self.token_reader.attributeIndex("rel")) |idx| {
+                                        break :blk try self.token_reader.attributeValue(idx);
                                     }
                                     break :blk "alternate";
                                 };
@@ -291,7 +289,7 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                                 }
                             },
                             .updated => {
-                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
                                 feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
                             },
                             .published,
@@ -304,8 +302,8 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                             },
                             .link => {
                                 const rel = blk: {
-                                    if (token_reader.attributeIndex("rel")) |idx| {
-                                        break :blk try token_reader.attributeValue(idx);
+                                    if (self.token_reader.attributeIndex("rel")) |idx| {
+                                        break :blk try self.token_reader.attributeValue(idx);
                                     }
                                     break :blk "alternate";
                                 };
@@ -324,7 +322,7 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                                 }
                             },
                             .published => {
-                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
                                 if (AtomDateTime.parse(date_raw)) |new_date| {
                                     current_entry.updated_timestamp = new_date;
                                 } else |err| {
@@ -332,7 +330,7 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                                 }
                             },
                             .updated => if (current_entry.updated_timestamp == null) {
-                                const date_raw = mem.trim(u8, try token_reader.readElementText(), &std.ascii.whitespace);
+                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
                                 if (AtomDateTime.parse(date_raw)) |new_date| {
                                     current_entry.updated_timestamp = new_date;
                                 } else |err| {
@@ -345,9 +343,9 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
                 }
             },
             .element_end => {
-                const tag_str = token_reader.elementName();
+                const tag_str = self.token_reader.elementName();
                 if (mem.eql(u8, "entry", tag_str)) {
-                    add_or_replace_item(&entries, current_entry);
+                    add_or_replace_item(&self.items, current_entry);
                     current_entry = .{ .title = null };
                     state = .feed;
                     continue;
@@ -363,7 +361,7 @@ pub fn parseAtom(self: *@This()) !ParsedFeed {
     }
 
 
-    return .{ .feed = feed, .items = entries.slice() };
+    return .{ .feed = feed, .items = self.items.slice() };
 }
 
 test "parseAtom" {
