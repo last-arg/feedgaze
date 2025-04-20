@@ -650,6 +650,7 @@ input:where([type=text]) {
 .feed-item p {
   max-width: 50ch;
   width: 100%;
+  margin-top: 0;
 }
 
 .item-extra {
