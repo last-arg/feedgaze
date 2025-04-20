@@ -1442,6 +1442,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
             buf = buf[page_url_decoded.len..];
             const page_url_new = try Uri.resolve_inplace(base, page_url_decoded, &buf);
             result.feed.page_url = try std.fmt.allocPrint(allocator, "{}", .{page_url_new});
+        } else {
+            result.feed.page_url = page_url;
         }
     }
 
