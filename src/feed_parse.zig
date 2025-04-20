@@ -1199,12 +1199,8 @@ pub fn getContentType(content: []const u8) ?ContentType {
 }
 
 test "getContentType" {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-    const alloc = arena.allocator();
-    _ = alloc; // autofix
-
     const rss =
+        \\<!-- Comment -->
         \\<?xml version="1.0"?>
         \\<rss version="2.0">
         \\   <channel>
@@ -1215,6 +1211,7 @@ test "getContentType" {
     try std.testing.expectEqual(ContentType.rss, rss_type.?);
 
     const atom =
+        \\<!-- Comment -->
         \\<?xml version="1.0" encoding="utf-8"?>
         \\<feed xmlns="http://www.w3.org/2005/Atom">
         \\</feed>
@@ -1223,6 +1220,7 @@ test "getContentType" {
     try std.testing.expectEqual(ContentType.atom, atom_type.?);
 
     const html_raw =
+        \\<!-- Comment -->
         \\<!DOCTYPE html>
     ;
     const html_type = getContentType(html_raw);
