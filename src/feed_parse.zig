@@ -1573,6 +1573,11 @@ fn parse_atom(self: *@This()) ParsedFeed {
                             continue;
                         }
                         state = AtomParseState.fromString(tag_str) orelse .feed;
+
+                        if (state_item == .link) {
+                            const loc: feed_types.Location = .{.offset = tag.span.start, .len = tag.span.end - tag.span.start};
+                            parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                        }
                     },
                     .end => {
                         if (AtomParseState.fromString(tag_str)) |new_state| {
@@ -1607,11 +1612,16 @@ fn parse_atom(self: *@This()) ParsedFeed {
                     .offset = @intCast(offset),
                     .len = @intCast(span.end - offset - 3),
                 };
-                parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+
+                if (state_item != .link) {
+                    parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                }
             },
             .text => |span| {
                 const loc: feed_types.Location = .{.offset = span.start, .len = span.end - span.start };
-                parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                if (state_item != .link) {
+                    parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                }
             },
             .parse_error => |err| {
                 std.log.warn("RSS parsing error: {}", .{err});
@@ -1691,6 +1701,10 @@ pub fn parse_atom_link(
                     @tagName(maybe_attr),
                     maybe_attr,
                 });
+                std.log.warn("text: '{s}'", .{
+                    maybe_attr.text.slice(content),
+
+                });
                 unreachable;
             },
             .tag_name => {},
@@ -1724,8 +1738,7 @@ pub fn tmp_test() !void {
     defer arena.deinit();
 
     const content = @embedFile("tmp_file");
-    var parser: @This() = try .init(arena.allocator(), content);
-    defer parser.deinit();
+    var parser: @This() = try .init(content);
     const html_opts: HtmlOptions = .{
         .selector_container = ".FrontList",
         // .date_format = "YYYY-MM-DDTHH:mm:ssZ",
