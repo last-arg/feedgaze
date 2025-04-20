@@ -1456,15 +1456,17 @@ fn parse_rss(self: *@This()) ParsedFeed {
                         if (state_item != null) {
                             continue;
                         }
-                        state = RssParseState.fromString(tag_str) orelse .channel;
+
+                        if (RssParseState.fromString(tag_str)) |s| {
+                            state = s;
+                        }
                     },
                     .end => {
                         if (RssParseState.fromString(tag_str)) |new_state| {
-                            if (new_state != .item) {
-                                continue;
+                            if (new_state == .item) {
+                                add_or_replace_item(&self.items, current_item);
+                                current_item = .{};
                             }
-                            add_or_replace_item(&self.items, current_item);
-                            current_item = .{};
 
                             state = .channel;
                             state_item = null;
@@ -1559,7 +1561,7 @@ fn parse_atom(self: *@This()) ParsedFeed {
         .language = .xml,
     };
 
-    while (tokenizer.next(content)) |token| {
+    loop: while (tokenizer.next(content)) |token| {
         switch (token) {
             .tag_name,
             .attr => unreachable,
@@ -1569,24 +1571,30 @@ fn parse_atom(self: *@This()) ParsedFeed {
                 switch (tag.kind) {
                     .start => {
                         state_item = AtomParseTag.fromString(tag_str);
-                        if (state_item != null) {
-                            continue;
-                        }
-                        state = AtomParseState.fromString(tag_str) orelse .feed;
-
-                        if (state_item == .link) {
-                            if (parse_atom_link(content, tag.span.start)) |loc_val| {
-                                feed.page_url = loc_val;
+                        if (state_item) |s| {
+                            if (s == .link) {
+                                if (parse_atom_link(content, tag.span.start)) |loc_val| {
+                                    if (state == .entry) {
+                                        current_item.link = loc_val;
+                                    } else if (state == .feed) {
+                                        feed.page_url = loc_val;
+                                    } else unreachable;
+                                }
                             }
+
+                            continue :loop;
+                        }
+
+                        if (AtomParseState.fromString(tag_str)) |s| {
+                            state = s;
                         }
                     },
                     .end => {
                         if (AtomParseState.fromString(tag_str)) |new_state| {
-                            if (new_state != .entry) {
-                                continue;
+                            if (new_state == .entry) {
+                                add_or_replace_item(&self.items, current_item);
+                                current_item = .{};
                             }
-                            add_or_replace_item(&self.items, current_item);
-                            current_item = .{};
 
                             state = .feed;
                             state_item = null;
@@ -1596,8 +1604,13 @@ fn parse_atom(self: *@This()) ParsedFeed {
                         state_item = AtomParseTag.fromString(tag_str);
                         if (state_item == .link) {
                             if (parse_atom_link(content, tag.span.start)) |loc_val| {
-                                current_item.link = loc_val;
+                                if (state == .entry) {
+                                    current_item.link = loc_val;
+                                } else if (state == .feed) {
+                                    feed.page_url = loc_val;
+                                } else unreachable;
                             }
+                            state_item = null;
                         }
                     },
                     .end_self => {
@@ -1608,7 +1621,7 @@ fn parse_atom(self: *@This()) ParsedFeed {
             .comment => |span| {
                 const cdata_str = "<![CDATA[";
                 if (!mem.startsWith(u8, span.slice(content), cdata_str)) {
-                    continue;
+                    continue :loop;
                 }
 
                 const offset = span.start + cdata_str.len;
@@ -1622,7 +1635,7 @@ fn parse_atom(self: *@This()) ParsedFeed {
                 }
             },
             .text => |span| {
-                const loc: feed_types.Location = .{.offset = span.start, .len = span.end - span.start };
+                const loc: feed_types.Location = .{.offset = span.start, .len = span.len() };
                 if (state_item != .link) {
                     parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
                 }
@@ -1658,7 +1671,9 @@ fn parse_atom_current_state(
             .published, .id => {},
         },
         .entry => if (state_item) |s| switch (s) {
-            .title => current_item.title = loc,
+            .title => {
+                current_item.title = loc;
+            },
             .id => current_item.id = loc,
             .link => {},
             .updated, .published => {
@@ -1681,7 +1696,7 @@ pub fn parse_atom_link(
     content: []const u8,
     start_index: u32,
 ) ?feed_types.Location {
-    var rel: []const u8 = "alternative";
+    var rel: []const u8 = "alternate";
     var link_span: ?super.Span = null;
 
     var tt: super.html.Tokenizer = .{
@@ -1722,7 +1737,7 @@ pub fn parse_atom_link(
     }
 
 
-    if (link_span) |span| if (std.ascii.eqlIgnoreCase(rel, "alternative")) {
+    if (link_span) |span| if (std.ascii.eqlIgnoreCase(rel, "alternate")) {
         return .{.offset = span.start, .len = span.len()};
     };
 
@@ -1746,8 +1761,8 @@ pub fn tmp_test() !void {
 
     print("link: |{?s}|\n", .{result.feed.page_url});
     for (result.items[0..]) |item| {
-        print("|{s}|\n", .{item.title});
-        // print("|{?s}|\n", .{item.link});
+        // print("|{s}|\n", .{item.title});
+        print("|{?s}|\n", .{item.link});
     }
 }
 
