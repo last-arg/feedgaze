@@ -131,9 +131,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const known_folders = b.dependency("known-folders", .{});
     step.root_module.addImport("known-folders", known_folders.module("known-folders"));
 
-    const xml = b.dependency("xml", dep_args);
-    step.root_module.addImport("xml", xml.module("xml"));
-
     const curl = b.dependency("curl", .{.link_vendor = false});
     step.root_module.addImport("curl", curl.module("curl"));
     step.linkSystemLibrary("curl");

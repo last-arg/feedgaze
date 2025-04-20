@@ -8,7 +8,6 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime");
 const datetime = dt.datetime;
 const super = @import("superhtml");
-const zig_xml = @import("xml");
 
 const default_item_count = @import("./app_config.zig").max_items;
 const feed_types = @import("./feed_types.zig");
@@ -49,8 +48,6 @@ pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
 pub const ParsedFeed = struct {
     feed: Feed.Parsed,
     items: []FeedItem.Parsed,
-    html_opts: ?HtmlOptions = null,
-    item_interval: i64 = feed_types.seconds_in_10_days,
 };
 
 pub const ValidFeed = struct {
@@ -1169,43 +1166,33 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
 }
 
 pub fn getContentType(content: []const u8) ?ContentType {
-    var buf: [4096]u8 = undefined;
-    var fixed = std.heap.FixedBufferAllocator.init(&buf);
-    // TODO: remove zig_xml dependency
-    // instead use superhtml for parsing or just check for string
-    var doc = zig_xml.StaticDocument.init(content);
-    var r = doc.reader(fixed.allocator(), .{});
-    defer r.deinit();
+    var tokenizer: super.html.Tokenizer = .{
+        .language = .xml,
+    };
 
-    var depth: usize = 0;
-    while (depth < 2) {
-        const token = r.read() catch break;
-        if (token == .element_start) {
-            const tag = r.elementName();
-
-            if (depth == 0) {
-                if (mem.eql(u8, "feed", tag)) {
+    while (tokenizer.next(content)) |token| {
+        switch (token) {
+            .tag_name,
+            .attr => {},
+            .doctype => |in| {
+                if (in.name) |name| if (std.ascii.eqlIgnoreCase("html", name.slice(content))) {
+                    return .html;
+                };
+            },
+            .tag => |in| {
+                const name = in.name.slice(content);
+                if (mem.eql(u8, "feed", name)) {
                     return .atom;
-                } else if (mem.eql(u8, "rss", tag)) {
-                    // pass through
-                } else {
-                    break;
-                }
-            } else if (depth == 1) {
-                if (mem.eql(u8, "channel", tag)) {
+                } else if (mem.eql(u8, "rss", name)) {
                     return .rss;
+                } else if (std.ascii.eqlIgnoreCase("html", name)) {
+                    return .html;
                 }
-            }
-                        
-            depth += 1;
-        } else if (token == .eof) {
-            break;
+            },
+            .text,
+            .comment,
+            .parse_error => {},
         }
-    }
-    
-    const trimmed = std.mem.trimLeft(u8, content, &std.ascii.whitespace);
-    if (std.ascii.startsWithIgnoreCase(trimmed, "<!doctype html")) {
-        return .html;
     }
 
     return null;
@@ -1760,10 +1747,10 @@ pub fn tmp_test() !void {
     // print("slice: |{s}|\n", .{parser.text_arr.items});
 
     print("link: |{?s}|\n", .{result.feed.page_url});
-    for (result.items[0..]) |item| {
-        // print("|{s}|\n", .{item.title});
-        print("|{?s}|\n", .{item.link});
-    }
+    // for (result.items[0..]) |item| {
+    //     // print("|{s}|\n", .{item.title});
+    //     // print("|{?s}|\n", .{item.link});
+    // }
 }
 
 pub fn main() !void {
