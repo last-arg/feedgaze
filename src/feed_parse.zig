@@ -1575,8 +1575,9 @@ fn parse_atom(self: *@This()) ParsedFeed {
                         state = AtomParseState.fromString(tag_str) orelse .feed;
 
                         if (state_item == .link) {
-                            const loc: feed_types.Location = .{.offset = tag.span.start, .len = tag.span.end - tag.span.start};
-                            parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                            if (parse_atom_link(content, tag.span.start)) |loc_val| {
+                                feed.page_url = loc_val;
+                            }
                         }
                     },
                     .end => {
@@ -1594,11 +1595,14 @@ fn parse_atom(self: *@This()) ParsedFeed {
                     .start_self => {
                         state_item = AtomParseTag.fromString(tag_str);
                         if (state_item == .link) {
-                            const loc: feed_types.Location = .{.offset = tag.span.start, .len = tag.span.end - tag.span.start};
-                            parse_atom_current_state(&feed, &current_item, state, state_item, loc, content);
+                            if (parse_atom_link(content, tag.span.start)) |loc_val| {
+                                current_item.link = loc_val;
+                            }
                         }
                     },
-                    .end_self => {},
+                    .end_self => {
+                        print("self end\n", .{});
+                    },
                 }
             },
             .comment => |span| {
@@ -1646,11 +1650,7 @@ fn parse_atom_current_state(
             .title => {
                 feed.title = loc;
             },
-            .link => {
-                if (parse_atom_link(content, loc.offset)) |loc_val| {
-                    feed.page_url = loc_val;
-                }
-            },
+            .link => {},
             .updated => {
                 const date_raw = content[loc.offset..loc.offset + loc.len];
                 feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
@@ -1660,11 +1660,7 @@ fn parse_atom_current_state(
         .entry => if (state_item) |s| switch (s) {
             .title => current_item.title = loc,
             .id => current_item.id = loc,
-            .link => {
-                if (parse_atom_link(content, loc.offset)) |loc_val| {
-                    current_item.link = loc_val;
-                }
-            },
+            .link => {},
             .updated, .published => {
                 if (current_item.updated_timestamp != null and s == .updated) {
                     return;
@@ -1750,8 +1746,8 @@ pub fn tmp_test() !void {
 
     print("link: |{?s}|\n", .{result.feed.page_url});
     for (result.items[0..]) |item| {
-        // print("|{s}|\n", .{item.title});
-        print("|{?s}|\n", .{item.link});
+        print("|{s}|\n", .{item.title});
+        // print("|{?s}|\n", .{item.link});
     }
 }
 
