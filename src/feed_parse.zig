@@ -33,53 +33,17 @@ pub const std_options: std.Options = .{
 
 const max_title_len = 512;
 items: std.BoundedArray(FeedItem.Parsed, default_item_count),
-doc: zig_xml.StaticDocument,
-token_reader: zig_xml.GenericReader(error{}),
-text_arr: std.ArrayListUnmanaged(u8) = .empty,
-allocator: Allocator,
-content_type: ContentType,
+content: []const u8,
 
-pub fn init(allocator: Allocator, content: []const u8) !@This() {
-    // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
-    const ct = getContentType(mem.trim(u8, content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
-
-    var doc = zig_xml.StaticDocument.init(content);
+pub fn init(content: []const u8) !@This() {
     return .{
         .items = try .init(0),
-        .doc = doc,
-        .token_reader = doc.reader(allocator, .{ .namespace_aware = false, }),
-        .allocator = allocator,
-        .content_type = ct,
+        .content = content,
     };
 }
 
-pub fn deinit(self: *@This(), allocator: Allocator) void {
-    _ = allocator;
-    self.token_reader.deinit();
-}
-
-pub fn text_loc(self: *@This()) !feed_types.Location {
-    const start = self.text_arr.items.len;
-    const text = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
-    try self.text_arr.appendSlice(self.allocator, text);
-    return .{.offset = @intCast(start), .len = @intCast(self.text_arr.items.len - start)};
-}
-
-pub fn attr_loc(self: *@This(), attr_key: []const u8) !?feed_types.Location {
-    if (self.token_reader.attributeIndex(attr_key)) |idx| {
-        const start = self.text_arr.items.len;
-        const value = mem.trim(u8, try self.token_reader.attributeValue(idx), &std.ascii.whitespace);
-        try self.text_arr.appendSlice(self.allocator, value);
-        return .{.offset = @intCast(start), .len = @intCast(self.text_arr.items.len - start)};
-    }
-
-    return null;
-}
-
-
 pub fn slice_from_loc(self: *@This(), loc: feed_types.Location) []const u8 {
-    const loc_source = self.doc.data;
-    return loc_source[loc.offset..loc.offset + loc.len];
+    return self.content[loc.offset..loc.offset + loc.len];
 }
 
 pub const ParsedFeed = struct {
@@ -253,118 +217,6 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     }
         
     return out.toOwnedSlice();
-}
-
-pub fn parseAtom(self: *@This()) !ParsedFeed {
-    var feed = Feed.Parsed{};
-    var state: AtomParseState = .feed;
-    var current_entry: FeedItem.Parsed = .{};
-
-    var token = try self.token_reader.read();
-    while (token != .eof) : (token = try self.token_reader.read()) {
-        switch (token) {
-            .eof => break,
-            .element_start => {
-                const tag = self.token_reader.elementName();
-
-                if (AtomParseState.fromString(tag)) |new_state| {
-                    state = new_state;
-                }
-
-                if (AtomParseTag.fromString(tag)) |new_tag| {
-                   switch (state) {
-                        .feed => switch (new_tag) {
-                            .title => {
-                                feed.title = try self.text_loc();
-                            },
-                            .link => {
-                                const rel = blk: {
-                                    if (self.token_reader.attributeIndex("rel")) |idx| {
-                                        break :blk try self.token_reader.attributeValue(idx);
-                                    }
-                                    break :blk "alternate";
-                                };
-
-                                if (std.ascii.eqlIgnoreCase("alternate", rel)) {
-                                    if (try self.attr_loc("href")) |loc| {
-                                        feed.page_url = loc;
-                                    }
-                                }
-                            },
-                            .updated => {
-                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
-                                feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
-                            },
-                            .published,
-                            .id,
-                            .icon => {},
-                        },
-                        .entry => switch (new_tag) {
-                            .title => {
-                                current_entry.title = try self.text_loc();
-                            },
-                            .link => {
-                                const rel = blk: {
-                                    if (self.token_reader.attributeIndex("rel")) |idx| {
-                                        break :blk try self.token_reader.attributeValue(idx);
-                                    }
-                                    break :blk "alternate";
-                                };
-
-                                if (std.ascii.eqlIgnoreCase("alternate", rel)) {
-                                    if (try self.attr_loc("href")) |loc| {
-                                        current_entry.link = loc;
-                                    }
-                                }
-                            },
-                            .id => {
-                                if (self.text_loc()) |loc| {
-                                    current_entry.id = loc;
-                                } else |err| {
-                                    std.log.warn("Failed to read entry's id from atom feed's entry. Error: {}", .{err});
-                                }
-                            },
-                            .published => {
-                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
-                                if (AtomDateTime.parse(date_raw)) |new_date| {
-                                    current_entry.updated_timestamp = new_date;
-                                } else |err| {
-                                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
-                                }
-                            },
-                            .updated => if (current_entry.updated_timestamp == null) {
-                                const date_raw = mem.trim(u8, try self.token_reader.readElementText(), &std.ascii.whitespace);
-                                if (AtomDateTime.parse(date_raw)) |new_date| {
-                                    current_entry.updated_timestamp = new_date;
-                                } else |err| {
-                                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
-                                }
-                            },
-                            .icon => {},
-                        },
-                    }
-                }
-            },
-            .element_end => {
-                const tag_str = self.token_reader.elementName();
-                if (mem.eql(u8, "entry", tag_str)) {
-                    add_or_replace_item(&self.items, current_entry);
-                    current_entry = .{ .title = null };
-                    state = .feed;
-                    continue;
-                }
-            },
-            .xml_declaration,
-            .pi, .text,
-            .entity_reference,
-            .character_reference,
-            .cdata,
-            .comment => {},
-        }
-    }
-
-
-    return .{ .feed = feed, .items = self.items.slice() };
 }
 
 test "parseAtom" {
@@ -821,7 +673,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
 }
 
 pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOptions) !ParsedFeed {
-    const content = self.doc.data;
+    const content = self.content;
     const ast = try super.html.Ast.init(allocator, content, .html);
     if (ast.errors.len > 0) {
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
@@ -1319,6 +1171,8 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
 pub fn getContentType(content: []const u8) ?ContentType {
     var buf: [4096]u8 = undefined;
     var fixed = std.heap.FixedBufferAllocator.init(&buf);
+    // TODO: remove zig_xml dependency
+    // instead use superhtml for parsing or just check for string
     var doc = zig_xml.StaticDocument.init(content);
     var r = doc.reader(fixed.allocator(), .{});
     defer r.deinit();
@@ -1398,10 +1252,10 @@ const ParseOptions = struct {
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
     assert(util.is_url(opts.feed_url));
 
-    // TODO?: where to allocate and decode string fields?
-    // remove allocations from parse* functions, if possible
+    // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
+    const ct = getContentType(mem.trim(u8, self.content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 
-    const parsed = switch (self.content_type) {
+    const parsed = switch (ct) {
         .atom => self.parse_atom(),
         .rss => self.parse_rss(),
         .html => if (html_options) |h_opts| try self.parse_html(allocator, h_opts) else {
@@ -1418,7 +1272,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         result.feed.feed_id = feed_id;
     }
 
-    if (self.content_type == .html) {
+    if (ct == .html) {
         assert(html_options != null);
         result.html_opts = html_options;
         result.feed.page_url = result.feed.feed_url;
@@ -1577,24 +1431,8 @@ fn is_relative_path(path: []const u8) bool {
     return false;
 }
 
-fn printEvent(event: zig_xml.Event) !void {
-    switch (event) {
-        .xml_declaration => |xml_declaration| print("<!xml {s} {?s} {?}\n", .{ xml_declaration.version, xml_declaration.encoding, xml_declaration.standalone }),
-        .element_start => |element_start| {
-            print("<{?s}({?s}):{s}\n", .{ element_start.name.prefix, element_start.name.ns, element_start.name.local });
-            for (element_start.attributes) |attr| {
-                print("  @{?s}({?s}):{s}={s}\n", .{ attr.name.prefix, attr.name.ns, attr.name.local, attr.value });
-            }
-        },
-        .element_content => |element_content| print("  {s}\n", .{element_content.content}),
-        .element_end => |element_end| print("/{?s}({?s}):{s}\n", .{ element_end.name.prefix, element_end.name.ns, element_end.name.local }),
-        .comment => |comment| print("<!--{s}\n", .{comment.content}),
-        .pi => |pi| print("<?{s} {s}\n", .{ pi.target, pi.content }),
-    }
-}
-
 fn parse_rss(self: *@This()) ParsedFeed {
-    const content = self.doc.data;
+    const content = self.content;
 
     var feed: Feed.Parsed = .{};
     var state: RssParseState = .channel;
@@ -1710,7 +1548,7 @@ fn parse_rss_current_state(
 }
 
 fn parse_atom(self: *@This()) ParsedFeed {
-    const content = self.doc.data;
+    const content = self.content;
 
     var feed: Feed.Parsed = .{};
     var state: AtomParseState = .feed;
@@ -1887,7 +1725,7 @@ pub fn tmp_test() !void {
 
     const content = @embedFile("tmp_file");
     var parser: @This() = try .init(arena.allocator(), content);
-    defer parser.deinit(arena.allocator());
+    defer parser.deinit();
     const html_opts: HtmlOptions = .{
         .selector_container = ".FrontList",
         // .date_format = "YYYY-MM-DDTHH:mm:ssZ",
