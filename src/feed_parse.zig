@@ -125,8 +125,16 @@ pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
 
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 // Mutates 'input' buffer
+// 'lt' and 'gt' are handled by html_unescaped_tags()
 pub fn html_unescape(input: []u8) []u8 {
-    // 'lt' and 'gt' is handled by html_unescaped_tags()
+    // &amp; = &#38;
+    var out = input;
+    inline for (.{"&amp;", "&#38;"}) |ent| {
+        const count = mem.replace(u8, out, ent, "&", out);
+        const len = out.len - ((ent.len - 1) * count);
+        out = out[0..len];
+    }
+
     const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
     const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
@@ -135,7 +143,7 @@ pub fn html_unescape(input: []u8) []u8 {
         len: usize,
     };
     var ctx: Context = .{
-        .buf = input,
+        .buf = out,
         .len = 0,
     };
     const w = std.io.AnyWriter{
@@ -152,19 +160,19 @@ pub fn html_unescape(input: []u8) []u8 {
 
     var buf_index_start: usize = 0;
 
-    while (mem.indexOfScalarPos(u8, input, buf_index_start, '&')) |index| {
-        w.writeAll(input[buf_index_start..index]) catch unreachable;
+    while (mem.indexOfScalarPos(u8, out, buf_index_start, '&')) |index| {
+        w.writeAll(out[buf_index_start..index]) catch unreachable;
         buf_index_start = index + 1;
         const start = buf_index_start;
-        if (start >= input.len) { break; }
+        if (start >= out.len) { break; }
 
-        if (input[start] == '#') {
+        if (out[start] == '#') {
             // numeric entities
             var nr_start = start + 1; 
-            const end = mem.indexOfScalarPos(u8, input, nr_start, ';') orelse continue;
-            const is_hex = input[nr_start] == 'x' or input[nr_start] == 'X';
+            const end = mem.indexOfScalarPos(u8, out, nr_start, ';') orelse continue;
+            const is_hex = out[nr_start] == 'x' or out[nr_start] == 'X';
             nr_start += @intFromBool(is_hex);
-            const value = input[nr_start..end];
+            const value = out[nr_start..end];
             if (value.len == 0) { continue; }
             buf_index_start = end + 1;
 
@@ -177,8 +185,8 @@ pub fn html_unescape(input: []u8) []u8 {
             // named entities
             const index_opt: ?usize = blk: {
                 for (entities, 0..) |entity, i| {
-                    if (mem.startsWith(u8, input[start..], entity) and
-                        start + entity.len < input.len and input[start + entity.len] == ';'
+                    if (mem.startsWith(u8, out[start..], entity) and
+                        start + entity.len < out.len and out[start + entity.len] == ';'
                     ) {
                         break :blk i;
                     }
@@ -194,8 +202,8 @@ pub fn html_unescape(input: []u8) []u8 {
         }
     }
 
-    w.writeAll(input[buf_index_start..]) catch unreachable;
-    return input;
+    w.writeAll(out[buf_index_start..]) catch unreachable;
+    return out;
 }
 
 // Modifies 'input' buffer

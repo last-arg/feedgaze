@@ -8,7 +8,7 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/adactio.html" },
     // .{ .name = "tmp_file", .path = "./test/rss2.xml" },
-    .{ .name = "tmp_file", .path = "./tmp/reddit.rss" },
+    .{ .name = "tmp_file", .path = "./tmp/@deech.rss" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
