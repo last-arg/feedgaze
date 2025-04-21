@@ -124,15 +124,36 @@ pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
 }
 
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
-pub fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
-    const entities = [_][]const u8{"amp", "lt", "gt", "quot", "apos", "nbsp"};
-    const raws = [_][]const u8{    "&",   "<",  ">",  "\"",   "'",    " "};
+// Mutates 'input' buffer
+pub fn html_unescape(input: []u8) []u8 {
+    // 'lt' and 'gt' is handled by html_unescaped_tags()
+    const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
+    const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
-    const items_start = writer.context.items.len;
+    const Context = struct {
+        buf: []u8,
+        len: usize,
+    };
+    var ctx: Context = .{
+        .buf = input,
+        .len = 0,
+    };
+    const w = std.io.AnyWriter{
+        .context = &ctx,
+        .writeFn = struct {
+            fn func (context: *const anyopaque, bytes: []const u8) anyerror!usize {
+                const c: *Context = @constCast(@alignCast(@ptrCast(context)));
+                mem.copyForwards(u8, c.buf[c.len..], bytes);
+                c.len += bytes.len;
+                return bytes.len;
+            }
+        }.func,
+    };
+
     var buf_index_start: usize = 0;
 
     while (mem.indexOfScalarPos(u8, input, buf_index_start, '&')) |index| {
-        try writer.writeAll(input[buf_index_start..index]);
+        w.writeAll(input[buf_index_start..index]) catch unreachable;
         buf_index_start = index + 1;
         const start = buf_index_start;
         if (start >= input.len) { break; }
@@ -140,18 +161,18 @@ pub fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
         if (input[start] == '#') {
             // numeric entities
             var nr_start = start + 1; 
-            buf_index_start = mem.indexOfScalarPos(u8, input, nr_start, ';') orelse break;
+            const end = mem.indexOfScalarPos(u8, input, nr_start, ';') orelse continue;
             const is_hex = input[nr_start] == 'x' or input[nr_start] == 'X';
             nr_start += @intFromBool(is_hex);
-            const value = input[nr_start..buf_index_start];
-            buf_index_start += 1;
+            const value = input[nr_start..end];
             if (value.len == 0) { continue; }
+            buf_index_start = end + 1;
 
             const base: u8 = if (is_hex) 16 else 10;
             const nr = std.fmt.parseUnsigned(u21, value, base) catch continue;
             var buf_cp: [4]u8 = undefined;
             const cp = std.unicode.utf8Encode(nr, &buf_cp) catch continue;
-            try writer.writeAll(buf_cp[0..cp]);
+            w.writeAll(buf_cp[0..cp]) catch unreachable;
         } else {
             // named entities
             const index_opt: ?usize = blk: {
@@ -168,12 +189,28 @@ pub fn html_unescape(writer: anytype, input: []const u8) ![]const u8 {
 
             if (index_opt) |i| {
                 buf_index_start += entities[i].len + 1;
-                try writer.writeAll(raws[i]);
+                w.writeAll(raws[i]) catch unreachable;
             }
         }
     }
-    try writer.writeAll(input[buf_index_start..]);
-    return writer.context.items[items_start..];
+
+    w.writeAll(input[buf_index_start..]) catch unreachable;
+    return input;
+}
+
+// Modifies 'input' buffer
+pub fn html_unescape_tags(input: []u8) []u8 {
+    const entities = [_][]const u8{"&lt;", "&gt;", "&#60;", "&#62;" };
+    const raws = [_][]const u8{    "<",    ">"   , "<",     ">"  };
+
+    var out = input;
+    for (entities, raws) |ent, raw| {
+        const count = mem.replace(u8, out, ent, raw, out);
+        const len = out.len - ((ent.len - raw.len) * count);
+        out = out[0..len];
+    }
+
+    return out;
 }
 
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
@@ -182,11 +219,15 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         return "";
     }
 
-    var arr = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
-    defer arr.deinit();
+    var stack_fallback = std.heap.stackFallback(4096, allocator);
+    var stack_alloc = stack_fallback.get();
+    input = try stack_alloc.dupe(u8, input);
+    // TODO: see if allocated on stack or heap
+    // if on stack alloc on heap
+    defer stack_alloc.free(input);
 
     if (mem.indexOfScalar(u8, input, '&') != null and mem.indexOfScalar(u8, input, ';') != null) {
-        input = try html_unescape(arr.writer(), input);
+        input = html_unescape_tags(@constCast(input));
     }
 
     const ast = try super.html.Ast.init(allocator, input, .html);
@@ -196,6 +237,8 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     } else {
         std.log.warn("Possible invalid html: '{s}'", .{input});
     }
+
+    input = html_unescape(@constCast(input));
 
     var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer out.deinit();
@@ -1268,7 +1311,6 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     var buf_arr: [2 * 1024]u8 = undefined;
 
     if (parsed.feed.title) |loc| {
-        // TODO?: maybe overwrite/trash existing location?
         result.feed.title = try text_truncate_alloc(allocator, self.slice_from_loc(loc));
     }
 
@@ -1745,10 +1787,11 @@ pub fn tmp_test() !void {
     // print("slice: |{s}|\n", .{parser.text_arr.items});
 
     print("link: |{?s}|\n", .{result.feed.page_url});
-    // for (result.items[0..]) |item| {
-    //     // print("|{s}|\n", .{item.title});
-    //     // print("|{?s}|\n", .{item.link});
-    // }
+    for (result.items[0..]) |item| {
+        // _ = item;
+        print("|{s}|\n", .{item.title});
+        // print("|{?s}|\n", .{item.link});
+    }
 }
 
 pub fn main() !void {

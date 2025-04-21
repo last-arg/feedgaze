@@ -19,12 +19,6 @@
   - try https://github.com/n0s4/flags
   - should 'update --force' pass http cache?
 
-- can I allocate and decode string after parsing feed?
-- redo app.zig add() fn
-  - when to parse feed?
-  - when to validate and prepare feed data?
-  - use icon/image returned from feed parsing if there is no icon?
-    - use if before last fallback /favicon.ico?
 - icons 
   - decode icon_data if 'data:'. Maybe if svg (just in case)?
   - compress (gzip/br) .ico and svg?
@@ -37,6 +31,7 @@
 - icons http 
   - save http etag or last-modified
     - make own out of content if no http etag or last-modified?
+  - only make on request to same domains
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - add transactions
