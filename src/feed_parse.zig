@@ -203,7 +203,7 @@ pub fn html_unescape(input: []u8) []u8 {
     }
 
     w.writeAll(out[buf_index_start..]) catch unreachable;
-    return out;
+    return out[0..ctx.len];
 }
 
 // Modifies 'input' buffer
@@ -455,6 +455,9 @@ fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, n
         }
 
         // Collapse whitespace (expect space) to one space
+        // @continue
+        // TODO: do whitespace collpasing after parsing.
+        // And this doesn't collapse spaces to one space
         const whitespace = [_]u8{ '\t', '\n', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff };
         var token_iter = std.mem.tokenizeAny(u8, text, &whitespace);
         if (token_iter.next()) |word_first| {
