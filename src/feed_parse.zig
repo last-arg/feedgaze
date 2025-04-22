@@ -1494,6 +1494,11 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
     }
     
     const first: i64 = items[0].updated_timestamp orelse return result;
+    const now = std.time.timestamp();
+    const diff = now - first;
+    if (diff > ft.seconds_in_30_days) {
+        return result;
+    }
     var second_opt: ?i64 = timestamp_max;
     for (items[1..]) |item| {
         second_opt = item.updated_timestamp orelse continue;
@@ -1509,7 +1514,6 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
         second = ts_max;
     };
 
-    const now = std.time.timestamp();
     const diff_now = now - first;
     const diff_ab = first - second;
     const diff_min = @min(diff_now, diff_ab);
