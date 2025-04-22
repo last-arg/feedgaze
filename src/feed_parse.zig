@@ -234,21 +234,26 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         return "";
     }
 
-    var stack_fallback = std.heap.stackFallback(4096, allocator);
+    var stack_fallback = std.heap.stackFallback(1024, allocator);
     var stack_alloc = stack_fallback.get();
+    // NOTE: not freeing
+    // - if on stack will be gone
+    // - if on heap just return as fn result
     input = try stack_alloc.dupe(u8, input);
-    defer stack_alloc.free(input);
 
     if (mem.indexOfScalar(u8, input, '&') != null and mem.indexOfScalar(u8, input, ';') != null) {
         input = html_unescape_tags(@constCast(input));
     }
 
-    const ast = try super.html.Ast.init(allocator, input, .html);
-    defer ast.deinit(allocator);
-    if (ast.errors.len == 0) {
-        input = try text_from_node(allocator, ast, input, ast.nodes[0]);
-    } else {
-        std.log.warn("Possible invalid html: '{s}'", .{input});
+    if (mem.indexOfScalar(u8, input, '<') != null) {
+        const ast = try super.html.Ast.init(allocator, input, .html);
+        defer ast.deinit(allocator);
+        if (ast.errors.len == 0) {
+            print("parse html\n", .{});
+            input = try text_from_node(allocator, ast, input, ast.nodes[0]);
+        } else {
+            std.log.warn("Possible invalid html: '{s}'", .{input});
+        }
     }
 
     input = html_unescape(@constCast(input));
