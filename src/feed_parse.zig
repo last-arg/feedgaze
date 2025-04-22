@@ -123,6 +123,27 @@ pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
     return arr.toOwnedSlice();
 }
 
+const WriterContext = struct {
+    buf: []u8,
+    len: usize,
+};
+
+pub fn buf_writer(ctx: *WriterContext) std.io.AnyWriter {
+    const w = std.io.AnyWriter{
+        .context = ctx,
+        .writeFn = struct {
+            fn func (context: *const anyopaque, bytes: []const u8) anyerror!usize {
+                const c: *WriterContext = @constCast(@alignCast(@ptrCast(context)));
+                mem.copyForwards(u8, c.buf[c.len..], bytes);
+                c.len += bytes.len;
+                return bytes.len;
+            }
+        }.func,
+    };
+
+    return w;
+}
+
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 // Mutates 'input' buffer
 // 'lt' and 'gt' are handled by html_unescaped_tags()
@@ -138,25 +159,11 @@ pub fn html_unescape(input: []u8) []u8 {
     const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
     const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
-    const Context = struct {
-        buf: []u8,
-        len: usize,
-    };
-    var ctx: Context = .{
+    var ctx: WriterContext = .{
         .buf = out,
         .len = 0,
     };
-    const w = std.io.AnyWriter{
-        .context = &ctx,
-        .writeFn = struct {
-            fn func (context: *const anyopaque, bytes: []const u8) anyerror!usize {
-                const c: *Context = @constCast(@alignCast(@ptrCast(context)));
-                mem.copyForwards(u8, c.buf[c.len..], bytes);
-                c.len += bytes.len;
-                return bytes.len;
-            }
-        }.func,
-    };
+    const w = buf_writer(&ctx);
 
     var buf_index_start: usize = 0;
 
@@ -230,8 +237,6 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     var stack_fallback = std.heap.stackFallback(4096, allocator);
     var stack_alloc = stack_fallback.get();
     input = try stack_alloc.dupe(u8, input);
-    // TODO: see if allocated on stack or heap
-    // if on stack alloc on heap
     defer stack_alloc.free(input);
 
     if (mem.indexOfScalar(u8, input, '&') != null and mem.indexOfScalar(u8, input, ';') != null) {
@@ -248,6 +253,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 
     input = html_unescape(@constCast(input));
 
+    // TODO: remove arraylist, use 'input' buffer
     var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
     defer out.deinit();
 
@@ -264,6 +270,10 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         }
     }
         
+    // print("ptr: {*}\n", .{input});
+    // print("ptr: {*}\n", .{&stack_fallback.buffer});
+    // TODO: see if 'input' allocated on stack or heap
+    // if on stack alloc on heap
     return out.toOwnedSlice();
 }
 
