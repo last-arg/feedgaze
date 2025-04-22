@@ -228,6 +228,59 @@ pub fn html_unescape_tags(input: []u8) []u8 {
     return out;
 }
 
+fn is_void(input: []const u8) bool {
+    const void_tags = .{
+        "area",
+        "base",
+        "basefont",
+        "bgsound",
+        "br",
+        "col",
+        "command",
+        "embed",
+        "frame",
+        "hr",
+        "image",
+        "img",
+        "input",
+        "isindex",
+        "keygen",
+        "link",
+        "menuitem",
+        "meta",
+        "nextid",
+        "param",
+        "source",
+        "track",
+        "wbr",
+    };
+
+    inline for (void_tags) |tag| {
+        if (std.ascii.eqlIgnoreCase(tag, input)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+fn ignore_these_errors(errors: []const super.html.Ast.Error, content: []const u8) bool {
+    for (errors) |err| {
+        switch (err.tag) {
+            .ast => |err_enum| {
+                if (err_enum != .html_elements_cant_self_close
+                    and !is_void(err.main_location.slice(content))
+                ) {
+                    return false;
+                }
+            },
+            .token => {}
+        }
+    }
+
+    return true;
+}
+
+
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     var input = mem.trim(u8, text, &std.ascii.whitespace);
     if (input.len == 0) {
@@ -248,11 +301,13 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     if (mem.indexOfScalar(u8, input, '<') != null) {
         const ast = try super.html.Ast.init(allocator, input, .html);
         defer ast.deinit(allocator);
-        if (ast.errors.len == 0) {
-            print("parse html\n", .{});
+        if (ast.errors.len == 0 or ignore_these_errors(ast.errors, input)) {
             input = try text_from_node(allocator, ast, input, ast.nodes[0]);
         } else {
-            std.log.warn("Possible invalid html: '{s}'", .{input});
+            std.log.warn("Possible invalid HTML: '{s}'", .{input});
+            for (ast.errors) |err| {
+                std.log.err("HTML error from '{s}': {}", .{err.main_location.slice(input), err.tag});
+            }
         }
     }
 
@@ -1817,7 +1872,7 @@ pub fn tmp_test() !void {
     print("link: |{?s}|\n", .{result.feed.page_url});
     for (result.items[0..]) |item| {
         // _ = item;
-        print("|{s}|\n", .{item.title});
+        print("ITEM: |{s}|\n", .{item.title});
         // print("|{?s}|\n", .{item.link});
     }
 }
