@@ -271,12 +271,12 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         }
     }
         
-    // print("ptr: {*}\n", .{input});
-    // print("ptr: {*}\n", .{&stack_fallback.buffer});
-     
-    // TODO: see if 'input' allocated on stack or heap
-    // if on stack alloc on heap
-    return allocator.dupe(u8, input[0..@min(ctx.len, max_title_len)]);
+    input = input[0..@min(ctx.len, max_title_len)];
+    if (stack_fallback.fixed_buffer_allocator.ownsPtr(@constCast(input.ptr))) {
+        input = try allocator.dupe(u8, input);
+    }
+
+    return input;
 }
 
 test "parseAtom" {
