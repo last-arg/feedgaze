@@ -253,28 +253,30 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 
     input = html_unescape(@constCast(input));
 
-    // TODO: remove arraylist, use 'input' buffer
-    var out = try std.ArrayList(u8).initCapacity(allocator, max_title_len);
-    defer out.deinit();
+    var ctx: WriterContext = .{
+        .buf = @constCast(input),
+        .len = 0,
+    };
+    const w = buf_writer(&ctx);
 
     var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
     if (iter.next()) |first| {
-        out.appendSliceAssumeCapacity(first[0..@min(first.len, max_title_len)]);
+        w.writeAll(first) catch unreachable;
 
         while (iter.next()) |chunk| {
-            if (out.capacity == out.items.len) { break; }
+            if (ctx.len >= max_title_len) { break; }
 
-            out.appendAssumeCapacity(' ');
-            const len = @min(chunk.len, out.capacity - out.items.len);
-            out.appendSliceAssumeCapacity(chunk[0..len]);
+            w.writeByte(' ') catch unreachable;
+            w.writeAll(chunk) catch unreachable;
         }
     }
         
     // print("ptr: {*}\n", .{input});
     // print("ptr: {*}\n", .{&stack_fallback.buffer});
+     
     // TODO: see if 'input' allocated on stack or heap
     // if on stack alloc on heap
-    return out.toOwnedSlice();
+    return allocator.dupe(u8, input[0..@min(ctx.len, max_title_len)]);
 }
 
 test "parseAtom" {
