@@ -516,6 +516,9 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
 }
 
 fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) ![]u8 {
+    // NOTE: this input might still contains unescaped html entities
+    const max_len = max_title_len + 20 + @divFloor(max_title_len, 10); 
+
     var ctx: WriterContext = .{
         .buf = input,
         .len = 0,
@@ -526,6 +529,9 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
     while (iter_text_node.next()) |text_node| {
         const text = text_node.open.slice(input);
         w.writeAll(text) catch unreachable;
+        if (ctx.len > max_len) {
+            break;
+        }
     }
 
     return input[0..ctx.len];
