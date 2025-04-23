@@ -526,12 +526,19 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
     const w = buf_writer(&ctx);
 
     var iter_text_node = IteratorTextNode.init(ast, input, node);
-    while (iter_text_node.next()) |text_node| {
+    if (iter_text_node.next()) |text_node| {
         const text = text_node.open.slice(input);
         w.writeAll(text) catch unreachable;
+    }
+    while (iter_text_node.next()) |text_node| {
         if (ctx.len > max_len) {
             break;
         }
+        if (iter_text_node.has_space()) {
+            w.writeByte(' ') catch unreachable;
+        }
+        const text = text_node.open.slice(input);
+        w.writeAll(text) catch unreachable;
     }
 
     return input[0..ctx.len];
