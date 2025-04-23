@@ -563,7 +563,7 @@ const IteratorTextNode = struct {
     code: []const u8,
     next_index: usize,
     end_index: usize,
-    has_prev_space: bool = false,
+    has_whitespace_tag: bool = false,
 
     pub fn init(ast: super.html.Ast, code: []const u8, start_node: super.html.Ast.Node) @This() {
         // exclusive
@@ -593,26 +593,26 @@ const IteratorTextNode = struct {
     }
 
     pub fn next(self: *@This()) ?super.html.Ast.Node {
-        self.has_prev_space = false;
+        self.has_whitespace_tag = false;
         if (self.next_index == 0 or self.next_index >= self.ast.nodes.len) {
             return null;
         }
 
         for (self.ast.nodes[self.next_index..self.end_index], self.next_index..) |node, index| {
-            if (!self.has_prev_space) {
+            if (!self.has_whitespace_tag) {
                 if (node.open.start > 0 and 
                  (self.code[node.open.start - 1] == ' ' or self.code[node.open.start - 1] == '\n')) {
-                    self.has_prev_space = true;
+                    self.has_whitespace_tag = true;
                 }
             }
 
             if (node.kind != .text) { 
-                if (!self.has_prev_space) {
+                if (!self.has_whitespace_tag) {
                     const name = node.open.getName(self.code, .html).slice(self.code);
-                    if (std.ascii.eqlIgnoreCase("br", name)) {
-                        self.has_prev_space = true;
-                    } else if (std.ascii.eqlIgnoreCase("p", name)) {
-                        self.has_prev_space = true;
+                    if (std.ascii.eqlIgnoreCase("br", name)
+                        or std.ascii.eqlIgnoreCase("p", name)
+                    ) {
+                        self.has_whitespace_tag = true;
                     }
                 }
 
@@ -627,7 +627,7 @@ const IteratorTextNode = struct {
     }
 
     pub fn has_space(self: @This()) bool {
-        return self.has_prev_space;
+        return self.has_whitespace_tag;
     }
 };
 
