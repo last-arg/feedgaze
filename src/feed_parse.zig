@@ -302,7 +302,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         const ast = try super.html.Ast.init(allocator, input, .html);
         defer ast.deinit(allocator);
         if (ast.errors.len == 0 or ignore_these_errors(ast.errors, input)) {
-            input = try text_from_node(allocator, ast, input, ast.nodes[0]);
+            input = try text_from_node(ast, @constCast(input), ast.nodes[0]);
         } else {
             std.log.warn("Possible invalid HTML: '{s}'", .{input});
             for (ast.errors) |err| {
@@ -319,6 +319,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     };
     const w = buf_writer(&ctx);
 
+    // Remove extra whitespaces
     var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
     if (iter.next()) |first| {
         w.writeAll(first) catch unreachable;
@@ -514,45 +515,20 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
     return false;
 }
 
-fn text_from_node(allocator: Allocator, ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) ![]const u8 {
-    var iter_text_node = IteratorTextNode.init(ast, code, node);
-    var text_arr = try std.BoundedArray(u8, max_title_len).init(0);
-    blk: while (iter_text_node.next()) |text_node| {
-        const open_span = text_node.open;
-        const text = open_span.slice(code);
-        if (text_arr.len > 0 and 
-            text_arr.get(text_arr.len - 1) != ' ' and
-            iter_text_node.has_space()) {
-            text_arr.append(' ') catch break :blk;
-        }
+fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) ![]u8 {
+    var ctx: WriterContext = .{
+        .buf = input,
+        .len = 0,
+    };
+    const w = buf_writer(&ctx);
 
-        // Collapse whitespace (expect space) to one space
-        // @continue
-        // TODO: do whitespace collpasing after parsing.
-        // And this doesn't collapse spaces to one space
-        const whitespace = [_]u8{ '\t', '\n', '\r', std.ascii.control_code.vt, std.ascii.control_code.ff };
-        var token_iter = std.mem.tokenizeAny(u8, text, &whitespace);
-        if (token_iter.next()) |word_first| {
-            text_arr.appendSlice(word_first) catch {
-                text_arr.appendSliceAssumeCapacity(word_first[0..text_arr.buffer.len - text_arr.len]);
-                break :blk;
-            };
-
-            while (token_iter.next()) |word| {
-                text_arr.append(' ') catch break :blk;
-                text_arr.appendSlice(word) catch {
-                    text_arr.appendSliceAssumeCapacity(word[0..text_arr.buffer.len - text_arr.len]);
-                    break :blk;
-                };
-            }
-        }
+    var iter_text_node = IteratorTextNode.init(ast, input, node);
+    while (iter_text_node.next()) |text_node| {
+        const text = text_node.open.slice(input);
+        w.writeAll(text) catch unreachable;
     }
 
-    if (text_arr.len == 0) {
-        return "";
-    }
-
-    return try allocator.dupe(u8, text_arr.slice());
+    return input[0..ctx.len];
 }
 
 fn text_location_from_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?feed_types.Location {
@@ -1874,7 +1850,7 @@ pub fn tmp_test() !void {
     // print("slice: |{s}|\n", .{parser.text_arr.items});
 
     print("link: |{?s}|\n", .{result.feed.page_url});
-    for (result.items[0..]) |item| {
+    for (result.items[0..1]) |item| {
         // _ = item;
         print("ITEM: |{s}|\n", .{item.title});
         // print("|{?s}|\n", .{item.link});

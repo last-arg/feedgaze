@@ -17,7 +17,6 @@
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
 - cli: 
   - try https://github.com/n0s4/flags
-  - should 'update --force' pass http cache?
 
 - icons 
   - decode icon_data if 'data:'. Maybe if svg (just in case)?
