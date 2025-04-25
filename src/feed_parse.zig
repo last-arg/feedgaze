@@ -926,8 +926,6 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
                 if (item_updated_ts == null and is_time_datetime) {
                     item_updated_ts = seconds_from_datetime(trimmed);
                 }
-
-                // TODO: try some other date parsing formats?
             }
         }
 

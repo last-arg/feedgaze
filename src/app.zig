@@ -754,7 +754,6 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 }
 
                 if (add_opts.feed_opts.icon == null) {
-                    // TODO: What if html_parsed.icon has can icon url (not 'data:...')?
                     add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, null) catch null;
                 }
             } else {
@@ -1297,12 +1296,11 @@ pub const App = struct {
                     };
                 } else {
                     const req_icon_url = blk: {
-                        if (icon_url[0] == '/' or icon_url[0] == '.') {
-                            const url = std.mem.trimLeft(u8, icon_url, ".");
-                            break :blk (std.fmt.bufPrint(&buf, "{;+}{s}", .{uri, url})
-                                catch |err| break :failed err);
-                        }
-                        break :blk icon_url;
+                        var slice: []u8 = &buf;
+                        const page_url_new = std.Uri.resolve_inplace(uri, icon_url, &slice)
+                            catch |err| break :failed err;
+                        break :blk std.fmt.allocPrint(allocator, "{}", .{page_url_new})
+                            catch |err| break :failed err;
                     };
 
                     // Fetch icon body/content
