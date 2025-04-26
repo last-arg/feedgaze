@@ -85,22 +85,19 @@ pub const Storage = struct {
         _ = try db.pragma(void, .{}, "cache_size", "-32000");
 
         try setupTables(db);
-        if (user_version > 0) {
-            try migrate(db, user_version);
-        }
+        try migrate(db, user_version);
         try initData(db);
         _ = try db.pragma(usize, .{}, "user_version", db_version_str);
     }
 
     fn migrate(db: *sql.Db, version: usize) !void {
         const config_version = app_config.db_version;
-        if (version == config_version) {
+        if (version == config_version or version == 0) {
             return;
         }
-        if (version < 1) {
+        if (version < 3) {
             const query1 =
-                \\ALTER TABLE feed ADD COLUMN icon_id INTEGER DEFAULT NULL
-                \\  REFERENCES icon (icon_id) ON DELETE SET NULL ON UPDATE CASCADE;
+                \\ALTER TABLE feed_update RENAME COLUMN etag to etag_or_last_modified;
             ;
             db.exec(query1, .{}, .{}) catch |err| {
                 std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query1 });
@@ -108,7 +105,7 @@ pub const Storage = struct {
             };
 
             const query2 =
-                \\ALTER TABLE feed DROP COLUMN icon_url;
+                \\ALTER TABLE feed_update DROP COLUMN last_modified_utc;
             ;
             db.exec(query2, .{}, .{}) catch |err| {
                 std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
@@ -308,8 +305,7 @@ pub const Storage = struct {
         \\select 
         \\  feed.feed_id,
         \\  feed.feed_url,
-        \\  feed_update.last_modified_utc,
-        \\  feed_update.etag,
+        \\  feed_update.etag_or_last_modified,
         \\  item.id as latest_item_id,
         \\  item.link as latest_item_link,
         \\  max(item.updated_timestamp) as latest_updated_timestamp
@@ -506,13 +502,12 @@ pub const Storage = struct {
     pub fn updateFeedUpdate(self: *Self, feed_id: usize, feed_update: FeedUpdate, item_interval: i64) !void {
         const query =
             \\INSERT INTO feed_update 
-            \\  (feed_id, update_interval, last_modified_utc, etag, item_interval)
+            \\  (feed_id, update_interval, etag_or_last_modified, item_interval)
             \\VALUES 
-            \\  (@feed_id, @update_interval, @last_modified_utc, @etag, @item_interval)
+            \\  (@feed_id, @update_interval, @etag_or_last_modified, @item_interval)
             \\ ON CONFLICT(feed_id) DO UPDATE SET
             \\  update_interval = @update_interval,
-            \\  last_modified_utc = @last_modified_utc,
-            \\  etag = @etag,
+            \\  etag_or_last_modified = @etag_or_last_modified,
             \\  item_interval = @item_interval,
             \\  last_update = strftime('%s', 'now')
             \\;
@@ -520,8 +515,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{
             .feed_id = feed_id,
             .update_interval = feed_update.update_interval,
-            .last_modified_utc = feed_update.last_modified_utc,
-            .etag = feed_update.etag,
+            .etag_or_last_modified = feed_update.etag_or_last_modified,
             .item_interval = item_interval,
         });
     }
@@ -1476,8 +1470,7 @@ const tables = &[_][]const u8{
         \\  update_interval INTEGER NOT NULL DEFAULT {d},
         \\  item_interval INTEGER NOT NULL DEFAULT {d},
         \\  last_update INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-        \\  last_modified_utc INTEGER DEFAULT NULL,
-        \\  etag TEXT DEFAULT NULL,
+        \\  etag_or_last_modified TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
         \\) STRICT;
     , .{ app_config.update_interval, seconds_in_10_days }),

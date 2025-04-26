@@ -42,19 +42,17 @@ pub fn deinit(self: *@This()) void {
 }
 
 pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Easy.Response {
-    var date_buf: [29]u8 = undefined;
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
 
     const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
 
-    if (opts.etag) |etag| {
-        try self.headers.add("If-None-Match", etag);
-    } else {
-        if (opts.last_modified_utc) |utc| {
-            const date_slice = try datetime.Datetime.formatHttpFromTimestamp(&date_buf, utc * 1000);
-            try self.headers.add("If-Modified-Since", date_slice);
+    if (opts.etag_or_last_modified) |val| {
+        if (val[3] == ',') {
+            try self.headers.add("If-Modified-Since", val);
+        } else {
+            try self.headers.add("If-None-Match", val);
         }
     }
 

@@ -1176,8 +1176,7 @@ pub const App = struct {
         defer req.deinit();
         
         const resp = req.fetch(f_update.feed_url, .{
-            .etag = f_update.etag,
-            .last_modified_utc = f_update.last_modified_utc,
+            .etag_or_last_modified = f_update.etag_or_last_modified,
         }) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 8);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);

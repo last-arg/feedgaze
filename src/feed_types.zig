@@ -16,8 +16,7 @@ pub const seconds_in_10_days = seconds_in_1_day * 10;
 pub const seconds_in_30_days = seconds_in_1_day * 30;
 
 pub const FetchHeaderOptions = struct {
-    etag: ?[]const u8 = null,
-    last_modified_utc: ?i64 = null,
+    etag_or_last_modified: ?[]const u8 = null,
 };
 
 pub const ShowOptions = struct {
@@ -312,24 +311,25 @@ pub const FeedRender = struct {
 };
 
 pub const FeedUpdate = struct {
-    last_modified_utc: ?i64 = null,
-    etag: ?[]const u8 = null,
+    etag_or_last_modified: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
 
     pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
         var feed_update = FeedUpdate{};
 
-        if (easy.getHeader("last-modified")) |header| {
-            if (header) |h| {
-                feed_update.last_modified_utc = RssDateTime.parse(h.get()) catch null;
+        if (easy.getHeader("etag")) |header_opt| {
+            if (header_opt) |h| {
+                feed_update.etag_or_last_modified = h.get();
             }
         } else |_| {}
 
-        if (easy.getHeader("etag")) |header| {
-            if (header) |h| {
-                feed_update.etag = h.get();
-            }
-        } else |_| {}
+        if (feed_update.etag_or_last_modified == null) {
+            if (easy.getHeader("last-modified")) |header_opt| {
+                if (header_opt) |header| {
+                    feed_update.etag_or_last_modified = header.get();
+                }
+            } else |_| {}
+        }
 
         var update_interval: ?i64 = null;
         if (easy.getHeader("cache-control")) |header| {
@@ -466,8 +466,7 @@ pub const ContentType = enum {
 pub const FeedToUpdate = struct {
     feed_id: usize,
     feed_url: []const u8,
-    last_modified_utc: ?i64 = null,
-    etag: ?[]const u8 = null,
+    etag_or_last_modified: ?[]const u8 = null,
     latest_item_id: ?[]const u8 = null,
     latest_item_link: ?[]const u8 = null,
     latest_updated_timestamp: ?i64 = null,
