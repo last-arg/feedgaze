@@ -89,13 +89,21 @@ pub const IconManage = struct {
         var hasher = std.hash.Wyhash.init(0);
 
         for (icons) |*icon| {
-            const file_type = file_type_from_url(icon.icon_url)
-                orelse file_type_from_data(icon.icon_data);
+            const data, const file_type = blk: {
+                if (data_image(icon.icon_data)) |data_img| {
+                    break :blk .{data_img.data, data_img.file_type};
+                } else if (file_type_from_url(icon.icon_url)) |file_type| {
+                    break :blk .{icon.icon_data, file_type};
+                } else {
+                    std.log.warn("Failed add icon to server cache. Icon (or page url): '{s}'", .{icon.icon_url});
+                    continue;
+                }
+            };
 
             std.hash.autoHashStrat(&hasher, icon.icon_data, .Deep);
             cache.appendAssumeCapacity(.{
                 .icon_id = icon.icon_id,
-                .icon_data = icon.icon_data,
+                .icon_data = data,
                 .icon_url = icon.icon_url,
                 .file_type = file_type,
                 .data_hash = hasher.final(),
@@ -115,13 +123,19 @@ pub const IconManage = struct {
         return IconFileType.from_string(filetype_raw);
     }
 
-    fn file_type_from_data(data: []const u8) ?IconFileType {
+    pub const DataImage = struct {
+        file_type: IconFileType,
+        data: []const u8,
+    };
+
+    fn data_image(data: []const u8) ?DataImage {
         if (!mem.startsWith(u8, data, "data:")) {
             return null;
         }
 
         const index_end = mem.indexOfScalarPos(u8, data, 5, ',') orelse return null;
 
+        var file_type_opt: ?IconFileType = null;
         const info_raw = data[5..index_end];
         var iter = mem.splitScalar(u8, info_raw, ';');
         while (iter.next()) |kv| {
@@ -131,11 +145,17 @@ pub const IconManage = struct {
             const value = kv[6..];
             const end = mem.indexOfScalar(u8, value, '+') orelse value.len;
             if (IconFileType.from_string(value[0..end])) |file_type| {
-                return file_type;
+                file_type_opt = file_type;
+                break;
             }
         }
 
-        return null;
+        const file_type = file_type_opt orelse return null; 
+
+        return .{
+            .file_type = file_type,
+            .data = data[index_end + 1..],
+        };
     }
 
     pub fn index_by_id(self: *const @This(), id: u64) ?usize {
