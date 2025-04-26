@@ -1290,9 +1290,11 @@ pub const App = struct {
             if (html.parse_icon(body)) |icon_url| {
                 if (mem.startsWith(u8, icon_url, "data:")) {
                     const url_final = req.get_url_slice() catch |err| break :failed err;
+                    var data = allocator.dupe(u8, icon_url) catch |err| break :failed err;
+                    data = std.Uri.percentDecodeInPlace(data);
                     return .{
                         .url = allocator.dupe(u8, url_final) catch |err| break :failed err,
-                        .data = allocator.dupe(u8, icon_url) catch |err| break :failed err,
+                        .data = data,
                     };
                 } else {
                     const req_icon_url = blk: {

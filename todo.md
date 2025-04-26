@@ -19,7 +19,6 @@
   - try https://github.com/n0s4/flags
 
 - icons 
-  - decode icon_data if 'data:'. Maybe if svg (just in case)?
   - compress (gzip/br) .ico and svg?
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself

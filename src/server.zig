@@ -92,11 +92,6 @@ pub const IconManage = struct {
             const file_type = file_type_from_url(icon.icon_url)
                 orelse file_type_from_data(icon.icon_data);
 
-            // FIX: TODO: remove if saved icon_data can't be encode anymore
-            if (mem.startsWith(u8, icon.icon_data, "data:")) {
-                icon.icon_data = std.Uri.percentDecodeInPlace(@constCast(icon.icon_data));
-            }
-
             std.hash.autoHashStrat(&hasher, icon.icon_data, .Deep);
             cache.appendAssumeCapacity(.{
                 .icon_id = icon.icon_id,
