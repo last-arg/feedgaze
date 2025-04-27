@@ -1595,7 +1595,7 @@ fn parse_rss(self: *@This()) ParsedFeed {
                 parse_rss_current_state(&feed, &current_item, state, state_item, loc, content);
             },
             .parse_error => |err| {
-                std.log.warn("RSS parsing error: {}", .{err});
+                std.log.warn("RSS parsing error: {}\nSource: {s}", .{err.tag, err.span.slice(content)});
             },
         }
 
