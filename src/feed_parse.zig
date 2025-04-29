@@ -31,6 +31,7 @@ pub const std_options: std.Options = .{
 };
 
 const max_title_len = 512;
+
 items: std.BoundedArray(FeedItem.Parsed, default_item_count),
 content: []const u8,
 
@@ -1742,7 +1743,7 @@ fn parse_atom(self: *@This()) ParsedFeed {
                 }
             },
             .parse_error => |err| {
-                std.log.warn("RSS parsing error: {}", .{err});
+                std.log.warn("Atom parsing error: {}\nSource: {s}", .{err.tag, err.span.slice(content)});
             },
         }
 
