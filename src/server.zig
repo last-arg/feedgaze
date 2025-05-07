@@ -540,9 +540,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, null) catch blk: {
-            break :blk null;
-        };
+        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, null) catch null;
     }
     
     var parsing: parse = try .init(add_opts.feed_opts.body);
@@ -845,9 +843,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, null) catch blk: {
-            break :blk null;
-        };
+        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, null) catch null;
     }
 
     var parsing: parse = try .init(add_opts.feed_opts.body);
