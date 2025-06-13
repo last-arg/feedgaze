@@ -1085,7 +1085,7 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
 
     const timezone_fmt = "Z";
     const timezone_start = mem.indexOf(u8, date_format, timezone_fmt);
-    var timezone: ?*const dt.datetime.Timezone = null;
+    var timezone: ?dt.datetime.Timezone = null;
     if (timezone_start) |index| blk: {
         var end = index;
         var sign: i8 = 1;
@@ -1123,7 +1123,7 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
         const all_minutes: i16 = @intCast(hours * 60 + minutes);
         const offset = sign * all_minutes;
 
-        timezone = &dt.datetime.Timezone.create(raw[index..end], offset);
+        timezone = dt.datetime.Timezone.create(raw[index..end], offset, .no_dst);
     }
 
     const date = datetime.Datetime.create(year, month, day, hour, minute, second, 0, timezone) catch return null;
@@ -1213,7 +1213,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
     var item_datetime: datetime.Datetime = .{
         .date = date.?,
         .time = .{},
-        .zone = &datetime.timezones.Zulu,
+        .zone = datetime.timezones.Zulu,
     };
 
     const rest = mem.trimLeft(u8, raw[iso_len..], " T");
@@ -1267,13 +1267,13 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
                     std.log.warn("Failed to parse timezone minutes from input '{s}'", .{raw});
                 }
 
-                timezone = datetime.Timezone.create(timezone_name, timezone_offset);
+                timezone = datetime.Timezone.create(timezone_name, timezone_offset, .no_dst);
             }
         }
     }
 
     if (timezone) |zone| {
-        item_datetime.zone = &zone;
+        item_datetime.zone = zone;
     }
 
     return @intCast(@divFloor(item_datetime.toTimestamp(), 1000));

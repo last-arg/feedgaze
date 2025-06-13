@@ -22,12 +22,11 @@ headers: curl.Easy.Headers,
 client: curl.Easy,
 
 pub fn init(allocator: Allocator) !@This() {
-    var easy = try curl.Easy.init(allocator, .{.default_timeout_ms = 10000, .ca_bundle = try curl.allocCABundle(allocator)});
+    var easy = try curl.Easy.init(.{.default_timeout_ms = 10000, .ca_bundle = try curl.allocCABundle(allocator)});
     errdefer easy.deinit();
 
-    var headers = try easy.createHeaders();
-    errdefer headers.deinit();
-    try headers.add("Accept", "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
+    var headers: curl.Easy.Headers = .{};
+    try headers.add("Accept: application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
     
     return .{
         .allocator = allocator,
@@ -48,15 +47,22 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
 
     const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
 
+    var header_buf: [256]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&header_buf);
+    const w = fb.writer();
     if (opts.etag_or_last_modified) |val| {
-        if (val[3] == ',') {
-            try self.headers.add("If-Modified-Since", val);
-        } else {
-            try self.headers.add("If-None-Match", val);
-        }
+        const start = if (val[3] == ',')
+            "If-Modified-Since: "
+        else
+            "If-None-Match: "
+        ;
+        try w.writeAll(start);
+        try w.writeAll(val);
+        try w.writeByte(0);
+        try self.headers.add(@ptrCast(fb.getWritten()));
     }
 
-    try self.client.setUrl(url_with_null);
+    // try self.client.setUrl(url_with_null);
     try self.client.setHeaders(self.headers);
     try self.client.setMaxRedirects(5);
     // Need to unset this if same request is using HEAD (head()) and then GET http method
@@ -66,11 +72,14 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    var buf = curl.Buffer.init(self.allocator);
-    try self.client.setWritefunction(curl.bufferWriteCallback); try self.client.setWritedata(&buf);
+    // const buffer: curl.Easy.DynamicBuffer = try .initCapacity(self.allocator);
+    // errdefer buffer.deinit();
+    // try self.client.setWritefunction(curl.Easy.dynamicBufferWriteCallback);
+    // try self.client.setWritedata(&buffer);
 
-    var resp = try self.client.perform();
-    resp.body = buf;
+    // var resp = try self.client.perform();
+    const resp = try self.client.fetchAlloc(url_with_null, self.allocator, .{});
+    // resp.body = buffer.items;
     return resp;
 }
 
@@ -80,12 +89,12 @@ pub fn response_200_and_has_body(resp: curl.Easy.Response, req_url: []const u8) 
         return null;
     }
 
-    if (resp.body == null or resp.body.?.items.len == 0) {
+    if (resp.body == null or resp.body.?.slice().len == 0) {
         std.log.warn("Request to '{s}' failed. There is no body", .{req_url});
         return null;
     }
 
-    return resp.body.?.items;
+    return resp.body.?.slice();
 }
 
 pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, []const u8} {
@@ -100,10 +109,9 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     }
     // NOTE: currently head() is only used to check if favicon.ico exists.
     // If in the future am going to use it for something else need to change this.
-    try self.headers.add("Accept", "image/*");
+    try self.headers.add("Accept: image/*");
     
     const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
-    try self.client.setUrl(url_with_null);
     try self.client.setMaxRedirects(3);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
@@ -111,12 +119,7 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    var buf = curl.Buffer.init(self.allocator);
-    try self.client.setWritefunction(curl.bufferWriteCallback);
-    try self.client.setWritedata(&buf);
-
-    var resp = try self.client.perform();
-    resp.body = buf;
+    const resp = try self.client.fetchAlloc(url_with_null, self.allocator, .{});
 
     const body = response_200_and_has_body(resp, url)
         orelse return error.InvalidResponse;

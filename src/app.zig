@@ -110,7 +110,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                             if (timestamp_next > now_ts) {
                                 const Datetime = @import("zig-datetime").datetime.Datetime;
                                 var date = Datetime.fromSeconds(@floatFromInt(timestamp_next));
-                                date = date.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
+                                date = date.shiftTimezone(@import("zig-datetime").timezones.Europe.Helsinki);
 
                                 var buf: [32]u8 = undefined;
                                 const countdown_ts = timestamp_next - now_ts;
@@ -1142,7 +1142,7 @@ pub const App = struct {
         var req = try http_client.init(allocator);
         const resp = try req.fetch(fetch_url, .{});
 
-        if (resp.body.?.items.len == 0) {
+        if (resp.body.?.slice().len == 0) {
             std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
             return error.EmptyBody;
         }
@@ -1236,13 +1236,13 @@ pub const App = struct {
             return .failed;
         }
 
-        const body_arr = resp.body orelse {
+        const body = resp.body orelse {
             std.log.err("Failed to update feed '{s}'. HTTP response has no body.", .{f_update.feed_url});
             return .failed;
         };
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
-        var parsing: FeedParser = try .init(body_arr.items);
+        var parsing: FeedParser = try .init(body.slice());
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
             .feed_url = f_update.feed_url,

@@ -1112,7 +1112,7 @@ const date_format_readable_len = std.fmt.count(date_format_readable, .{
 fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
     var result: [date_format_readable_len]u8 = undefined;
     var date_for_human = Datetime.fromSeconds(@floatFromInt(utc_sec));
-    date_for_human = date_for_human.shiftTimezone(&@import("zig-datetime").timezones.Europe.Helsinki);
+    date_for_human = date_for_human.shiftTimezone(@import("zig-datetime").timezones.Europe.Helsinki);
     _ = std.fmt.bufPrint(
         &result, date_format_readable,
         .{

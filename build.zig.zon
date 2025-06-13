@@ -11,7 +11,7 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "sqlite-3.48.0-F2R_a_uGDgCfOH5UEJYjuOCe-HixnLjToxOdEGAEM3xk",
+            .hash = "sqlite-3.48.0-F2R_axqHDgCxZnwMNgWsc8oFRjiZXj96WNJp9a4RlH0n",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
@@ -19,17 +19,19 @@
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.zip",
-            .hash = "datetime-0.8.0-cJNXzNiMAQBz4RV6Gz7qUNeE-xLDNLs_jNU5_zIZ48as",
+            .hash = "datetime-0.8.0-cJNXzNLZAQADGScmVIKJTyogbfkbIFldrmSK8RweZ3Eg",
         },
+        // NOTE: Modified curl build.zig file
+        // Changed type: std.zon.parse.Status -> std.zon.parse.Diagnostics
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "curl-0.1.1-P4tT4WzAAAD0MGbSfsyGV1hPdooNwZ5odcQYUB9iYlHe",
+            .hash = "curl-0.2.0-P4tT4UfOAADebEpwArAmrbS8Bzdxnh6PEmtHhbTLdxaG",
         },
         // NOTE: httz lib is modified to make it work with zig's new backend
         // Disabled @Vector code in src/url.zig isValid function
         .httpz = .{
-            .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrEK4BgBpHQGA2m0RPqPGEjnTdDXHodBwzjYDrmps",
+            .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/dev.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrBW4BgDq6LvGuquqhjl-ZxbpFFwmOYkYhzBKoCmw",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
@@ -37,7 +39,7 @@
         },
         .superhtml = .{
             .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
-            .hash = "superhtml-0.4.0-Y7MdPF6WDQDa7hxWC6LpPwxXo4YA2OJzNEE5jsaCROLX",
+            .hash = "superhtml-0.4.0-Y7MdPI6YDQB8UaNuIEYnkPKvdFQ28Pz4aHOvklVcq8Xu",
         },
     },
 }

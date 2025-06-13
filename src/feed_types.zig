@@ -109,7 +109,7 @@ pub const AtomDateTime = struct {
         const tz = blk: {
             const sign_index = raw.len - 6;
             if (raw[raw.len - 1] == 'Z') {
-                break :blk dt.Timezone.create("Z", 0);
+                break :blk dt.Timezone.create("Z", 0, .no_dst);
             } else if (raw[sign_index] == '+' or raw[sign_index] == '-') {
                 const sign_raw = raw[sign_index];
 
@@ -117,15 +117,15 @@ pub const AtomDateTime = struct {
                 const tz_min = std.fmt.parseUnsigned(i16, raw[sign_index + 4 .. sign_index + 6], 10) catch return error.InvalidFormat;
                 // This is based on '+' and '-' ascii numeric values
                 const sign = -1 * (@as(i16, sign_raw) - 44);
-                break :blk dt.Timezone.create(raw[sign_index..], sign * ((tz_hour * 60) + tz_min));
+                break :blk dt.Timezone.create(raw[sign_index..], sign * ((tz_hour * 60) + tz_min), .no_dst);
             } else {
                 // Out of spec, default to "Z" time zone
-                break :blk dt.Timezone.create("Z", 0);
+                break :blk dt.Timezone.create("Z", 0, .no_dst);
             }
             return error.InvalidFormat;
         };
 
-        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
+        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, tz) catch return error.InvalidFormat;
         return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
     }
 };
@@ -238,9 +238,9 @@ pub const RssDateTime = struct {
         end_index = std.mem.lastIndexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
         const tz_name = ctx[end_index + 1 ..];
         const tz_min = Timezone.toMinutes(tz_name) catch return error.InvalidFormat;
-        const tz = dt.Timezone.create(tz_name, tz_min);
+        const tz = dt.Timezone.create(tz_name, tz_min, .no_dst);
 
-        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, &tz) catch return error.InvalidFormat;
+        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, tz) catch return error.InvalidFormat;
         return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
     }
 };
@@ -500,7 +500,7 @@ pub const FeedOptions = struct {
         const header_value = resp.getHeader("content-type") catch null;
         const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
         return .{
-            .body = if (resp.body) |body| body.items else "",
+            .body = if (resp.body) |body| body.slice() else "",
             .content_type = content_type,
             .feed_updates = FeedUpdate.fromCurlHeaders(resp),
         };
