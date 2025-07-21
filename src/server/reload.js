@@ -6,6 +6,7 @@ let watching = new Set();
 new PerformanceObserver((list) => {
   for (const entry of list.getEntries()) {
     if (entry.name.endsWith("/favicon.ico")) { continue; }
+    if (entry.name.match(/\.(js|css)$/g))
     watch(entry.name);
   }
 }).observe({ type: "resource", buffered: true });
