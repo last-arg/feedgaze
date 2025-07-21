@@ -2520,10 +2520,8 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     try w.writeAll("<div class='tag'>");
     const is_checked: []const u8 = if (has_untagged) "checked" else "";
     const tag_fmt = 
-    \\<span class="tag-checkbox">
     \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
     \\<label class="visually-hidden" for="untagged">{[value]s}</label>
-    \\</span>
     ;
     try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
     try w.print("<a class='line-count-1' href='/?untagged=' title='untagged'>{s}</a>", .{ untagged });
@@ -2559,10 +2557,8 @@ const InputRenderArgs = struct{
 
 fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     const tag_fmt = 
-    \\<span class="tag-checkbox">
     \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
     \\<label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
-    \\</span>
     ;
     try w.print(tag_fmt, args);
 }

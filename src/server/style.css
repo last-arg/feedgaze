@@ -40,7 +40,23 @@ nav span {
   gap: var(--gap-size, 1em);
 }
 
-.tag-checkbox, .tag {
+.tag {
   display: flex;
   align-items: center;
 }
+
+.tag input[type=checkbox] {
+  outline: 3px solid var(--outline-color, transparent);
+  outline-offset: 1px;
+}
+
+/* When new tag is added */
+.tag input[type="checkbox"]:checked:not(:default) {
+  --outline-color: var(--color-green-80);
+}
+
+/* When tag is removed */
+.tag input[type="checkbox"]:default:not(:checked) {
+  --outline-color: var(--color-red-80);
+}
+
