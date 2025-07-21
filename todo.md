@@ -1,6 +1,5 @@
 # Initial
 - website:
-  - make feed items into 2 columns on wider screens?
   - minify html
   - purge and minify css
   - need to url escape link paths?
@@ -8,6 +7,7 @@
   - root page: indicate/style already seen or not seen items
   - unseen count?
   - dark mode
+  - server: limit inline icon size
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html
@@ -15,6 +15,8 @@
   - keep count how many times it has failed?
   - save date when it failed first time? Or last?
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
+- when two commands run at the same time there is possibility of getting
+sqlite busy error
 - cli: 
   - try https://github.com/n0s4/flags
 

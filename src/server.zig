@@ -1446,7 +1446,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<h2>Feed items</h2>");
     try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-    try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
+    try w.writeAll("<ul class='stack list-unstyled'>");
     for (items) |item| {
         try w.print("<li class='feed-item {s}'>", .{""});
         try item_render(w, req.arena, item, .{});
@@ -1708,7 +1708,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
 
-        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-s)'>");
+        try w.writeAll("<ul class='stack list-unstyled'>");
         for (items) |item| {
             try w.writeAll("<li class='feed-item'>");
             const feed = blk: {
@@ -2378,7 +2378,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         }
 
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-        try w.writeAll("<ul class='feed-item-list flow' style='--flow-space: var(--space-m)'>");
+        try w.writeAll("<ul class='stack list-unstyled'>");
         for (items, 0..) |item, i| {
             const hidden: []const u8 = blk: {
                 if (hide_index_start) |index| {
