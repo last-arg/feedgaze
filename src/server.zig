@@ -77,6 +77,7 @@ pub const IconManage = struct {
     const Cache = std.MultiArrayList(struct{
         icon_id: u64,
         icon_data: []const u8,
+        is_inline: bool = false,
         icon_url: []const u8,
         file_type: ?IconFileType = null,
         data_hash: u64,
@@ -89,9 +90,12 @@ pub const IconManage = struct {
         var hasher = std.hash.Wyhash.init(0);
 
         for (icons) |*icon| {
+            var is_inline = false;
             const data, const file_type = blk: {
                 if (data_image(icon.icon_data)) |data_img| {
-                    break :blk .{data_img.data, data_img.file_type};
+                    is_inline = true;
+                    const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
+                    break :blk .{page_url_decoded, data_img.file_type};
                 } else if (file_type_from_data(icon.icon_data)
                     orelse file_type_from_url(icon.icon_url)
                 ) |file_type| {
@@ -106,6 +110,7 @@ pub const IconManage = struct {
             cache.appendAssumeCapacity(.{
                 .icon_id = icon.icon_id,
                 .icon_data = data,
+                .is_inline = is_inline,
                 .icon_url = icon.icon_url,
                 .file_type = file_type,
                 .data_hash = hasher.final(),
@@ -1030,30 +1035,48 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const icon_id = blk: {
         const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
-        if (!util.is_url_or_data(icon_url_trimmed)) {
-            break :blk null;
+
+        if (util.is_url(icon_url_trimmed)) {
+            if (try db.icon_get_id(icon_url_trimmed)) |icon_id| {
+                break :blk icon_id;
+            } 
+
+            // is url
+            const http_client = @import("./http_client.zig");
+            var req_http = try http_client.init(req.arena);
+            defer req_http.deinit();
+
+            const resp_image, const resp_body = req_http.fetch_image(icon_url_trimmed) catch break :blk null;
+            defer resp_image.deinit();
+
+            const resp_url = req_http.get_url_slice() catch |err| {
+                std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});
+                break :blk null;
+            };
+
+            break :blk try db.icon_upsert(.{
+                .url = resp_url,
+                .data = resp_body,
+            });
+        } else if (util.is_svg(icon_url_trimmed)) {
+            // Only inline svg allowed for icon
+            const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
+            const data = try std.fmt.allocPrint(req.arena, "data:image/svg+xml,{s}", .{page_url_decoded});
+            if (try db.icon_get_id(data)) |icon_id| {
+                break :blk icon_id;
+            } 
+
+            break :blk try db.icon_upsert(.{
+                .url = page_url,
+                .data = data,
+            });
+        } else {
+            std.log.info("User entered invalid icon input: '{s}'", .{icon_url_trimmed});
+            // TODO: cancel updating feed?
+            // TODO: make use aware of mistake
         }
 
-        if (try db.icon_get_id(icon_url_trimmed)) |icon_id| {
-            break :blk icon_id;
-        } 
-
-        const http_client = @import("./http_client.zig");
-        var req_http = try http_client.init(req.arena);
-        defer req_http.deinit();
-
-        const resp_image, const resp_body = req_http.fetch_image(icon_url_trimmed) catch break :blk null;
-        defer resp_image.deinit();
-
-        const resp_url = req_http.get_url_slice() catch |err| {
-            std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});
-            break :blk null;
-        };
-
-        break :blk try db.icon_upsert(.{
-            .url = resp_url,
-            .data = resp_body,
-        });
+        break :blk null;
     };
 
     resp.status = 303;
@@ -1305,10 +1328,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const icon_url = blk: {
         if (feed.icon_id) |icon_id| {
             if (global.icon_manage.index_by_id(icon_id)) |index| {
-                const icon_data = global.icon_manage.storage.items(.icon_data)[index];
-                if (mem.startsWith(u8, icon_data, "data:")) {
-                    break :blk icon_data;
+                if (global.icon_manage.storage.items(.is_inline)[index]) {
+                    const icon_raw = global.icon_manage.storage.items(.icon_data)[index];
+                    const icon_encoded = try html.encode(req.arena, icon_raw);
+                    break :blk icon_encoded;
                 }
+
                 break :blk global.icon_manage.storage.items(.icon_url)[index];
             }
         }
