@@ -267,6 +267,7 @@ const static_files = if (builtin.mode != .Debug) .{
     .{ "style.css", "style.css" },
     .{ "main.js", "main.js" },
     .{ "relative-time.js", "relative-time.js" },
+    .{ "reload.js", "reload.js" },
 };
 
 const static_file_hashes = StaticFileHashes.initComptime(static_files);
@@ -307,6 +308,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var router = try server.router(.{});
 
     router.get("/", latest_added_get, .{});
+    router.head("/", latest_added_head, .{});
     router.get("/feeds", feeds_get, .{});
     router.get("/tags", tags_get, .{});
     router.post("/update", update_post, .{});
@@ -327,6 +329,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     router.post("/feed/:id/delete", feed_delete, .{});
 
     router.get("/public/*", public_get, .{});
+    router.head("/public/*", public_head, .{});
     router.get("/icons/:filename", icons_get, .{});
     router.get("/favicon.ico", favicon_get, .{});
 
@@ -1451,6 +1454,9 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
         src = try get_file(req.arena, "server/relative-time.js");
         resp.content_type = .JS;
+    } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
+        src = try get_file(req.arena, "server/reload.js");
+        resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
         src = try get_file(req.arena, "server/style.css");
         resp.content_type = .CSS;
@@ -1470,6 +1476,40 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
         try std.compress.gzip.compress(fbs.reader(), al.writer(), .{});
         resp.header("content-encoding", "gzip");
         resp.body = al.items;
+    }
+}
+
+fn get_file_last_modified(comptime path: []const u8) !i128 {
+    var buf: [256]u8 = undefined;
+    const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
+    const file = try std.fs.cwd().openFile(p, .{});
+    defer file.close();
+    const stat = try file.stat();
+    return stat.mtime;
+}
+
+fn public_head(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    var last_modified: ?i128 = null;
+    if (mem.endsWith(u8, req.url.path, "main.js")) {
+        last_modified = try get_file_last_modified("server/main.js");
+        resp.content_type = .JS;
+    } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
+        last_modified = try get_file_last_modified("server/relative-time.js");
+        resp.content_type = .JS;
+    } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
+        last_modified = try get_file_last_modified("server/reload.js");
+        resp.content_type = .JS;
+    } else if (mem.endsWith(u8, req.url.path, "style.css")) {
+        last_modified = try get_file_last_modified("server/style.css");
+        resp.content_type = .CSS;
+    } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
+        last_modified = try get_file_last_modified("server/open-props-colors.css");
+        resp.content_type = .CSS;
+    }
+
+    if (last_modified) |val| {
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}\"", .{val});
+        resp.header("Etag", etag_out);
     }
 }
 
@@ -1543,6 +1583,17 @@ fn compressor_finish(compressor: *std.compress.gzip.Compressor(httpz.Response.Wr
     };
 }
 
+fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const db = &global.storage;
+
+    if (try db.get_latest_change()) |latest_created| {
+        const countdown = db.next_update_timestamp() catch 0 orelse 0;
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, countdown});
+        _ = resp_cache(req, resp, etag_out, .{});
+    }
+    
+    resp.content_type = .HTML;
+}
 
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
