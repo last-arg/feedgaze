@@ -116,7 +116,7 @@ export default class RelativeTime extends HTMLElement {
 				return;
 			}
 			let output = "";
-			if (datetime > Date.now() || !element.closest(".feed-item-list")) {
+			if (datetime > Date.now() || !element.closest(".feed-item")) {
 				output = this.getRelativeTime(datetime, this.division);
 			} else {
 				let parts = this.getRelativeTimeParts(datetime, this.division);
