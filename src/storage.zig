@@ -309,9 +309,9 @@ pub const Storage = struct {
         \\  item.id as latest_item_id,
         \\  item.link as latest_item_link,
         \\  max(item.updated_timestamp) as latest_updated_timestamp
-        \\from item
-        \\LEFT JOIN feed_update ON item.feed_id = feed_update.feed_id
-        \\LEFT JOIN feed ON feed.feed_id = item.feed_id
+        \\from feed
+        \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
+        \\LEFT JOIN item ON feed.feed_id = item.feed_id
         \\
         ;
 
