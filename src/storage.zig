@@ -190,6 +190,7 @@ pub const Storage = struct {
     }
 
     pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
+        std.debug.assert(feed_id != 0);
         const query =
         \\INSERT INTO rate_limit 
         \\  (feed_id, next_utc_sec) VALUES (@feed_id, @next_utc_sec)
@@ -301,6 +302,12 @@ pub const Storage = struct {
     }
 
     pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
+        // TODO: rethink this query.
+        // - Do I need the 'item' table stuff?
+        // - Do subquery instead?
+        // Had problem with query because there were no results but a row with
+        // all NULL values was returned. This was caused by max() fn and
+        // no 'group by'. 
         const query =
         \\select 
         \\  feed.feed_id,
@@ -332,12 +339,13 @@ pub const Storage = struct {
 
         if (search_term) |term| {
             if (term.len > 0) {
-                const cond_start = if (!has_where) " WHERE " else " AND ";
+                const cond_start = if (has_where) " AND " else " WHERE ";
                 storage_arr.appendSliceAssumeCapacity(cond_start);
-                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%');");
+                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%')");
+                storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
                 var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
                 defer stmt.deinit();
-                return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term });
+                return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term, term });
             }
         }
 
