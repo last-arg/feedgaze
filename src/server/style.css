@@ -15,6 +15,7 @@ h1, h2, h3 {
 
 main {
   --sidebar-content-min-width: 30ch;
+  padding-block-end: var(--size-5xl);
 }
 
 nav span {
@@ -77,9 +78,10 @@ nav span {
   --sidebar-target-width: 20ch;
   height: 100vh;
   height: 100dvh;
-  overflow-y: auto;
+  overflow-y: scroll;
   position: sticky;
   top: 0;
+  padding-block-end: var(--size-5xl);
 }
 
 .main-heading {
@@ -92,6 +94,7 @@ nav span {
   /* outline: 1px solid var(--color-gray-50); */
 }
 
+.main-heading > p,
 .heading-info {
   font-style: italic;
   color: var(--color-text-muted);
@@ -109,7 +112,7 @@ nav span {
   box-sizing: content-box;
   font: var(--font-monospace);
   font-size: var(--size-2xs);
-  min-width: 3.5ch;
+  min-width: 3.8ch;
   background: var(--time-bg);
   color: var(--color-background);
   padding-inline: var(--size-5xs);
