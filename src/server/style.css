@@ -100,10 +100,13 @@ nav span {
   box-sizing: content-box;
   font: var(--font-monospace);
   font-size: var(--size-xs);
-  width: 3ch;
+  min-width: 3ch;
   background: var(--time-bg);
   color: var(--color-background);
   padding-inline: var(--size-5xs);
+  text-align: end;
+  flex-grow: 0;
+  flex-shrink: 0;
 }
 
 .feed-item .age-newest {
@@ -120,14 +123,21 @@ nav span {
 
 .item-extra {
   font-size: var(--size-xs);
-  /* line-height: var(--line-height-m); */
+  width: 10ch;
+  flex-shrink: 1;
+  flex-grow: 1;
 }
 
 .item-extra a,
 .item-extra span {
+  /* overflow: hidden; */
+  /* text-overflow: ellipsis; */
+  /* white-space: nowrap; */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
 }
 
 .feed-external-url {
@@ -141,11 +151,9 @@ nav span {
 }
 
 .item-link {
-  flex-basis: 100%;
   max-width: 40ch;
   /* display: flex; */
-  /* flex-grow: 1; */
-  /* flex-shrink: 1; */
+  width: 100%;
 }
 
 .truncate-2 {
