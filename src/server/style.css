@@ -1,3 +1,10 @@
+:root {
+    --color-text-link: var(--color-gray-20);
+    --color-text-link-hover: var(--color-gray-10);
+    --decoration-text-link: underline dotted var(--color-gray-70);
+
+}
+
 h1, h2 {
   line-height: 1.1;
 }
@@ -39,10 +46,6 @@ nav span {
 
 .page {
   padding-inline: var(--size-m);
-  /* max-width: var(--breakpoint-l); */
-  /* width: 100%; */
-  outline: 1px solid green;
-  outline-offset: -1px;
 }
 
 .tag {
@@ -75,6 +78,12 @@ nav span {
   height: 100vh;
   height: 100dvh;
   overflow-y: auto;
+  position: sticky;
+  top: 0;
+}
+
+.main-heading {
+  margin-bottom: var(--size-5xl);
 }
 
 .main-heading h2 {
@@ -99,8 +108,8 @@ nav span {
   --time-bg: var(--color-text-normal);
   box-sizing: content-box;
   font: var(--font-monospace);
-  font-size: var(--size-xs);
-  min-width: 3ch;
+  font-size: var(--size-2xs);
+  min-width: 3.5ch;
   background: var(--time-bg);
   color: var(--color-background);
   padding-inline: var(--size-5xs);
@@ -110,7 +119,7 @@ nav span {
 }
 
 .feed-item .age-newest {
-  --time-bg: var(--color-gray-10);
+  --time-bg: var(--color-gray-20);
 }
 
 .feed-item .age-less-month {
@@ -122,21 +131,17 @@ nav span {
 }
 
 .item-extra {
+  --color-text-link: var(--color-gray-40);
   font-size: var(--size-xs);
   width: 10ch;
-  flex-shrink: 1;
   flex-grow: 1;
 }
 
 .item-extra a,
 .item-extra span {
-  /* overflow: hidden; */
-  /* text-overflow: ellipsis; */
-  /* white-space: nowrap; */
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 
 }
 
@@ -152,7 +157,6 @@ nav span {
 
 .item-link {
   max-width: 40ch;
-  /* display: flex; */
   width: 100%;
 }
 
@@ -163,3 +167,10 @@ nav span {
   overflow: hidden;
 }
 
+relative-time > ul {
+  margin-left: calc(-1 * 1em);
+}
+
+.heading-info p {
+  margin-bottom: 0;
+}
