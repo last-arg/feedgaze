@@ -253,7 +253,7 @@ const StaticFileHashes = std.StaticStringMap([]const u8);
 const md5_len = std.crypto.hash.Md5.digest_length;
 
 fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
-    @setEvalBranchQuota(300000);
+    @setEvalBranchQuota(1000000);
     var buf: [md5_len]u8 = undefined; 
     const c = @embedFile(path);
     var hash = std.crypto.hash.Md5.init(.{});
@@ -1670,8 +1670,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
     }
 
-    try w.writeAll("<div class='root-heading'>");
-    try w.writeAll("<h2>Latest (added)</h2>");
+    try w.writeAll("<div class='main-heading'>");
+    try w.writeAll("<h2>Latest added</h2>");
 
     if (try db.next_update_timestamp()) |countdown_ts| {
         const now_ts = std.time.timestamp();

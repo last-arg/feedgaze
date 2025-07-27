@@ -38,7 +38,7 @@ nav span {
 }
 
 .page {
-  padding: var(--size-m);
+  padding-inline: var(--size-m);
   /* max-width: var(--breakpoint-l); */
   /* width: 100%; */
   outline: 1px solid green;
@@ -92,14 +92,35 @@ nav span {
 .feed-item {
   display: flex;
   gap: var(--size-3xs);
+  align-items: baseline;
 }
 
-.feed-item a {
+.feed-item time {
+  --time-bg: var(--color-text-normal);
+  box-sizing: content-box;
+  font: var(--font-monospace);
+  font-size: var(--size-xs);
+  width: 3ch;
+  background: var(--time-bg);
+  color: var(--color-background);
+  padding-inline: var(--size-5xs);
+}
 
+.feed-item .age-newest {
+  --time-bg: var(--color-gray-10);
+}
+
+.feed-item .age-less-month {
+  --time-bg: var(--color-gray-30);
+}
+
+.feed-item .age-more-month {
+  --time-bg: var(--color-gray-40);
 }
 
 .item-extra {
   font-size: var(--size-xs);
+  /* line-height: var(--line-height-m); */
 }
 
 .item-extra a,
@@ -107,6 +128,10 @@ nav span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.feed-external-url {
+  margin-top: var(--size-5xs);
 }
 
 .feed-external-url a {
