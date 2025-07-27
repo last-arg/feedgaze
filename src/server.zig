@@ -2075,7 +2075,7 @@ const Layout = struct {
         try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
         try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
 
-        try w.writeAll("<div class='tag-list flow'>");
+        try w.writeAll("<div class='tag-list stack'>");
         try untagged_label_render(w, opts.has_untagged);
         for (tags, 0..) |tag, i| {
             try tag_label_render(w, tag, i + 1, opts.tags_checked);
@@ -2086,7 +2086,7 @@ const Layout = struct {
 
         try w.print(
         \\<div>
-        \\  <label class="form-heading" for="search_value">Filter term</label>
+        \\  <label class="form-heading" for="search_value">Search feeds</label>
         \\  <div><input type="search" name="search" id="search_value" value="{s}"></div>
         \\  <button class="form-submit">Filter</button>
         \\</div>

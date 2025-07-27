@@ -49,8 +49,13 @@ nav span {
   padding-inline: var(--size-m);
 }
 
+.tag-list {
+  --gap: var(--size-6xs);
+  padding-inline-start: 4px;
+}
+
 .tag {
-  --gap-size: calc(var(--size-2xs) * 0.5);
+  --gap-size: calc(var(--size-3xs));
   gap: var(--gap-size, 1em);
 }
 
@@ -145,7 +150,6 @@ nav span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-
 }
 
 .feed-external-url {
