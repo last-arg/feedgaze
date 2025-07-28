@@ -5,6 +5,10 @@
 
 }
 
+body {
+  letter-spacing: .035em;
+}
+
 h1, h2 {
   line-height: 1.1;
 }
@@ -122,8 +126,10 @@ nav span {
   color: var(--color-background);
   padding-inline: var(--size-5xs);
   text-align: end;
-  flex-grow: 0;
   flex-shrink: 0;
+  position: relative;
+  border-bottom-right-radius: 1px;
+  border-top-right-radius: 1px;
 }
 
 .feed-item .age-newest {
