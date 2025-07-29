@@ -647,7 +647,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const url_escaped = try parse.html_escape(req.arena, url);
     try w.print("<p>Page url: {s}</p>", .{url_escaped});
     try w.writeAll(
-        \\<form action="/feed/pick" method="POST" class="flow" style="--flow-space(--space-m)">
+        \\<form action="/feed/pick" method="POST" class="stack"
     );
     try w.print("<input type='hidden' name='input-url' value='{s}'>", .{url_escaped});
 
@@ -960,7 +960,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     const url_escaped = try parse.html_escape(req.arena, url);
     try w.print(
-        \\<form action="/feed/add" method="POST" class="flow" style="--flow-space(--space-m)">
+        \\<form action="/feed/add" method="POST" class="stack">
         \\<div>
         \\<p><label for="input-url">Feed or page url</label></p>
         \\<input id="input-url" name="input-url" value="{s}">
@@ -1302,7 +1302,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     
     try w.writeAll("<h2>Edit feed</h2>");
-    try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='POST'>");
+    try w.writeAll("<form class='stack' method='POST'>");
 
     const inputs_fmt = 
     \\<div>
@@ -1405,7 +1405,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
-    try w.writeAll("<div class='feed-tag-list flow'>");
+    try w.writeAll("<div class='feed-tag-list stack'>");
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -1888,7 +1888,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    try w.writeAll("<form class='flow' style='--flow-space: var(--space-m)' method='post'>");
+    try w.writeAll("<form class='stack' method='post'>");
     try w.writeAll("<div>");
     try w.writeAll("<p>");
     try w.writeAll("<label for='tag-name'>Tag name</label>");
@@ -2065,15 +2065,14 @@ const Layout = struct {
     fn write_sidebar_form_new(w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
         try w.writeAll("<div class='filter-wrapper'>");
         try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
-        try w.writeAll("<form action='/feeds' class='flow'>");
+        try w.writeAll("<form action='/feeds' class='stack'>");
         // NOTE: don't want tags-only button to be the 'default' button. This is
         // used when enter is pressed in input (text) field.
         try w.writeAll(
         \\<button aria-hidden="true" style="display: none">Default form action</button>
         );
-        try w.writeAll("<fieldset class='tags flow' style='--flow-space: var(--space-2xs)'>");
-        try w.writeAll("<legend class='visually-hidden'>Tags</legend>");
-        try w.writeAll("<h3 class='form-heading' aria-hidden='true'>Tags</h3>");
+        try w.writeAll("<fieldset class='tags stack'>");
+        try w.writeAll("<legend>Tags</legend>");
 
         try w.writeAll("<div class='tag-list stack'>");
         try untagged_label_render(w, opts.has_untagged);
@@ -2082,13 +2081,13 @@ const Layout = struct {
         }
         try w.writeAll("</div>");
         try w.writeAll("</fieldset>");
-        try w.writeAll("<button name='tags-only'>Filter tags only</button>");
+        try w.writeAll("<div><button name='tags-only'>Filter tags only</button></div>");
 
         try w.print(
         \\<div>
-        \\  <label class="form-heading" for="search_value">Search feeds</label>
-        \\  <div><input type="search" name="search" id="search_value" value="{s}"></div>
-        \\  <button class="form-submit">Filter</button>
+        \\  <label class="form-heading" for="search_value">Filter feeds</label>
+        \\  <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="{s}"></div>
+        \\  <button class="form-submit">Filter all</button>
         \\</div>
         , .{ opts.search });
 
@@ -2097,10 +2096,10 @@ const Layout = struct {
     }
 
     pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {
-        try w.writeAll("<header class='body-header flow'>");
+        try w.writeAll("<header class='body-header stack'>");
 
         try w.writeAll("<div>");
-        try w.writeAll("<h1 class='sidebar-heading'>feedgaze</h1>");
+        try w.writeAll("<h1 class='h2 sidebar-heading'>feedgaze</h1>");
 
         const menu_items = [_]struct{path: []const u8, name: []const u8}{
             .{.path = "/", .name = "Home"},
