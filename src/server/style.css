@@ -63,9 +63,6 @@ nav span {
 .tag {
   --gap-size: calc(var(--size-3xs));
   gap: var(--gap-size, 1em);
-}
-
-.tag {
   display: flex;
   align-items: center;
 }
@@ -177,6 +174,12 @@ nav span {
   width: 100%;
 }
 
+.truncate-1 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .truncate-2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -201,7 +204,7 @@ relative-time > ul {
   padding-inline: 1rem;
   padding-block-start: var(--size-4xs);
   padding-block-end: var(--size-6xs);
-  border-bottom: 2px solid var(--color-gray-30);
+  border-bottom: 1px solid var(--color-border-accent);
   display: inline-block;
 }
 

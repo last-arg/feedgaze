@@ -1421,7 +1421,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
-            .label_class = "line-count-1",
+            .label_class = "truncate-1",
         });
     }
     try w.writeAll("</div>");
@@ -1730,7 +1730,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         try w.writeAll("</ul>");
         try w.writeAll("</relative-time>");
     } else {
-        try w.writeAll("<p class='ml-m'>No feed items have been added in the previous 3 days</p>");
+        try w.writeAll("<p class='callout'>No feed items have been added in the previous 3 days</p>");
     }
     try w.writeAll("</main>");
 
@@ -2528,7 +2528,7 @@ fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     \\<label class="visually-hidden" for="untagged">{[value]s}</label>
     ;
     try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
-    try w.print("<a class='line-count-1' href='/?untagged=' title='untagged'>{s}</a>", .{ untagged });
+    try w.print("<a class='truncate-1' href='/?untagged=' title='untagged'>{s}</a>", .{ untagged });
     try w.writeAll("</div>");
 }
 
@@ -2569,7 +2569,7 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
 
 fn tag_link_print(w: anytype, tag: []const u8) !void {
     const tag_link_fmt = 
-    \\<a class='line-count-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
+    \\<a class='truncate-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
     ;
     
     try w.print(tag_link_fmt, .{ .tag = tag });
