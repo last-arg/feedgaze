@@ -1948,14 +1948,16 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<p>Tag deleted</p>");
     }
 
-    try w.writeAll("<ul class='tags-all' role='list'>");
+    try w.writeAll("<ul class='tags-all stack list-unstyled' role='list'>");
     const tag_ids = try db.tags_all_with_ids(req.arena);
     for (tag_ids) |tag| {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped);
+        try w.print("<div class='tag-actions'>", .{});
         try w.print("<a href='/tag/{d}/delete' rel='nofollow'>Delete</a>", .{tag.tag_id});
         try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
+        try w.print("</div>", .{});
         try w.writeAll("</li>");
     }
     try w.writeAll("</ul>");
