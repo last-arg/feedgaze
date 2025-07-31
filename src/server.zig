@@ -1872,7 +1872,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
     
-    try w.writeAll("<div class='ml-m'>");
+    try w.writeAll("<main>");
     try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
 
     const query_kv = try req.query();
@@ -1890,18 +1890,22 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<form class='stack' method='post'>");
     try w.writeAll("<div>");
-    try w.writeAll("<p>");
+    try w.writeAll("<div>");
     try w.writeAll("<label for='tag-name'>Tag name</label>");
-    try w.writeAll("</p>");
+    try w.writeAll("</div>");
     try w.print("<input class='input-small' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
     try w.writeAll("</div>");
     try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
-    try w.print("<a class='btn btn-secondary mr-s' href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
-    try w.writeAll("<button class='btn btn-primary'>Save changes</button>");
+
+    try w.writeAll("<div class='form-actions cluster align-center'>");
+    try w.writeAll("<button class='muted primary'>Save changes</button>");
+    try w.print("<a href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
+    try w.writeAll("</div>");
+
     try w.writeAll("</div>");
     try w.writeAll("</form>");
 
-    try w.writeAll("</div>");
+    try w.writeAll("</main>");
 
     try Layout.write_foot(w);
 }

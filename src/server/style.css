@@ -231,3 +231,10 @@ relative-time > ul {
   margin-inline-end: var(--size-3xs);
 }
 
+.form-actions a {
+  color: var(--color-danger-fill-vivid);
+}
+
+.input-small {
+  max-width: 25ch;
+}
