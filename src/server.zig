@@ -2087,13 +2087,13 @@ const Layout = struct {
         }
         try w.writeAll("</div>");
         try w.writeAll("</fieldset>");
-        try w.writeAll("<div><button name='tags-only'>Filter tags only</button></div>");
+        try w.writeAll("<div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>");
 
         try w.print(
         \\<div>
         \\  <label class="form-heading" for="search_value">Filter feeds</label>
         \\  <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="{s}"></div>
-        \\  <button class="form-submit">Filter all</button>
+        \\  <button class="form-submit muted primary">Filter all</button>
         \\</div>
         , .{ opts.search });
 
