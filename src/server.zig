@@ -624,23 +624,23 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
         if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
             try w.print(
-                \\<p>Feed already exists.
+                \\<p class="callout">Feed already exists.
                 \\<a href="/feed/{d}">Got to feed page</a>.
                 \\</p>
             , .{feed_id});
         } else |err| {
             std.log.warn("Failed to get parse feed id '{s}'. Error: {}", .{value, err});
-            try w.writeAll("<p>Feed already exists.</p>");
+            try w.writeAll("<p class='callout danger'>Enter valid feed ID.</p>");
         }
     } else if (query.get("error")) |value| {
         if (mem.eql(u8, "invalid-url", value)) {
-            try w.writeAll("<p>Enter valid url.</p>");
+            try w.writeAll("<p class='callout danger'>Enter valid url.</p>");
         } else if (mem.eql(u8, "url-missing", value)) {
-            try w.writeAll("<p>Pick feed option.</p>");
+            try w.writeAll("<p class='callout danger>Pick feed option.</p>");
         } else if (mem.eql(u8, "empty-selector", value)) {
-            try w.writeAll("<p>Fill in 'Feed item selector'.</p>");
+            try w.writeAll("<p class='callout danger>Fill in 'Feed item selector'.</p>");
         } else if (mem.eql(u8, "pick-url", value)) {
-            try w.writeAll("<p>Pick on of the feed options.</p>");
+            try w.writeAll("<p class='callout danger>Pick one of the feed options.</p>");
         }
     }
 
@@ -943,11 +943,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         }
     } else if (query.get("error")) |value| {
         if (mem.eql(u8, "invalid-url", value)) {
-            try w.writeAll("<p>Failed to add feed.");
-            try w.writeAll(" Invalid url.");
-            try w.writeAll("</p>");
+            try w.writeAll("<p class='callout danger'>Enter valid feed/page link</p>");
         } else if (mem.eql(u8, "url-missing", value)) {
-            try w.writeAll("<p>Fill in feed/page url</p>");
+            try w.writeAll("<p class='callout danger'>Fill in feed/page link</p>");
         }
     }
 
@@ -960,10 +958,10 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     const url_escaped = try parse.html_escape(req.arena, url);
     try w.print(
-        \\<form action="/feed/add" method="POST" class="stack">
+        \\<form action="/feed/add" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
         \\<div>
-        \\<p><label for="input-url">Feed or page url</label></p>
-        \\<input id="input-url" name="input-url" value="{s}">
+        \\<div><label for="input-url">Feed/Page link</label></div>
+        \\<input type=text class="char-len-l" id="input-url" name="input-url" value="{s}">
         \\</div>
     , .{url_escaped});
 
@@ -976,14 +974,16 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try w.print(
         \\<div>
-        \\<p><label for="input-tags">Tags (optional)</label></p>
-        \\<p class="input-desc">Tags are comma separated</p>
-        \\<input id="input-tags" name="input-tags" value="{s}">
+        \\<div class='label-wrapper'>
+        \\<label for="input-tags">Tags (optional)</label>
+        \\<em>Tags are comma separated</em>
+        \\</div>
+        \\<input type=text class="char-len-m" id="input-tags" name="input-tags" value="{s}">
         \\</div>
     , .{tags_str});
 
     try w.writeAll(
-        \\<button class="btn btn-primary">Add new feed</button>
+        \\<button class="primary muted">Add new feed</button>
         \\</form>
     );
 

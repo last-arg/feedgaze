@@ -235,6 +235,47 @@ relative-time > ul {
   color: var(--color-danger-fill-vivid);
 }
 
-.input-small {
+form input[type=text] {
+  width: 100%;
+}
+
+.char-len-s {
   max-width: 25ch;
+}
+
+.char-len-m {
+  max-width: 30ch;
+}
+
+.char-len-l {
+  max-width: 40ch;
+}
+
+em {
+  font-size: var(--size-s);
+  color: var(--color-fill-vivid);
+}
+
+.label-wrapper label {
+  margin-block-end: 0;
+  line-height: 1.0;
+}
+
+.label-wrapper {
+  margin-block-end: var(--size-5xs);
+}
+
+/**
+.stack uses flexbox column which makes everything 100% width.
+Use this if 100% width is not desired behaviour.
+*/
+.flow > * + * {
+  margin-top: var(--flow-space, 1em);
+}
+
+/** overwrite kelp library's .callout css values */
+.callout {
+  display: inline-block;
+  padding: var(--size-3xs) var(--size-xs);
+  border-radius: 3px;
 }
