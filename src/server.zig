@@ -101,7 +101,7 @@ pub const IconManage = struct {
                 ) |file_type| {
                     break :blk .{icon.icon_data, file_type};
                 } else {
-                    std.log.warn("Failed add icon to server cache. Icon (or page url): '{s}'", .{icon.icon_url});
+                    std.log.warn("Failed add icon to server cache. Icon (or page link): '{s}'", .{icon.icon_url});
                     continue;
                 }
             };
@@ -644,12 +644,17 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
     }
 
-    const url_escaped = try parse.html_escape(req.arena, url);
-    try w.print("<p>Page url: {s}</p>", .{url_escaped});
     try w.writeAll(
-        \\<form action="/feed/pick" method="POST" class="stack"
+        \\<form action="/feed/pick" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
     );
-    try w.print("<input type='hidden' name='input-url' value='{s}'>", .{url_escaped});
+    try w.writeAll(
+        \\<div>
+        \\<label>Feed/Page link
+        \\</label>
+    );
+    const url_escaped = try parse.html_escape(req.arena, url);
+    try w.print("<input class='char-len-l' type='text' readonly name='input-url' value='{s}'>", .{url_escaped});
+    try w.writeAll("</div>");
 
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Pick feed to add</legend>");
@@ -661,62 +666,93 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         break :blk 0;
     };
 
+    try w.writeAll("<ul class='list-unstyled margin-end-0'>");
     var iter = query.iterator();
     var index: usize = 0;
     while (iter.next()) |kv| {
         if (mem.eql(u8, "url", kv.key)) {
-            try w.writeAll("<p>");
+            try w.writeAll("<li>");
             const value_escaped = try parse.html_escape(req.arena, kv.value);
             // const checked = if (pick_index == index) "checked" else "";
             const checked = "";
             try w.print(
                 \\<input type="hidden" name="url" value="{[value]s}"> 
+                \\<label for="url-{[index]d}">
                 \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}" {[checked]s}> 
-                \\<label for="url-{[index]d}">{[value]s}</label>
+                \\{[value]s}
+                \\</label>
             , .{.index = index, .value = value_escaped, .checked = checked});
-            try w.writeAll("</p>");
+            try w.writeAll("</li>");
             index += 1;
         }
     }
 
-    try w.writeAll("<div>");
+    try w.writeAll("<li>");
     try w.print(
+        \\<label for="url-html">
         \\<input type="radio" id="url-html" name="url-picked" value="html" {s}> 
+        \\Html as feed
+        \\</label>
     , .{if (pick_index == index) "checked" else ""});
+    try w.writeAll("</li>");
+    try w.writeAll("</ul>");
+
     try w.writeAll(
-        \\<label for="url-html">Html as feed</label>
-        \\<fieldset class='html-feed-inputs'>
-        \\<legend>Html feed selectors and date format</legend>
+        \\<div>
+        \\<noscript>
+        \\<p class="callout">
+        \\Fill these fields if you picked "Html as feed".
+        \\</p>
+        \\</noscript>
+        \\<div class='html-feed-inputs flow'>
     );
     try w.print(
-        \\<p><label for="feed-container">Feed item selector</label></p>
+        \\<div>
+        \\<label for="feed-container">Html item selector</label>
         \\<input type="text" id="feed-container" name="selector-container" value="{s}"> 
+        \\</div>
     , .{try selector_value(req.arena, query, "selector-container")});
     try w.writeAll(
-        \\<p>Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
+        \\<p class="callout">Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
     );
     try w.print(
-        \\<p><label for="feed-link">Link selector (optional)</label></p>
-        \\<p class="input-desc">Fallback is &lt;a&gt; href value</p>
+        \\<div>
+        \\<div class="label-wrapper">
+        \\<label for="feed-link">Html link selector (optional)</label>
+        \\<em>Fallback is &lt;a&gt; href value</em>
+        \\</div>
         \\<input type="text" id="feed-link" name="selector-link" value="{s}"> 
+        \\</div>
     , .{try selector_value(req.arena, query, "selector-link")});
     try w.print(
-        \\<p><label for="feed-heading">Heading selector (optional)</label></p>
-        \\<p class="input-desc">Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</p>
+        \\<div>
+        \\<div class="label-wrapper">
+        \\<label for="feed-heading">Html heading selector (optional)</label>
+        \\<em>Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</em>
+        \\</div>
         \\<input type="text" id="feed-heading" name="selector-heading" value="{s}"> 
+        \\</div>
     , .{try selector_value(req.arena, query, "selector-heading")});
     try w.print(
-        \\<p><label for="feed-date">Date selector (optional)</label></p>
-        \\<p class="input-desc">Fallback is &lt;time&gt.</p>
+        \\<div>
+        \\<div class="label-wrapper">
+        \\<label for="feed-date">Html date selector (optional)</label>
+        \\<em>Fallback is &lt;time&gt.</em>
+        \\</div>
         \\<input type="text" id="feed-date" name="selector-date" value="{s}"> 
+        \\</div>
     , .{try selector_value(req.arena, query, "selector-date")});
     try w.print(
-        \\<p><label for="feed-date-format">Date format (optional)</label></p>
-        \\<p class="input-desc">Fallback is date format that &lt;time&gt; uses.</p>
+        \\<div>
+        \\<div class="label-wrapper">
+        \\<label for="feed-date-format">Html date format (optional)</label>
+        \\<em>Fallback is date format that &lt;time&gt; uses.</em>
+        \\</div>
         \\<input type="text" id="feed-date-format" name="feed-date-format" value="{s}"> 
+        \\</div>
     , .{try selector_value(req.arena, query, "feed-date-format")});
     try w.writeAll(
-        \\</fieldset>
+        \\</div>
     );
     try w.writeAll("</div>");
     try w.writeAll("</fieldset>");
@@ -730,15 +766,19 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try w.print(
         \\<div>
-        \\<p><label for="input-tags">Tags (optional)</label></p>
-        \\<p class="input-desc">Tags are comma separated</p>
-        \\<input id="input-tags" name="input-tags" value="{s}">
+        \\<div class="label-wrapper">
+        \\<label for="input-tags">Tags (optional)</label>
+        \\<em>Tags are comma separated</em>
+        \\</div>
+        \\<input class="char-len-m" id="input-tags" name="input-tags" value="{s}">
         \\</div>
     , .{tags_str});
 
     try w.writeAll(
+        \\<div class="form-actions">
+        \\<button class="primary muted">Add new feed</button>
         \\<a href="/feed/add">Cancel</a>
-        \\<button class="btn btn-primary">Add new feed</button>
+        \\</div>
         \\</form>
     );
 
@@ -1225,7 +1265,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     try w.writeAll(if (title.len > 0) title else feed.page_url orelse feed.feed_url);
     try w.writeAll("</h2>");
-    try w.writeAll("<p>Page url: ");
+    try w.writeAll("<p>Feed/Page link: ");
     if (feed.page_url) |page_url| {
         const page_url_encoded = try parse.html_escape(req.arena, page_url);
         try w.print(
@@ -1310,11 +1350,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\  <input type="text" id="title" name="title" value="{[title]s}">
     \\</div>
     \\<div>
-    \\  <p><label for="page_url">Page url</label></p>
+    \\  <p><label for="page_url">Page link</label></p>
     \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
     \\</div>
     \\<div>
-    \\  <p><label for="icon_url">Icon url</label></p>
+    \\  <p><label for="icon_url">Icon link</label></p>
     \\  <input type="text" id="icon_url" name="icon_url" value="{[icon_url]s}">
     \\</div>
     ;
@@ -1897,7 +1937,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</div>");
     try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
 
-    try w.writeAll("<div class='form-actions cluster align-center'>");
+    try w.writeAll("<div class='form-actions'>");
     try w.writeAll("<button class='muted primary'>Save changes</button>");
     try w.print("<a href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
     try w.writeAll("</div>");
