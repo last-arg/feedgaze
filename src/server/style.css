@@ -284,12 +284,15 @@ em {
 .stack uses flexbox column which makes everything 100% width.
 Use this if 100% width is not desired behaviour.
 */
-.flow :where(> *) {
-  margin: 0;
-}
+@layer kelp.layout {
+  .flow > * {
+    margin: 0;
+  }
 
-.flow :where(> * + *) {
-  margin-block-start: var(--flow-space, var(--size-m));
+  .flow > * + * {
+    /* margin-block-start: var(--flow-space, var(--size-m)); */
+    margin-top: 22px;
+  }
 }
 
 /** overwrite kelp library's .callout css values */

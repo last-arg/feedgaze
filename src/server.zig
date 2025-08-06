@@ -1352,7 +1352,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const inputs_fmt = 
     \\<div>
     \\  <div><label for="title">Feed title</label></div>
-    \\  <input type="text" id="title" name="title" value="{[title]s}">
+    \\  <input class="char-len-l" type="text" id="title" name="title" value="{[title]s}">
     \\</div>
     \\<div>
     \\  <div><label for="page_url">Page link</label></div>
@@ -1398,11 +1398,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             const selector_template = 
                 \\<div>
                 \\<div><label for="html-{[name]s}-selector">{[label]s}</label></div>
-                \\<input type="text" value="{[value]s}" name="html-{[name]s}-selector" id="html-{[name]s}-selector">
+                \\<input class='char-len-s' type="text" value="{[value]s}" name="html-{[name]s}-selector" id="html-{[name]s}-selector">
                 \\</div>
             ;
 
-            try w.writeAll("<fieldset>");
+            try w.writeAll("<fieldset class='flow'>");
             try w.writeAll("<legend>Html 'feed' options</legend>");
             try w.print(
                 selector_template,
@@ -1440,7 +1440,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             try w.print(
                 \\<div>
                 \\<div><label for="html-date-format">Date format</label></div>
-                \\<input type="text" value="{s}" name="html-date-format" id="html-date-format">
+                \\<input class="char-len-s" type="text" value="{s}" name="html-date-format" id="html-date-format">
                 \\</div>
             , .{try parse.html_escape(req.arena, html_opts.date_format orelse "")});
 
@@ -1499,15 +1499,19 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</div>");
 
     try w.writeAll("<h3>Feed items</h3>");
-    try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-    try w.writeAll("<ul class='stack list-unstyled'>");
-    for (items) |item| {
-        try w.print("<li class='feed-item {s}'>", .{""});
-        try item_render(w, req.arena, item, .{});
-        try w.writeAll("</li>");
+    if (items.len > 0) {
+        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
+        try w.writeAll("<ul class='stack list-unstyled'>");
+        for (items) |item| {
+            try w.print("<li class='feed-item {s}'>", .{""});
+            try item_render(w, req.arena, item, .{});
+            try w.writeAll("</li>");
+        }
+        try w.writeAll("</ul>");
+        try w.writeAll("</relative-time>");
+    } else {
+        try w.writeAll("<p class='callout'>No feeds items in this feed.</p>");
     }
-    try w.writeAll("</ul>");
-    try w.writeAll("</relative-time>");
 
     try w.writeAll("</main>");
     try Layout.write_foot(w);
@@ -1945,7 +1949,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<div>");
     try w.writeAll("<label for='tag-name'>Tag name</label>");
     try w.writeAll("</div>");
-    try w.print("<input class='input-small' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
+    try w.print("<input class='char-len-s' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
     try w.writeAll("</div>");
     try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
 
