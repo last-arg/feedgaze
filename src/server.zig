@@ -263,13 +263,13 @@ fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
 }
 
 const static_files = if (builtin.mode != .Debug) .{
-    .{ &hash_static_file("server/open-props-colors.css"), "open-props-colors.css" },
+    // .{ &hash_static_file("server/open-props-colors.css"), "open-props-colors.css" },
     .{ &hash_static_file("server/style.css"), "style.css" },
     .{ &hash_static_file("server/kelp.css"), "kelp.css" },
     .{ &hash_static_file("server/main.js"), "main.js" },
     .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
 } else .{
-    .{ "open-props-colors.css", "open-props-colors.css" },
+    // .{ "open-props-colors.css", "open-props-colors.css" },
     .{ "style.css", "style.css" },
     .{ "kelp.css", "kelp.css" },
     .{ "main.js", "main.js" },
@@ -1253,7 +1253,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main>");
-    try w.writeAll("<div class='feed-info'>");
     try w.writeAll("<h2>");
     if (feed.icon_id) |icon_id| {
         var buf: [128]u8 = undefined;
@@ -1265,7 +1264,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     try w.writeAll(if (title.len > 0) title else feed.page_url orelse feed.feed_url);
     try w.writeAll("</h2>");
-    try w.writeAll("<p>Feed/Page link: ");
+
+    try w.writeAll("<div class='feed-info flow'>");
+    try w.writeAll("<p>Page link: ");
     if (feed.page_url) |page_url| {
         const page_url_encoded = try parse.html_escape(req.arena, page_url);
         try w.print(
@@ -1279,7 +1280,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_url_encoded_attr = try parse.html_escape(req.arena, feed.feed_url);
     const feed_url_encoded = try parse.html_escape(req.arena, feed.feed_url);
     try w.print(
-        \\<p>Feed url: <a href="{s}">{s}</a></p>
+        \\<p>Feed link: <a href="{s}">{s}</a></p>
     , .{ feed_url_encoded_attr, feed_url_encoded });
 
     var date_buf: [date_len_max]u8 = undefined;
@@ -1289,9 +1290,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         const date_for_machine = timestampToString(&date_buf, last_update);
         try w.print(
             \\<p>Last update was
+            \\<em>
             \\<relative-time update="false">
             \\<time datetime={s}>{s}</time>
             \\</relative-time>
+            \\</em>
             \\</p>
         , .{
             date_for_machine,
@@ -1304,9 +1307,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         const date_for_machine = timestampToString(&date_buf, ts);
         try w.print(
             \\<p>Next update
+            \\<em>
             \\<relative-time update="false">
             \\<time datetime={s}>{s}</time>
             \\</relative-time>
+            \\</em>
             \\</p>
         , .{
             date_for_machine,
@@ -1341,20 +1346,20 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
     
-    try w.writeAll("<h2>Edit feed</h2>");
+    try w.writeAll("<h3>Edit feed</h3>");
     try w.writeAll("<form class='stack' method='POST'>");
 
     const inputs_fmt = 
     \\<div>
-    \\  <p><label for="title">Feed title</label></p>
+    \\  <div><label for="title">Feed title</label></div>
     \\  <input type="text" id="title" name="title" value="{[title]s}">
     \\</div>
     \\<div>
-    \\  <p><label for="page_url">Page link</label></p>
+    \\  <div><label for="page_url">Page link</label></div>
     \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
     \\</div>
     \\<div>
-    \\  <p><label for="icon_url">Icon link</label></p>
+    \\  <div><label for="icon_url">Icon link</label></div>
     \\  <input type="text" id="icon_url" name="icon_url" value="{[icon_url]s}">
     \\</div>
     ;
@@ -1392,7 +1397,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
             const selector_template = 
                 \\<div>
-                \\<p><label for="html-{[name]s}-selector">{[label]s}</label></p>
+                \\<div><label for="html-{[name]s}-selector">{[label]s}</label></div>
                 \\<input type="text" value="{[value]s}" name="html-{[name]s}-selector" id="html-{[name]s}-selector">
                 \\</div>
             ;
@@ -1434,7 +1439,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
             try w.print(
                 \\<div>
-                \\<p><label for="html-date-format">Date format</label></p>
+                \\<div><label for="html-date-format">Date format</label></div>
                 \\<input type="text" value="{s}" name="html-date-format" id="html-date-format">
                 \\</div>
             , .{try parse.html_escape(req.arena, html_opts.date_format orelse "")});
@@ -1445,7 +1450,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     
     try w.writeAll("<fieldset>");
     try w.writeAll("<legend>Tags</legend>");
-    try w.writeAll("<div class='feed-tag-list stack'>");
+    try w.writeAll("<div class='feed-tag-list'>");
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -1456,37 +1461,44 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             break :blk "";
         };
         const tag_escaped = try parse.html_escape(req.arena, tag);
-        try tag_input_render(w, .{
+        const tag_fmt = 
+        \\<label for="{[prefix]s}{[tag_index]d}">
+        \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+        \\<span class='truncate-1' title="{[tag]s}">{[tag]s}</span>
+        \\</label>
+        ;
+        try w.print(tag_fmt, .{
             .tag = tag_escaped,
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
-            .label_class = "truncate-1",
         });
     }
     try w.writeAll("</div>");
     try w.writeAll("</fieldset>");
     try w.writeAll(
         \\<div class="form-input">
-        \\  <p><label for="new_tags">New tags</label></p>
-        \\  <p class="input-desc">Tags are comma separated</p>
+        \\  <div>
+        \\    <label for="new_tags">New tags</label>
+        \\    <em>Tags are comma separated</em>
+        \\  </div>
         \\  <input type="text" id="new_tags" name="new_tags">
         \\</div>
     );
 
-    try w.writeAll("<button class='btn btn-primary'>Save feed changes</button>");
-    try w.writeAll("</form>");
-
+    try w.writeAll("<div class='form-actions'>");
+    try w.writeAll("<button class='muted primary'>Save feed changes</button>");
     var path = req.url.path;
     if (path[path.len - 1] == '/') {
         path = path[0..path.len - 1];
     }
-    try w.print("<form action='{s}/delete' method='POST'>", .{path});
-    try w.writeAll("<button class='btn btn-secondary'>Delete feed</button>");
+    try w.print("<a href='{s}/delete'>Delete feed</a>", .{path});
+    try w.writeAll("</div>");
     try w.writeAll("</form>");
+
     try w.writeAll("</div>");
 
-    try w.writeAll("<h2>Feed items</h2>");
+    try w.writeAll("<h3>Feed items</h3>");
     try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
     try w.writeAll("<ul class='stack list-unstyled'>");
     for (items) |item| {

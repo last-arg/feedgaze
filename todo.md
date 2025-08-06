@@ -9,6 +9,7 @@
   - dark mode
   - server: limit inline icon size
   - style: scrollbar
+  - change delete links into <form method="POST"> with button
 - if link and id are same only save link to save space
 
 - Make sqlite returned primary keys into u64.

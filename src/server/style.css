@@ -1,7 +1,9 @@
-:root {
+@layer kelp.theme {
+	:where(:root) {
     --color-text-link: var(--color-gray-20);
     --color-text-link-hover: var(--color-gray-10);
     --decoration-text-link: underline dotted var(--color-gray-70);
+  }
 }
 
 body {
@@ -101,6 +103,9 @@ main > *:first-child {
 main h2 {
   margin-block-start: var(--size-4xs);
   margin-block-end: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4xs);
   /* outline: 1px solid var(--color-gray-50); */
 }
 
@@ -113,7 +118,6 @@ main h2 {
 
 .feed-item {
   display: flex;
-  gap: var(--size-3xs);
   align-items: baseline;
 }
 
@@ -172,6 +176,8 @@ main h2 {
 .item-link {
   max-width: 40ch;
   width: 100%;
+  margin-inline-start: var(--size-xs);
+  margin-inline-end: var(--size-xl);
 }
 
 .truncate-1 {
@@ -184,6 +190,7 @@ main h2 {
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
 }
 
@@ -277,8 +284,12 @@ em {
 .stack uses flexbox column which makes everything 100% width.
 Use this if 100% width is not desired behaviour.
 */
-.flow > * + * {
-  margin-top: var(--flow-space, 1em);
+.flow :where(> *) {
+  margin: 0;
+}
+
+.flow :where(> * + *) {
+  margin-block-start: var(--flow-space, var(--size-m));
 }
 
 /** overwrite kelp library's .callout css values */
@@ -302,4 +313,14 @@ Use this if 100% width is not desired behaviour.
   display: block;
 }
 
+.feed-tag-list {
+  column-width: 15ch;
+}
 
+.feed-tag-list input {
+  margin-inline-end: var(--size-5xs);
+}
+
+main h3 {
+  margin-block-start: 2em;
+}
