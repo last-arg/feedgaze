@@ -137,18 +137,6 @@ main h2 {
   border-top-right-radius: 1px;
 }
 
-.feed-item .age-newest {
-  --time-bg: var(--color-gray-20);
-}
-
-.feed-item .age-less-month {
-  --time-bg: var(--color-gray-30);
-}
-
-.feed-item .age-more-month {
-  --time-bg: var(--color-gray-40);
-}
-
 .item-extra {
   --color-text-link: var(--color-gray-40);
   font-size: var(--size-xs);
@@ -318,4 +306,49 @@ Use this if 100% width is not desired behaviour.
 
 main h3 {
   margin-block-start: 2em;
+}
+
+.feed header {
+  --gap: calc(.5 * var(--size-m));
+  margin-inline-start: calc(-.5 * var(--gap));
+}
+
+.feed-header-top {
+  display: flex;
+  align-items: center;
+}
+
+.feed-header-top time {
+  --time-bg: var(--color-text-normal);
+  background: var(--time-bg);
+  color: var(--color-background);
+  margin-inline: var(--size-s);
+  font: var(--font-monospace);
+  font-size: var(--size-2xs);
+  padding-inline: var(--size-5xs);
+  border-radius: 1px;
+}
+
+.feed-edit {
+  font-size: var(--font-size-code);
+}
+
+.feed-title {
+  margin-inline-start: var(--size-4xs);
+}
+
+.feed-tags {
+  font-size: var(--font-size-code)
+}
+
+time.age-newest {
+  --time-bg: var(--color-gray-20);
+}
+
+time.age-less-month {
+  --time-bg: var(--color-gray-30);
+}
+
+time.age-more-month {
+  --time-bg: var(--color-gray-40);
 }

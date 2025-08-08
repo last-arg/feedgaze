@@ -2448,9 +2448,9 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
-        try w.writeAll("<header class='feed-header'>");
+        try w.writeAll("<header>");
 
-        try w.writeAll("<div class='icon-wrapper'>");
+        try w.writeAll("<div class='feed-header-top'>");
         if (feed.icon_id) |icon_id| {
             if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
                 try w.print(
@@ -2458,11 +2458,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
                 , .{path});
             }
         }
-
-        try w.writeAll("</div>");
-
-        try w.writeAll("<div class='feed-and-tags'>");
-        try w.writeAll("<div class='feed-header-top'>");
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
         try w.writeAll("</div>");
@@ -2475,7 +2470,6 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
             try w.writeAll("</div>");
         }
-        try w.writeAll("</div>");
         try w.writeAll("</header>");
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
