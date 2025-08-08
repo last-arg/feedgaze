@@ -11,6 +11,7 @@
   - style: scrollbar
   - change delete links into <form method="POST"> with button
 - if link and id are same only save link to save space
+- tags page: add create tag form
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

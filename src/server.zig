@@ -1048,10 +1048,22 @@ fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 }
 
 fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const form_data = try req.formData();
+    const action = form_data.get("action") orelse return error.MissingFormAction;
+
+    if (mem.eql(u8, action, "delete")) {
+        try feed_delete(global, req, resp);
+        return;
+    }
+
+    if (!mem.eql(u8, action, "save")) {
+        resp.status = 400;
+        return;
+    }
+
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
 
-    const form_data = try req.formData();
     const title = form_data.get("title") orelse return error.MissingFormFieldPageTitle;
     const page_url = form_data.get("page_url") orelse return error.MissingFormFieldPageUrl;
     const icon_url = form_data.get("icon_url") orelse return error.MissingFormFieldIconUrl;
@@ -1347,7 +1359,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
     
     try w.writeAll("<h3>Edit feed</h3>");
-    try w.writeAll("<form class='stack' method='POST'>");
+    try w.writeAll("<form class='flow' method='POST'>");
 
     const inputs_fmt = 
     \\<div>
@@ -1486,14 +1498,10 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         \\</div>
     );
 
-    try w.writeAll("<div class='form-actions'>");
-    try w.writeAll("<button class='muted primary'>Save feed changes</button>");
-    var path = req.url.path;
-    if (path[path.len - 1] == '/') {
-        path = path[0..path.len - 1];
-    }
-    try w.print("<a href='{s}/delete'>Delete feed</a>", .{path});
+    try w.writeAll("<div>");
+    try btn_primary(w, "Save feed changes");
     try w.writeAll("</div>");
+    try btn_delete(w, "Delete feed", .button);
     try w.writeAll("</form>");
 
     try w.writeAll("</div>");
@@ -1526,6 +1534,21 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
         return try file.readToEndAlloc(allocator, std.math.maxInt(u32));
     } else {
         return @embedFile(path);
+    }
+}
+
+fn btn_primary(w: anytype, text: []const u8) !void {
+    try w.print("<button class='muted primary' name='action' value='save'>{s}</button>", .{text});
+}
+
+fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void {
+    switch (btn_type) {
+        .button => {
+            try w.print("<button class='outline danger' name='action' value='delete'>{s}</button>", .{text});
+        },
+        .link => {
+            try w.print("<button class='btn-link padding-0 danger' name='action' value='delete'>{s}</button>", .{text});
+        },
     }
 }
 
@@ -1854,16 +1877,41 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
 
     const db = &global.storage;
     resp.status = 301;
+    const tag = db.tag_with_id(req.arena, tag_id) catch {
+        // On failure redirect to feed page. Display error message
+        resp.header("Location", "/tags?error=delete");
+        return;
+    } orelse {
+        // On failure redirect to feed page. Display error message
+        resp.header("Location", "/tags?error=delete");
+        return;
+    };
+
     db.tags_remove_with_id(tag_id) catch {
         // On failure redirect to feed page. Display error message
         resp.header("Location", "/tags?error=delete");
         return;
     };
 
-    resp.header("Location", "/tags?success=");
+    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+    try location_arr.writer().print("/tags?success={s}", .{tag.name});
+    resp.header("Location", location_arr.items);
 }
 
 fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    const form_data = try req.formData();
+    const action = form_data.get("action") orelse return error.MissingFormAction;
+
+    if (mem.eql(u8, action, "delete")) {
+        try tag_delete(global, req, resp);
+        return;
+    }
+
+    if (!mem.eql(u8, action, "save")) {
+        resp.status = 400;
+        return;
+    }
+
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
 
@@ -1871,7 +1919,6 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     resp.status = 301;
 
     var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
-    const form_data = try req.formData();
     const tag_name_form = form_data.get("tag-name") orelse {
         try location_arr.writer().print("/tag/{d}/edit?error=invalid-form", .{tag_id});
         resp.header("Location", location_arr.items);
@@ -1944,7 +1991,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    try w.writeAll("<form class='stack' method='post'>");
+    try w.writeAll("<form class='flow' method='post'>");
     try w.writeAll("<div>");
     try w.writeAll("<div>");
     try w.writeAll("<label for='tag-name'>Tag name</label>");
@@ -1953,10 +2000,10 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("</div>");
     try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
 
-    try w.writeAll("<div class='form-actions'>");
-    try w.writeAll("<button class='muted primary'>Save changes</button>");
-    try w.print("<a href='/tag/{}/delete'>Delete</a>", .{tag.tag_id});
+    try w.writeAll("<div>");
+    try btn_primary(w, "Save changes");
     try w.writeAll("</div>");
+    try btn_delete(w, "Delete tag", .button);
 
     try w.writeAll("</div>");
     try w.writeAll("</form>");
@@ -2014,9 +2061,14 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped);
-        try w.print("<div class='tag-actions'>", .{});
-        try w.print("<a href='/tag/{d}/delete' rel='nofollow'>Delete</a>", .{tag.tag_id});
+        try w.print("<div class='cluster'>", .{});
         try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
+        try w.print(
+            \\<form action="/tag/{d}/delete" method="POST">
+        , .{tag.tag_id});
+        try btn_delete(w, "Delete", .link);
+        try w.writeAll("</form>");
+
         try w.print("</div>", .{});
         try w.writeAll("</li>");
     }

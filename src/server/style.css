@@ -234,20 +234,12 @@ relative-time > ul {
   width: 100%;
 }
 
-.tag-actions > a {
-  margin-inline-end: var(--size-3xs);
-}
-
 .form-actions {
   --gap: var(--size-m);
   display: flex;
   flex-wrap: wrap;
   gap: var(--gap);
   align-items: center;
-}
-
-.form-actions a {
-  color: var(--color-danger-fill-vivid);
 }
 
 form input[type=text] {
