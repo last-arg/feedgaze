@@ -338,7 +338,7 @@ main h3 {
 }
 
 .feed-tags {
-  font-size: var(--font-size-code)
+  font-size: var(--font-size-code);
 }
 
 time.age-newest {
@@ -351,4 +351,17 @@ time.age-less-month {
 
 time.age-more-month {
   --time-bg: var(--color-gray-40);
+}
+
+@layer kelp.core {
+  .badge {
+    --decoration-hover: underline;
+    padding-block: var(--size-6xs);
+    padding-inline: var(--size-5xs);
+    border-radius: 2px;
+  }
+}
+
+.badge:hover {
+  color: var(--color-on-vivid);
 }

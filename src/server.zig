@@ -2060,7 +2060,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     for (tag_ids) |tag| {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
-        try tag_link_print(w, tag_name_escaped);
+        try tag_link_print(w, tag_name_escaped, .link);
         try w.print("<div class='cluster'>", .{});
         try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
         try w.print(
@@ -2433,9 +2433,8 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             try w.writeAll("</footer>");
         }
     } else {
-        // TODO: style
         try w.writeAll(
-            \\<p>Nothing to show</p>
+            \\<p class='callout'>No feeds to show</p>
         );
     }
     try w.writeAll("</main>");
@@ -2466,7 +2465,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         if (tags.len > 0) {
             try w.writeAll("<div class='feed-tags'>");
             for (tags) |tag| {
-                try tag_link_print(w, tag);
+                try tag_link_print(w, tag, .badge);
             }
             try w.writeAll("</div>");
         }
@@ -2655,7 +2654,7 @@ fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][
         .is_checked = is_checked,
         .label_class = "visually-hidden",
     });
-    try tag_link_print(w, tag);
+    try tag_link_print(w, tag, .link);
     try w.writeAll("</div>");
 }
 
@@ -2675,12 +2674,16 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
     try w.print(tag_fmt, args);
 }
 
-fn tag_link_print(w: anytype, tag: []const u8) !void {
+fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !void {
+    const class = switch(tag_type) {
+        .link => "",
+        .badge => "badge"
+    };
     const tag_link_fmt = 
-    \\<a class='truncate-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
+    \\<a class='{[class]s} truncate-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
     ;
-    
-    try w.print(tag_link_fmt, .{ .tag = tag });
+
+    try w.print(tag_link_fmt, .{ .class = class, .tag = tag });
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
