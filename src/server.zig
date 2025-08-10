@@ -2676,11 +2676,11 @@ fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
 
 fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !void {
     const class = switch(tag_type) {
-        .link => "",
+        .link => "truncate-1",
         .badge => "badge"
     };
     const tag_link_fmt = 
-    \\<a class='{[class]s} truncate-1' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
+    \\<a class='{[class]s}' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
     ;
 
     try w.print(tag_link_fmt, .{ .class = class, .tag = tag });
