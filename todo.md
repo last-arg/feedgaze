@@ -13,6 +13,8 @@
   - tags page: add create tag form
   - style feed page
 - if link and id are same only save link to save space
+- fix parsing date from html
+  - for example if 'DD' won't parse single number '3'. Expects '03'
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

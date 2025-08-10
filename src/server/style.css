@@ -121,6 +121,7 @@ main h2 {
   align-items: baseline;
 }
 
+.no-date,
 .feed-item time {
   --time-bg: var(--color-text-normal);
   box-sizing: content-box;
@@ -132,7 +133,6 @@ main h2 {
   padding-inline: var(--size-5xs);
   text-align: end;
   flex-shrink: 0;
-  position: relative;
   border-bottom-right-radius: 1px;
   border-top-right-radius: 1px;
 }
@@ -311,6 +311,7 @@ main h3 {
 .feed header {
   --gap: calc(.5 * var(--size-m));
   margin-inline-start: calc(-.5 * var(--gap));
+  margin-block-end: 1em;
 }
 
 .feed-header-top {
@@ -330,19 +331,40 @@ main h3 {
 }
 
 .feed-edit {
-  font-size: var(--font-size-code);
+  font-size: var(--size-xs);
+  --color-text-link: var(--color-gray-40);
 }
 
 .feed-title {
   margin-inline-start: var(--size-4xs);
 }
 
+.feed header:has(.feed-tags) {
+  position: relative;
+  margin-block-end: calc(
+    var(--font-size-code) + var(--size-5xs) + 1em
+  );
+}
+
 .feed-tags {
+  background: white;
+  /* outline: 1px solid red; */
+  padding: var(--size-5xs);
   font-size: var(--font-size-code);
   display: flex;
   gap: var(--size-4xs);
   overflow: hidden;
-  position: relative;
+  position: absolute;
+  width: calc(100% + var(--size-5xs));
+  margin-block-start: var(--size-6xs);
+  margin-inline: calc(-1 * var(--size-5xs));
+  border-radius: 2px;
+  outline: 1px solid transparent;
+}
+
+.feed-tags:hover {
+  flex-wrap: wrap;
+  outline-color: var(--color-gray-10);
 }
 
 .feed-tags::after {
@@ -378,3 +400,4 @@ time.age-more-month {
     border-radius: 2px;
   }
 }
+
