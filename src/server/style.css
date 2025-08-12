@@ -156,7 +156,7 @@ main h2 {
 }
 
 .feed-external-url a {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: var(--size-5xs);
 }
