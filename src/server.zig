@@ -2464,9 +2464,15 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
             try w.writeAll("<div class='feed-tags'>");
+            try w.writeAll("<ul class='list-unstyled'>");
             for (tags) |tag| {
+                try w.writeAll("<li>");
                 try tag_link_print(w, tag, .badge);
+                try w.writeAll("</li>");
             }
+            try w.writeAll("</ul>");
+            try w.writeAll("<button>Show tags");
+            try w.writeAll("</button>");
             try w.writeAll("</div>");
         }
         try w.writeAll("</header>");
