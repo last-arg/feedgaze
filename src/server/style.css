@@ -121,6 +121,10 @@ main h2 {
   align-items: baseline;
 }
 
+.hide-after ~ li {
+  display: none;
+}
+
 .no-date,
 .feed-item time {
   --time-bg: var(--color-text-normal);
@@ -135,6 +139,20 @@ main h2 {
   flex-shrink: 0;
   border-bottom-right-radius: 1px;
   border-top-right-radius: 1px;
+}
+
+.feed-footer button {
+  margin-block-start: var(--size-m);
+  font-size: var(--size-xs);
+  padding: var(--size-5xs) var(--size-4xs);
+}
+
+.feed-footer button[aria-expanded=true] .toggle-expand {
+  display: none;
+}
+
+.feed-footer button[aria-expanded=false] .toggle-collapse {
+  display: none;
 }
 
 .item-extra {
@@ -270,8 +288,7 @@ Use this if 100% width is not desired behaviour.
   }
 
   .flow > * + * {
-    /* margin-block-start: var(--flow-space, var(--size-m)); */
-    margin-top: 22px;
+    margin-block-start: var(--flow-space, var(--size-m));
   }
 }
 
@@ -314,6 +331,10 @@ main h3 {
   margin-block-end: 1em;
 }
 
+.feed:has([aria-expanded=false]) .feed-item:not(:first-child) {
+  display: none;
+}
+
 .feed-header-top {
   display: flex;
   align-items: center;
@@ -333,6 +354,7 @@ main h3 {
 .feed-edit {
   font-size: var(--size-xs);
   --color-text-link: var(--color-gray-40);
+  margin-block-start: calc(var(--size-m) - var(--size-xs));
 }
 
 .feed-title {
@@ -340,22 +362,11 @@ main h3 {
 }
 
 .feed-tags {
-  background: white;
-  display: flex;
-  align-items: start;
-  width: calc(100% + var(--size-5xs));
-  margin-block-start: var(--size-6xs);
-  margin-inline: calc(-1 * var(--size-5xs));
-}
-
-.feed-tags:hover ul {
-  height: auto;
+  margin-top: var(--size-4xs);
 }
 
 .feed-tags ul {
-  padding: var(--size-5xs);
   display: flex;
-  overflow: hidden;
   flex-wrap: wrap;
   font-size: var(--font-size-code);
   gap: var(--size-4xs);
@@ -365,12 +376,6 @@ main h3 {
 
 .feed-tags a {
   display: block;
-}
-
-.feed-tags button {
-  font-size: var(--size-3xs);
-  padding: var(--size-5xs);
-  border-radius: inherit;
 }
 
 time.age-newest {

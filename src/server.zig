@@ -2443,7 +2443,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {
-    try w.writeAll("<div>");
+    try w.writeAll("<div class='flow' style='--flow-space: var(--size-6xl)'>");
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");
@@ -2495,7 +2495,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
         try w.writeAll("<ul class='stack list-unstyled'>");
         for (items, 0..) |item, i| {
-            const hidden = if (hide_index_start == i) "hide-after" else "";
+            const hidden = if (hide_index_start > 0 and hide_index_start == i) "hide-after" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
 
             try item_render(w, allocator, item, .{.class = "truncate-2"});
