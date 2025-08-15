@@ -2482,7 +2482,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
-        var hide_index_start: ?usize = null;
+        var hide_index_start = items.len;
         const age_1day_ago = date_in_sec - std.time.s_per_day;
 
         for (items[1..], 1..) |item, i| {
@@ -2495,28 +2495,21 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
         try w.writeAll("<ul class='stack list-unstyled'>");
         for (items, 0..) |item, i| {
-            const hidden: []const u8 = blk: {
-                if (hide_index_start) |index| {
-                    if (index == i) {
-                        break :blk "hide-after";
-                    }
-                }
-                break :blk "";
-            };
-
+            const hidden = if (hide_index_start == i) "hide-after" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
+
             try item_render(w, allocator, item, .{.class = "truncate-2"});
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
         try w.writeAll("</relative-time>");
-        const aria_expanded = if (hide_index_start != null) "false" else "true";
+        const aria_expanded = if (hide_index_start != items.len) "false" else "true";
         try w.print(
             \\<footer class="feed-footer">
-            \\  <button class="js-feed-item-toggle feed-item-toggle" aria-expanded="{s}">
+            \\  <button class="outline js-feed-item-toggle" aria-expanded="{s}">
             \\    <span class="toggle-expand">Expand</span>
             \\    <span class="toggle-collapse">Collapse</span>
-            \\</button>
+            \\  </button>
             \\</footer>
         , .{aria_expanded});
 
