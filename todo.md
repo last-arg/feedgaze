@@ -9,7 +9,6 @@
   - dark mode
   - server: limit inline icon size
   - style: scrollbar
-  - change delete links into <form method="POST"> with button
   - tags page: add create tag form
   - style feed page
 - if link and id are same only save link to save space

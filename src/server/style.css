@@ -339,30 +339,13 @@ main h3 {
   margin-inline-start: var(--size-4xs);
 }
 
-.feed header:has(.feed-tags) {
-  position: relative;
-  --tags-first-line-height: calc(
-    var(--font-size-code) + var(--size-5xs)
-  );
-  margin-block-end: calc(
-    var(--tags-first-line-height) + 1em
-  );
-}
-
 .feed-tags {
   background: white;
   display: flex;
   align-items: start;
-  position: absolute;
   width: calc(100% + var(--size-5xs));
   margin-block-start: var(--size-6xs);
   margin-inline: calc(-1 * var(--size-5xs));
-  border-radius: 2px;
-  outline: 1px solid transparent;
-}
-
-.feed-tags:hover {
-  outline-color: var(--color-gray-10);
 }
 
 .feed-tags:hover ul {
