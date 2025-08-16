@@ -25,6 +25,7 @@ h1 {
 main {
   --sidebar-content-min-width: 30ch;
   padding-block-end: var(--size-5xl);
+  padding-inline-end: var(--size-m);
 }
 
 nav span {
@@ -52,10 +53,6 @@ nav span {
 
 .feed-icon {
   height: 1em;
-}
-
-.page {
-  padding-inline-end: var(--size-m);
 }
 
 .tag-list {
@@ -401,3 +398,12 @@ time.age-more-month {
   }
 }
 
+.main-header button {
+  font-size: var(--size-2xs);
+  margin-block-start: var(--size-m);
+  padding: var(--size-4xs) var(--size-4xs);
+}
+
+.main-footer {
+  margin-block-start: var(--size-5xl);
+}
