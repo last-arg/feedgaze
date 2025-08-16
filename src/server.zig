@@ -2177,8 +2177,11 @@ const Layout = struct {
     }
 
     fn write_sidebar_form_new(w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
+        try w.writeAll("<details>");
+        try w.writeAll("<summary>");
+        try w.writeAll("Filter feeds");
+        try w.writeAll("</summary>");
         try w.writeAll("<div class='filter-wrapper'>");
-        try w.writeAll("<h2 class='sidebar-heading'>Filter feeds</h2>");
         try w.writeAll("<form action='/feeds' class='stack'>");
         // NOTE: don't want tags-only button to be the 'default' button. This is
         // used when enter is pressed in input (text) field.
@@ -2207,16 +2210,19 @@ const Layout = struct {
 
         try w.writeAll("</form>");
         try w.writeAll("</div>");
+        try w.writeAll("</details>");
     }
 
     pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {
-        try w.writeAll("<header class='body-header stack'>");
+        try w.writeAll("<header class='body-header'>");
 
-        try w.writeAll("<div>");
-        try w.writeAll("<h1 class='h2 sidebar-heading'>feedgaze</h1>");
+        try w.writeAll("<div class='nav'>");
+        try w.writeAll("<h1>");
+        try nav_link_render("/", "feedgaze", w, request_url_path);
+        try w.writeAll("</h1>");
+        try w.writeAll("<span>|</span>");
 
         const menu_items = [_]struct{path: []const u8, name: []const u8}{
-            .{.path = "/", .name = "Home"},
             .{.path = "/feeds", .name = "Feeds"},
             .{.path = "/tags", .name = "Tags"},
             .{.path = "/feed/add", .name = "Add feed"},
