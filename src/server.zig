@@ -617,8 +617,8 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='box'>");
-    try w.writeAll("<h2>Add feed</h2>");
+    try w.writeAll("<main>");
+    try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
 
     if (query.get("feed-exists")) |raw_value| {
         const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
@@ -955,9 +955,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='box'>");
+    try w.writeAll("<main>");
 
-    try w.writeAll("<h2>Add feed</h2>");
+    try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
 
     var query = try req.query();
     if (query.get("success")) |id_raw| {
@@ -1749,7 +1749,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
     }
 
-    try w.writeAll("<div class='main-heading'>");
+    try w.writeAll("<div class='main-header'>");
     try w.writeAll("<h2>Latest added</h2>");
 
     if (try db.next_update_timestamp()) |countdown_ts| {
@@ -2041,8 +2041,8 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='box'>");
-    try w.writeAll("<h2>Tags</h2>");
+    try w.writeAll("<main>");
+    try w.writeAll("<header class='main-header'><h2>Tags</h2></header>");
 
     const query_kv = try req.query();
     if (query_kv.get("error")) |err_value| {
@@ -2191,7 +2191,7 @@ const Layout = struct {
         try w.writeAll("<fieldset class='tags stack'>");
         try w.writeAll("<legend>Tags</legend>");
 
-        try w.writeAll("<div class='tag-list stack'>");
+        try w.writeAll("<div class='tag-list'>");
         try untagged_label_render(w, opts.has_untagged);
         for (tags, 0..) |tag, i| {
             try tag_label_render(w, tag, i + 1, opts.tags_checked);
@@ -2241,6 +2241,7 @@ const Layout = struct {
 
         try self.write_sidebar_form(w, tags, opts);
 
+        try w.writeAll("<hr class='breakout'>");
         try w.writeAll("</header>");
     }
 
@@ -2405,6 +2406,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const current_path_len = new_url_arr.items.len;
 
             try w.writeAll("<footer class='main-footer'>");
+            try w.writeAll("<hr class='breakout'>");
 
             const has_prev = try db.feeds_search_has_previous(req.arena, .{ 
                 .search = feed_search_value, 

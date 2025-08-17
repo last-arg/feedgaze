@@ -24,16 +24,19 @@ h1 {
   font-family: var(--font-primary);
 }
 
+hr {
+  margin-block: 0;
+}
+
+.body-header details {
+  margin-block: var(--size-4xs);
+}
+
 body > div {
   max-width: 55ch;
   margin-inline: auto;
-  padding: var(--size-4xs) var(--size-m);
-}
-
-main {
-  --sidebar-content-min-width: 30ch;
-  padding-block-end: var(--size-5xl);
-  padding-inline-end: var(--size-m);
+  padding-inline: var(--size-m);
+  padding-block: var(--size-4xs) var(--size-m);
 }
 
 .nav span {
@@ -48,8 +51,9 @@ main {
   height: 1em;
 }
 
+/* TODO: limit/cap height of <header> tag-list? */
 .tag-list {
-  --gap: var(--size-6xs);
+  column-width: 15ch;
 }
 
 .tag {
@@ -74,11 +78,8 @@ main {
   --outline-color: var(--color-red-80);
 }
 
-.body-header {
-}
-
-main > *:first-child {
-  margin-bottom: 2rem;
+main {
+  margin-block: var(--size-4xl);
 }
 
 main h2 {
@@ -90,7 +91,11 @@ main h2 {
   /* outline: 1px solid var(--color-gray-50); */
 }
 
-.main-heading > p,
+.main-header {
+  margin-block-end: var(--size-2xl);
+}
+
+.main-header > p,
 .heading-info {
   font-style: italic;
   color: var(--color-text-muted);
@@ -161,7 +166,6 @@ main h2 {
 }
 
 .item-link {
-  max-width: 40ch;
   width: 100%;
   margin-inline-start: var(--size-xs);
   margin-inline-end: var(--size-xl);
@@ -368,8 +372,9 @@ time.age-more-month {
   padding: var(--size-4xs) var(--size-4xs);
 }
 
-.main-footer {
-  margin-block-start: var(--size-5xl);
+.main-footer hr {
+  margin-block-start: var(--size-4xl);
+  margin-block-end: var(--size-4xs);
 }
 
 .nav {
