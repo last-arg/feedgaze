@@ -95,8 +95,15 @@ main h2 {
   margin-block-end: var(--size-2xl);
 }
 
-.main-header > p,
-.heading-info {
+/* TODO: fix /feeds page header buttons */
+.main-header button {
+  padding: 0;
+  font-size: inherit;
+  vertical-align: inherit;
+}
+
+.heading-info p {
+  margin-bottom: 0;
   font-style: italic;
   color: var(--color-text-muted);
   font-size: var(--size-xs);
@@ -183,10 +190,6 @@ main h2 {
   -webkit-line-clamp: 2;
   line-clamp: 2;
   overflow: hidden;
-}
-
-.heading-info p {
-  margin-bottom: 0;
 }
 
 .form-submit {
@@ -364,12 +367,6 @@ time.age-more-month {
     padding-inline: var(--size-5xs);
     border-radius: 2px;
   }
-}
-
-.main-header button {
-  font-size: var(--size-2xs);
-  margin-block-start: var(--size-m);
-  padding: var(--size-4xs) var(--size-4xs);
 }
 
 .main-footer hr {

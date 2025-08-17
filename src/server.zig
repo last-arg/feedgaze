@@ -1749,7 +1749,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
     }
 
-    try w.writeAll("<div class='main-header'>");
+    try w.writeAll("<header class='main-header'>");
     try w.writeAll("<h2>Latest added</h2>");
 
     if (try db.next_update_timestamp()) |countdown_ts| {
@@ -1768,8 +1768,9 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
             try w.writeAll(
                 \\<form method=POST action=/update>
-                \\<button href="/update">Check for updates</button>.
-                \\Might take some time.
+                \\<p>
+                \\<button class="btn-link">Check for updates.</button>
+                \\Might take some time.</p>
                 \\</form>
                 \\</div>
             );
@@ -1782,7 +1783,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             });
         }
     }
-    try w.writeAll("</div>");
+    try w.writeAll("</header>");
     
     const items = try db.get_items_latest_added(req.arena);
     if (items.len > 0) {
