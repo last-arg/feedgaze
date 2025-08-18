@@ -2383,7 +2383,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     try w.writeAll(
         \\<header class="main-header">
         \\  <h2>Feeds</h2>
-        \\  <div class="cluster">
+        \\  <div class="main-actions cluster">
         \\  <button class="outline js-expand-all">Expand all</button>
         \\  <button class="outline js-collapse-all">Collapse all</button>
         \\  </div>

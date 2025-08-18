@@ -95,8 +95,17 @@ main h2 {
   margin-block-end: var(--size-2xl);
 }
 
-/* TODO: fix /feeds page header buttons */
-.main-header button {
+.main-actions {
+  --gap: var(--size-xs);
+  margin-block-start: var(--size-4xs);
+}
+
+.main-actions button {
+  font-size: var(--size-xs);
+  padding: var(--size-5xs) var(--size-4xs);
+}
+
+.heading-info button {
   padding: 0;
   font-size: inherit;
   vertical-align: inherit;
