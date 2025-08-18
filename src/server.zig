@@ -1754,8 +1754,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     if (try db.next_update_timestamp()) |countdown_ts| {
         const now_ts = std.time.timestamp();
+        try w.writeAll("<div class=\"heading-info\">");
         if (countdown_ts <= now_ts) {
-            try w.writeAll("<div class=\"heading-info\">");
             if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
                 const date_readable_str = date_readable(recent_timestamp);
                 try w.print(
@@ -1772,7 +1772,6 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 \\<button class="btn-link">Check for updates.</button>
                 \\Might take some time.</p>
                 \\</form>
-                \\</div>
             );
         } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
@@ -1782,6 +1781,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 date_readable_str,
             });
         }
+        try w.writeAll("</div>");
     }
     try w.writeAll("</header>");
     
