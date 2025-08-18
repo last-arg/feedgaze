@@ -1825,11 +1825,10 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     try w.print(
         \\<div class="item-extra">
         \\<a href="/feed/{d}" title="{s}">{s}</a>
-        \\<div class="feed-external-url">
     , .{ feed.feed_id, title, title });
 
     try w.print(
-        \\<a href="{}" rel=noreferrer>
+        \\<a class="feed-external-url" href="{}" rel=noreferrer>
     , .{ url });
 
     var buf: [128]u8 = undefined;
@@ -1843,7 +1842,6 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
 
     try w.print(
         \\<span>{+}</span></a>
-        \\</div>
         \\</div>
     , .{ url });
 }

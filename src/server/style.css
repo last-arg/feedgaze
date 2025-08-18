@@ -6,6 +6,10 @@
   }
 }
 
+:root {
+  --max-width: 55ch;
+}
+
 body {
   letter-spacing: .02em;
 }
@@ -33,7 +37,7 @@ hr {
 }
 
 body > div {
-  max-width: 55ch;
+  max-width: var(--max-width);
   margin-inline: auto;
   padding-inline: var(--size-m);
   padding-block: var(--size-4xs) var(--size-m);
@@ -160,34 +164,37 @@ main h2 {
   display: none;
 }
 
+.item-link {
+  margin-inline-start: var(--size-xs);
+  margin-inline-end: var(--size-xl);
+  max-width: 40ch;
+  width: 100%;
+}
+
+relative-time > ul {
+  margin-inline-end: calc(-0.5 * max(0px, calc(100vw - var(--max-width))));
+}
+
 .item-extra {
   --color-text-link: var(--color-gray-40);
   font-size: var(--size-xs);
-  width: 10ch;
-  flex-grow: 1;
+  min-width: 7ch;
 }
 
 .item-extra a,
-.item-extra span {
+.feed-external-url span {
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
 }
 
-.feed-external-url {
+a.feed-external-url {
   margin-top: var(--size-5xs);
-}
-
-.feed-external-url a {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--size-5xs);
-}
-
-.item-link {
-  width: 100%;
-  margin-inline-start: var(--size-xs);
-  margin-inline-end: var(--size-xl);
 }
 
 .truncate-1 {
