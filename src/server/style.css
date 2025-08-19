@@ -146,8 +146,7 @@ main h2 {
   padding-inline: var(--size-5xs);
   text-align: end;
   flex-shrink: 0;
-  border-bottom-right-radius: 1px;
-  border-top-right-radius: 1px;
+  border-radius: 1px;
 }
 
 .feed-footer button {
@@ -168,7 +167,8 @@ main h2 {
   margin-inline-start: var(--size-xs);
   margin-inline-end: var(--size-xl);
   max-width: 40ch;
-  width: 100%;
+  /* make sure .item-extra column is aligned */
+  width: 200%;
 }
 
 relative-time > ul {

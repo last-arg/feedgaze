@@ -10,7 +10,6 @@
   - server: limit inline icon size
   - style: scrollbar
   - tags page: add create tag form
-  - make main <header> same on different pages
 - if link and id are same only save link to save space
 - fix parsing date from html
   - for example if 'DD' won't parse single number '3'. Expects '03'
