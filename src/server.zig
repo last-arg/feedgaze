@@ -617,7 +617,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
     try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
 
     if (query.get("feed-exists")) |raw_value| {
@@ -955,7 +955,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
 
     try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
 
@@ -1264,7 +1264,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
     try w.writeAll("<h2>");
     if (feed.icon_id) |icon_id| {
         var buf: [128]u8 = undefined;
@@ -1735,7 +1735,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='content-latest'>");
+    try w.writeAll("<main class='content-latest flow'>");
 
     const query = try req.query();
     if (query.get("msg")) |value| {
@@ -1974,7 +1974,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
     
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
     try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
 
     const query_kv = try req.query();
@@ -2040,7 +2040,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
     try w.writeAll("<header class='main-header'><h2>Tags</h2></header>");
 
     const query_kv = try req.query();
@@ -2376,7 +2376,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         });
     };
 
-    try w.writeAll("<main>");
+    try w.writeAll("<main class='flow'>");
 
     try w.writeAll(
         \\<header class="main-header">
