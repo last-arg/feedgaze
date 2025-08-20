@@ -398,3 +398,7 @@ time.age-more-month {
   flex-wrap: wrap;
   align-items: center;
 }
+
+.tag-actions form {
+  line-height: 1;
+}

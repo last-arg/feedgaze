@@ -2060,7 +2060,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<li class='tag-item'>");
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped, .link);
-        try w.print("<div class='cluster'>", .{});
+        try w.print("<div class='tag-actions cluster align-center'>", .{});
         try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
         try w.print(
             \\<form action="/tag/{d}/delete" method="POST">
