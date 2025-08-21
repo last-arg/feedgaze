@@ -342,6 +342,7 @@ main h3 {
   font-size: var(--size-xs);
   --color-text-link: var(--color-gray-40);
   margin-block-start: calc(var(--size-m) - var(--size-xs));
+  white-space: nowrap;
 }
 
 .feed-title {
