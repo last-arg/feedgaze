@@ -51,10 +51,6 @@ body > div {
   text-decoration: underline;
 }
 
-.feed-icon {
-  height: 1em;
-}
-
 /* TODO: limit/cap height of <header> tag-list? */
 .tag-list {
   column-width: 15ch;
@@ -325,13 +321,14 @@ main h3 {
 .feed-header-top {
   display: flex;
   align-items: center;
+  gap: var(--size-4xs);
 }
 
 .feed-header-top time {
   --time-bg: var(--color-text-normal);
   background: var(--time-bg);
   color: var(--color-background);
-  margin-inline: var(--size-s);
+  margin-inline: var(--size-4xs);
   font: var(--font-monospace);
   font-size: var(--size-2xs);
   padding-inline: var(--size-5xs);
@@ -345,8 +342,8 @@ main h3 {
   white-space: nowrap;
 }
 
-.feed-title {
-  margin-inline-start: var(--size-4xs);
+.feed-icon {
+  height: 1em;
 }
 
 .feed-tags {
