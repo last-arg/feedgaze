@@ -11,8 +11,6 @@
   - style: scrollbar
   - tags page: add create tag form
 - if link and id are same only save link to save space
-- fix parsing date from html
-  - for example if 'DD' won't parse single number '3'. Expects '03'
 - feed page: if page title is longer than one line
 
 - Make sqlite returned primary keys into u64.

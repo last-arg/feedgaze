@@ -14,10 +14,6 @@ body {
   letter-spacing: .02em;
 }
 
-h2 {
-  line-height: 1.1;
-}
-
 h1, h2, h3 {
   font-weight: normal;
 }
@@ -86,9 +82,7 @@ main h2 {
   margin-block-start: var(--size-4xs);
   margin-block-end: 0;
   display: flex;
-  align-items: center;
   gap: var(--size-4xs);
-  /* outline: 1px solid var(--color-gray-50); */
 }
 
 .main-header {
@@ -346,8 +340,8 @@ main h3 {
   height: 1em;
 }
 
-.feed-tags {
-  margin-top: var(--size-4xs);
+h2 .feed-icon {
+  margin-block-start: .17em;
 }
 
 .feed-tags ul {
