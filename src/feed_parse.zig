@@ -954,176 +954,186 @@ pub fn parse_wrong_rss_date(raw: []const u8) ?i64 {
     return seconds_from_date_format(raw, "xxx MMM DD YYYY HH:mm:ss GMTZZZZZ");
 }
 
+const DateValue = struct {
+    str: []const u8,
+    index: usize,
+};
+
 pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
     assert(raw.len > 0);
     assert(date_format.len > 0);
     assert(raw[0] != ' ' and raw[raw.len - 1] != ' ');
 
-    const year_fmt, const year_start = blk: { 
-        const year_long_fmt = "YYYY";
-        if (mem.indexOf(u8, date_format, year_long_fmt)) |index| {
-            break :blk .{year_long_fmt, index};
+    var buf: [7]DateValue = undefined;
+    var date_fmts = std.ArrayListUnmanaged(DateValue).initBuffer(&buf);
+
+    if (mem.indexOf(u8, date_format, "YYYY")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "YYYY",
+            .index = index,
+        });
+    } else if (mem.indexOf(u8, date_format, "YY")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "YY",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "MMM")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "MMM",
+            .index = index,
+        });
+    } else if (mem.indexOf(u8, date_format, "MM")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "MM",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "DD")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "DD",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "HH")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "HH",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "mm")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "mm",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "ss")) |index| {
+        date_fmts.appendAssumeCapacity(.{
+            .str = "ss",
+            .index = index,
+        });
+    }
+
+    if (mem.indexOf(u8, date_format, "Z")) |index| {
+        date_fmts.appendAssumeCapacity(.{ .str = "Z",
+            .index = index,
+        });
+    }
+
+    std.mem.sort(DateValue, date_fmts.items, {}, struct{
+        fn less_than(_: void, lhs: DateValue, rhs: DateValue) bool {
+            return lhs.index < rhs.index;
         }
+    }.less_than);
 
-        const year_short_fmt = "YY";
-        break :blk .{year_short_fmt, mem.indexOf(u8, date_format, year_short_fmt)};
-    };
-
+    // TODO?: should all or some date values default
+    // to current datetime?
+    var month: u32 = 0;
     var year: u32 = 0;
-    if (year_start) |index| {
-        const end = index + year_fmt.len;
-        if (end <= raw.len) {
-            const year_raw = raw[index..end];
-            if (std.fmt.parseUnsigned(u32, year_raw, 10)) |value| {
-                // TODO: might have two digit value in 1900s?
-                const short_add: u32 = if (value < 100) 2000 else 0;
-                year = value + short_add;
-            } else |_| {
-                std.log.warn("Failed to parse year from '{s}'. Try to parse years value from '{s}'", .{raw, year_raw});
-                return null;
-            }
-        }
-    }
-
-    if (year == 0) {
-        return null;
-    }
-
-    const month_fmt, const month_start = blk: {
-        const month_text_fmt = "MMM";
-        if (mem.indexOf(u8, date_format, month_text_fmt)) |index| {
-            break :blk .{month_text_fmt, index};
-        }
-
-        const month_fmt = "MM";
-        break :blk .{month_fmt, mem.indexOf(u8, date_format, month_fmt)};
-    };
-    const month = blk: {
-        const index = month_start orelse break :blk 1;
-        const end = index + month_fmt.len;
-        if (end <= raw.len) {
-            const month_raw = raw[index..end];
-            if (month_fmt.len == 2) {
-                if (std.fmt.parseUnsigned(u32, month_raw, 10)) |value| {
-                    break :blk value;
-                } else |_| {
-                    std.log.warn("Failed to parse month from '{s}'. Try to parse months value from '{s}'", .{raw, month_raw});
-                }
-            } else if (month_fmt.len == 3) {
-                if (datetime.Month.parseAbbr(month_raw)) |value| {
-                    break :blk @intFromEnum(value);
-                } else |_| {
-                    std.log.warn("Failed to parse month from '{s}'. Try to parse months abbreviated value from '{s}'", .{raw, month_raw});
-                }
-            } else {
-                unreachable;
-            }
-        }
-
-        break :blk 1;
-    };
-    
-    const day_fmt = "DD";
-    const day_start = mem.indexOf(u8, date_format, day_fmt);
-    var day: u32 = 1;
-    if (day_start) |index| {
-        const end = index + day_fmt.len;
-        if (end <= raw.len) {
-            const day_raw = raw[index..end];
-            if (std.fmt.parseUnsigned(u32, day_raw, 10)) |value| {
-                day = value;
-            } else |_| {
-                std.log.warn("Failed to parse date from '{s}'. Try to parse days value from '{s}'", .{raw, day_raw});
-            }
-        }
-    }
-
-    const hour_fmt = "HH";
-    const hour_start = mem.indexOf(u8, date_format, hour_fmt);
+    var day: u32 = 0;
     var hour: u32 = 0;
-    if (hour_start) |index| {
-        const end = index + hour_fmt.len;
-        if (end <= raw.len) {
-            const hour_raw = raw[index..end];
-            if (std.fmt.parseUnsigned(u32, hour_raw, 10)) |value| {
-                hour = value;
-            } else |_| {
-                std.log.warn("Failed to parse date from '{s}'. Try to parse hour value from '{s}'", .{raw, hour_raw});
-            }
-        }
-    }
-
-    const minute_fmt = "mm";
-    const minute_start = mem.indexOf(u8, date_format, minute_fmt);
     var minute: u32 = 0;
-    if (minute_start) |index| {
-        const end = index + minute_fmt.len;
-        if (end <= raw.len) {
-            const minute_raw = raw[index..end];
-            if (std.fmt.parseUnsigned(u32, minute_raw, 10)) |value| {
-                minute = value;
-            } else |_| {
-                std.log.warn("Failed to parse date from '{s}'. Try to parse minutes value from '{s}'", .{raw, minute_raw});
-            }
-        }
-    }
-
-    const second_fmt = "ss";
-    const second_start = mem.indexOf(u8, date_format, second_fmt);
     var second: u32 = 0;
-    if (second_start) |index| {
-        const end = index + second_fmt.len;
-        if (end <= raw.len) {
-            const second_raw = raw[index..end];
-            if (std.fmt.parseUnsigned(u32, second_raw, 10)) |value| {
-                second = value;
-            } else |_| {
-                std.log.warn("Failed to parse date from '{s}'. Try to parse seconds value from '{s}'", .{raw, second_raw});
-            }
-        }
-    }
-
-    const timezone_fmt = "Z";
-    const timezone_start = mem.indexOf(u8, date_format, timezone_fmt);
     var timezone: ?dt.datetime.Timezone = null;
-    if (timezone_start) |index| blk: {
-        var end = index;
-        var sign: i8 = 1;
-        if (raw[index] == '-') {
-            sign = -1;
-        } else if (raw[index] != '+') {
-            std.log.warn("Try to parse timezone value in date '{s}'", .{raw});
-            break :blk;
+
+    for (date_fmts.items, 0..) |date_fmt, date_i| {
+        const fmt_len = date_fmt.str.len;
+        const end = @min(date_fmt.index + fmt_len, raw.len);
+        const raw_value = raw[date_fmt.index..end];
+
+        const first = raw_value[0];
+        if (first >= '0' and first <= '9') {
+            var end_number = raw_value.len;
+            for (raw_value, 0..) |char, i| {
+                if (char < '0' or char > '9') {
+                    end_number = i;
+                    break;
+                }
+            }
+            if (end_number == 0) {
+                std.log.warn("Date value '{s}' does not start with a number", .{raw_value});
+                continue;
+            } else if (end_number < fmt_len) {
+                const diff = fmt_len - end_number;
+                for (date_fmts.items[date_i + 1..]) |*date_rest| {
+                    date_rest.index -= diff;
+                }
+            }
+            
+            const raw_number = raw_value[0..end_number];
+            if (std.fmt.parseUnsigned(u32, raw_number, 10)) |value| {
+                if (std.mem.eql(u8, "YY", date_fmt.str)) {
+                    year = 2000 + value;
+                } else if (std.mem.eql(u8, "YYYY", date_fmt.str)) {
+                    year = value;
+                } else if (std.mem.eql(u8, "MM", date_fmt.str)) {
+                    month = value;
+                } else if (std.mem.eql(u8, "DD", date_fmt.str)) {
+                    day = value;
+                } else if (std.mem.eql(u8, "HH", date_fmt.str)) {
+                    hour = value;
+                } else if (std.mem.eql(u8, "mm", date_fmt.str)) {
+                    minute = value;
+                } else if (std.mem.eql(u8, "ss", date_fmt.str)) {
+                    second = value;
+                }
+            } else |_| {
+                // NOTE: This should not happen.
+                std.log.warn("Failed to parse date value '{s}' to number", .{raw_number});
+            }
+        } else if (std.mem.eql(u8, "MMM", date_fmt.str)) {
+            if (datetime.Month.parseAbbr(raw_value)) |value| {
+                month = @intFromEnum(value);
+            } else |_| {
+                std.log.warn("Failed to parse months abbreviated value from '{s}'", .{raw_value});
+            }
+        } else if (std.mem.eql(u8, "Z", date_fmt.str)) {
+            const index = date_fmt.index;
+            var end_tz = index;
+            var sign: i8 = 1;
+            if (raw[index] == '-') {
+                sign = -1;
+            } else if (raw[index] != '+') {
+                std.log.warn("Failed to parse timezone date value from input '{s}'", .{raw});
+                continue;
+            }
+            end_tz += 1;
+
+            if (end_tz + 2 > raw.len) { break; }
+            const hours_raw = raw[end_tz..end_tz + 2];
+            var hours: u32 = 0;
+            if (std.fmt.parseUnsigned(u32, hours_raw, 10)) |value| {
+                hours = value;
+            } else |_| {
+                std.log.warn("Failed to parse timezone's hours value from input '{s}'", .{hours_raw});
+                continue;
+            }
+            end_tz += 2;
+            end_tz += @intFromBool(raw[end_tz] == ':');
+
+            if (end_tz + 2 > raw.len) { break; }
+            const minutes_raw = raw[end_tz..end_tz + 2];
+            var minutes: u32 = 0;
+            if (std.fmt.parseUnsigned(u32, minutes_raw, 10)) |value| {
+                minutes = value;
+            } else |_| {
+                std.log.warn("Failed to parse timezone's minutes value from input '{s}'", .{minutes_raw});
+                continue;
+            }
+
+            end_tz += 2;
+            const all_minutes: i16 = @intCast(hours * 60 + minutes);
+            const offset = sign * all_minutes;
+
+            timezone = dt.datetime.Timezone.create(raw[index..end_tz], offset, .no_dst);
+        } else {
+            std.log.warn("Failed to find valid date value for '{s}' from '{s}'", .{date_fmt.str, raw_value});
         }
-        end += 1;
-
-        if (end + 2 > raw.len) { break :blk; }
-        const hours_raw = raw[end..end + 2];
-        var hours: u32 = 0;
-        if (std.fmt.parseUnsigned(u32, hours_raw, 10)) |value| {
-            hours = value;
-        } else |_| {
-            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone's hours value from '{s}'", .{raw, hours_raw});
-            break :blk;
-        }
-        end += 2;
-        end += @intFromBool(raw[end] == ':');
-
-        if (end + 2 > raw.len) { break :blk; }
-        const minutes_raw = raw[end..end + 2];
-        var minutes: u32 = 0;
-        if (std.fmt.parseUnsigned(u32, minutes_raw, 10)) |value| {
-            minutes = value;
-        } else |_| {
-            std.log.warn("Failed to parse date from '{s}'. Try to parse timezone's minutes value from '{s}'", .{raw, minutes_raw});
-            break :blk;
-        }
-
-        end += 2;
-        const all_minutes: i16 = @intCast(hours * 60 + minutes);
-        const offset = sign * all_minutes;
-
-        timezone = dt.datetime.Timezone.create(raw[index..end], offset, .no_dst);
     }
 
     const date = datetime.Datetime.create(year, month, day, hour, minute, second, 0, timezone) catch return null;
@@ -1846,29 +1856,6 @@ pub fn parse_atom_link(
     return null;
 }
 
-pub fn tmp_test() !void {
-    var arena = std.heap.ArenaAllocator.init(std.heap.c_allocator);
-    defer arena.deinit();
-
-    const content = @embedFile("tmp_file");
-    var parser: @This() = try .init(content);
-    const html_opts: HtmlOptions = .{
-        .selector_container = ".FrontList",
-        // .date_format = "YYYY-MM-DDTHH:mm:ssZ",
-    };
-    const result = try parser.parse(arena.allocator(), html_opts, .{
-        .feed_url = "http://reddit.com",
-    });
-    // print("slice: |{s}|\n", .{parser.text_arr.items});
-
-    print("link: |{?s}|\n", .{result.feed.page_url});
-    for (result.items[0..1]) |item| {
-        // _ = item;
-        print("ITEM: |{s}|\n", .{item.title});
-        // print("|{?s}|\n", .{item.link});
-    }
-}
-
 pub fn main() !void {
-    try tmp_test();
+    _ = seconds_from_date_format("7 2", "MM YY");
 }
