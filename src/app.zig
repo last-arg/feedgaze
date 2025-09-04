@@ -59,8 +59,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
     return struct {
         allocator: Allocator,
         storage: Storage = undefined,
-        out: Writer,
-        in: Reader,
+        out: *std.Io.Writer,
+        in: *std.Io.Reader,
         progress: std.Progress.Node,
         const Self = @This();
 
@@ -124,7 +124,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                                 });
 
                                 loop_count = 0;
-                                std.time.sleep(@intCast(countdown_ts * std.time.ns_per_s));
+                                std.Thread.sleep(@intCast(countdown_ts * std.time.ns_per_s));
                                 continue;
                             }
                         }
@@ -159,7 +159,7 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                         var tags_iter = mem.splitScalar(u8, tags_raw, ',');
                         const cap = mem.count(u8, tags_raw, ",") + 1;
                         var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), cap);
-                        defer tags_arr.deinit();
+                        defer tags_arr.deinit(arena.allocator());
                         while (tags_iter.next()) |tag_name| {
                             const trimmed = mem.trim(u8, tag_name, &std.ascii.whitespace);
                             if (trimmed.len > 0) {
@@ -532,16 +532,11 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                     while (true) {
                         try self.out.print("Remove rule '{s}' -> '{s}'? (y/n) ", .{r.match_url, r.result_url});
                         fix_buf.reset();
-                        self.in
-                            .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
-                                error.StreamTooLong => {
-                                    try self.out.writeAll(invalid_msg);
-                                    continue;
-                                },
-                                else => return err,
-                            };
 
-                        switch (user_output_state(fix_buf.getWritten())) {
+                        const raw_value = try self.in.takeDelimiterExclusive('\n');
+                        const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
+
+                        switch (user_output_state(value)) {
                             .yes => {
                                 try self.storage.rule_remove(r.add_rule_id);
                                 break;
@@ -617,7 +612,8 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             }
 
             var tags_arr = try std.ArrayList([]const u8).initCapacity(arena.allocator(), inputs.len);
-            defer tags_arr.deinit();
+            defer tags_arr.deinit(arena.allocator());
+
             for (inputs) |name| {
                 const trimmed = mem.trim(u8, name, &std.ascii.whitespace);
                 if (trimmed.len > 0) {
@@ -653,16 +649,10 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
             while (true) {
                 try self.out.print("{s} tags to {d} feeds? (y/n) ", .{flag_upper_str, feeds.len});
                 fix_buf.reset();
-                self.in
-                    .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
-                        error.StreamTooLong => {
-                            try self.out.writeAll(invalid_msg);
-                            continue;
-                        },
-                        else => return err,
-                    };
+                const raw_value = try self.in.takeDelimiterExclusive('\n');
+                const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
 
-                switch (user_output_state(fix_buf.getWritten())) {
+                switch (user_output_state(value)) {
                     .yes => {},
                     .no => {
                         return;
@@ -936,19 +926,9 @@ pub fn Cli(comptime Writer: type, comptime Reader: type) type {
                 while (true) {
                     fix_buf.reset();
                     try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
-                    self.in
-                        .streamUntilDelimiter(fix_buf.writer(), '\n', fix_buf.buffer.len) catch |err| switch (err) {
-                            error.StreamTooLong => {},
-                            else => return err,
-                        };
-                    const value = mem.trim(u8, fix_buf.getWritten(), &std.ascii.whitespace);
-
-                    // Empty stdin
-                    var len = fix_buf.getWritten().len;
-                    while (len == buf.len and buf[len-1] != '\n') {
-                        len = try self.in.read(&buf);
-                    }
-                
+                    const raw_value = try self.in.takeDelimiterExclusive('\n');
+                    const value = mem.trim(u8, raw_value, &std.ascii.whitespace);
+               
                     if (value.len == 1) {
                         if (value[0] == 'y' or value[0] == 'Y') {
                             try self.storage.deleteFeed(feed.feed_id);
@@ -1110,13 +1090,11 @@ test "feedgaze.show" {
 pub const App = struct {
     storage: Storage, 
 
-    const curl = @import("curl");
     const RequestResponse = struct {
         req: http_client,
-        resp: curl.Easy.Response,
+        resp: @import("http_client.zig").Response,
 
         pub fn deinit(self: *@This()) void {
-            self.resp.deinit();
             self.req.deinit();
         }
     };
@@ -1142,7 +1120,7 @@ pub const App = struct {
         var req = try http_client.init(allocator);
         const resp = try req.fetch(fetch_url, .{});
 
-        if (resp.body.?.slice().len == 0) {
+        if (req.writer.writer.buffered().len == 0) {
             std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
             return error.EmptyBody;
         }
@@ -1183,7 +1161,6 @@ pub const App = struct {
             std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
             return .failed;
         };
-        defer resp.deinit();
 
         if (resp.status_code == 304) {
             // Resource hasn't been modified
@@ -1236,13 +1213,10 @@ pub const App = struct {
             return .failed;
         }
 
-        const body = resp.body orelse {
-            std.log.err("Failed to update feed '{s}'. HTTP response has no body.", .{f_update.feed_url});
-            return .failed;
-        };
+        const body = req.writer.writer.buffered();
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
-        var parsing: FeedParser = try .init(body.slice());
+        var parsing: FeedParser = try .init(body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
             .feed_url = f_update.feed_url,
@@ -1390,10 +1364,10 @@ fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
 
 fn fix_args_type(allocator: std.mem.Allocator, inputs: [][:0]const u8) ![][]const u8 {
     var arr = try std.ArrayList([]const u8).initCapacity(allocator, inputs.len);
-    defer arr.deinit();
+    defer arr.deinit(allocator);
     for (inputs) |pos| {
         arr.appendAssumeCapacity(pos);
     }
 
-    return arr.toOwnedSlice();
+    return arr.toOwnedSlice(allocator);
 }

@@ -12,9 +12,12 @@ pub fn main() !void {
         var arena = std.heap.ArenaAllocator.init(gpa.allocator());
         defer arena.deinit();
 
-        const writer = std.io.getStdOut().writer();
-        const reader = std.io.getStdIn().reader();
-        const CliApp = Cli(@TypeOf(writer), @TypeOf(reader));
+        var stdout_buffer: [1024]u8 = undefined;
+        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+        const writer = &stdout_writer.interface;
+        var stdout_reader = std.fs.File.stdout().reader(&stdout_buffer);
+        const reader = &stdout_reader.interface;
+        const CliApp = Cli(std.Io.Writer, std.Io.Reader);
         const progress_node = std.Progress.start(.{});
         defer progress_node.end();
 

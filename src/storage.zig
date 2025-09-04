@@ -37,11 +37,12 @@ pub const Storage = struct {
     sql_db: sql.Db,
     options: Options = .{},
 
+    var buffer: [4096]u8 = undefined;
+    var storage_arr = std.ArrayListUnmanaged(u8).initBuffer(&buffer);
+
     const Options = struct {
         max_item_count: usize = app_config.max_items,
     };
-
-    var storage_arr = std.BoundedArray(u8, 4096).init(0) catch unreachable;
 
     pub const Error = error{
         FeedNotFound,
@@ -166,7 +167,6 @@ pub const Storage = struct {
         return feed_id;
     }
 
-    const curl = @import("curl");
     const ContentType = parse.ContentType;
     pub fn updateFeedAndItems(
         self: *Self,
@@ -260,31 +260,41 @@ pub const Storage = struct {
         const query_like = "feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'";
         const query_order = "ORDER BY updated_timestamp DESC LIMIT {d};";
 
-        try storage_arr.resize(0);
-        try storage_arr.appendSlice(query_start);
+        storage_arr.shrinkRetainingCapacity(0);
+        try storage_arr.appendSliceBounded(query_start);
         var values = try ArrayList([]const u8).initCapacity(allocator, inputs.len * 2);
-        defer values.deinit();
+        defer values.deinit(allocator);
         if (inputs.len > 0) {
-            try storage_arr.append(' ');
-            try storage_arr.appendSlice("WHERE");
+            try storage_arr.appendBounded(' ');
+            try storage_arr.appendSliceBounded("WHERE");
             for (inputs, 0..) |term, i| {
                 if (i != 0) {
-                    try storage_arr.append(' ');
-                    try storage_arr.appendSlice("AND");
+                    try storage_arr.appendBounded(' ');
+                    try storage_arr.appendSliceBounded("AND");
                 }
-                try storage_arr.append(' ');
-                try storage_arr.appendSlice(query_like);
+                try storage_arr.appendBounded(' ');
+                try storage_arr.appendSliceBounded(query_like);
                 values.appendAssumeCapacity(term);
                 values.appendAssumeCapacity(term);
             }
         }
 
-        try storage_arr.append(' ');
-        try storage_arr.writer().print(query_order, .{opts.limit});
+        try storage_arr.appendBounded(' ');
+        try storage_arr.printBounded(query_order, .{opts.limit});
 
-        var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+        var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
         defer stmt.deinit();
-        return try stmt.all(Feed, allocator, .{}, values.items);
+        return try iterator_to_slice(Feed, &stmt, allocator, values.items);
+    }
+
+    fn iterator_to_slice(T: type, stmt: *sql.DynamicStatement, allocator: Allocator, values: anytype) ![]T {
+        var iter = try stmt.iterator(T, values);
+        var rows: std.ArrayList(T) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, row);
+        }
+
+        return rows.toOwnedSlice(allocator);
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -322,7 +332,7 @@ pub const Storage = struct {
         \\
         ;
 
-        storage_arr.resize(0) catch unreachable;
+        storage_arr.shrinkRetainingCapacity(0);
         storage_arr.appendSliceAssumeCapacity(query);
 
         var has_where = false;
@@ -343,16 +353,16 @@ pub const Storage = struct {
                 storage_arr.appendSliceAssumeCapacity(cond_start);
                 storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%')");
                 storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
-                var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+                var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
                 defer stmt.deinit();
-                return try stmt.all(FeedToUpdate, allocator, .{}, .{ term, term, term });
+                return try iterator_to_slice(FeedToUpdate, &stmt, allocator, .{ term, term, term });
             }
         }
 
         storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
-        var stmt = try self.sql_db.prepareDynamic(storage_arr.slice());
+        var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
         defer stmt.deinit();
-        return try stmt.all(FeedToUpdate, allocator, .{}, .{});
+        return try iterator_to_slice(FeedToUpdate, &stmt, allocator, .{});
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
@@ -780,9 +790,9 @@ pub const Storage = struct {
         );
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
-        var query_where = try ArrayList(u8).initCapacity(allocator, 1024);
-        defer query_where.deinit();
-        const where_writer = query_where.writer();
+        var aw: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
+        errdefer aw.deinit();
+        var where_writer = aw.writer;
 
         var has_prev_cond = false;
 
@@ -810,29 +820,29 @@ pub const Storage = struct {
         
         const ids_tag = blk: {
             if (args.tags.len > 0) {
-                var tags_str = std.ArrayList(u8).init(allocator);
-                defer tags_str.deinit();
+                var tags_str: std.ArrayList(u8) = try .initCapacity(allocator, 64);
+                defer tags_str.deinit(allocator);
 
                 {
                     const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{args.tags[0]});
                     const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
                     const tag_slice = mem.sliceTo(c_str, 0x0);
-                    try tags_str.appendSlice(tag_slice);
+                    try tags_str.appendSlice(allocator, tag_slice);
                 }
 
                 for (args.tags[1..]) |tag| {
                     const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
                     const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
                     const tag_slice = mem.sliceTo(c_str, 0);
-                    try tags_str.append(',');
-                    try tags_str.appendSlice(tag_slice);
+                    try tags_str.appendSlice(allocator, ",");
+                    try tags_str.appendSlice(allocator, tag_slice);
                 }
 
                 const query_fmt = "SELECT tag_id FROM tag where name in ({s})";
                 const query = try std.fmt.allocPrint(allocator, query_fmt, .{tags_str.items});
                 var stmt = try self.sql_db.prepareDynamic(query);
                 defer stmt.deinit();
-                break :blk try stmt.all(usize, allocator, .{}, .{});
+                break :blk try iterator_to_slice(usize, &stmt, allocator, .{});
             }
             break :blk &.{};
         };
@@ -895,7 +905,7 @@ pub const Storage = struct {
             }
         }
         
-        return query_where.toOwnedSlice();
+        return aw.writer.buffered();
     }
 
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.Feed {
@@ -917,7 +927,8 @@ pub const Storage = struct {
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
-        const result = try stmt.all(types.Feed, allocator, .{}, .{});
+        const result = try iterator_to_slice(types.Feed, &stmt, allocator, .{});
+
         savepoint.commit();
         return result;
     }

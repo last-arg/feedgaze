@@ -12,12 +12,12 @@ const print = std.debug.print;
 const Client = http.Client;
 const Allocator = mem.Allocator;
 const Request = http.Client.Request;
-const Response = http.Client.Response;
+pub const Response = curl.Easy.Response;
 const Uri = std.Uri;
 const assert = std.debug.assert;
 const curl = @import("curl");
 
-allocator: Allocator,
+writer: std.Io.Writer.Allocating,
 headers: curl.Easy.Headers,
 client: curl.Easy,
 
@@ -27,9 +27,12 @@ pub fn init(allocator: Allocator) !@This() {
 
     var headers: curl.Easy.Headers = .{};
     try headers.add("Accept: application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
+
+    const aw: std.Io.Writer.Allocating = .init(allocator);
+    errdefer aw.deinit();
     
     return .{
-        .allocator = allocator,
+        .writer = aw,
         .headers = headers,
         .client = easy,
     };
@@ -72,14 +75,9 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    // const buffer: curl.Easy.DynamicBuffer = try .initCapacity(self.allocator);
-    // errdefer buffer.deinit();
-    // try self.client.setWritefunction(curl.Easy.dynamicBufferWriteCallback);
-    // try self.client.setWritedata(&buffer);
-
-    // var resp = try self.client.perform();
-    const resp = try self.client.fetchAlloc(url_with_null, self.allocator, .{});
-    // resp.body = buffer.items;
+    const resp = try self.client.fetch(url_with_null, .{
+        .response_writer = @as(*const std.io.AnyWriter, @ptrCast(@alignCast(&self.writer.writer))).*,
+    });
     return resp;
 }
 

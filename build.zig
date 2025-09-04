@@ -43,9 +43,11 @@ pub fn build(b: *Build) !void {
 
     const opts_exe: Build.ExecutableOptions = .{
         .name = "feedgaze",
-        .root_source_file = b.path(source_file),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{ // this line was added
+            .root_source_file = b.path(source_file),
+            .target = target,
+            .optimize = optimize,
+        }),
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     };
@@ -94,10 +96,12 @@ pub fn build(b: *Build) !void {
         }
     }
     var test_cmd = b.addTest(.{
-        .root_source_file = b.path(test_source),
-        .target = target,
-        .optimize = optimize,
-        .filter = filter,
+        .root_module = b.createModule(.{ // this line was added
+            .root_source_file = b.path(test_source),
+            .target = target,
+            .optimize = optimize,
+        }),
+        .filters = if (filter) |f| &.{f} else &.{},
         .use_llvm = use_llvm,
         .use_lld = use_llvm,
     });

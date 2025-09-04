@@ -1,7 +1,7 @@
 const std = @import("std");
 const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
-const curl = @import("curl");
+const Response = @import("http_client.zig").Response;
 const mem = std.mem;
 
 pub const seconds_in_3_hours = std.time.s_per_hour * 3;
@@ -314,7 +314,7 @@ pub const FeedUpdate = struct {
     etag_or_last_modified: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
 
-    pub fn fromCurlHeaders(easy: curl.Easy.Response) @This() {
+    pub fn fromCurlHeaders(easy: Response) @This() {
         var feed_update = FeedUpdate{};
 
         if (easy.getHeader("etag")) |header_opt| {
@@ -496,7 +496,7 @@ pub const FeedOptions = struct {
     title: ?[]const u8 = null,
     icon: ?Icon = null,
 
-    pub fn fromResponse(resp: curl.Easy.Response) @This() {
+    pub fn fromResponse(resp: Response) @This() {
         const header_value = resp.getHeader("content-type") catch null;
         const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
         return .{

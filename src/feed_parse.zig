@@ -32,12 +32,13 @@ pub const std_options: std.Options = .{
 
 const max_title_len = 512;
 
-items: std.BoundedArray(FeedItem.Parsed, default_item_count),
+var buffer: [default_item_count]FeedItem.Parsed = undefined;
+const ParsedItems = std.ArrayListUnmanaged(FeedItem.Parsed);
+items: ParsedItems = .initBuffer(&buffer),
 content: []const u8,
 
 pub fn init(content: []const u8) !@This() {
     return .{
-        .items = try .init(0),
         .content = content,
     };
 }
@@ -300,7 +301,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     }
 
     if (mem.indexOfScalar(u8, input, '<') != null) {
-        const ast = try super.html.Ast.init(allocator, input, .html);
+        const ast = try super.html.Ast.init(allocator, input, .html, false);
         defer ast.deinit(allocator);
         if (ast.errors.len == 0 or ignore_these_errors(ast.errors, input)) {
             input = try text_from_node(ast, @constCast(input), ast.nodes[0]);
@@ -426,9 +427,9 @@ fn sortItems(items: []FeedItem.Parsed) void {
     }
 }
 
-fn add_or_replace_item(entries: *std.BoundedArray(FeedItem.Parsed, default_item_count), current_item: FeedItem.Parsed) void {
-    const items = entries.constSlice();
-    if (entries.constSlice().len == default_item_count) {
+fn add_or_replace_item(entries: *ParsedItems, current_item: FeedItem.Parsed) void {
+    const items = entries.items;
+    if (items.len == entries.capacity) {
         if (current_item.updated_timestamp) |current_ts| {
             var iter = std.mem.reverseIterator(items);
             var oldest_ts: ?i64 = null;
@@ -449,10 +450,10 @@ fn add_or_replace_item(entries: *std.BoundedArray(FeedItem.Parsed, default_item_
 
             if (oldest_ts) |ts| {
                 if (current_ts > ts)  {
-                    entries.replaceRange(replace_index, 1, &[_]FeedItem.Parsed{current_item}) catch unreachable;
+                    entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem.Parsed{current_item});
                 }
             } else {
-                entries.replaceRange(replace_index, 1, &[_]FeedItem.Parsed{current_item}) catch unreachable;
+                entries.replaceRangeAssumeCapacity(replace_index, 1, &[_]FeedItem.Parsed{current_item});
             }
         }
     } else {
@@ -787,7 +788,7 @@ pub fn is_single_selector_match(content: []const u8, node: super.html.Ast.Node, 
 
 pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOptions) !ParsedFeed {
     const content = self.content;
-    const ast = try super.html.Ast.init(allocator, content, .html);
+    const ast = try super.html.Ast.init(allocator, content, .html, false);
     if (ast.errors.len > 0) {
         std.log.warn("Html contains {d} parsing error(s). Will try to find feed item anyway.", .{ast.errors.len});
         // ast.printErrors(code, "<STRING>");
@@ -936,14 +937,14 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
             .updated_timestamp = item_updated_ts,
         });
 
-        if (self.items.len == default_item_count) {
+        if (self.items.items.len == self.items.capacity) {
             break;
         }
     }
 
     return .{
         .feed = feed,
-        .items = self.items.slice(),
+        .items = self.items.items,
     };
 }
 
@@ -1401,8 +1402,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
             var buf: []u8 = &buf_arr;
             const page_url_decoded = std.Uri.percentDecodeBackwards(buf, page_url);
             buf = buf[page_url_decoded.len..];
-            const page_url_new = try Uri.resolve_inplace(base, page_url_decoded, &buf);
-            result.feed.page_url = try std.fmt.allocPrint(allocator, "{}", .{page_url_new});
+            const page_url_new = try Uri.resolveInPlace(base, page_url_decoded.len, &buf);
+            result.feed.page_url = try std.fmt.allocPrint(allocator, "{f}", .{page_url_new});
         } else {
             result.feed.page_url = page_url;
         }
@@ -1453,8 +1454,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
                 var buf: []u8 = &buf_arr;
                 const link_decoded = std.Uri.percentDecodeBackwards(buf, link);
                 buf = buf[link_decoded.len..];
-                const link_new = try Uri.resolve_inplace(base, link_decoded, &buf);
-                link = try std.fmt.allocPrint(allocator, "{}", .{link_new});
+                const link_new = try Uri.resolveInPlace(base, link_decoded.len, &buf);
+                link = try std.fmt.allocPrint(allocator, "{f}", .{link_new});
 
             }
 
@@ -1612,7 +1613,7 @@ fn parse_rss(self: *@This()) ParsedFeed {
 
     }
 
-    return .{ .feed = feed, .items = self.items.slice() };
+    return .{ .feed = feed, .items = self.items.items };
 }
 
 fn parse_rss_current_state(
@@ -1759,7 +1760,7 @@ fn parse_atom(self: *@This()) ParsedFeed {
 
     }
 
-    return .{ .feed = feed, .items = self.items.slice() };
+    return .{ .feed = feed, .items = self.items.items };
 }
 
 fn parse_atom_current_state(

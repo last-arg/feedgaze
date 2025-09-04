@@ -159,7 +159,7 @@ pub fn find_match(self: AddRule, input: []const u8) !?Rule {
 pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWithHost) ![]const u8 {
     const path_str = uri_component_val(uri.path);
     var output_arr = try std.ArrayList(u8).initCapacity(allocator, path_str.len);
-    defer output_arr.deinit();
+    defer output_arr.deinit(allocator);
 
     var uri_iter = mem.splitScalar(u8, path_str, '/');
     _ = uri_iter.next();
@@ -168,18 +168,18 @@ pub fn transform_rule_match(allocator: mem.Allocator, uri: std.Uri, rule: RuleWi
 
     while (result_iter.next()) |result| {
         const uri_value = uri_iter.next() orelse continue;
-        try output_arr.append('/');
+        try output_arr.append(allocator, '/');
         if (result[0] == '*') {
-            try output_arr.appendSlice(uri_value);
+            try output_arr.appendSlice(allocator, uri_value);
             if (result.len > 0) {
-                try output_arr.appendSlice(result[1..]);
+                try output_arr.appendSlice(allocator, result[1..]);
             }
         } else {
-            try output_arr.appendSlice(result);
+            try output_arr.appendSlice(allocator, result);
         }
     }
 
     var tmp_uri = uri;
     tmp_uri.path.percent_encoded = output_arr.items;
-    return try std.fmt.allocPrint(allocator, "{}", .{tmp_uri});
+    return try std.fmt.allocPrint(allocator, "{f}", .{tmp_uri});
 }
