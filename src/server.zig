@@ -305,7 +305,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
         .port = opts.port,  
         .request = .{
             .max_form_count = 10,
-        }
+        },
     };
     var server = try httpz.Server(*Global).init(allocator, server_config, &global);
     defer {
@@ -536,6 +536,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     defer fetch.deinit();
 
     const feed_options = FeedOptions.fromResponse(fetch.resp);
+    feed_options.body = fetch.req.writer.writer.buffered();
+
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
 
@@ -602,14 +604,11 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
         
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
-    var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+    var w: std.Io.Writer = blk: {
+        break :blk resp.writer().interface;
     };
 
     try Layout.write_head(w, "Pick feed", .{});
@@ -867,6 +866,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     defer fetch.deinit();
 
     const feed_options = FeedOptions.fromResponse(fetch.resp);
+    feed_options.body = fetch.req.writer.writer.buffered();
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
@@ -940,14 +940,11 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         }
     }
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
-    var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+    var w: std.Io.Writer = blk: {
+        break :blk resp.writer().interface;
     };
 
     try Layout.write_head(w, "Add feed", .{});
@@ -1244,14 +1241,14 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk &.{};
     };
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+        // if (compressor) |*c| {
+        //     break :blk c.writer().any(); 
+        // }
+        break :blk resp.writer().interface;
     };
 
     const title = feed.title orelse "";
@@ -1676,15 +1673,16 @@ fn has_encoding(req: *const httpz.Request, value: []const u8) bool {
     return false;
 }
 
-fn compressor_setup(req: *httpz.Request, resp: *httpz.Response) !?std.compress.gzip.Compressor(httpz.Response.Writer.IOWriter) { 
-    if (!has_encoding(req, "gzip")) {
-        return null;
-    }
+// fn compressor_setup(req: *httpz.Request, resp: *httpz.Response) ?void { 
+    // return null;
+    // if (!has_encoding(req, "gzip")) {
+    //     return null;
+    // }
 
-    resp.header("Content-Encoding", "gzip");
+    // resp.header("Content-Encoding", "gzip");
 
-    return try std.compress.gzip.compressor(resp.writer(), .{});
-}
+    // return try std.compress.gzip.compressor(resp.writer(), .{});
+// }
 
 fn compressor_finish(compressor: *std.compress.gzip.Compressor(httpz.Response.Writer.IOWriter)) void {
     compressor.finish() catch |err| {
@@ -1720,14 +1718,14 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     
     resp.content_type = .HTML;
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+        // if (compressor) |*c| {
+        //     break :blk c.writer().any(); 
+        // }
+        break :blk resp.writer().interface;
     };
     
     try Layout.write_head(w, "Home - latest added feed items", .{});
@@ -1959,14 +1957,14 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+        // if (compressor) |*c| {
+        //     break :blk c.writer().any(); 
+        // }
+        break :blk resp.writer().interface;
     };
 
     try Layout.write_head(w, "Edit tag: {s}", .{tag.name});
@@ -2025,14 +2023,14 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+        // if (compressor) |*c| {
+        //     break :blk c.writer().any(); 
+        // }
+        break :blk resp.writer().interface;
     };
 
     try Layout.write_head(w, "Tags", .{});
@@ -2092,8 +2090,7 @@ const Layout = struct {
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
-        const html_output = std.ArrayList(u8).init(allocator);
-        errdefer html_output.deinit();
+        const html_output: std.ArrayList(u8) = .{};
         return .{
             .sidebar_form_html = html_output,
             .storage = storage,
@@ -2135,7 +2132,7 @@ const Layout = struct {
         }
     }
 
-    pub fn write_head(writer: anytype, comptime fmt: []const u8, args: anytype) !void {
+    pub fn write_head(writer: std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
         try writer.writeAll(head_top);
         try writer.print(fmt, args);
         try writer.writeAll(head_middle);
@@ -2295,14 +2292,11 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     
     resp.content_type = .HTML;
 
-    var compressor = try compressor_setup(req, resp);
-    defer if (compressor) |*c| compressor_finish(c);
+    // var compressor = try compressor_setup(req, resp);
+    // defer if (compressor) |*c| compressor_finish(c);
 
     var w = blk: {
-        if (compressor) |*c| {
-            break :blk c.writer().any(); 
-        }
-        break :blk resp.writer().any();
+        break :blk resp.writer().interface;
     };
 
     try Layout.write_head(w, "Feeds", .{});

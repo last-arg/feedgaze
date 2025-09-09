@@ -17,11 +17,10 @@ pub fn main() !void {
         const writer = &stdout_writer.interface;
         var stdout_reader = std.fs.File.stdout().reader(&stdout_buffer);
         const reader = &stdout_reader.interface;
-        const CliApp = Cli(std.Io.Writer, std.Io.Reader);
         const progress_node = std.Progress.start(.{});
         defer progress_node.end();
 
-        var app_cli = CliApp{
+        var app_cli = Cli{
             .allocator = arena.allocator(),
             .out = writer,
             .in = reader,

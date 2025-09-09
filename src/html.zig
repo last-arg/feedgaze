@@ -245,8 +245,8 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
 }
 
 pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
-    var feed_arr = FeedLinkArray.init(allocator);
-    defer feed_arr.deinit();
+    var feed_arr: FeedLinkArray = .{};
+    defer feed_arr.deinit(allocator);
     var icon: ?LinkIcon = null;
     var result: HtmlParsed = .{};
 
@@ -288,7 +288,7 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
         if (link_raw.@"type" != null and
             attr_contains(rel, "alternate") and !isDuplicate(feed_arr.items, href)) {
             if (ContentType.fromString(link_raw.@"type".?)) |valid_type| {
-                try feed_arr.append(.{
+                try feed_arr.append(allocator, .{
                     .title = link_raw.title,
                     .link = href,
                     .type = valid_type,
@@ -299,7 +299,7 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
         }
     }
 
-    result.links = try feed_arr.toOwnedSlice();
+    result.links = try feed_arr.toOwnedSlice(allocator);
     if (icon) |val| {
         result.icon_url = val.href;
     }

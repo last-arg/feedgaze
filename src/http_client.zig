@@ -20,6 +20,7 @@ const curl = @import("curl");
 writer: std.Io.Writer.Allocating,
 headers: curl.Easy.Headers,
 client: curl.Easy,
+resp: ?curl.Easy.Response = null,
 
 pub fn init(allocator: Allocator) !@This() {
     var easy = try curl.Easy.init(.{.default_timeout_ms = 10000, .ca_bundle = try curl.allocCABundle(allocator)});
@@ -81,21 +82,18 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     return resp;
 }
 
-pub fn response_200_and_has_body(resp: curl.Easy.Response, req_url: []const u8) ?[]const u8 {
+pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]const u8 {
+    assert(self.resp != null);
+    const resp = self.resp orelse unreachable;
     if (resp.status_code != 200) {
         std.log.warn("Request to '{s}' failed. Status code: {}", .{req_url, resp.status_code});
         return null;
     }
 
-    if (resp.body == null or resp.body.?.slice().len == 0) {
-        std.log.warn("Request to '{s}' failed. There is no body", .{req_url});
-        return null;
-    }
-
-    return resp.body.?.slice();
+    return self.writer.writer.buffered();
 }
 
-pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, []const u8} {
+pub fn fetch_image(self: *@This(), url: []const u8) !void {
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
@@ -117,12 +115,9 @@ pub fn fetch_image(self: *@This(), url: []const u8) !struct{curl.Easy.Response, 
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    const resp = try self.client.fetchAlloc(url_with_null, self.allocator, .{});
-
-    const body = response_200_and_has_body(resp, url)
-        orelse return error.InvalidResponse;
-    
-    return .{ resp, body };
+   self.resp = try self.client.fetch(url_with_null, .{
+        .response_writer = @as(*const std.io.AnyWriter, @ptrCast(@alignCast(&self.writer.writer))).*,
+   });
 }
 
 pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 {
