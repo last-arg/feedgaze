@@ -833,10 +833,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
         _ = std.Uri.parse(url) catch {
             const url_comp: std.Uri.Component = .{ .raw = url };
-            try std.fmt.format(location_arr.writer(req.arena), "/feed/add?error=invalid-url&input-url={}", .{url_comp});
+            try std.fmt.format(location_arr.writer(req.arena), "/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const tags_comp: std.Uri.Component = .{ .raw = val };
-                try std.fmt.format(location_arr.writer(req.arena), "&input-tags={}", .{tags_comp});
+                try std.fmt.format(location_arr.writer(req.arena), "&input-tags={f}", .{std.fmt.alt(tags_comp, .formatEscaped)});
             }
 
             resp.header("Location", location_arr.items);
@@ -849,10 +849,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
-        try std.fmt.format(location_arr.writer(req.arena), "/feed/add?feed-exists={d}&input-url={}", .{feed_id, url_comp});
+        try std.fmt.format(location_arr.writer(req.arena), "/feed/add?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try std.fmt.format(location_arr.writer(req.arena), "&input-tags={}", .{c2});
+            try std.fmt.format(location_arr.writer(req.arena), "&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
         resp.header("Location", location_arr.items);
@@ -870,10 +870,12 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
-        try location_arr.writer(req.arena).print("/feed/pick?input-url={}", .{url_comp});
+        try location_arr.writer(req.arena).print("/feed/pick?input-url={f}", .{
+            std.fmt.alt(url_comp, .formatEscaped)
+        });
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={}", .{c2});
+            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         for (html_parsed.links) |link| {
@@ -881,7 +883,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             const uri_final = try std.Uri.parse(url_final);
             const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
             const uri_component: std.Uri.Component = .{ .raw = url_str };
-            try location_arr.writer(req.arena).print("&url={}", .{uri_component});
+            try location_arr.writer(req.arena).print("&url={f}", .{std.fmt.alt(uri_component, .formatEscaped)});
         }
         resp.header("Location", location_arr.items);
         return;

@@ -786,7 +786,9 @@ pub const Cli = struct {
 
         while (index == 0 or index > links.len) {
             try fixed_writer.flush();
+            defer writer.flush() catch unreachable;
             try writer.writeAll("Enter number: ");
+            try writer.flush();
             _ = try reader.streamDelimiter(&fixed_writer, '\n');
             const value = mem.trim(u8, fixed_writer.buffered(), &std.ascii.whitespace);
             index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
@@ -815,6 +817,7 @@ pub const Cli = struct {
 
         while (true) {
             try writer.writeAll("Enter feed item's selector: ");
+            try writer.flush();
             fixed_writer.flush() catch {
                 std.log.warn("Failed to clean/flush html_options writer buffer", .{});
             };
@@ -825,8 +828,9 @@ pub const Cli = struct {
             }
         }
 
-        try writer.writeAll("Rest of the selector options view feed item selector as root.\n");
+        try writer.writeAll("Rest of selector inputs will treat `item's selector` as root.\n");
         try writer.writeAll("Enter feed item's link selector: ");
+        try writer.flush();
 
         fixed_writer.flush() catch {
             std.log.warn("Failed to clean/flush html_options writer buffer", .{});
@@ -838,6 +842,7 @@ pub const Cli = struct {
         }
 
         try writer.writeAll("Enter feed item's title selector: ");
+        try writer.flush();
         fixed_writer.flush() catch {
             std.log.warn("Failed to clean/flush html_options writer buffer", .{});
         };
@@ -847,6 +852,7 @@ pub const Cli = struct {
         }
 
         try writer.writeAll("Enter feed item's date selector: ");
+        try writer.flush();
         fixed_writer.flush() catch {
             std.log.warn("Failed to clean/flush html_options writer buffer", .{});
         };
@@ -870,6 +876,7 @@ pub const Cli = struct {
         \\
         );
         try writer.writeAll("Enter feed date format: ");
+        try writer.flush();
         fixed_writer.flush() catch {
             std.log.warn("Failed to clean/flush html_options writer buffer", .{});
         };

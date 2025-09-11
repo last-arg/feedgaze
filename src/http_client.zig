@@ -77,10 +77,10 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-    const resp = try self.client.fetch(url_with_null, .{
+    self.resp = try self.client.fetch(url_with_null, .{
         .response_writer = self.writer.asAny(),
     });
-    return resp;
+    return self.resp.?;
 }
 
 pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]const u8 {
