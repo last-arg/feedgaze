@@ -729,7 +729,7 @@ pub const Cli = struct {
                         var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
                         @memcpy(link_buf, link.link);
                         const result = try url_uri.resolveInPlace(link.link.len, &link_buf);
-                        fetch_url = try std.fmt.allocPrint(arena.allocator(), "{f}", .{result});
+                        fetch_url = try std.fmt.allocPrint(arena.allocator(), "{f}", .{result.fmt(.all)});
                     } else {
                         fetch_url = link.link;
                     }
@@ -1309,6 +1309,7 @@ pub const App = struct {
                         fixed_writer.flush() catch {
                             std.log.warn("Failed to clean/flush fetch_icon writer", .{});
                         };
+                        fixed_writer.end = 0;
                         try fixed_writer.writeAll(icon_url);
                         const page_url_new = uri.resolveInPlace(icon_url.len, &fixed_writer.buffer)
                             catch |err| break :failed err;
@@ -1317,7 +1318,7 @@ pub const App = struct {
                             .flags = .all,
                         }, &fixed_writer) catch |err| break :failed err;
 
-                        break :blk fixed_writer.buffered();
+                        break :blk fixed_writer.buffered()[icon_url.len..];
                     };
 
                     req.fetch_image(req_icon_url) catch |err| break :failed err;
@@ -1355,7 +1356,8 @@ pub const App = struct {
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
 
-            const url_request = try std.fmt.bufPrint(&buf, "{f}/favicon.ico", .{uri});
+            const url_request = try std.fmt.bufPrint(&buf, "{f}/favicon.ico", .{uri.fmt(.all)});
+            try req.fetch_image(url_request);
             const body = req.response_200_and_has_body(url_request) orelse {
                 std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
                 return error.InvalidHttpStatusCode;

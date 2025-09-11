@@ -8,7 +8,7 @@ const kf = @import("known-folders");
 pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
-    // try run_add_new_feed();
+    try run_add_new_feed();
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
@@ -17,7 +17,7 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    try tmp_icon();
+    // try tmp_icon();
     // try tmp_parse_icon();
     // try tmp_parse_html();
     // try tmp_iter_attrs();
@@ -285,25 +285,33 @@ fn run_parse_atom() !void {
 // - if it does transform feed url 
 // - if not use url as is
 pub fn run_add_new_feed() !void {
+    const Cli = @import("app.zig").Cli;
+
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator(); 
 
-    var storage = try Storage.init("./tmp/feeds.db");
-    const input = "https://github.com/letoram/arcan/commits/master";
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    const writer = &stdout_writer.interface;
+    var stdout_reader = std.fs.File.stdout().reader(&stdout_buffer);
+    const reader = &stdout_reader.interface;
+    const progress_node = std.Progress.start(.{});
+    defer progress_node.end();
+
+    const storage = try Storage.init("./tmp/feeds.db");
+    var cli: Cli = .{
+        .allocator = allocator,
+        .storage = storage,
+        .out = writer,
+        .in = reader,
+        .progress = progress_node,
+    };
+    // const input = "https://www.newelofknowledge.com/letters";
+    const input = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
     print("\ninput url: {s}\n", .{input});
 
-    const uri = try std.Uri.parse(input);
-
-    const host_str = switch(uri.host.?) { .raw, .percent_encoded => |val| val };
-    const rules = try storage.get_rules_for_host(allocator, host_str);
-    const rule_with_host = try AddRule.find_rule_match(uri, rules);
-    print("rule_with_host: {any}\n", .{rule_with_host});
-
-    const r_1 = try AddRule.transform_rule_match(allocator, uri, rule_with_host.?);
-    print("r_1: {s}\n", .{r_1});
-
-    // const rule_match = AddRule.Rule.Match.create(input);
+    _ = try cli.add(input);
 }
 
 // from add_rule.zig
