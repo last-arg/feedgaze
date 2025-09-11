@@ -243,7 +243,7 @@ pub const Cli = struct {
                             });
                             break :blk;
                         };
-                        const resp_body = req.writer.writer.buffered();
+                        const resp_body = req.writer.asSlice();
                         const resp_url = req.get_url_slice() catch |err| {
                             std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
                             break :blk;
@@ -700,7 +700,7 @@ pub const Cli = struct {
         const resp = fetch.resp;
 
         var add_opts: Storage.AddOptions = .{ .feed_opts = FeedOptions.fromResponse(resp) };
-        add_opts.feed_opts.body = fetch.req.writer.writer.buffered();
+        add_opts.feed_opts.body = fetch.req.writer.asSlice();
         if (add_opts.feed_opts.content_type == .html) {
             add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
         }
@@ -738,7 +738,7 @@ pub const Cli = struct {
                     fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
 
                     add_opts.feed_opts = FeedOptions.fromResponse(fetch_2.?.resp);
-                    add_opts.feed_opts.body = fetch_2.?.req.writer.writer.buffered();
+                    add_opts.feed_opts.body = fetch_2.?.req.writer.asSlice();
                     add_opts.feed_opts.feed_url = try fetch_2.?.req.get_url_slice();
                     add_opts.feed_opts.title = link.title;
                 }
@@ -1140,7 +1140,7 @@ pub const App = struct {
         var req = try http_client.init(allocator);
         const resp = try req.fetch(fetch_url, .{});
 
-        if (req.writer.writer.buffered().len == 0) {
+        if (req.writer.asSlice().len == 0) {
             std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
             return error.EmptyBody;
         }
@@ -1233,7 +1233,7 @@ pub const App = struct {
             return .failed;
         }
 
-        const body = req.writer.writer.buffered();
+        const body = req.writer.asSlice();
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
         var parsing: FeedParser = try .init(body);

@@ -17,7 +17,7 @@ const Uri = std.Uri;
 const assert = std.debug.assert;
 const curl = @import("curl");
 
-writer: std.Io.Writer.Allocating,
+writer: curl.ResizableResponseWriter,
 headers: curl.Easy.Headers,
 client: curl.Easy,
 resp: ?curl.Easy.Response = null,
@@ -29,11 +29,11 @@ pub fn init(allocator: Allocator) !@This() {
     var headers: curl.Easy.Headers = .{};
     try headers.add("Accept: application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
 
-    const aw: std.Io.Writer.Allocating = .init(allocator);
-    errdefer aw.deinit();
-    
+    var writer = curl.ResizableResponseWriter.init(allocator);
+    errdefer writer.deinit();
+
     return .{
-        .writer = aw,
+        .writer = writer,
         .headers = headers,
         .client = easy,
     };
@@ -42,6 +42,7 @@ pub fn init(allocator: Allocator) !@This() {
 pub fn deinit(self: *@This()) void {
     self.headers.deinit();
     self.client.deinit();
+    self.writer.deinit();
 }
 
 pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Easy.Response {
@@ -77,7 +78,7 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     // try self.client.setVerbose(true);
 
     const resp = try self.client.fetch(url_with_null, .{
-        .response_writer = @as(*const std.io.AnyWriter, @ptrCast(@alignCast(&self.writer.writer))).*,
+        .response_writer = self.writer.asAny(),
     });
     return resp;
 }
@@ -90,7 +91,7 @@ pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]c
         return null;
     }
 
-    return self.writer.writer.buffered();
+    return self.writer.asSlice();
 }
 
 pub fn fetch_image(self: *@This(), url: []const u8) !void {
@@ -116,7 +117,7 @@ pub fn fetch_image(self: *@This(), url: []const u8) !void {
     // try self.client.setVerbose(true);
 
    self.resp = try self.client.fetch(url_with_null, .{
-        .response_writer = @as(*const std.io.AnyWriter, @ptrCast(@alignCast(&self.writer.writer))).*,
+        .response_writer = self.writer.asAny(),
    });
 }
 
