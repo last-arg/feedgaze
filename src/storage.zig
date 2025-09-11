@@ -403,22 +403,22 @@ pub const Storage = struct {
         var buf_cstr: [256]u8 = undefined;
 
         if (fields.tags.len > 0) {
-            var tags_str = std.ArrayList(u8).init(allocator);
-            defer tags_str.deinit();
+            var tags_str: std.ArrayList(u8) = .{};
+            defer tags_str.deinit(allocator);
 
             {
                 const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{fields.tags[0]});
                 const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
                 const tag_slice = mem.sliceTo(c_str, 0x0);
-                try tags_str.appendSlice(tag_slice);
+                try tags_str.appendSlice(allocator, tag_slice);
             }
 
             for (fields.tags[1..]) |tag| {
                 const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
                 const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
                 const tag_slice = mem.sliceTo(c_str, 0);
-                try tags_str.append(',');
-                try tags_str.appendSlice(tag_slice);
+                try tags_str.append(allocator, ',');
+                try tags_str.appendSlice(allocator, tag_slice);
             }
 
             const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in (select tag_id from tag where name in (?))";
@@ -1248,16 +1248,16 @@ pub const Storage = struct {
         // u64 numbers max length
         var buf: [20]u8 = undefined;
         var id_str = try std.fmt.bufPrint(&buf, "{d}", .{ids[0]});
-        try query_al.appendSlice(id_str);
+        try query_al.appendSlice(allocator, id_str);
         for (ids[1..]) |id| {
             id_str = try std.fmt.bufPrint(&buf, ",{d}", .{id});
-            try query_al.appendSlice(id_str);
+            try query_al.appendSlice(allocator, id_str);
         }
-        try query_al.append(')');
+        try query_al.append(allocator, ')');
 
         var stmt = try self.sql_db.prepareDynamic(query_al.items);
         defer stmt.deinit();
-        return try stmt.all(types.Feed, allocator, .{}, .{});
+        return try iterator_to_slice(Feed, &stmt, allocator, .{});
     }
 
     pub const FeedIcon = struct {

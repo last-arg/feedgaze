@@ -104,7 +104,7 @@ pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
         return input;
     }
     var arr = try std.ArrayList(u8).initCapacity(allocator, new_size);
-    defer arr.deinit();
+    defer arr.deinit(allocator);
 
     var pos: usize = 0;
     while (mem.indexOfAnyPos(u8, input, pos, &symbols)) |index| {
@@ -122,7 +122,7 @@ pub fn html_escape(allocator: Allocator, input: []const u8) ![]const u8 {
     }
     arr.appendSliceAssumeCapacity(input[pos..]);
 
-    return arr.toOwnedSlice();
+    return arr.toOwnedSlice(allocator);
 }
 
 const WriterContext = struct {

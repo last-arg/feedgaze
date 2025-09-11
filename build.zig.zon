@@ -26,8 +26,8 @@
             .hash = "curl-0.3.0-P4tT4cLUAABX0I9rXItxvaOAJxNhsi4L0f4UdW9nk7gS",
         },
         .httpz = .{
-            .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/dev.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrNXABgDNp_qe1xjmpAQuvFBF-7J03b1v-cPqUOXh",
+            .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
+            .hash = "httpz-0.0.0-PNVzrFe5BgDabt7p2mEiv4PXNOZxJvxR0cMOBtQmP3uR",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",

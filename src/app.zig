@@ -928,9 +928,7 @@ pub const Cli = struct {
 
     // TODO: reenable server
     pub fn server(self: *Self, opts: ServerOptions) !void {
-        _ = self; // autofix
-        _ = opts; // autofix
-        // try @import("server.zig").start_server(self.storage, opts);
+        try @import("server.zig").start_server(self.storage, opts);
     }
 
     pub fn remove(self: *Self, url: []const u8) !void {

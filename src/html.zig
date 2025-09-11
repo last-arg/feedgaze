@@ -570,16 +570,16 @@ pub fn encode(allocator: Allocator, input: []const u8) ![]const u8 {
     }
     const capacity = (input.len - count) + (5 * count);
     var buf_arr = try std.ArrayList(u8).initCapacity(allocator, capacity);
-    defer buf_arr.deinit();
+    defer buf_arr.deinit(allocator);
     var str = input;
     while (std.mem.indexOfAny(u8, str, encode_chars)) |index| {
         buf_arr.appendSliceAssumeCapacity(str[0..index]);
         const value_decoded = try std.unicode.utf8Decode(&[_]u8{str[index]});
-        buf_arr.writer().print("&#{d};", .{value_decoded}) catch unreachable;
+        buf_arr.writer(allocator).print("&#{d};", .{value_decoded}) catch unreachable;
 
         const start_next = index + 1;
         str = str[start_next..];
     }
     buf_arr.appendSliceAssumeCapacity(str);
-    return buf_arr.toOwnedSlice();
+    return buf_arr.toOwnedSlice(allocator);
 }
