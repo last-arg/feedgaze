@@ -350,7 +350,7 @@ fn write_pick_urls(writer: anytype, form_data: *httpz.key_value.StringKeyValue) 
     while (iter.next()) |kv| {
         if (mem.eql(u8, "url", kv.key)) {
             const c: std.Uri.Component = .{ .raw = mem.trim(u8, kv.value, &std.ascii.whitespace) };
-            try writer.print("&url={}", .{c});
+            try writer.print("&url={f}", .{std.fmt.alt(c, .formatEscaped)});
         }
     }
 }
@@ -369,7 +369,7 @@ fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) 
             const val = mem.trim(u8, raw, &std.ascii.whitespace);
             if (val.len > 0) {
                 const c: std.Uri.Component = .{ .raw = val };
-                try writer.print("&{s}={}", .{sel, c});
+                try writer.print("&{s}={f}", .{sel, std.fmt.alt(c, .formatEscaped)});
             }
         }
     }
@@ -423,7 +423,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         try location_arr.writer(req.arena).writeAll("/feed/add?error=url-missing");
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={}", .{c});
+            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
         }
 
         resp.header("Location", location_arr.items);
@@ -432,10 +432,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     _ = std.Uri.parse(url_input) catch {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/add?error=invalid-url&input-url={}", .{url_comp});
+        try location_arr.writer(req.arena).print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={}", .{c2});
+            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
         resp.header("Location", location_arr.items);
@@ -449,10 +449,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (url_picked.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?error=pick-url&input-url={}", .{url_comp});
+        try location_arr.writer(req.arena).print("/feed/pick?error=pick-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={}", .{c});
+            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
         }
         try write_pick_urls(location_arr.writer(req.arena), form_data);
         try write_selectors(location_arr.writer(req.arena), form_data);
@@ -466,10 +466,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (!is_html_feed) {
         _ = std.Uri.parse(url_picked) catch {
             const url_comp: std.Uri.Component = .{ .raw = url_picked };
-            try location_arr.writer(req.arena).print("/feed/pick?error=invalid-url&input-url={}", .{url_comp});
+            try location_arr.writer(req.arena).print("/feed/pick?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const c2: std.Uri.Component = .{ .raw = val };
-                try location_arr.writer(req.arena).print("&input-tags={}", .{c2});
+                try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
             }
 
             try write_pick_urls(location_arr.writer(req.arena), form_data);
@@ -498,11 +498,11 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?feed-exists={d}&input-url={}", .{feed_id, url_comp});
+        try location_arr.writer(req.arena).print("/feed/pick?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
 
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={}", .{c2});
+            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
         try write_pick_urls(location_arr.writer(req.arena), form_data);
@@ -520,7 +520,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (is_html_feed and selector_container.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?error=empty-selector&input-url={}", .{url_comp});
+        try location_arr.writer(req.arena).print("/feed/pick?error=empty-selector&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
         try write_pick_urls(location_arr.writer(req.arena), form_data);
         try write_selectors(location_arr.writer(req.arena), form_data);
         try location_arr.writer(req.arena).print("&pick-index={}", .{pick_index});
@@ -822,7 +822,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             const location = blk: {
                 if (tags_input) |val| {
                     const c: std.Uri.Component = .{ .raw = val };
-                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={}", .{c});
+                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
                 }
                 break :blk "/feed/add?error=url-missing";
             };
