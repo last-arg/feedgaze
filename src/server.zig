@@ -304,7 +304,9 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     const server_config: httpz.Config = .{
         .port = opts.port,  
         .request = .{
-            .max_form_count = 10,
+            // NOTE: How many form values can be sent
+            // If there are a lot of enabled tags all values might not be sent.
+            .max_form_count = 100,
         },
     };
     var server = try httpz.Server(*Global).init(allocator, server_config, &global);
