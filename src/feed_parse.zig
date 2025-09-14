@@ -37,7 +37,7 @@ const ParsedItems = std.ArrayListUnmanaged(FeedItem.Parsed);
 items: ParsedItems = .initBuffer(&buffer),
 content: []const u8,
 
-pub fn init(content: []const u8) !@This() {
+pub fn init(content: []const u8) @This() {
     return .{
         .content = content,
     };

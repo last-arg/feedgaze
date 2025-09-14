@@ -751,7 +751,7 @@ pub const Cli = struct {
             add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
         }
 
-        var parser: FeedParser = try .init(add_opts.feed_opts.body);
+        var parser: FeedParser = .init(add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
             .feed_url = add_opts.feed_opts.feed_url,
         });
@@ -1243,7 +1243,7 @@ pub const App = struct {
         const body = req.writer.asSlice();
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
-        var parsing: FeedParser = try .init(body);
+        var parsing: FeedParser = .init(body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
             .feed_url = f_update.feed_url,
