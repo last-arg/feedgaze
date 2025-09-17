@@ -1268,77 +1268,113 @@ pub const App = struct {
         return .added;
     }
 
+    fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {
+        if (html.parse_icon(html_body)) |icon_url| {
+            if (mem.startsWith(u8, icon_url, "data:")) {
+                return icon_url; 
+            } else {
+                writer.flush() catch {
+                    std.log.warn("Failed to clean/flush fetch_icon writer", .{});
+                };
+                writer.end = 0;
+                try writer.writeAll(icon_url);
+                const page_url_new = try uri.resolveInPlace(icon_url.len, &writer.buffer);
+                try std.Uri.Format.default(.{
+                    .uri = &page_url_new,
+                    .flags = .all,
+                }, writer);
+
+                return writer.buffered()[icon_url.len..];
+            }
+        }
+
+        return null;
+    }
+
+    const FetchIconOptions = struct {
+        html_body: ?[]const u8 = null,
+    };
     // if return null -> missing icons
     // if return error -> failed icons
-    pub fn fetch_icon(allocator: Allocator, input_url: []const u8, icon_url_opt: ?[]const u8) !?feed_types.Icon {
-        std.debug.assert(!mem.startsWith(u8, icon_url_opt orelse "", "data:"));
-
+    pub fn fetch_icon(allocator: Allocator, input_url: []const u8, opts: FetchIconOptions) !?feed_types.Icon {
         var buf: [1024]u8 = undefined;
         var fixed_writer: std.Io.Writer = .fixed(&buf);
         defer fixed_writer.flush() catch {
             std.log.warn("Failed to clean/flush fetch_icon writer", .{});
         };
 
-        const uri = try std.Uri.parse(mem.trim(u8, input_url, &std.ascii.whitespace));
+        var uri = try std.Uri.parse(mem.trim(u8, input_url, &std.ascii.whitespace));
+        var icon_url_opt: ?[]const u8 = null;
 
-        // Try to find icon from html
-        const error_icon = failed: {
-            var req = http_client.init(allocator) catch |err| break :failed err;
+        // Found 'data:...' icon from existing html content
+        if (opts.html_body) |html_body| {
+            icon_url_opt = try get_icon_from_html(&fixed_writer, uri, html_body);
+            if (icon_url_opt) |icon| if (feed_types.Icon.init_if_data(input_url, icon)) |out| {
+                return out; 
+            };
+        }
+
+        // Get html of domain's root page  
+        const error_icon = blk: {
+            const req_url = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
+                .scheme = true,
+                .authentication = true,
+                .authority = true,
+                .path = false,
+                .query = false,
+                .fragment = false,
+                .port = true,
+            })});
+
+            var req = try http_client.init(allocator);
             defer { req.deinit(); }
+            _ = try req.fetch(req_url, .{});
 
-            std.Uri.Format.default(.{
-                .uri = &uri,
-                .flags = .all,
-            }, &fixed_writer) catch |err| break :failed err;
-            const req_url = fixed_writer.buffered();
-            _ = req.fetch(req_url, .{}) catch |err| break :failed err;
+            const body = req.response_200_and_has_body(req_url) orelse break :blk;
+            const url_final = try req.get_url_slice();
 
-            const body = req.response_200_and_has_body(req_url) orelse "";
+            try fixed_writer.flush();
+            icon_url_opt = try get_icon_from_html(&fixed_writer, uri, body);
 
-            if (html.parse_icon(body)) |icon_url| {
-                if (mem.startsWith(u8, icon_url, "data:")) {
-                    const url_final = req.get_url_slice() catch |err| break :failed err;
-                    var data = allocator.dupe(u8, icon_url) catch |err| break :failed err;
-                    data = std.Uri.percentDecodeInPlace(data);
+            if (icon_url_opt) |icon_url| {
+                if (!mem.startsWith(u8, icon_url, "data:")) {
                     return .{
-                        .url = allocator.dupe(u8, url_final) catch |err| break :failed err,
-                        .data = data,
-                    };
+                        .url = try allocator.dupe(u8, url_final),
+                        .data = try allocator.dupe(u8, icon_url),
+                    }; 
                 } else {
-                    const req_icon_url = blk: {
+                    const req_icon_url = out: {
                         fixed_writer.flush() catch {
                             std.log.warn("Failed to clean/flush fetch_icon writer", .{});
                         };
                         fixed_writer.end = 0;
                         try fixed_writer.writeAll(icon_url);
-                        const page_url_new = uri.resolveInPlace(icon_url.len, &fixed_writer.buffer)
-                            catch |err| break :failed err;
-                        std.Uri.Format.default(.{
+                        const page_url_new = try uri.resolveInPlace(icon_url.len, &fixed_writer.buffer);
+                        try std.Uri.Format.default(.{
                             .uri = &page_url_new,
                             .flags = .all,
-                        }, &fixed_writer) catch |err| break :failed err;
+                        }, &fixed_writer);
 
-                        break :blk fixed_writer.buffered()[icon_url.len..];
+                        break :out fixed_writer.buffered()[icon_url.len..];
                     };
 
-                    req.fetch_image(req_icon_url) catch |err| break :failed err;
+                    try req.fetch_image(req_icon_url);
                     // Fetch icon body/content
                     const resp_body = req.response_200_and_has_body(req_icon_url) orelse {
                         std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
-                        break :failed error.InvalidHttpStatusCode;
+                        break :blk error.InvalidHttpStatusCode;
                     };
 
-                    const url_final = req.get_url_slice()
-                        catch |err| break :failed err;
-                    const url_dupe = allocator.dupe(u8, url_final) catch |err| break :failed err;
+                    const url_dupe = try allocator.dupe(u8, url_final);
                     errdefer allocator.free(url_dupe);
                     return .{
                         .url = url_dupe,
-                        .data = allocator.dupe(u8, resp_body) catch |err| break :failed err,
+                        .data = try allocator.dupe(u8, resp_body),
                     };
                 }
             }
-            break :failed;
+           
+            break :blk;
         };
 
         if (error_icon) {
@@ -1356,7 +1392,17 @@ pub const App = struct {
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
 
-            const url_request = try std.fmt.bufPrint(&buf, "{f}/favicon.ico", .{uri.fmt(.all)});
+            uri.path = .{ .raw = "/favicon.ico" };
+            const url_request = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
+                .scheme = true,
+                .authentication = true,
+                .authority = true,
+                .path = true,
+                .query = false,
+                .fragment = false,
+                .port = true,
+            })});
+
             try req.fetch_image(url_request);
             const body = req.response_200_and_has_body(url_request) orelse {
                 std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
