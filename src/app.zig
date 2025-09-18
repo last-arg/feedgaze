@@ -256,7 +256,7 @@ pub const Cli = struct {
                         continue;
                     }
 
-                    const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                    const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch icon's html page to find inline icon",
@@ -281,7 +281,7 @@ pub const Cli = struct {
                 for (icons_missing) |icon| {
                     defer progress_node.completeOne();
 
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -304,7 +304,7 @@ pub const Cli = struct {
                 for (icons_failed) |icon| {
                     defer progress_node.completeOne();
 
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, null) catch {
+                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -745,7 +745,9 @@ pub const Cli = struct {
             }
 
             if (add_opts.feed_opts.icon == null) {
-                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, null) catch null;
+                add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, .{
+                    .html_body = add_opts.feed_opts.body,
+                }) catch null;
             }
         } else {
             add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
@@ -778,19 +780,14 @@ pub const Cli = struct {
         try writer.print("{d}. Add html as feed\n", .{html_option_index});
         var buf: [32]u8 = undefined;
         var fixed_writer: std.Io.Writer = .fixed(&buf);
-        defer fixed_writer.flush() catch {
-            std.log.warn("Failed to clean up 'getUserInput' writer buffer", .{});
-        };
-
         var index: usize = 0;
 
         while (index == 0 or index > links.len) {
-            try fixed_writer.flush();
-            defer writer.flush() catch unreachable;
+            _ = fixed_writer.consumeAll();
             try writer.writeAll("Enter number: ");
             try writer.flush();
-            _ = try reader.streamDelimiter(&fixed_writer, '\n');
-            const value = mem.trim(u8, fixed_writer.buffered(), &std.ascii.whitespace);
+            const value_raw = try reader.takeDelimiterExclusive('\n');
+            const value = mem.trim(u8, value_raw, &std.ascii.whitespace);
             index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
                 try writer.print("Provided input is not a number. Enter number between 1 - {d}\n", .{links.len + 1});
                 continue;
@@ -806,58 +803,41 @@ pub const Cli = struct {
     }
 
     fn html_options(allocator: Allocator, writer: *std.Io.Writer, reader: *std.Io.Reader) !FeedParser.HtmlOptions {
-        var opts: FeedParser.HtmlOptions = .{ .selector_container = undefined };
-        var buf: [1024]u8 = undefined;
-        var fixed_writer: std.Io.Writer = .fixed(&buf);
-        defer fixed_writer.flush() catch {
-            std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-        };
-
+        var opts: FeedParser.HtmlOptions = .{ .selector_container = "" };
         try writer.writeAll("Can enter simple selector that are made up of tag names or classes. Like: '.item div'\n");
 
         while (true) {
-            try writer.writeAll("Enter feed item's selector: ");
+            try writer.writeAll("Enter feed item's selector (required): ");
             try writer.flush();
-            fixed_writer.flush() catch {
-                std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-            };
-            _ = try reader.streamDelimiter(&fixed_writer, '\n');
-            if (get_input_value(fixed_writer.buffered())) |val| {
+            const value_raw = try reader.takeDelimiterExclusive('\n');
+            if (get_input_value(value_raw)) |val| {
                 opts.selector_container = try allocator.dupe(u8, val);
                 break;
             }
+            try writer.writeAll("Feed item selector's field is required\n");
         }
 
-        try writer.writeAll("Rest of selector inputs will treat `item's selector` as root.\n");
+        try writer.print("Rest of selector inputs will treat '{s}' selector as root\n", .{opts.selector_container});
         try writer.writeAll("Enter feed item's link selector: ");
         try writer.flush();
 
-        fixed_writer.flush() catch {
-            std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-        };
-
-        _ = try reader.streamDelimiter(&fixed_writer, '\n');
-        if (get_input_value(fixed_writer.buffered())) |val| {
+        const value_link_selector = try reader.takeDelimiterExclusive('\n');
+        if (get_input_value(value_link_selector)) |val| {
             opts.selector_link = try allocator.dupe(u8, val);
         }
 
         try writer.writeAll("Enter feed item's title selector: ");
         try writer.flush();
-        fixed_writer.flush() catch {
-            std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-        };
-        _ = try reader.streamDelimiter(&fixed_writer, '\n');
-        if (get_input_value(fixed_writer.buffered())) |val| {
+
+        const value_title_selector = try reader.takeDelimiterExclusive('\n');
+        if (get_input_value(value_title_selector)) |val| {
             opts.selector_heading = try allocator.dupe(u8, val);
         }
 
         try writer.writeAll("Enter feed item's date selector: ");
         try writer.flush();
-        fixed_writer.flush() catch {
-            std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-        };
-        _ = try reader.streamDelimiter(&fixed_writer, '\n');
-        if (get_input_value(fixed_writer.buffered())) |val| {
+        const value_date_selector = try reader.takeDelimiterExclusive('\n');
+        if (get_input_value(value_date_selector)) |val| {
             opts.selector_date = try allocator.dupe(u8, val);
         }
 
@@ -877,11 +857,8 @@ pub const Cli = struct {
         );
         try writer.writeAll("Enter feed date format: ");
         try writer.flush();
-        fixed_writer.flush() catch {
-            std.log.warn("Failed to clean/flush html_options writer buffer", .{});
-        };
-        _ = try reader.streamDelimiter(&fixed_writer, '\n');
-        if (get_input_value(fixed_writer.buffered())) |val| {
+        const value_date_fmt = try reader.takeDelimiterExclusive('\n');
+        if (get_input_value(value_date_fmt)) |val| {
             opts.date_format = try allocator.dupe(u8, val);
         }
 
@@ -952,8 +929,12 @@ pub const Cli = struct {
 
         for (feeds) |feed| {
             while (true) {
+                defer self.out.flush() catch {
+                    std.log.warn("Failed to flush subcommand 'remove' text", .{});
+                };
                 fix_buf.reset();
                 try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
+                try self.out.flush();
                 const raw_value = try self.in.takeDelimiterExclusive('\n');
                 const value = mem.trim(u8, raw_value, &std.ascii.whitespace);
            

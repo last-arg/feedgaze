@@ -15,8 +15,9 @@ pub fn main() !void {
         var stdout_buffer: [1024]u8 = undefined;
         var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
         const writer = &stdout_writer.interface;
-        var stdout_reader = std.fs.File.stdout().reader(&stdout_buffer);
-        const reader = &stdout_reader.interface;
+        var stdin_buffer: [1024]u8 = undefined;
+        var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
+        const reader = &stdin_reader.interface;
         const progress_node = std.Progress.start(.{});
         defer progress_node.end();
 
