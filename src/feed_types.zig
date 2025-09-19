@@ -75,8 +75,8 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: []const u8,
     page_url: ?[]const u8 = null,
-    updated_timestamp: ?i64 = null,
     icon_id: ?u64 = null,
+    updated_timestamp: ?i64 = null,
 
     pub const Parsed = struct {
         title: ?Location = null,

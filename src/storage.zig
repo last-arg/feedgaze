@@ -1243,7 +1243,7 @@ pub const Storage = struct {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
-            \\select feed_id, title, feed_url, page_url, updated_timestamp, icon_id from feed where feed_id in (
+            \\select feed_id, title, feed_url, page_url, icon_id, updated_timestamp from feed where feed_id in (
         );
         // u64 numbers max length
         var buf: [20]u8 = undefined;
