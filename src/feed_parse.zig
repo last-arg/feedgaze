@@ -268,14 +268,10 @@ fn is_void(input: []const u8) bool {
 fn ignore_these_errors(errors: []const super.html.Ast.Error, content: []const u8) bool {
     for (errors) |err| {
         switch (err.tag) {
-            .ast => |err_enum| {
-                if (err_enum != .html_elements_cant_self_close
-                    and !is_void(err.main_location.slice(content))
-                ) {
-                    return false;
-                }
+            .html_elements_cant_self_close => if (!is_void(err.main_location.slice(content))) {
+                return false;
             },
-            .token => {}
+            else => {}
         }
     }
 
@@ -683,7 +679,7 @@ const NodeIterator = struct {
         const end_idx = self.end_index;
 
         for (self.ast.nodes[start_index..end_idx], start_index..) |n, index| {
-            if (n.kind != .element and n.kind != .element_void and n.kind != .element_self_closing) {
+            if (!n.kind.isElement()) {
                 continue;
             }
 
