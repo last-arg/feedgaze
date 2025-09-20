@@ -538,7 +538,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     defer fetch.deinit();
 
     var feed_options = FeedOptions.fromResponse(fetch.resp);
-    feed_options.body = fetch.req.writer.asSlice();
+    feed_options.body = fetch.req.writer.writer.buffered();
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
@@ -870,7 +870,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     defer fetch.deinit();
 
     var feed_options = FeedOptions.fromResponse(fetch.resp);
-    feed_options.body = fetch.req.writer.asSlice();
+    feed_options.body = fetch.req.writer.writer.buffered();
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
@@ -1106,7 +1106,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             defer req_http.deinit();
 
             req_http.fetch_image(icon_url_trimmed) catch break :blk null;
-            const resp_body = req_http.writer.asSlice();
+            const resp_body = req_http.writer.writer.buffered();
 
             const resp_url = req_http.get_url_slice() catch |err| {
                 std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});

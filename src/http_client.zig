@@ -17,7 +17,7 @@ const Uri = std.Uri;
 const assert = std.debug.assert;
 const curl = @import("curl");
 
-writer: curl.ResizableResponseWriter,
+writer: std.Io.Writer.Allocating,
 headers: curl.Easy.Headers,
 client: curl.Easy,
 resp: ?curl.Easy.Response = null,
@@ -29,7 +29,7 @@ pub fn init(allocator: Allocator) !@This() {
     var headers: curl.Easy.Headers = .{};
     try headers.add("Accept: application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
 
-    var writer = curl.ResizableResponseWriter.init(allocator);
+    var writer = std.Io.Writer.Allocating.init(allocator);
     errdefer writer.deinit();
 
     return .{
@@ -78,7 +78,7 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     // try self.client.setVerbose(true);
 
     self.resp = try self.client.fetch(url_with_null, .{
-        .response_writer = self.writer.asAny(),
+        .writer = &self.writer.writer,
     });
     return self.resp.?;
 }
@@ -91,7 +91,7 @@ pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]c
         return null;
     }
 
-    return self.writer.asSlice();
+    return self.writer.writer.buffered();
 }
 
 pub fn fetch_image(self: *@This(), url: []const u8) !void {
@@ -117,7 +117,7 @@ pub fn fetch_image(self: *@This(), url: []const u8) !void {
     // try self.client.setVerbose(true);
 
    self.resp = try self.client.fetch(url_with_null, .{
-        .response_writer = self.writer.asAny(),
+        .writer = &self.writer.writer,
    });
 }
 
