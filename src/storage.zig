@@ -920,7 +920,7 @@ pub const Storage = struct {
         const query_where = try self.search_query_where(allocator, args);
         defer allocator.free(query_where);
         const query_fmt = 
-        \\SELECT * FROM feed {s}
+        \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed {s}
         \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
@@ -966,7 +966,7 @@ pub const Storage = struct {
 
     pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.Feed {
         const query = 
-        \\SELECT feed_id, title, feed_url, page_url, updated_timestamp, icon_id FROM feed
+        \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
         \\WHERE feed_id = ?;
         ;
         return oneAlloc(&self.sql_db, allocator, types.Feed, query, .{id});
