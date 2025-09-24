@@ -1,3 +1,23 @@
+const std = @import("std");
+const httpz = @import("httpz");
+const s = @import("storage.zig");
+const Storage = s.Storage;
+const print = std.debug.print;
+const mem = std.mem;
+const types = @import("./feed_types.zig");
+const datetime = @import("zig-datetime").datetime;
+const Datetime = datetime.Datetime;
+const FeedItemRender = types.FeedItemRender;
+const config = @import("app_config.zig");
+const html = @import("./html.zig");
+const feed_types = @import("./feed_types.zig");
+const FeedOptions = feed_types.FeedOptions;
+const parse = @import("./feed_parse.zig");
+const App = @import("app.zig").App;
+const builtin = @import("builtin");
+const util = @import("util.zig");
+const gzip = @import("compress").gzip;
+
 // Date for machine "2011-11-18T14:54:39.929Z". For <time datetime="...">.
 const date_fmt = "{[year]d}-{[month]d:0>2}-{[day]d:0>2}T{[hour]d:0>2}:{[minute]d:0>2}:{[second]d:0>2}.000Z";
 const date_len_max = std.fmt.count(date_fmt, .{
@@ -1585,18 +1605,14 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
             return;
         }
 
-        // TODO: fix/re-enable static files compression
-        // var aw: std.Io.Writer.Allocating = try .initCapacity(req.arena, 1024);
-        // errdefer aw.deinit();
-        // var aw_writer = aw.writer;
+        var aw: std.Io.Writer.Allocating = try .initCapacity(req.arena, 1024);
+        errdefer aw.deinit();
 
-        // const c = std.compress.flate.Compress.init(aw_writer, body, .{
-        //     .container = .gzip,
-        // });
-        // _ = c; // autofix
-        // try std.compress.gzip.compress(fbs.reader(), al.writer(), .{});
-        // resp.header("content-encoding", "gzip");
-        resp.body = body;
+        var ar: std.Io.Reader = .fixed(body);
+        try gzip.compress(&ar, &aw.writer, .{});
+
+        resp.header("content-encoding", "gzip");
+        resp.body = aw.writer.buffered();
     }
 }
 
@@ -2748,22 +2764,3 @@ fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
 
     return "";
 }
-
-const std = @import("std");
-const httpz = @import("httpz");
-const s = @import("storage.zig");
-const Storage = s.Storage;
-const print = std.debug.print;
-const mem = std.mem;
-const types = @import("./feed_types.zig");
-const datetime = @import("zig-datetime").datetime;
-const Datetime = datetime.Datetime;
-const FeedItemRender = types.FeedItemRender;
-const config = @import("app_config.zig");
-const html = @import("./html.zig");
-const feed_types = @import("./feed_types.zig");
-const FeedOptions = feed_types.FeedOptions;
-const parse = @import("./feed_parse.zig");
-const App = @import("app.zig").App;
-const builtin = @import("builtin");
-const util = @import("util.zig");

@@ -37,5 +37,9 @@
             .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
             .hash = "superhtml-0.4.0-Y7MdPLJfJAALRrXh5WVKbHILfX-1IcVOxUQI8zuehwIM",
         },
+        .compress = .{
+            .url = "https://github.com/mattnite/compress/archive/refs/heads/main.tar.gz",
+            .hash = "compress-0.0.1-X7ykI9taDgDBg67m5S2rXFmwHAryuq8OPHjdXtDVF59I",
+        },
     },
 }

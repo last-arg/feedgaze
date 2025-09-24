@@ -8,7 +8,7 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/adactio.html" },
     // .{ .name = "tmp_file", .path = "./test/rss2.xml" },
-    .{ .name = "tmp_file", .path = "./tmp/@heydon.rss" },
+    .{ .name = "tmp_file", .path = "./tmp/newel.html" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
@@ -144,4 +144,7 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const superhtml = b.dependency("superhtml", .{});
     step.root_module.addImport("superhtml", superhtml.module("superhtml"));
+
+    const compress = b.dependency("compress", .{});
+    step.root_module.addImport("compress", compress.module("compress"));
 }
