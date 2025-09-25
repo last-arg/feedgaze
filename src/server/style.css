@@ -357,7 +357,7 @@ main h3 {
 
 .feed-edit {
   font-size: var(--size-xs);
-  --color-text-link: var(--color-gray-40);
+  --color-text-link: var(--color-text-link-secondary);
   margin-block-start: calc(var(--size-m) - var(--size-xs));
   white-space: nowrap;
 }
@@ -422,6 +422,10 @@ time.age-more-month {
 .main-footer hr {
   margin-block-start: var(--size-4xl);
   margin-block-end: var(--size-4xs);
+}
+
+.main-footer a:nth-of-type(2) {
+  margin-inline-start: var(--size-xs);
 }
 
 .nav {
