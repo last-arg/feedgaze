@@ -3,15 +3,12 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
-  - break all pages cache if any *.js or *.css files change?
+  - break all pages cache if any *.js or *.css files change
   - root page: indicate/style already seen or not seen items
   - unseen count?
-  - dark mode
   - server: limit inline icon size
-  - style: scrollbar
   - tags page: add create tag form
 - if link and id are same only save link to save space
-- feed page: if page title is longer than one line
 - use util fn is_data()
 
 - Make sqlite returned primary keys into u64.

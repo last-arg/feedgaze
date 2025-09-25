@@ -175,6 +175,7 @@ main h2 {
   display: none;
 }
 
+.feed-item p,
 .item-link {
   margin-inline-start: var(--size-xs);
   margin-inline-end: var(--size-xl);
