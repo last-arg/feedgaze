@@ -9,7 +9,6 @@
   - server: limit inline icon size
   - tags page: add create tag form
 - if link and id are same only save link to save space
-- use util fn is_data()
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

@@ -202,7 +202,7 @@ pub const IconManage = struct {
     };
 
     fn data_image(data: []const u8) ?DataImage {
-        if (!mem.startsWith(u8, data, "data:")) {
+        if (!util.is_data(data)) {
             return null;
         }
 
@@ -1668,7 +1668,7 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         resp.header("Cache-control", "public,max-age=31536000,immutable");
         const body = body: {
             const data = global.icon_manage.storage.items(.icon_data)[index];
-            if (mem.startsWith(u8, data, "data:")) {
+            if (util.is_data(data)) {
                 const index_comma = mem.indexOfScalarPos(u8, data, 5, ',') orelse data.len;
                 const start = index_comma + 1;
                 if (start < data.len) {

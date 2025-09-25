@@ -3,6 +3,7 @@ const Uri = std.Uri;
 const dt = @import("zig-datetime").datetime;
 const Response = @import("http_client.zig").Response;
 const mem = std.mem;
+const util = @import("util.zig");
 
 pub const seconds_in_3_hours = std.time.s_per_hour * 3;
 pub const seconds_in_6_hours = std.time.s_per_hour * 6;
@@ -491,7 +492,7 @@ pub const Icon = struct {
     data: []const u8 = "",
 
     pub fn init_if_data(url: []const u8, data: []const u8) ?@This() {
-        if (!mem.startsWith(u8, data, "data:")) {
+        if (!util.is_data(data)) {
             return null;
         }
 

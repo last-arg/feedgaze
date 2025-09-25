@@ -235,7 +235,7 @@ pub const Cli = struct {
                         req.deinit();
                     }
 
-                    if (!mem.startsWith(u8, icon.icon_url, "data:")) blk: {
+                    if (!util.is_data(icon.icon_url)) blk: {
                         req.fetch_image(icon.icon_url) catch {
                             try self.storage.icon_failed_add(.{
                                 .feed_id = icon.feed_id,
@@ -1251,7 +1251,7 @@ pub const App = struct {
 
     fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {
         if (html.parse_icon(html_body)) |icon_url| {
-            if (mem.startsWith(u8, icon_url, "data:")) {
+            if (util.is_data(icon_url)) {
                 return icon_url; 
             } else {
                 writer.flush() catch {
