@@ -1,8 +1,22 @@
 @layer kelp.theme {
-	:where(:root) {
+	:where(:root), .light {
+    /* Override kelp variables */
     --color-text-link: var(--color-gray-20);
     --color-text-link-hover: var(--color-gray-10);
     --decoration-text-link: underline dotted var(--color-gray-70);
+
+    /* My variables */
+    --color-text-link-secondary: var(--color-gray-40);
+  }
+
+	.dark {
+    /* Override kelp variables */
+    --color-text-link: var(--color-gray-95);
+    --color-text-link-hover: white;
+    --decoration-text-link: underline dotted var(--color-gray-70);
+
+    /* My variables */
+    --color-text-link-secondary: var(--color-gray-80);
   }
 }
 
@@ -174,7 +188,7 @@ relative-time > ul {
 }
 
 .item-extra {
-  --color-text-link: var(--color-gray-40);
+  --color-text-link: var(--color-text-link-secondary);
   font-size: var(--size-xs);
   min-width: 7ch;
 }
@@ -380,6 +394,19 @@ time.age-less-month {
 time.age-more-month {
   --time-bg: var(--color-gray-40);
 }
+
+.dark time.age-newest {
+  --time-bg: var(--color-gray-90);
+}
+
+.dark time.age-less-month {
+  --time-bg: var(--color-gray-80);
+}
+
+.dark time.age-more-month {
+  --time-bg: var(--color-gray-70);
+}
+
 
 @layer kelp.core {
   .badge {
