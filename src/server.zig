@@ -1875,7 +1875,10 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     try w.print(
         \\<span>{f}</span></a>
         \\</div>
-    , .{ url.fmt(.all) });
+    , .{ url.fmt(.{
+        .authority = true,
+        .port = true,
+    }) });
 }
 
 fn timestamp_render(w: anytype, timestamp: ?i64) !void {
