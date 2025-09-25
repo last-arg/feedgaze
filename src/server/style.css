@@ -417,6 +417,10 @@ time.age-more-month {
     padding-inline: var(--size-5xs);
     border-radius: 2px;
   }
+
+  .dark .badge {
+    --background-color: var(--color-gray-30);
+  }
 }
 
 .main-footer hr {
