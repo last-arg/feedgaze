@@ -283,13 +283,11 @@ fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
 }
 
 const static_files = if (builtin.mode != .Debug) .{
-    // .{ &hash_static_file("server/open-props-colors.css"), "open-props-colors.css" },
     .{ &hash_static_file("server/kelp.css"), "kelp.css" },
     .{ &hash_static_file("server/style.css"), "style.css" },
     .{ &hash_static_file("server/main.js"), "main.js" },
     .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
 } else .{
-    // .{ "open-props-colors.css", "open-props-colors.css" },
     .{ "kelp.css", "kelp.css" },
     .{ "style.css", "style.css" },
     .{ "main.js", "main.js" },
@@ -1601,9 +1599,6 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     } else if (mem.endsWith(u8, req.url.path, "kelp.css")) {
         src = try get_file(req.arena, "server/kelp.css");
         resp.content_type = .CSS;
-    } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
-        src = try get_file(req.arena, "server/open-props-colors.css");
-        resp.content_type = .CSS;
     }
 
     if (src) |body| {
@@ -1645,9 +1640,6 @@ fn public_head(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
         last_modified = try get_file_last_modified("server/style.css");
-        resp.content_type = .CSS;
-    } else if (mem.endsWith(u8, req.url.path, "open-props-colors.css")) {
-        last_modified = try get_file_last_modified("server/open-props-colors.css");
         resp.content_type = .CSS;
     }
 
