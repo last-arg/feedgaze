@@ -184,6 +184,10 @@ main h2 {
   width: 200%;
 }
 
+relative-time {
+  display: block;
+}
+
 relative-time > ul {
   margin-inline-end: calc(-0.5 * max(0px, calc(100vw - var(--max-width))));
 }
@@ -333,6 +337,10 @@ main h3 {
 
 .feed header {
   margin-block-end: 1em;
+}
+
+.feed > *:nth-child(n + 2) {
+  margin-inline-start: var(--size-4xs);
 }
 
 .feed:has([aria-expanded=false]) .feed-item:not(:first-child) {

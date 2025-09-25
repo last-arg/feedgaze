@@ -13,7 +13,7 @@
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html
 - failed feed requests
-  - keep count how many times it has failed?
+  - keep count how many times feed has failed to fetch?
   - save date when it failed first time? Or last?
   - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
 - when two commands run at the same time there is possibility of getting
