@@ -6,14 +6,17 @@
     <meta http-equiv="X-UA-Compatible" content="ie=edge">
     <title>[title]</title>
     <script>
-      // Dark/Light mode
-      (function() {
-        const doc_cl = document.documentElement.classList;
-      	const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)');
-      	doc_cl.toggle('kelp-theme-dark', prefersDarkMode.matches);
-      	prefersDarkMode.addEventListener('change', function(ev) {doc_cl.toggle('kelp-theme-dark', ev.matches)});
-      })();
-    </script>
+/*! kelpui v1.6.3 | (c) Chris Ferdinandi | http://github.com/cferdinandi/kelp */
+"use strict";
+(() => {
+  // modules/js/dark-mode-auto.js
+  var prefersDarkMode = window.matchMedia("(prefers-color-scheme: dark)");
+  document.documentElement.classList.toggle("dark", prefersDarkMode.matches);
+  prefersDarkMode.addEventListener("change", (event) => {
+    document.documentElement.classList.toggle("dark", event.matches);
+  });
+})();
+  </script>
     [links_and_scripts]
   </head>
   <body>
