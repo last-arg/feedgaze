@@ -1531,7 +1531,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
         try w.writeAll("<ul class='stack list-unstyled'>");
         for (items) |item| {
-            try w.print("<li class='feed-item {s}'>", .{""});
+            try w.writeAll("<li class='feed-item'>");
             try item_render(w, req.arena, item, .{});
             try w.writeAll("</li>");
         }
@@ -1543,7 +1543,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("</main>");
     try Layout.write_foot(w);
-    print("bottom len: {d}\n", .{w.buffered().len});
 
     try w.flush();
 
@@ -2515,6 +2514,8 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         
         const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
         if (items.len == 0) {
+            try w.writeAll("<p class='callout size-xs'>Feed has no items.</p>");
+           try w.writeAll("</article>");
             continue;
         }
 

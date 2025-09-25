@@ -286,6 +286,10 @@ Use this if 100% width is not desired behaviour.
   border-radius: 3px;
 }
 
+.feed .callout {
+  padding: var(--size-4xs) var(--size-2xs);
+}
+
 .html-feed-inputs {
   --flow-space: var(--size-5xl);
   display: none;
