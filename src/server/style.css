@@ -47,9 +47,17 @@ body > div {
   text-decoration: underline;
 }
 
+input[type=checkbox] {
+  margin-block-end: 0;
+}
+
 /* TODO: limit/cap height of <header> tag-list? */
 .tag-list {
   column-width: 15ch;
+}
+
+.tag-list .tag {
+  margin-block-end: var(--size-4xs);
 }
 
 .tag {
