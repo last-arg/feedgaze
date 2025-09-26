@@ -185,7 +185,7 @@ main h2 {
 }
 
 relative-time {
-  display: block;
+  display: inline-block;
 }
 
 relative-time > ul {
