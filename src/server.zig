@@ -2487,7 +2487,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {
-    try w.writeAll("<div class='flow' style='--flow-space: var(--size-6xl)'>");
+    try w.writeAll("<div class='flow'>");
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
         try w.writeAll("<article class='feed'>");

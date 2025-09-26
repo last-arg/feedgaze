@@ -97,6 +97,7 @@ input[type=checkbox] {
 }
 
 main {
+  --flow-space: var(--size-4xl);
   margin-block: var(--size-4xl);
 }
 
@@ -105,10 +106,6 @@ main h2 {
   margin-block-end: 0;
   display: flex;
   gap: var(--size-4xs);
-}
-
-.main-header {
-  margin-block-end: var(--size-2xl);
 }
 
 .main-actions {
@@ -333,6 +330,10 @@ Use this if 100% width is not desired behaviour.
 
 main h3 {
   margin-block-start: 2em;
+}
+
+.feed {
+  --flow-space: var(--size-6xl);
 }
 
 .feed header {
