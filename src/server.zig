@@ -48,19 +48,15 @@ const static_files_hash_slice = static_files_hash[0..4];
 
 // For fast compiling and testing
 pub fn main() !void {
-    print("buf: {x}\n", .{static_files_hash});
-    print("buf: {x}\n", .{static_files_hash_slice});
-
-    // const storage = try Storage.init(null);
+    const storage = try Storage.init(null);
     // const storage = try Storage.init("./tmp/feeds.db");
-    // try start_server(storage, .{.port = 5882 });
+    try start_server(storage, .{.port = 5882 });
 }
 
 const Global = struct {
     storage: Storage, 
     layout: Layout,
     is_updating: bool = false,
-    etag_out: []const u8,
     static_file_hashes: StaticFileHashes,
     icon_manage: IconManage,
 };
@@ -320,9 +316,6 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     const layout = Layout.init(allocator, storage); 
 
-    const etag_out = try std.fmt.allocPrint(allocator, "{x}", .{std.time.timestamp()});
-    defer allocator.free(etag_out);
-
     const db = @constCast(&storage);
     const icons = try db.icon_all(allocator);
     defer allocator.free(icons);
@@ -332,7 +325,6 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var global: Global = .{
         .storage = storage,
         .layout = layout,
-        .etag_out = etag_out,
         .static_file_hashes = static_file_hashes,
         .icon_manage = icon_manage,
     };
