@@ -3,7 +3,6 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
-  - break all pages cache if any *.js or *.css files change
   - root page: indicate/style already seen or not seen items
   - unseen count?
   - server: limit inline icon size
