@@ -723,13 +723,16 @@ pub const Cli = struct {
                 .index => |index| {
                     const link = links[index];
                     var fetch_url = url;
+                    var buf: [1024]u8 = undefined;
+                    var buf_writer: std.Io.Writer = .fixed(&buf);
 
                     if (!mem.startsWith(u8, link.link, "http")) {
+                        try buf_writer.writeAll(link.link);
                         var url_uri = try std.Uri.parse(url);
-                        var link_buf = try arena.allocator().alloc(u8, url.len + link.link.len + 1);
-                        @memcpy(link_buf, link.link);
-                        const result = try url_uri.resolveInPlace(link.link.len, &link_buf);
-                        fetch_url = try std.fmt.allocPrint(arena.allocator(), "{f}", .{result.fmt(.all)});
+                        const result = try url_uri.resolveInPlace(link.link.len, &buf_writer.buffer);
+                        const end = buf_writer.end;
+                        try buf_writer.print("{f}", .{result.fmt(.all)});
+                        fetch_url = buf_writer.buffered()[end..];
                     } else {
                         fetch_url = link.link;
                     }
