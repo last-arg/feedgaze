@@ -1445,11 +1445,12 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
 
         if (item.link) |link_loc| {
             var link = self.slice_from_loc(link_loc);
+            var link_writer: std.Io.Writer = .fixed(&buf_arr);
 
             if (is_relative_path(link)) {
-                var buf: []u8 = &buf_arr;
-                _ = std.Uri.percentDecodeBackwards(buf, link);
-                const link_new = try Uri.resolveInPlace(base, 0, &buf);
+                const decoded = std.Uri.percentDecodeBackwards(link_writer.buffer, link);
+                try link_writer.writeAll(decoded);
+                const link_new = try base.resolveInPlace(decoded.len, &link_writer.buffer);
                 link = try std.fmt.allocPrint(allocator, "{f}", .{link_new.fmt(.all)});
             }
 
