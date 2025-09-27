@@ -1448,11 +1448,9 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
 
             if (is_relative_path(link)) {
                 var buf: []u8 = &buf_arr;
-                const link_decoded = std.Uri.percentDecodeBackwards(buf, link);
-                buf = buf[link_decoded.len..];
-                const link_new = try Uri.resolveInPlace(base, link_decoded.len, &buf);
-                link = try std.fmt.allocPrint(allocator, "{f}", .{link_new});
-
+                _ = std.Uri.percentDecodeBackwards(buf, link);
+                const link_new = try Uri.resolveInPlace(base, 0, &buf);
+                link = try std.fmt.allocPrint(allocator, "{f}", .{link_new.fmt(.all)});
             }
 
             if (opts.feed_to_update) |f| if (mem.eql(u8, link, f.latest_item_link orelse "")) {
