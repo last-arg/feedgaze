@@ -162,30 +162,26 @@ main h2 {
   border-radius: 1px;
 }
 
-.feed-time:has(span) time {
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
+.feed-time time {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
 }
 
 .feed-time {
   display: flex;
   flex-direction: column;
-  position: relative;
 }
 
 .feed-time span {
   font: var(--font-primary);
-  position: absolute;
-  bottom: 100%;
-  left: 0;
-  line-height: 1.2;
+  line-height: 1;
+  padding-block-end: 1px;
   background: var(--color-fill-new-item);
   color: var(--color-text-new-item);
   font-size: var(--size-2xs);
-  border-top-left-radius: 2px;
-  border-top-right-radius: 2px;
+  border-bottom-left-radius: 2px;
+  border-bottom-right-radius: 2px;
   text-align: center;
-  width: 100%;
 }
 
 .feed-footer button {
