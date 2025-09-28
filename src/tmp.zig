@@ -5,10 +5,21 @@ const Storage = @import("storage.zig").Storage;
 const print = std.debug.print;
 const kf = @import("known-folders");
 
+pub const std_options: std.Options = .{
+    // This sets log level based on scope.
+    // This overrides global log_level
+    // .log_scope_levels = &.{ 
+    //     .{.level = .info, .scope = .@"html/tokenizer"},
+    //     .{.level = .info, .scope = .@"html/ast"} 
+    // },
+    // This set global log level
+    .log_level = .debug,
+};
+
 pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
-    try run_add_new_feed();
+    // try run_add_new_feed();
     // try run_parse_atom();
     // try test_allocating();
     // try storage_item_interval();
@@ -17,7 +28,8 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    // try tmp_icon();
+    try tmp_icon();
+    // try fetch_image();
     // try tmp_parse_icon();
     // try tmp_parse_html();
     // try tmp_iter_attrs();
@@ -43,12 +55,19 @@ pub fn tmp_parse_html() !void {
 
     const input = @embedFile("tmp_file");
 
-    const html = @import("html.zig");
-    const r = try html.parse_html(arena.allocator(), input); 
-    print("r.len: {}\n", .{r.links.len});
-    if (r.icon_url) |icon|{
-        print("url: {s}\n", .{icon});
-    }
+    const feed_parse = @import("feed_parse.zig");
+    var f: feed_parse = .init(input);
+    const r = try f.parse(arena.allocator(), .{
+        .selector_container = ".collection-item_letter",
+        .selector_heading = "h2",
+        .selector_date = ".collection-item_date",
+        .date_format = "DD/MM/YYYY",
+
+    }, .{
+        .feed_url = "https://www.newelofknowledge.com/letters"
+    }); 
+
+    print("link: {?s}\n", .{r.items[0].link});
 }
 
 pub fn tmp_parse_icon() !void {
@@ -68,15 +87,44 @@ pub fn tmp_icon() !void {
     var gen = std.heap.GeneralPurposeAllocator(.{}){};
     var arena = std.heap.ArenaAllocator.init(gen.allocator());
     defer arena.deinit();
-    const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
+    // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
+    // const feed_url = "https://jakearchibald.com/";
+    const feed_url = "https://statmodeling.stat.columbia.edu";
 
-    const icon_url = App.fetch_icon(arena.allocator(), feed_url, null) catch |err| blk: {
+    const icon_url = App.fetch_icon(arena.allocator(), feed_url, .{}) catch |err| blk: {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
         break :blk null;
     };
-    print("data: |{}|\n", .{icon_url.?.data.len});
-    print("url: |{s}|\n", .{icon_url.?.url});
+
+    if (icon_url) |icon| {
+        print("data: |{}|\n", .{icon.data.len});
+        print("data: |{s}|\n", .{icon.data[0..30]});
+        print("url: |{s}|\n", .{icon.url});
+        print("cache: |{s}|\n", .{icon.etag_or_last_modified_or_hash});
+    } else {
+        print("NO ICON FOUND\n", .{});
+    }
 }
+
+pub fn fetch_image() !void {
+    const http_client = @import("http_client.zig");
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+    // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
+    const feed_url = "https://jakearchibald.com/c/favicon-3d730960.png";
+    // const feed_url = "https://www.joshwcomeau.com/favicon.png";
+
+    var req = try http_client.init(arena.allocator());
+
+    try req.fetch_image(feed_url, .{});
+    const resp_body = req.writer.writer.buffered();
+
+
+    print("body: {d}\n", .{resp_body.len});
+    print("body: {s}\n", .{resp_body[0..30]});
+}
+
 
 
 pub fn tmp_progress() !void {
@@ -226,13 +274,11 @@ pub fn find_dir() !void {
 }
 
 pub fn storage_test() !void {
-    // var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    // defer arena.deinit();
-    var storage = try Storage.init("./tmp/feeds.db");
-    try storage.upsertIcon(.{
-        .url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA",
-        .data = "<data>1",
-    });
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+
+    const storage = try Storage.init("./tmp/feeds.db");
+    _ = storage; // autofix
 }
 
 pub fn storage_item_interval() !void {
@@ -294,12 +340,14 @@ pub fn run_add_new_feed() !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
     const writer = &stdout_writer.interface;
-    var stdout_reader = std.fs.File.stdout().reader(&stdout_buffer);
+    var stdin_buffer: [1024]u8 = undefined;
+    var stdout_reader = std.fs.File.stdin().reader(&stdin_buffer);
     const reader = &stdout_reader.interface;
     const progress_node = std.Progress.start(.{});
     defer progress_node.end();
 
-    const storage = try Storage.init("./tmp/feeds.db");
+    // var storage = try Storage.init("./tmp/feeds.db");
+    var storage = try Storage.init(null);
     var cli: Cli = .{
         .allocator = allocator,
         .storage = storage,
@@ -307,11 +355,26 @@ pub fn run_add_new_feed() !void {
         .in = reader,
         .progress = progress_node,
     };
-    // const input = "https://www.newelofknowledge.com/letters";
-    const input = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
+    const input = "https://www.newelofknowledge.com/letters";
+    // const input = "https://lobste.rs/";
+    // const input = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
+    // const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
     print("\ninput url: {s}\n", .{input});
 
     _ = try cli.add(input);
+    const opt = try storage.get_feed_with_url(allocator, input);
+    if (opt) |f| {
+        _ = f; // autofix
+        // const items = try storage.feed_items_with_feed_id(arena.allocator(), f.feed_id);
+        // for (items) |item| {
+          // print("item.url: {?s}\n", .{item.link});
+        // }
+
+        // for (try storage.icon_all(allocator)) |icon| {
+        //     print("icon.url: {s}\n", .{icon.icon_url});
+        //     print("icon.data: {s}\n", .{icon.icon_data[0..20]});
+        // }
+    }
 }
 
 // from add_rule.zig
