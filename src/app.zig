@@ -236,26 +236,53 @@ pub const Cli = struct {
                     }
 
                     if (!util.is_data(icon.icon_url)) blk: {
-                        req.fetch_image(icon.icon_url) catch {
+                        const icon_cache_value = cache_value: {
+                            if (mem.startsWith(u8, "md5", icon.etag_or_last_modified_or_hash)) {
+                                break :cache_value null;
+                            }
+                            break :cache_value icon.etag_or_last_modified_or_hash;
+                        };
+                        req.fetch_image(icon.icon_url, .{
+                            .etag_or_last_modified = icon_cache_value,
+                        }) catch {
                             try self.storage.icon_failed_add(.{
                                 .feed_id = icon.feed_id,
                                 .last_msg = "Failed to fetch existing image"
                             });
                             break :blk;
                         };
-                        const resp_body = req.writer.writer.buffered();
+
+                        const status_code = req.resp.?.status_code;
+                        if (status_code == 304) {
+                            continue;
+                        }
+
+                        const resp_body = req.response_200_and_has_body(icon.icon_url) orelse {
+                            std.log.warn("Failed to get icon '{s}'. Got HTTP status code {d}", .{icon.icon_url, status_code});
+                            var buf: [128]u8 = undefined;
+                            var w: std.Io.Writer = .fixed(&buf);
+                            try w.print("HTTP status code {d}", .{status_code});
+                            try self.storage.icon_failed_add(.{
+                                .feed_id = icon.feed_id,
+                                .last_msg = w.buffered(),
+                            });
+
+                            break :blk;
+                        };
                         const resp_url = req.get_url_slice() catch |err| {
                             std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
                             break :blk;
                         };
 
-                        try self.storage.icon_update(icon.icon_url, .{
-                            .url = resp_url,
-                            .data = resp_body,
-                        });
+                        const cache_value = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+                        const icon_new = feed_types.Icon.init(resp_url, resp_body, cache_value);
+                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+                            try self.storage.icon_update(icon.icon_url, icon_new);
+                        }
                         continue;
                     }
 
+                    // Inlined icon in html
                     const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
@@ -264,8 +291,10 @@ pub const Cli = struct {
                         continue;
                     };
 
-                    if (icon_opt) |icon_obj| {
-                        try self.storage.icon_update(icon.icon_url, icon_obj);
+                    if (icon_opt) |icon_new| {
+                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+                            try self.storage.icon_update(icon.icon_url, icon_new);
+                        }
                     } else {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
@@ -312,15 +341,19 @@ pub const Cli = struct {
                         continue;
                     };
 
-                    if (new_icon_opt) |new_icon| {
-                        const icon_id_opt = try self.storage.icon_upsert(new_icon);
-                        if (icon_id_opt) |icon_id| {
-                            try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                    if (new_icon_opt) |icon_new| {
+                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+                            const icon_id_opt = try self.storage.icon_upsert(icon_new);
+                            if (icon_id_opt) |icon_id| {
+                                try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                            }
                         }
                     }
                 }
             },
         }
+
+        try self.storage.icons_remove_unused();
     }
 
     fn printHelp(self: Self, verb: ?CliVerb) !void {
@@ -442,6 +475,7 @@ pub const Cli = struct {
                 \\Options:
                 \\  --check-all-icons        Check if all icons are valid
                 \\  --check-missing-icons    Fetch missing icons
+                \\  --check-failed-icons     Fetch icons that failed to fetch
                 \\  -d, --database           Database location 
                 \\  -h, --help               Print this help and exit
                 ,
@@ -449,6 +483,7 @@ pub const Cli = struct {
         }
 
         _ = try self.out.write(output);
+        try self.out.flush();
     }
 
     pub fn rule(self: *Self, inputs: [][]const u8, opts: feed_types.RuleOptions) !void {
@@ -712,7 +747,8 @@ pub const Cli = struct {
             const links = html_parsed.links;
 
             if (html_parsed.icon_url) |icon_url| {
-                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(), icon_url);
+                const cache_val = add_opts.feed_opts.feed_updates.etag_or_last_modified;
+                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(), icon_url, cache_val);
             }
 
             switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
@@ -1277,12 +1313,12 @@ pub const App = struct {
 
     const FetchIconOptions = struct {
         html_body: ?[]const u8 = null,
+        etag_or_last_modified: ?[]const u8 = null,
     };
     // if return null -> missing icons
     // if return error -> failed icons
     pub fn fetch_icon(allocator: Allocator, input_url: []const u8, opts: FetchIconOptions) !?feed_types.Icon {
-        print("fetch_icon input (1): {s}\n", .{input_url});
-        var buf: [1024]u8 = undefined;
+        var buf: [2 * 1024]u8 = undefined;
         var fixed_writer: std.Io.Writer = .fixed(&buf);
         var uri = try std.Uri.parse(mem.trim(u8, input_url, &std.ascii.whitespace));
         var icon_url_opt: ?[]const u8 = null;
@@ -1290,8 +1326,7 @@ pub const App = struct {
         // Found 'data:...' icon from existing html content
         if (opts.html_body) |html_body| {
             icon_url_opt = try get_icon_from_html(&fixed_writer, uri, html_body);
-            if (icon_url_opt) |icon| if (feed_types.Icon.init_if_data(input_url, icon)) |out| {
-                print("have html_body (1)\n", .{});
+            if (icon_url_opt) |icon| if (feed_types.Icon.init_if_data(input_url, icon, opts.etag_or_last_modified)) |out| {
                 return out; 
             };
         }
@@ -1307,7 +1342,6 @@ pub const App = struct {
                 .port = true,
             })});
 
-            print("fetch_icon req url (2): {s}\n", .{req_url});
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
             _ = try req.fetch(req_url, .{});
@@ -1319,48 +1353,45 @@ pub const App = struct {
             try fixed_writer.flush();
             icon_url_opt = try get_icon_from_html(&fixed_writer, uri_final, body);
 
-            if (icon_url_opt) |icon| if (feed_types.Icon.init_if_data(url_final, icon)) |out| {
-                print("have html_body (2)\n", .{});
-                return out; 
-            };
+            if (icon_url_opt) |icon| {
+                const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+                if (feed_types.Icon.init_if_data(url_final, icon, etag_or_last_modified)) |out| {
+                    return out; 
+                }
+            }
         }
 
         if (icon_url_opt) |icon_url| blk: {
-            print("url from html\n", .{});
             const req_icon_url = out: {
-                fixed_writer.end = 0;
+                var buf_rest = fixed_writer.unusedCapacitySlice();
                 try fixed_writer.writeAll(icon_url);
-                const page_url_new = try uri.resolveInPlace(icon_url.len, &fixed_writer.buffer);
-                try std.Uri.Format.default(.{
-                    .uri = &page_url_new,
-                    .flags = .all,
-                }, &fixed_writer);
-
-                break :out fixed_writer.buffered()[icon_url.len..];
+                const page_url_new = try uri.resolveInPlace(icon_url.len, &buf_rest);
+                const start = fixed_writer.end;
+                try fixed_writer.print("{f}", .{ page_url_new });
+                break :out fixed_writer.buffered()[start..];
             };
 
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
 
-            try req.fetch_image(req_icon_url);
+            try req.fetch_image(req_icon_url, .{});
             // Fetch icon body/content
             const resp_body = req.response_200_and_has_body(req_icon_url) orelse {
                 std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
                 break :blk;
             };
 
+            const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+            const data = try allocator.dupe(u8, resp_body);
+            errdefer allocator.free(data);
             const url_dupe = try allocator.dupe(u8, req_icon_url);
             errdefer allocator.free(url_dupe);
-            print("url_dupe: {s}\n", .{url_dupe});
-            return .{
-                .url = url_dupe,
-                .data = try allocator.dupe(u8, resp_body),
-            };
+
+            return feed_types.Icon.init(url_dupe, data, etag_or_last_modified);
         }
 
         // Fallback icon. See if there is and icon in '/favicon.ico'
         {
-            print("fallback icon\n", .{});
             errdefer |err| {
                 std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{s}'. Error: {}", .{input_url, err});
             }
@@ -1379,17 +1410,19 @@ pub const App = struct {
                 .port = true,
             })});
 
-            try req.fetch_image(url_request);
+            try req.fetch_image(url_request, .{});
             const body = req.response_200_and_has_body(url_request) orelse {
                 std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
                 return error.InvalidHttpStatusCode;
             };
 
             const url_favicon = try req.get_url_slice();
-            return .{
-                .url = try allocator.dupe(u8, url_favicon),
-                .data = try allocator.dupe(u8, body),
-            };
+            const url = try allocator.dupe(u8, url_favicon);
+            errdefer allocator.free(url);
+            const data = try allocator.dupe(u8, body);
+            errdefer allocator.free(data);
+            const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+            return feed_types.Icon.init(url, data, etag_or_last_modified);
         }
 
         return null;

@@ -1134,7 +1134,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             var req_http = try http_client.init(req.arena);
             defer req_http.deinit();
 
-            req_http.fetch_image(icon_url_trimmed) catch break :blk null;
+            req_http.fetch_image(icon_url_trimmed, .{}) catch break :blk null;
             const resp_body = req_http.writer.writer.buffered();
 
             const resp_url = req_http.get_url_slice() catch |err| {
@@ -1142,10 +1142,9 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 break :blk null;
             };
 
-            break :blk try db.icon_upsert(.{
-                .url = resp_url,
-                .data = resp_body,
-            });
+            const cache_value = try http_client.etag_or_last_modified_from_resp(req_http.resp.?);
+            const icon = feed_types.Icon.init(resp_url, resp_body, cache_value);
+            break :blk try db.icon_upsert(icon);
         } else if (util.is_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
             const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
@@ -1154,10 +1153,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 break :blk icon_id;
             } 
 
-            break :blk try db.icon_upsert(.{
-                .url = page_url,
-                .data = data,
-            });
+            const icon = feed_types.Icon.init(page_url, data, null);
+            break :blk try db.icon_upsert(icon);
         } else {
             std.log.info("User entered invalid icon input: '{s}'", .{icon_url_trimmed});
             // TODO: cancel updating feed?

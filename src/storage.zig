@@ -87,8 +87,8 @@ pub const Storage = struct {
 
         try setupTables(db);
         try migrate(db, user_version);
-        try initData(db);
         _ = try db.pragma(usize, .{}, "user_version", db_version_str);
+        try initData(db);
     }
 
     fn migrate(db: *sql.Db, version: usize) !void {
@@ -96,6 +96,7 @@ pub const Storage = struct {
         if (version == config_version or version == 0) {
             return;
         }
+
         if (version < 3) {
             const query1 =
                 \\ALTER TABLE feed_update RENAME COLUMN etag to etag_or_last_modified;
@@ -107,6 +108,16 @@ pub const Storage = struct {
 
             const query2 =
                 \\ALTER TABLE feed_update DROP COLUMN last_modified_utc;
+            ;
+            db.exec(query2, .{}, .{}) catch |err| {
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
+                return err;
+            };
+        }
+
+        if (version < 5) {
+            const query2 =
+                \\ALTER TABLE icon ADD COLUMN etag_or_last_modified_or_hash TEXT NOT NULL DEFAULT "default";
             ;
             db.exec(query2, .{}, .{}) catch |err| {
                 std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
@@ -538,25 +549,37 @@ pub const Storage = struct {
         });
     }
 
+    pub fn icons_remove_unused(self: *Self) !void {
+        const query =
+            \\delete from icon
+            \\where icon_id not in
+            \\  (select distinct(icon_id) from feed where icon_id not null);
+        ;
+        try self.sql_db.exec(query, .{}, .{});
+    }
+
     pub fn icon_upsert(self: *Self, icon: types.Icon) !?u64 {
         assert(if (std.Uri.parse(icon.url)) |_| true else |_| false);
         assert(icon.data.len > 0);
+        assert(icon.etag_or_last_modified_or_hash.len > 0);
 
         const query =
             \\INSERT INTO icon 
-            \\  (icon_url, icon_data)
+            \\  (icon_url, icon_data, etag_or_last_modified_or_hash)
             \\VALUES 
-            \\  (@icon_url, @icon_data)
+            \\  (@icon_url, @icon_data, @cache_value)
             \\ON CONFLICT DO UPDATE SET
-            \\  icon_data = @icon_data
-            \\ WHERE icon_url = @icon_url
-            \\ AND icon_data != @icon_data
+            \\  icon_data = @icon_data,
+            \\  etag_or_last_modified_or_hash = @cache_value
+            \\ WHERE
+            \\  etag_or_last_modified_or_hash != @cache_value
             \\RETURNING icon_id;
         ;
 
         const icon_id = try self.sql_db.one(u64, query, .{}, .{
             .icon_url = icon.url,
             .icon_data = sql.Blob{ .data = icon.data },
+            .cache_value = icon.etag_or_last_modified_or_hash,
         }) orelse try self.sql_db.one(u64, "select icon_id from icon where icon_url = ?", .{}, .{
             icon.url,
         });
@@ -1260,19 +1283,20 @@ pub const Storage = struct {
         return try iterator_to_slice(Feed, &stmt, allocator, .{});
     }
 
-    pub const FeedIcon = struct {
+    pub const IconAll = struct {
         feed_id: usize,
         page_url: []const u8,
-        icon_url: []const u8
+        icon_url: []const u8,
+        etag_or_last_modified_or_hash: []const u8,
     };
 
-    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]FeedIcon {
+    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]IconAll {
         const query =
-        \\SELECT feed_id, page_url, icon.icon_url
+        \\SELECT feed_id, page_url, icon.icon_url, icon.etag_or_last_modified_or_hash
         \\FROM feed
         \\JOIN icon ON icon.icon_id = feed.icon_id
         ;
-        return try selectAll(&self.sql_db, allocator, FeedIcon, query, .{});
+        return try selectAll(&self.sql_db, allocator, IconAll, query, .{});
     }
 
     pub const Icon = struct {
@@ -1289,28 +1313,38 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, Icon, query, .{});
     }
 
-    const FeedPageUrl = struct {
+    const IconMissing = struct {
         feed_id: usize,
         page_url: []const u8,
     };
 
-    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]FeedPageUrl {
+    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]IconMissing {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
         \\AND feed.feed_id NOT IN (select feed_id from icon_failed);
         ;
-        return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
+        return try selectAll(&self.sql_db, allocator, IconMissing, query, .{});
     }
 
-    pub fn feed_icons_failed(self: *Self, allocator: Allocator) ![]FeedPageUrl {
+    pub const IconFailed = struct {
+        feed_id: usize,
+        page_url: []const u8,
+        etag_or_last_modified_or_hash: []const u8,
+    };
+
+    // Failed icon request might icon status in DB:
+    // 1) Failed on first try. Which means there is no icon in DB.
+    // 2) Failed on any other try expect first. Which means there is an icon in DB.
+    pub fn feed_icons_failed(self: *Self, allocator: Allocator) ![]IconFailed {
         const query =
-        \\SELECT feed.feed_id, feed.page_url 
+        \\SELECT feed.feed_id, feed.page_url,
+        \\  IIF(feed.icon_id, (SELECT icon.etag_or_last_modified_or_hash FROM icon WHERE icon.icon_id = feed.icon_id), NULL) AS etag_or_last_modified_or_hash
         \\FROM icon_failed
         \\JOIN feed ON icon_failed.feed_id = feed.feed_id
         \\AND feed.page_url IS NOT NULL
         ;
-        return try selectAll(&self.sql_db, allocator, FeedPageUrl, query, .{});
+        return try selectAll(&self.sql_db, allocator, IconFailed, query, .{});
     }
     
     pub fn icon_update(self: *Self, curr_icon_url: []const u8, icon: types.Icon) !void {
@@ -1322,20 +1356,22 @@ pub const Storage = struct {
         if (mem.eql(u8, curr_icon_url, icon.url)) {
             const query = 
             \\UPDATE icon SET
-            \\  icon_data = ?
-            \\WHERE icon_url = ? AND icon_data != ?;
+            \\  icon_data = ?,
+            \\  etag_or_last_modified_or_hash = ?
+            \\WHERE icon_url = ?;
             ;
-            const values = .{data, curr_icon_url, data};
+            const values = .{data, icon.etag_or_last_modified_or_hash, curr_icon_url};
             try self.sql_db.exec(query, .{}, values);
         } else {
             const query = 
             \\UPDATE icon SET
-            \\  icon_url = ?
-            \\  icon_data = ?
-            \\WHERE icon_url = ? AND icon_data != ?;
+            \\  icon_url = ?,
+            \\  icon_data = ?,
+            \\  etag_or_last_modified_or_hash = ?
+            \\WHERE icon_url = ?;
             ;
 
-            const values = .{icon.url, data, curr_icon_url, data};
+            const values = .{icon.url, data, icon.etag_or_last_modified_or_hash, curr_icon_url};
             try self.sql_db.exec(query, .{}, values);
         }
     }
@@ -1377,6 +1413,9 @@ pub const Storage = struct {
         const query =
         \\insert into icon_failed (feed_id, last_msg)
         \\values (@feed_id, @last_msg)
+        \\ON CONFLICT(feed_id) DO UPDATE SET
+        \\  last_msg = @last_msg
+
         ;
         try self.sql_db.exec(query, .{}, icon_failed);
     }
@@ -1466,7 +1505,8 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS icon(
     \\  icon_id INTEGER PRIMARY KEY,
     \\  icon_url TEXT NOT NULL UNIQUE,
-    \\  icon_data BLOB NOT NULL
+    \\  icon_data BLOB NOT NULL,
+    \\  etag_or_last_modified_or_hash TEXT NOT NULL
     \\) STRICT;
     ,
     \\CREATE TABLE IF NOT EXISTS item(

@@ -1,5 +1,6 @@
 # Initial
 - website:
+  - filter search is not working
   - minify html
   - purge and minify css
   - need to url escape link paths?

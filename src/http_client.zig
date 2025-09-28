@@ -91,10 +91,16 @@ pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]c
         return null;
     }
 
-    return self.writer.writer.buffered();
+    const body = self.writer.writer.buffered();
+    // On 'https://statmodeling.stat.columbia.edu/favicon.ico' got empty body.
+    if (body.len == 0) {
+        return null;
+    }
+
+    return body;
 }
 
-pub fn fetch_image(self: *@This(), url: []const u8) !void {
+pub fn fetch_image(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !void {
     const url_buf_len = 1024;
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
@@ -107,8 +113,25 @@ pub fn fetch_image(self: *@This(), url: []const u8) !void {
     // NOTE: currently head() is only used to check if favicon.ico exists.
     // If in the future am going to use it for something else need to change this.
     try self.headers.add("Accept: image/*");
+
+    var header_buf: [256]u8 = undefined;
+    var fb = std.io.fixedBufferStream(&header_buf);
+    const w = fb.writer();
+
+    if (opts.etag_or_last_modified) |val| {
+        const start = if (val[3] == ',')
+            "If-Modified-Since: "
+        else
+            "If-None-Match: "
+        ;
+        try w.writeAll(start);
+        try w.writeAll(val);
+        try w.writeByte(0);
+        try self.headers.add(@ptrCast(fb.getWritten()));
+    }
+
+    try self.client.setHeaders(self.headers);
     
-    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
     try self.client.setMaxRedirects(3);
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
@@ -116,9 +139,10 @@ pub fn fetch_image(self: *@This(), url: []const u8) !void {
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
-   self.resp = try self.client.fetch(url_with_null, .{
-        .writer = &self.writer.writer,
-   });
+    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
+    self.resp = try self.client.fetch(url_with_null, .{
+         .writer = &self.writer.writer,
+    });
 }
 
 pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 {
@@ -180,4 +204,12 @@ pub fn checkCode(code: curl.libcurl.CURLcode) !void {
     std.log.debug("curl err code: {d}, msg: {s}", .{ code, curl.libcurl.curl_easy_strerror(code) });
 
     return error.Unexpected;
+}
+
+pub fn etag_or_last_modified_from_resp(resp: @import("curl").Easy.Response) !?[]const u8 {
+    const header = try resp.getHeader("etag") orelse try resp.getHeader("etag");
+    if (header) |h| {
+        return h.get();
+    }
+    return null;
 }

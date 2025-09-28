@@ -397,51 +397,6 @@ pub const FeedUpdate = struct {
 
         return feed_update;
     }
-
-    pub fn fromHeaders(headers: std.http.Headers) @This() {
-        const last_modified = blk: {
-            if (headers.getFirstValue("last-modified")) |value| {
-                break :blk RssDateTime.parse(value) catch null;
-            }
-
-            break :blk null;
-        };
-
-        const expires = blk: {
-            if (headers.getFirstValue("expires")) |value| {
-                break :blk RssDateTime.parse(value) catch null;
-            }
-
-            break :blk null;
-        };
-
-        const cache_control = blk: {
-            var result: ?u32 = null;
-            if (headers.getFirstValue("cache-control")) |value| {
-                var iter = std.mem.splitScalar(u8, value, ',');
-                while (iter.next()) |key_value| {
-                    var pair_iter = std.mem.splitScalar(u8, key_value, '=');
-                    const key = pair_iter.next() orelse continue;
-                    const iter_value = pair_iter.next() orelse continue;
-                    if (std.mem.eql(u8, "max-age", key)) {
-                        result = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
-                        break;
-                    } else if (std.mem.eql(u8, "s-maxage", value)) {
-                        result = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
-                    }
-                }
-            }
-
-            break :blk result;
-        };
-
-        return .{
-            .cache_control_max_age = cache_control,
-            .expires_utc = expires,
-            .last_modified_utc = last_modified,
-            .etag = headers.getFirstValue("etag"),
-        };
-    }
 };
 
 pub const ContentType = enum {
@@ -488,18 +443,48 @@ pub const FeedToUpdate = struct {
 };
 
 pub const Icon = struct {
-    url: []const u8 = "",
-    data: []const u8 = "",
+    url: []const u8,
+    data: []const u8,
+    etag_or_last_modified_or_hash: []const u8,
 
-    pub fn init_if_data(url: []const u8, data: []const u8) ?@This() {
+    pub fn init(url: []const u8, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
+        return .{
+            .url = url,
+            .data = data, 
+            .etag_or_last_modified_or_hash = content_cache_value(data, etag_or_last_modified),
+        };
+    }
+
+    pub fn init_if_data(url: []const u8, data: []const u8, etag_or_last_modified: ?[]const u8) ?@This() {
         if (!util.is_data(data)) {
             return null;
         }
 
-        return .{
-            .url = url,
-            .data = data,
+        return init(url, data, etag_or_last_modified);
+    }
+
+
+    const md5_len = std.crypto.hash.Md5.digest_length;
+    const start = "md5";
+    var md5_hex_buf: [start.len + md5_len * 2]u8 = undefined;
+    // Hashed values start with 'md5'
+    fn content_cache_value(data: []const u8, etag_or_last_modified: ?[]const u8) []const u8 {
+        if (etag_or_last_modified) |val| {
+            return val;
+        }
+        var hash = std.crypto.hash.Md5.init(.{});
+
+        var md5_buf: [md5_len]u8 = undefined;
+        hash.update(data);
+        hash.final(&md5_buf);
+
+        const md5_in_hex = std.fmt.bufPrint(&md5_hex_buf, "{s}{x}", .{start, md5_buf}) catch |err| {
+            std.log.err("Failed to print md5 has value in hexdecimal. Error: {}", .{err});
+            // This should not happend because buffer has enough space
+            unreachable;
         };
+      
+        return md5_in_hex;
     }
 };
 
