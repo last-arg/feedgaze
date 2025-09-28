@@ -26,13 +26,6 @@ pub fn build(b: *Build) !void {
     });
     const optimize = b.standardOptimizeOption(.{});
 
-    const use_llvm = blk: {
-        if (b.option(bool, "no-llvm", "Don't use LLVM backend")) |val| {
-            break :blk !val;
-        }
-        break :blk true;
-    };
-
     var source_file: []const u8 = "src/main.zig";
     if (b.args) |args| {
         const value = args[0];
@@ -48,8 +41,8 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        .use_llvm = use_llvm,
-        .use_lld = use_llvm,
+        // .use_llvm = true,
+        // .use_lld = false,
     };
     const exe = b.addExecutable(opts_exe);
 
@@ -102,8 +95,8 @@ pub fn build(b: *Build) !void {
             .optimize = optimize,
         }),
         .filters = if (filter) |f| &.{f} else &.{},
-        .use_llvm = use_llvm,
-        .use_lld = use_llvm,
+        // .use_llvm = true,
+        // .use_lld = false,
     });
 
     inline for (anon_modules) |file| {
