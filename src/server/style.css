@@ -7,6 +7,8 @@
 
     /* My variables */
     --color-text-link-secondary: var(--color-gray-40);
+    --color-text-new-item: var(--color-green-30);
+    --color-fill-new-item: var(--color-green-80);
   }
 
 	.dark {
@@ -17,6 +19,8 @@
 
     /* My variables */
     --color-text-link-secondary: var(--color-gray-80);
+    --color-text-new-item: var(--color-green-90);
+    --color-fill-new-item: var(--color-green-30);
   }
 }
 
@@ -175,8 +179,8 @@ main h2 {
   bottom: 100%;
   left: 0;
   line-height: 1.2;
-  background: var(--color-green-80);
-  color: var(--color-green-30);
+  background: var(--color-fill-new-item);
+  color: var(--color-text-new-item);
   font-size: var(--size-2xs);
   border-top-left-radius: 2px;
   border-top-right-radius: 2px;
