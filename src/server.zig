@@ -29,6 +29,7 @@ const date_len_max = std.fmt.count(date_fmt, .{
     .second = 2,
 });
 
+const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
 
@@ -1807,9 +1808,24 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         try w.writeAll("</div>");
     }
     try w.writeAll("</header>");
-    
+
     const items = try db.get_items_latest_added(req.arena);
     if (items.len > 0) {
+        const cookie_last_item_ts = get_cookie_value(req)
+            orelse std.math.maxInt(i64);
+        const current_last_item_ts = items[0].created_timestamp;
+        if (current_last_item_ts > cookie_last_item_ts
+            or cookie_last_item_ts == std.math.maxInt(i64)) {
+            const seconds_in_4_days = 60 * 24 * 4;
+            const cookie_value = try std.fmt.allocPrint(
+                req.arena,
+                "{s}={d}; Max-Age={d}",
+                .{cookie_key, current_last_item_ts, seconds_in_4_days},
+            );
+
+            resp.headers.add("Set-Cookie", cookie_value);
+        }
+
         var ids_al = try std.ArrayList(usize).initCapacity(req.arena, items.len);
         defer ids_al.deinit(req.arena);
         for (items) |item| { ids_al.appendAssumeCapacity(item.feed_id); }
@@ -1827,7 +1843,9 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 }
                 unreachable;
             };
-            try item_latest_render(w, req.arena, item, feed, global);
+
+            const is_new_item = item.created_timestamp > cookie_last_item_ts;
+            try item_latest_render(w, req.arena, item, feed, global, is_new_item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -1844,8 +1862,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     }
 }
 
-fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global,) !void {
-    try item_render(w, allocator, item, .{.class = "truncate-2"});
+fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
+    try item_render(w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
 
     const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
     const title = feed.title orelse "";
@@ -2580,10 +2598,18 @@ fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
 
 const ItemRenderOptions = struct {
     class: []const u8 = "",
+    is_new_item: bool = false,
 };
 
 fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
+    if (opts.is_new_item) {
+        try w.writeAll("<div class='feed-time'>");
+        try w.writeAll("<span>new</span>");
+    }
     try timestamp_render(w, item.updated_timestamp);
+    if (opts.is_new_item) {
+        try w.writeAll("</div>");
+    }
 
     const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
 
@@ -2764,3 +2790,26 @@ fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
 
     return "";
 }
+
+fn get_cookie_value(req: *httpz.Request) ?i64 {
+    const cookie = req.headers.get("cookie") orelse return null;
+    const trimmed = mem.trim(u8, cookie, &std.ascii.whitespace);
+    var iter = mem.splitScalar(u8, trimmed, '=');
+    const key = iter.next() orelse return null;
+    if (mem.eql(u8, key, cookie_key)) {
+        const value = iter.next() orelse {
+            std.log.warn("Cookie key '{s}' does not have value", .{key});
+            return null;
+        };
+        const ts = std.fmt.parseInt(i64, value, 10) catch |err| {
+            std.log.warn("Failed to parse cookie value into a number. Key: '{s}'. Error: {}", .{key, err});
+            return null;
+        };
+
+        return ts;
+    } else {
+        std.log.warn("First cookie value is not '{s}'", .{key});
+    }
+    return null;
+}
+

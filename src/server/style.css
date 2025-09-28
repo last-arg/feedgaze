@@ -158,6 +158,32 @@ main h2 {
   border-radius: 1px;
 }
 
+.feed-time:has(span) time {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.feed-time {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.feed-time span {
+  font: var(--font-primary);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  line-height: 1.2;
+  background: var(--color-green-80);
+  color: var(--color-green-30);
+  font-size: var(--size-2xs);
+  border-top-left-radius: 2px;
+  border-top-right-radius: 2px;
+  text-align: center;
+  width: 100%;
+}
+
 .feed-footer button {
   margin-block-start: var(--size-m);
   font-size: var(--size-xs);
