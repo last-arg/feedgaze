@@ -89,7 +89,7 @@ pub fn tmp_icon() !void {
     defer arena.deinit();
     // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
     // const feed_url = "https://jakearchibald.com/";
-    const feed_url = "https://statmodeling.stat.columbia.edu";
+    const feed_url = "https://thinkdobecreate.com/";
 
     const icon_url = App.fetch_icon(arena.allocator(), feed_url, .{}) catch |err| blk: {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
@@ -98,7 +98,7 @@ pub fn tmp_icon() !void {
 
     if (icon_url) |icon| {
         print("data: |{}|\n", .{icon.data.len});
-        print("data: |{s}|\n", .{icon.data[0..30]});
+        print("data: |{s}|\n", .{icon.data});
         print("url: |{s}|\n", .{icon.url});
         print("cache: |{s}|\n", .{icon.etag_or_last_modified_or_hash});
     } else {

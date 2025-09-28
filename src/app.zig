@@ -1355,8 +1355,13 @@ pub const App = struct {
 
             if (icon_url_opt) |icon| {
                 const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
-                if (feed_types.Icon.init_if_data(url_final, icon, etag_or_last_modified)) |out| {
-                    return out; 
+                if (util.is_data(icon)) {
+                    var buf_icon = try allocator.alloc(u8, url_final.len + icon.len);
+                    const buf_url = buf_icon[0..url_final.len];
+                    @memcpy(buf_url, url_final);
+                    const buf_data = buf_icon[url_final.len..];
+                    @memcpy(buf_data, icon);
+                    return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
                 }
             }
         }
@@ -1382,12 +1387,14 @@ pub const App = struct {
             };
 
             const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
-            const data = try allocator.dupe(u8, resp_body);
-            errdefer allocator.free(data);
-            const url_dupe = try allocator.dupe(u8, req_icon_url);
-            errdefer allocator.free(url_dupe);
 
-            return feed_types.Icon.init(url_dupe, data, etag_or_last_modified);
+            var buf_icon = try allocator.alloc(u8, req_icon_url.len + resp_body.len);
+            const buf_url = buf_icon[0..req_icon_url.len];
+            @memcpy(buf_url, req_icon_url);
+            const buf_data = buf_icon[req_icon_url.len..];
+            @memcpy(buf_data, resp_body);
+
+            return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
         }
 
         // Fallback icon. See if there is and icon in '/favicon.ico'
@@ -1417,12 +1424,15 @@ pub const App = struct {
             };
 
             const url_favicon = try req.get_url_slice();
-            const url = try allocator.dupe(u8, url_favicon);
-            errdefer allocator.free(url);
-            const data = try allocator.dupe(u8, body);
-            errdefer allocator.free(data);
             const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
-            return feed_types.Icon.init(url, data, etag_or_last_modified);
+
+            var buf_icon = try allocator.alloc(u8, url_favicon.len + body.len);
+            const buf_url = buf_icon[0..url_favicon.len];
+            @memcpy(buf_url, url_favicon);
+            const buf_data = buf_icon[url_favicon.len..];
+            @memcpy(buf_data, body);
+
+            return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
         }
 
         return null;
