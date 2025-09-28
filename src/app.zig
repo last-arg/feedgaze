@@ -237,7 +237,7 @@ pub const Cli = struct {
 
                     if (!util.is_data(icon.icon_url)) blk: {
                         const icon_cache_value = cache_value: {
-                            if (mem.startsWith(u8, "md5", icon.etag_or_last_modified_or_hash)) {
+                            if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
                                 break :cache_value null;
                             }
                             break :cache_value icon.etag_or_last_modified_or_hash;

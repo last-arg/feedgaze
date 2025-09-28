@@ -464,27 +464,27 @@ pub const Icon = struct {
     }
 
 
-    const md5_len = std.crypto.hash.Md5.digest_length;
-    const start = "md5";
-    var md5_hex_buf: [start.len + md5_len * 2]u8 = undefined;
-    // Hashed values start with 'md5'
+    // Hashed values start with 'hash'
+    pub const hash_start = "hash";
+    const u64_hex_max_length = 16;
+    var hash_buf: [hash_start.len + u64_hex_max_length]u8 = undefined;
     fn content_cache_value(data: []const u8, etag_or_last_modified: ?[]const u8) []const u8 {
         if (etag_or_last_modified) |val| {
             return val;
         }
-        var hash = std.crypto.hash.Md5.init(.{});
 
-        var md5_buf: [md5_len]u8 = undefined;
-        hash.update(data);
-        hash.final(&md5_buf);
+        var hasher = std.hash.Wyhash.init(0);
+        std.hash.autoHashStrat(&hasher, data, .Deep);
+        const val = hasher.final();
 
-        const md5_in_hex = std.fmt.bufPrint(&md5_hex_buf, "{s}{x}", .{start, md5_buf}) catch |err| {
-            std.log.err("Failed to print md5 has value in hexdecimal. Error: {}", .{err});
+
+        const hash_in_hex = std.fmt.bufPrint(&hash_buf, "{s}{x}", .{hash_start, val}) catch |err| {
+            std.log.err("Failed to print hashed value in hexdecimal. Error: {}", .{err});
             // This should not happend because buffer has enough space
             unreachable;
         };
       
-        return md5_in_hex;
+        return hash_in_hex;
     }
 };
 
