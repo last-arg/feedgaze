@@ -1307,7 +1307,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     if (feed.page_url) |page_url| {
         const page_url_encoded = try parse.html_escape(req.arena, page_url);
         try w.print(
-        \\<a href="{s}" class="inline-block">{s}</a>
+        \\<a href="{s}" class="inline-block" rel="noreferrer noopener">{s}</a>
         , .{page_url_encoded, page_url_encoded});
     } else {
         try w.writeAll("no url");
@@ -1317,7 +1317,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_url_encoded_attr = try parse.html_escape(req.arena, feed.feed_url);
     const feed_url_encoded = try parse.html_escape(req.arena, feed.feed_url);
     try w.print(
-        \\<p>Feed link: <a href="{s}">{s}</a></p>
+        \\<p>Feed link: <a href="{s}" rel="noreferrer noopener">{s}</a></p>
     , .{ feed_url_encoded_attr, feed_url_encoded });
 
     var date_buf: [date_len_max]u8 = undefined;
@@ -1873,7 +1873,7 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     , .{ feed.feed_id, title, title });
 
     try w.print(
-        \\<a class="feed-external-url" href="{f}" rel=noreferrer>
+        \\<a class="feed-external-url" href="{f}" rel="noreferrer noopener">
     , .{ url.fmt(.all) });
 
     var buf: [128]u8 = undefined;
@@ -2615,7 +2615,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
 
     if (item.link) |link| {
         const item_link_fmt =
-            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}" rel=noreferrer>{[title]s}</a>
+            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}" rel="noreferrer noopener">{[title]s}</a>
         ;
         const link_escaped = try parse.html_escape(allocator, link);
         try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped, .class = opts.class });
@@ -2639,7 +2639,7 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
 
     if (feed.page_url) |page_url| {
         const feed_link_fmt = 
-        \\<a class="feed-title truncate-1" href="{[page_url]s}">{[title]s}</a>
+        \\<a class="feed-title truncate-1" href="{[page_url]s}" rel="noreferrer noopener">{[title]s}</a>
         ;
         try w.print(feed_link_fmt, .{ .page_url = page_url, .title = title });
     } else {
