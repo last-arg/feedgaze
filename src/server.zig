@@ -114,14 +114,13 @@ pub const IconManage = struct {
         is_inline: bool = false,
         icon_url: []const u8,
         file_type: ?IconFileType = null,
-        data_hash: u64,
+        data_hash: []const u8,
     });
 
     pub fn init(icons: []Storage.Icon, allocator: std.mem.Allocator) !@This() {
         var cache: Cache = .empty;
         errdefer cache.deinit(allocator);
         try cache.ensureTotalCapacity(allocator, icons.len);
-        var hasher = std.hash.Wyhash.init(0);
 
         for (icons) |*icon| {
             var is_inline = false;
@@ -140,14 +139,14 @@ pub const IconManage = struct {
                 }
             };
 
-            std.hash.autoHashStrat(&hasher, icon.icon_data, .Deep);
+            const cache_val = std.mem.trim(u8, icon.etag_or_last_modified_or_hash, &.{'W', '/', '"'});
             cache.appendAssumeCapacity(.{
                 .icon_id = icon.icon_id,
                 .icon_data = data,
                 .is_inline = is_inline,
                 .icon_url = icon.icon_url,
                 .file_type = file_type,
-                .data_hash = hasher.final(),
+                .data_hash = cache_val,
             });
         } 
 
@@ -259,7 +258,7 @@ pub const IconManage = struct {
         const index = self.index_by_id(id) orelse return null;
         const icon = self.storage.get(index);
         if (icon.file_type) |ft| {
-            return std.fmt.bufPrint(buf, "/icons/{x}{s}", .{icon.data_hash, ft.to_string()})
+            return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{icon.data_hash, ft.to_string()})
                 catch null;
         }
 
@@ -267,10 +266,8 @@ pub const IconManage = struct {
     }
 
     pub fn index_by_hash(self: *const @This(), hash_raw: []const u8) !?usize {
-        const hash = std.fmt.parseUnsigned(u64, hash_raw, 16) catch return error.InvalidHash;
-
         for (self.storage.items(.data_hash), 0..) |data_hash, i| {
-            if (data_hash == hash) {
+            if (mem.eql(u8, data_hash, hash_raw)) {
                 return i;
             }
         }

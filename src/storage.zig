@@ -1304,11 +1304,12 @@ pub const Storage = struct {
         icon_id: u64,
         icon_url: []const u8,
         icon_data: []const u8,
+        etag_or_last_modified_or_hash: []const u8,
     };
 
     pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
         const query =
-        \\SELECT icon_id, icon_url, icon_data
+        \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
         return try selectAll(&self.sql_db, allocator, Icon, query, .{});

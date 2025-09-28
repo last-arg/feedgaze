@@ -3,11 +3,13 @@
   - minify html
   - purge and minify css
   - need to url escape link paths?
-  - root page: indicate/style already seen or not seen items
-  - unseen count?
   - server: limit inline icon size
-  - tags page: add create tag form
 - if link and id are same only save link to save space
+- check .all icons can be improved
+  - current solution refetches same icon again even though some
+    previous request did it.
+  - what to do when icon with existing url fails? Use fallback 
+- use wyhash instead of md5
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html
