@@ -369,7 +369,7 @@ pub const Cli = struct {
             \\  run       Run update in foreground
             \\  show      Print feeds' items
             \\  server    Start server
-            \\  batch     Do path actions
+            \\  batch     Do batch actions
             \\
             \\General options:
             \\
@@ -473,9 +473,9 @@ pub const Cli = struct {
                 \\  Run batch actions
                 \\
                 \\Options:
-                \\  --check-all-icons        Check if all icons are valid
-                \\  --check-missing-icons    Fetch missing icons
-                \\  --check-failed-icons     Fetch icons that failed to fetch
+                \\  --check-all-icons        Will fetch and check all existing icons
+                \\  --check-missing-icons    Try to fetch icons for feeds that don't have an icon
+                \\  --check-failed-icons     Try to fetch icons that have previously failed for some reason 
                 \\  -d, --database           Database location 
                 \\  -h, --help               Print this help and exit
                 ,
