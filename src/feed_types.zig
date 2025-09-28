@@ -466,7 +466,7 @@ pub const Icon = struct {
 
     // Hashed values start with 'hash'
     pub const hash_start = "hash";
-    const u64_hex_max_length = 16;
+    pub const u64_hex_max_length = 16;
     var hash_buf: [hash_start.len + u64_hex_max_length]u8 = undefined;
     fn content_cache_value(data: []const u8, etag_or_last_modified: ?[]const u8) []const u8 {
         if (etag_or_last_modified) |val| {

@@ -277,15 +277,16 @@ pub const IconManage = struct {
 };
 
 const StaticFileHashes = std.StaticStringMap([]const u8);
-const md5_len = std.crypto.hash.Md5.digest_length;
+const hash_len = feed_types.Icon.u64_hex_max_length;
 
-fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
-    @setEvalBranchQuota(1000000);
-    var buf: [md5_len]u8 = undefined; 
+fn hash_static_file(comptime path: []const u8) [hash_len]u8 {
+    @setEvalBranchQuota(60000);
     const c = @embedFile(path);
-    var hash = std.crypto.hash.Md5.init(.{});
-    hash.update(c);
-    hash.final(buf[0..]);
+    var hasher = std.hash.Wyhash.init(0);
+    hasher.update(c);
+    const val = hasher.final();
+    var buf: [hash_len]u8 = undefined; 
+    _ = std.fmt.bufPrint(&buf, "{x}", .{val}) catch unreachable;
     return buf;
 }
 
