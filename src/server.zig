@@ -48,8 +48,8 @@ const static_files_hash_slice = static_files_hash[0..4];
 
 // For fast compiling and testing
 pub fn main() !void {
-    const storage = try Storage.init(null);
-    // const storage = try Storage.init("./tmp/feeds.db");
+    // const storage = try Storage.init(null);
+    const storage = try Storage.init("./tmp/feeds.db");
     try start_server(storage, .{.port = 5882 });
 }
 

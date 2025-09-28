@@ -811,11 +811,12 @@ pub const Storage = struct {
             (args.before != null and args.after == null) or
             (args.before == null and args.after != null)
         );
+
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
         var aw: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
         errdefer aw.deinit();
-        var where_writer = aw.writer;
+        var where_writer = &aw.writer;
 
         var has_prev_cond = false;
 
@@ -856,7 +857,7 @@ pub const Storage = struct {
                 for (args.tags[1..]) |tag| {
                     const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
                     const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
-                    const tag_slice = mem.sliceTo(c_str, 0);
+                    const tag_slice = mem.sliceTo(c_str, 0x0);
                     try tags_str.appendSlice(allocator, ",");
                     try tags_str.appendSlice(allocator, tag_slice);
                 }
