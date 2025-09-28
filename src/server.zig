@@ -1813,7 +1813,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         const current_last_item_ts = items[0].created_timestamp;
         if (current_last_item_ts > cookie_last_item_ts
             or cookie_last_item_ts == std.math.maxInt(i64)) {
-            const seconds_in_4_days = 60 * 24 * 4;
+            const seconds_in_4_days = 4 * std.time.s_per_day;
             const cookie_value = try std.fmt.allocPrint(
                 req.arena,
                 "{s}={d}; Max-Age={d}",
