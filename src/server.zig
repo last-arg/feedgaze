@@ -35,8 +35,10 @@ const untagged = "[untagged]";
 
 const static_files_hash = blk: {
     var hasher = std.hash.Wyhash.init(0);
+    var buf: [feed_types.Icon.u64_hex_max_length] u8 = undefined;
 
-    for (static_file_hashes.keys()) |key| {
+    for (static_files) |kv| {
+        const key = std.fmt.bufPrint(&buf, "{x}", .{kv[1]}) catch unreachable;
         hasher.update(key);
     }
 
@@ -54,7 +56,6 @@ const Global = struct {
     storage: Storage, 
     layout: Layout,
     is_updating: bool = false,
-    static_file_hashes: StaticFileHashes,
     icon_manage: IconManage,
 };
 
@@ -276,34 +277,26 @@ pub const IconManage = struct {
     }
 };
 
-const StaticFileHashes = std.StaticStringMap([]const u8);
-const hash_len = feed_types.Icon.u64_hex_max_length;
-
-fn hash_static_file(comptime path: []const u8) [hash_len]u8 {
+fn hash_static_file(comptime path: []const u8) u64 {
     @setEvalBranchQuota(60000);
     const c = @embedFile(path);
     var hasher = std.hash.Wyhash.init(0);
     hasher.update(c);
-    const val = hasher.final();
-    var buf: [hash_len]u8 = undefined; 
-    _ = std.fmt.bufPrint(&buf, "{x}", .{val}) catch unreachable;
-    return buf;
+    return hasher.final();
 }
 
-const static_files = if (builtin.mode == .Debug) .{
-    .{ &hash_static_file("server/kelp.css"), "kelp.css" },
-    .{ &hash_static_file("server/style.css"), "style.css" },
-    .{ &hash_static_file("server/main.js"), "main.js" },
-    .{ &hash_static_file("server/relative-time.js"), "relative-time.js" },
+const static_files = if (builtin.mode != .Debug) .{
+    .{ "kelp.css", hash_static_file("server/kelp.css") },
+    .{ "style.css", hash_static_file("server/style.css") },
+    .{ "main.js", hash_static_file("server/main.js") },
+    .{ "relative-time.js", hash_static_file("server/relative-time.js") },
 } else .{
-    .{ "kelp.css", "kelp.css" },
-    .{ "style.css", "style.css" },
-    .{ "main.js", "main.js" },
-    .{ "relative-time.js", "relative-time.js" },
-    .{ "reload.js", "reload.js" },
+    .{ "kelp.css", 0 },
+    .{ "style.css", 1 },
+    .{ "main.js", 2 },
+    .{ "relative-time.js", 3 },
+    .{ "reload.js", 4 },
 };
-
-const static_file_hashes = StaticFileHashes.initComptime(static_files);
 
 pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -320,7 +313,6 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     var global: Global = .{
         .storage = storage,
         .layout = layout,
-        .static_file_hashes = static_file_hashes,
         .icon_manage = icon_manage,
     };
     const server_config: httpz.Config = .{
@@ -2140,10 +2132,14 @@ const Layout = struct {
 
     pub fn write_static_files(writer: anytype) !void {
         // write <link> and <script>
-        for (static_file_hashes.keys()) |key| {
-            const name = static_file_hashes.get(key).?;
+        inline for (static_files) |kv| {
+            const name = kv[0];
+            const hash = kv[1];
 
-            const last_dot_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse continue;
+            const last_dot_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse {
+                std.log.warn("Static file expect files in format '<filename>.<filetrype>'. Got '{s}'", .{name});
+                break;
+            };
             const filetype = name[last_dot_index + 1..];
 
             if (mem.eql(u8, filetype, "css")) {
@@ -2158,9 +2154,7 @@ const Layout = struct {
                 try writer.writeAll(" src='/public/");
             }
 
-            for (key) |c| {
-                try writer.print("{x}", .{c});
-            }
+            try writer.print("{x}", .{hash});
 
             try writer.writeAll("-");
             try writer.writeAll(name);
