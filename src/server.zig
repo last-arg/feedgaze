@@ -34,18 +34,14 @@ const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
 
 const static_files_hash = blk: {
-    var buf: [md5_len]u8 = undefined; 
-    var hash = std.crypto.hash.Md5.init(.{});
+    var hasher = std.hash.Wyhash.init(0);
 
     for (static_file_hashes.keys()) |key| {
-        @setEvalBranchQuota(3000);
-        hash.update(key);
-        hash.final(&buf);
+        hasher.update(key);
     }
 
-    break :blk buf;
+    break :blk hasher.final();
 };
-const static_files_hash_slice = static_files_hash[0..4];
 
 // For fast compiling and testing
 pub fn main() !void {
@@ -293,7 +289,7 @@ fn hash_static_file(comptime path: []const u8) [md5_len]u8 {
     return buf;
 }
 
-const static_files = if (builtin.mode != .Debug) .{
+const static_files = if (builtin.mode == .Debug) .{
     .{ &hash_static_file("server/kelp.css"), "kelp.css" },
     .{ &hash_static_file("server/style.css"), "style.css" },
     .{ &hash_static_file("server/main.js"), "main.js" },
@@ -967,7 +963,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     const db = &global.storage;
 
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1251,7 +1247,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     resp.content_type = .HTML;
 
     if (try db.get_latest_feed_change(id)) |latest| {
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1724,7 +1720,7 @@ fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response
 
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}-{x}\"", .{latest_created, countdown, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}-{x}\"", .{latest_created, countdown, static_files_hash});
         _ = resp_cache(req, resp, etag_out, .{});
     }
     
@@ -1738,7 +1734,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}-{x}\"", .{latest_created, countdown, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}-{x}\"", .{latest_created, countdown, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -1995,7 +1991,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     };
 
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -2059,7 +2055,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = &global.storage;
 
     if (try db.get_tags_change()) |latest_created| {
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
@@ -2326,7 +2322,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const db = &global.storage;
 
     if (try db.get_latest_change()) |latest_created| {
-        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash_slice});
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
             return;
