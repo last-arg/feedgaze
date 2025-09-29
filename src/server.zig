@@ -2592,10 +2592,10 @@ const ItemRenderOptions = struct {
 fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
     if (opts.is_new_item) {
         try w.writeAll("<div class='feed-time'>");
-        try w.writeAll("<span>new</span>");
     }
     try timestamp_render(w, item.updated_timestamp);
     if (opts.is_new_item) {
+        try w.writeAll("<span>new</span>");
         try w.writeAll("</div>");
     }
 

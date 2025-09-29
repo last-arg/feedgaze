@@ -159,7 +159,7 @@ main h2 {
   padding-inline: var(--size-5xs);
   text-align: end;
   flex-shrink: 0;
-  border-radius: 1px;
+  border-radius: 2px;
 }
 
 .feed-time time {
