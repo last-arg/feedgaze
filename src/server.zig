@@ -570,7 +570,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (add_opts.feed_opts.icon == null) {
         add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
-        }) catch null;
+        }) catch |err| blk: {
+            std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            break :blk null;
+        };
     }
     
     var parsing: parse = .init(add_opts.feed_opts.body);

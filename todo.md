@@ -4,6 +4,7 @@
   - purge and minify css
   - need to url escape link paths?
   - server: limit inline icon size
+  - server: update icons when icons are updated through cli
 - if link and id are same only save link to save space
 - check .all icons can be improved
   - current solution refetches same icon again even though some
