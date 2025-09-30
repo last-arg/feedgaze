@@ -69,7 +69,6 @@ pub const Storage = struct {
     fn setupDb(db: *sql.Db) !void {
         errdefer std.log.err("Failed to create new database", .{});
         const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
-        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
 
         // NOTE: permanent pragmas:
         // - application_id
@@ -87,6 +86,7 @@ pub const Storage = struct {
 
         try setupTables(db);
         try migrate(db, user_version);
+        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
         _ = try db.pragma(usize, .{}, "user_version", db_version_str);
         try initData(db);
     }
@@ -115,7 +115,7 @@ pub const Storage = struct {
             };
         }
 
-        if (version < 5) {
+        if (version < 4) {
             const query2 =
                 \\ALTER TABLE icon ADD COLUMN etag_or_last_modified_or_hash TEXT NOT NULL DEFAULT "default";
             ;
@@ -124,6 +124,24 @@ pub const Storage = struct {
                 return err;
             };
         }
+
+        if (version < 5) {
+            const query = 
+                \\DROP TRIGGER feed_delete_trigger;
+                \\CREATE TRIGGER IF NOT EXISTS feed_delete_trigger
+                \\   AFTER DELETE ON feed
+                \\BEGIN
+                \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+                \\  where table_name = 'feed';
+                \\  delete from icon where OLD.icon_id == icon.icon_id and (select count(*) == 0 from feed where OLD.icon_id == feed.icon_id);
+                \\END;
+            ;
+            db.exec(query, .{}, .{}) catch |err| {
+                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+                return err;
+            };
+        }
+        
     }
 
     fn setupTables(db: *sql.Db) !void {
@@ -1634,6 +1652,7 @@ const tables = &[_][]const u8{
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
     \\  where table_name = 'feed';
+    \\  delete from icon where OLD.icon_id == icon.icon_id and (select count(*) == 0 from feed where OLD.icon_id == feed.icon_id);
     \\END;
     ,
     \\CREATE TRIGGER IF NOT EXISTS feed_tag_delete_trigger
