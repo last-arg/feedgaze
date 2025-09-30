@@ -283,7 +283,7 @@ pub const Cli = struct {
                     }
 
                     // Inlined icon in html
-                    const icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
+                    const icon_opt = App.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch icon's html page to find inline icon",
