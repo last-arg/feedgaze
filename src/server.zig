@@ -104,52 +104,103 @@ const IconFileType = enum {
 
 pub const IconManage = struct {
     storage: Cache,
+    allocator: std.mem.Allocator,
+
+    url_string_bytes: ArrayList(u8) = .empty,
+    data_string_bytes: ArrayList(u8) = .empty,
+    hash_string_bytes: ArrayList(u8) = .empty,
+
+    const ArrayList = std.ArrayList;
+
+    const Location = struct {
+        start: u32, // inclusive
+        end: u32, // exclusive
+    };
 
     const Cache = std.MultiArrayList(struct{
         icon_id: u64,
-        icon_data: []const u8,
+        icon_data: Location,
         is_inline: bool = false,
-        icon_url: []const u8,
+        icon_url: Location,
         file_type: ?IconFileType = null,
-        data_hash: []const u8,
+        hash: Location,
     });
 
     pub fn init(icons: []Storage.Icon, allocator: std.mem.Allocator) !@This() {
-        var cache: Cache = .empty;
-        errdefer cache.deinit(allocator);
-        try cache.ensureTotalCapacity(allocator, icons.len);
+        var icon_manage: IconManage = .{
+            .storage = .empty,
+            .allocator = allocator,
+        };
+        errdefer icon_manage.deinit();
 
-        for (icons) |*icon| {
-            var is_inline = false;
-            const data, const file_type = blk: {
-                if (data_image(icon.icon_data)) |data_img| {
-                    is_inline = true;
-                    const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
-                    break :blk .{page_url_decoded, data_img.file_type};
-                } else if (file_type_from_data(icon.icon_data)
-                    orelse file_type_from_url(icon.icon_url)
-                ) |file_type| {
-                    break :blk .{icon.icon_data, file_type};
-                } else {
-                    std.log.warn("Failed add icon to server cache. Icon (or page link): '{s}'", .{icon.icon_url});
-                    continue;
-                }
-            };
+        const url_len = blk: {
+            var len: usize = 0;
+            for (icons) |icon| { len += icon.icon_url.len; }
+            break :blk len;
+        };
+        const data_len = blk: {
+            var len: usize= 0;
+            for (icons) |icon| { len += icon.icon_data.len; }
+            break :blk len;
+        };
+        const hash_len = blk: {
+            var len: usize = 0;
+            for (icons) |icon| { len += icon.etag_or_last_modified_or_hash.len; }
+            break :blk len;
+        };
 
-            const cache_val = std.mem.trim(u8, icon.etag_or_last_modified_or_hash, &.{'W', '/', '"'});
-            cache.appendAssumeCapacity(.{
-                .icon_id = icon.icon_id,
-                .icon_data = data,
-                .is_inline = is_inline,
-                .icon_url = icon.icon_url,
-                .file_type = file_type,
-                .data_hash = cache_val,
-            });
+        try icon_manage.url_string_bytes.ensureTotalCapacity(allocator, url_len);
+        try icon_manage.data_string_bytes.ensureTotalCapacity(allocator, data_len);
+        try icon_manage.hash_string_bytes.ensureTotalCapacity(allocator, hash_len);
+
+        try icon_manage.storage.ensureTotalCapacity(allocator, icons.len);
+        
+        for (icons) |icon| {
+            try icon_manage.add(icon);
         } 
 
-        return .{
-            .storage = cache,
+        return icon_manage;
+    }
+
+    pub fn add(self: *@This(), icon: Storage.Icon) !void {
+        var is_inline = false;
+        const data, const file_type = blk: {
+            if (data_image(icon.icon_data)) |data_img| {
+                is_inline = true;
+                const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
+                break :blk .{page_url_decoded, data_img.file_type};
+            } else if (file_type_from_data(icon.icon_data)
+                orelse file_type_from_url(icon.icon_url)
+            ) |file_type| {
+                break :blk .{icon.icon_data, file_type};
+            } else {
+                std.log.warn("Failed add icon to server cache. Icon (or page link): '{s}'", .{icon.icon_url});
+                return;
+            }
         };
+
+        const hash_val = std.mem.trim(u8, icon.etag_or_last_modified_or_hash, &.{'W', '/', '"'});
+
+        const url_start = self.url_string_bytes.items.len; 
+        try self.url_string_bytes.appendSlice(self.allocator, icon.icon_url);
+        const url_end = self.url_string_bytes.items.len; 
+
+        const data_start = self.data_string_bytes.items.len; 
+        try self.data_string_bytes.appendSlice(self.allocator, data);
+        const data_end = self.data_string_bytes.items.len; 
+
+        const hash_start = self.hash_string_bytes.items.len; 
+        try self.hash_string_bytes.appendSlice(self.allocator, hash_val);
+        const hash_end = self.hash_string_bytes.items.len; 
+
+        try self.storage.append(self.allocator, .{
+            .icon_id = icon.icon_id,
+            .icon_data = .{ .start = @intCast(data_start), .end = @intCast(data_end) },
+            .is_inline = is_inline,
+            .icon_url = .{ .start = @intCast(url_start), .end = @intCast(url_end) },
+            .file_type = file_type,
+            .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
+        });
     }
 
     fn is_png(data: []const u8) bool {
@@ -255,25 +306,43 @@ pub const IconManage = struct {
         const index = self.index_by_id(id) orelse return null;
         const icon = self.storage.get(index);
         if (icon.file_type) |ft| {
-            return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{icon.data_hash, ft.to_string()})
+            const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
+            return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{hash, ft.to_string()})
                 catch null;
         }
 
         return null;
     }
 
-    pub fn index_by_hash(self: *const @This(), hash_raw: []const u8) !?usize {
-        for (self.storage.items(.data_hash), 0..) |data_hash, i| {
-            if (mem.eql(u8, data_hash, hash_raw)) {
+    pub fn index_by_hash(self: *const @This(), filename_hash: []const u8) !?usize {
+        for (self.storage.items(.hash), 0..) |hash_loc, i| {
+            if (mem.eql(u8, get_hash_string(self, hash_loc), filename_hash)) {
                 return i;
             }
         }
 
         return null;
     }
+
+    fn get_hash_string(self: *const @This(), loc: Location) []const u8 {
+        return self.hash_string_bytes.items[loc.start..loc.end];
+    }
+
+    pub fn get_data_string_by_index(self: *const @This(), index: usize) []const u8 {
+        const icon_data = self.storage.items(.icon_data)[index];
+        return self.data_string_bytes.items[icon_data.start..icon_data.end];
+    }
+
+    pub fn get_url_string_by_index(self: *const @This(), index: usize) []const u8 {
+        const icon_url = self.storage.items(.icon_url)[index];
+        return self.url_string_bytes.items[icon_url.start..icon_url.end];
+    }
     
-    pub fn deinit(self: *@This(), allocator: std.mem.Allocator) void {
-        self.storage.deinit(allocator);
+    pub fn deinit(self: *@This()) void {
+        self.storage.deinit(self.allocator);
+        self.url_string_bytes.deinit(self.allocator);
+        self.data_string_bytes.deinit(self.allocator);
+        self.hash_string_bytes.deinit(self.allocator);
     }
 };
 
@@ -306,9 +375,9 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     const db = @constCast(&storage);
     const icons = try db.icon_all(allocator);
-    defer allocator.free(icons);
     var icon_manage = try IconManage.init(icons, allocator);
-    defer icon_manage.deinit(allocator);
+    defer icon_manage.deinit();
+    allocator.free(icons);
 
     var global: Global = .{
         .storage = storage,
@@ -582,7 +651,21 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         .feed_url = add_opts.feed_opts.feed_url,
     });
   
-    const feed_id = try db.addFeed(parsed_feed, add_opts);
+    const feed = try db.addFeed(parsed_feed, add_opts);
+
+    if (feed.icon_id) |icon_id| {
+        const icon = add_opts.feed_opts.icon.?;
+        global.icon_manage.add(.{
+            .icon_id = icon_id,
+            .icon_url = icon.url,
+            .icon_data = icon.data,
+            .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
+        }) catch |err| {
+            std.log.warn("Server failed to cache new feed's icon. Error: {}", .{err});
+        };
+    }
+
+    const feed_id = feed.feed_id;
 
     if (tags_input) |raw| {
         errdefer |err| {
@@ -919,7 +1002,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     if (add_opts.feed_opts.icon == null) {
         add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
-        }) catch null;
+        }) catch |err| blk: {
+            std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            break :blk null;
+        };
     }
 
     var parsing: parse = .init(add_opts.feed_opts.body);
@@ -928,7 +1014,22 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         .feed_url = add_opts.feed_opts.feed_url,
     });
 
-    const feed_id = try db.addFeed(parsed_feed, add_opts);
+    const feed = try db.addFeed(parsed_feed, add_opts);
+
+    if (feed.icon_id) |icon_id| {
+        const icon = add_opts.feed_opts.icon.?;
+        global.icon_manage.add(.{
+            .icon_id = icon_id,
+            .icon_url = icon.url,
+            .icon_data = icon.data,
+            .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
+        }) catch |err| {
+            std.log.warn("Server failed to cache new feed's icon. Error: {}", .{err});
+        };
+    }
+
+    const feed_id = feed.feed_id;
+
 
     if (tags_input) |raw| {
         errdefer |err| {
@@ -1402,12 +1503,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         if (feed.icon_id) |icon_id| {
             if (global.icon_manage.index_by_id(icon_id)) |index| {
                 if (global.icon_manage.storage.items(.is_inline)[index]) {
-                    const icon_raw = global.icon_manage.storage.items(.icon_data)[index];
+                    const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
                     break :blk icon_encoded;
                 }
 
-                break :blk global.icon_manage.storage.items(.icon_url)[index];
+                break :blk global.icon_manage.get_url_string_by_index(index);
             }
         }
         break :blk "";
@@ -1661,7 +1762,7 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
         resp.header("Cache-control", "public,max-age=31536000,immutable");
         const body = body: {
-            const data = global.icon_manage.storage.items(.icon_data)[index];
+            const data = global.icon_manage.get_data_string_by_index(index);
             if (util.is_data(data)) {
                 const index_comma = mem.indexOfScalarPos(u8, data, 5, ',') orelse data.len;
                 const start = index_comma + 1;

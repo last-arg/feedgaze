@@ -226,6 +226,10 @@ pub const Cli = struct {
 
         switch (check_type) {
             .all => {
+                // Can make it more efficient. Write down steps how it will work.
+                // 1) Save/append icon ids that have already been updated.
+                // 2) Check already updated ids before making a request.
+                // I think it can be that simple
                 const icons_existing = try self.storage.feed_icons_all(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_existing.len);
                 for (icons_existing) |icon| {
@@ -235,6 +239,11 @@ pub const Cli = struct {
                         req.deinit();
                     }
 
+                    // TODO: fix this condition. icon_url does not have 'data:...'
+                    // string, icon_data has it.
+                    // - could compare page_url and icon_url.
+                    //   - in code or in database
+                    // - check icon_data for 'data:' string
                     if (!util.is_data(icon.icon_url)) blk: {
                         const icon_cache_value = cache_value: {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
@@ -797,8 +806,8 @@ pub const Cli = struct {
             .feed_url = add_opts.feed_opts.feed_url,
         });
 
-        const feed_id = try self.storage.addFeed(parsed, add_opts);
-        return feed_id;
+        const feed = try self.storage.addFeed(parsed, add_opts);
+        return feed.feed_id;
     }
 
     const UserInput = union(enum) {
