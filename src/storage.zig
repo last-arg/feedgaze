@@ -1396,6 +1396,14 @@ pub const Storage = struct {
         }
     }
 
+    pub fn icon_by_id(self: *Self, allocator: Allocator, id: u64) !?Icon {
+        const query =
+        \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
+        \\FROM icon WHERE icon_id = ?;
+        ;
+        return try self.sql_db.oneAlloc(Icon, allocator,  query, .{}, .{id});
+    }
+    
     pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
         assert(is_url(icon_url));
         const query = 

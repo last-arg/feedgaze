@@ -53,10 +53,10 @@ pub fn main() !void {
 }
 
 const Global = struct {
-    storage: Storage, 
+    storage: *Storage, 
     layout: Layout,
     is_updating: bool = false,
-    icon_manage: IconManage,
+    icon_manage: *IconManage,
 };
 
 const IconFileType = enum {
@@ -126,47 +126,18 @@ pub const IconManage = struct {
         hash: Location,
     });
 
-    pub fn init(icons: []Storage.Icon, allocator: std.mem.Allocator) !@This() {
-        var icon_manage: IconManage = .{
+    pub fn init(allocator: std.mem.Allocator) @This() {
+        return .{
             .storage = .empty,
             .allocator = allocator,
         };
-        errdefer icon_manage.deinit();
-
-        const url_len = blk: {
-            var len: usize = 0;
-            for (icons) |icon| { len += icon.icon_url.len; }
-            break :blk len;
-        };
-        const data_len = blk: {
-            var len: usize= 0;
-            for (icons) |icon| { len += icon.icon_data.len; }
-            break :blk len;
-        };
-        const hash_len = blk: {
-            var len: usize = 0;
-            for (icons) |icon| { len += icon.etag_or_last_modified_or_hash.len; }
-            break :blk len;
-        };
-
-        try icon_manage.url_string_bytes.ensureTotalCapacity(allocator, url_len);
-        try icon_manage.data_string_bytes.ensureTotalCapacity(allocator, data_len);
-        try icon_manage.hash_string_bytes.ensureTotalCapacity(allocator, hash_len);
-
-        try icon_manage.storage.ensureTotalCapacity(allocator, icons.len);
-        
-        for (icons) |icon| {
-            try icon_manage.add(icon);
-        } 
-
-        return icon_manage;
     }
 
-    pub fn add(self: *@This(), icon: Storage.Icon) !void {
-        var is_inline = false;
+    pub fn add(self: *@This(), icon: Storage.Icon) !usize {
+        var is_icon_inline = false;
         const data, const file_type = blk: {
             if (data_image(icon.icon_data)) |data_img| {
-                is_inline = true;
+                is_icon_inline = true;
                 const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
                 break :blk .{page_url_decoded, data_img.file_type};
             } else if (file_type_from_data(icon.icon_data)
@@ -174,8 +145,8 @@ pub const IconManage = struct {
             ) |file_type| {
                 break :blk .{icon.icon_data, file_type};
             } else {
-                std.log.warn("Failed add icon to server cache. Icon (or page link): '{s}'", .{icon.icon_url});
-                return;
+                std.log.warn("Unknown icon from '{s}'", .{icon.icon_url});
+                return error.UnknownIcon;
             }
         };
 
@@ -193,14 +164,16 @@ pub const IconManage = struct {
         try self.hash_string_bytes.appendSlice(self.allocator, hash_val);
         const hash_end = self.hash_string_bytes.items.len; 
 
+        const index = self.storage.len;
         try self.storage.append(self.allocator, .{
             .icon_id = icon.icon_id,
             .icon_data = .{ .start = @intCast(data_start), .end = @intCast(data_end) },
-            .is_inline = is_inline,
+            .is_inline = is_icon_inline,
             .icon_url = .{ .start = @intCast(url_start), .end = @intCast(url_end) },
             .file_type = file_type,
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
         });
+        return index;
     }
 
     fn is_png(data: []const u8) bool {
@@ -292,18 +265,38 @@ pub const IconManage = struct {
         };
     }
 
-    pub fn index_by_id(self: *const @This(), id: u64) ?usize {
+    pub fn index_by_id(self: *@This(), id: u64, storage_opt: ?*Storage) ?usize {
         for (self.storage.items(.icon_id), 0..) |icon_id, i| {
             if (id == icon_id) {
                 return i;
             }
         }
 
+        if (storage_opt) |storage|  {
+            const icon_opt = storage.icon_by_id(self.allocator, id) catch |err| {
+                std.log.warn("Failed to get icon from database. Error: {}", .{err});
+                return null;
+            };
+
+            if (icon_opt) |icon| {
+                const index = self.add(icon) catch |err| {
+                    std.log.warn("Failed to add icon to server cache. Error: {}", .{err});
+                    return null;
+                };
+
+                return index;
+            }
+        }
+
         return null;
     }
 
-    pub fn icon_src_by_id(self: *const @This(), buf: []u8, id: u64) ?[]const u8 {
-        const index = self.index_by_id(id) orelse return null;
+    pub fn is_inline(self: *const @This(), index: usize) bool {
+        return self.storage.items(.is_inline)[index];
+    }
+
+    pub fn icon_src_by_id(self: *@This(), buf: []u8, id: u64, db: ?*Storage) ?[]const u8 {
+        const index = self.index_by_id(id, db) orelse return null;
         const icon = self.storage.get(index);
         if (icon.file_type) |ft| {
             const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
@@ -316,7 +309,7 @@ pub const IconManage = struct {
 
     pub fn index_by_hash(self: *const @This(), filename_hash: []const u8) !?usize {
         for (self.storage.items(.hash), 0..) |hash_loc, i| {
-            if (mem.eql(u8, get_hash_string(self, hash_loc), filename_hash)) {
+            if (mem.eql(u8, hash_string_from_loc(self, hash_loc), filename_hash)) {
                 return i;
             }
         }
@@ -324,7 +317,7 @@ pub const IconManage = struct {
         return null;
     }
 
-    fn get_hash_string(self: *const @This(), loc: Location) []const u8 {
+    fn hash_string_from_loc(self: *const @This(), loc: Location) []const u8 {
         return self.hash_string_bytes.items[loc.start..loc.end];
     }
 
@@ -373,16 +366,13 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
 
     const layout = Layout.init(allocator, storage); 
 
-    const db = @constCast(&storage);
-    const icons = try db.icon_all(allocator);
-    var icon_manage = try IconManage.init(icons, allocator);
+    var icon_manage: IconManage = .init(allocator);
     defer icon_manage.deinit();
-    allocator.free(icons);
 
     var global: Global = .{
-        .storage = storage,
+        .storage = @constCast(&storage),
         .layout = layout,
-        .icon_manage = icon_manage,
+        .icon_manage = &icon_manage,
     };
     const server_config: httpz.Config = .{
         .port = opts.port,  
@@ -465,7 +455,7 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
     if (!global.is_updating) {
         global.is_updating = true;
-        var app: App = .{ .storage = global.storage };
+        var app: App = .{ .storage = global.storage.* };
         var item_arena = std.heap.ArenaAllocator.init(req.arena);
         defer item_arena.deinit();
 
@@ -481,7 +471,7 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 }
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     resp.status = 303;
 
@@ -655,7 +645,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     if (feed.icon_id) |icon_id| {
         const icon = add_opts.feed_opts.icon.?;
-        global.icon_manage.add(.{
+        _ = global.icon_manage.add(.{
             .icon_id = icon_id,
             .icon_url = icon.url,
             .icon_data = icon.data,
@@ -693,7 +683,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 }
 
 fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     var query = try req.query();
 
@@ -901,7 +891,7 @@ fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyVal
 }
 
 fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     resp.status = 303;
 
@@ -1018,7 +1008,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     if (feed.icon_id) |icon_id| {
         const icon = add_opts.feed_opts.icon.?;
-        global.icon_manage.add(.{
+        _ = global.icon_manage.add(.{
             .icon_id = icon_id,
             .icon_url = icon.url,
             .icon_data = icon.data,
@@ -1057,7 +1047,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 }
 
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     if (try db.get_tags_change()) |latest_created| {
         const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
@@ -1160,7 +1150,7 @@ fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
 
-    const db = &global.storage;
+    const db = global.storage;
     resp.status = 301;
     db.deleteFeed(feed_id) catch {
         // On failure redirect to feed page. Display error message
@@ -1210,7 +1200,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
     }
 
-    const db = &global.storage;
+    const db = global.storage;
 
     const icon_id = blk: {
         const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
@@ -1330,7 +1320,7 @@ fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
 }
 
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const id = std.fmt.parseUnsigned(usize, id_raw, 10) catch return error.InvalidIdParam;
     const feed = db.feed_with_id(req.arena, id) catch {
@@ -1383,7 +1373,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<h2>");
     if (feed.icon_id) |icon_id| {
         var buf: [128]u8 = undefined;
-        if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+        if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
             try w.print(
                 \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
             , .{path});
@@ -1501,8 +1491,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const icon_url = blk: {
         if (feed.icon_id) |icon_id| {
-            if (global.icon_manage.index_by_id(icon_id)) |index| {
-                if (global.icon_manage.storage.items(.is_inline)[index]) {
+            if (global.icon_manage.index_by_id(icon_id, global.storage)) |index| {
+                if (global.icon_manage.is_inline(index)) {
                     const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
                     break :blk icon_encoded;
@@ -1813,7 +1803,7 @@ fn compress_init(req: *httpz.Request, resp: *httpz.Response) !bool {
 }
 
 fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
@@ -1825,7 +1815,7 @@ fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response
 }
 
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     var date_buf: [29]u8 = undefined;
 
@@ -1968,7 +1958,7 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
 
     var buf: [128]u8 = undefined;
     if (feed.icon_id) |icon_id| {
-        if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+        if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
             try w.print(
                 \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
             , .{path});
@@ -2012,7 +2002,7 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
 
-    const db = &global.storage;
+    const db = global.storage;
     resp.status = 301;
     const tag = db.tag_with_id(req.arena, tag_id) catch {
         // On failure redirect to feed page. Display error message
@@ -2052,7 +2042,7 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
 
-    const db = &global.storage;
+    const db = global.storage;
     resp.status = 301;
 
     var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
@@ -2079,7 +2069,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
 
-    const db = &global.storage;
+    const db = global.storage;
 
     const tag = try db.tag_with_id(req.arena, tag_id) orelse {
         resp.status = 301;
@@ -2149,7 +2139,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     if (try db.get_tags_change()) |latest_created| {
         const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
@@ -2418,7 +2408,7 @@ fn resp_cache(req: *httpz.Request, resp: *httpz.Response, etag: []const u8, opts
 }
 
 fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = &global.storage;
+    const db = global.storage;
 
     if (try db.get_latest_change()) |latest_created| {
         const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
@@ -2594,7 +2584,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         try w.writeAll("<div class='feed-header-top'>");
         if (feed.icon_id) |icon_id| {
-            if (global.icon_manage.icon_src_by_id(&buf, icon_id)) |path| {
+            if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
                 try w.print(
                     \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
                 , .{path});
