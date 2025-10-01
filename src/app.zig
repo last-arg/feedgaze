@@ -226,11 +226,7 @@ pub const Cli = struct {
 
         switch (check_type) {
             .all => {
-                // Can make it more efficient. Write down steps how it will work.
-                // 1) Save/append icon ids that have already been updated.
-                // 2) Check already updated ids before making a request.
-                // I think it can be that simple
-                const icons_existing = try self.storage.feed_icons_all(arena.allocator());
+                const icons_existing = try self.storage.icon_all(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_existing.len);
                 for (icons_existing) |icon| {
                     var req = try http_client.init(arena.allocator());
@@ -239,11 +235,6 @@ pub const Cli = struct {
                         req.deinit();
                     }
 
-                    // TODO: fix this condition. icon_url does not have 'data:...'
-                    // string, icon_data has it.
-                    // - could compare page_url and icon_url.
-                    //   - in code or in database
-                    // - check icon_data for 'data:' string
                     if (!util.is_data(icon.icon_url)) blk: {
                         const icon_cache_value = cache_value: {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
@@ -254,8 +245,12 @@ pub const Cli = struct {
                         req.fetch_image(icon.icon_url, .{
                             .etag_or_last_modified = icon_cache_value,
                         }) catch {
+                            const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
+                                std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
+                                break :blk;
+                            };
                             try self.storage.icon_failed_add(.{
-                                .feed_id = icon.feed_id,
+                                .feed_id = feed_id,
                                 .last_msg = "Failed to fetch existing image"
                             });
                             break :blk;
@@ -271,8 +266,12 @@ pub const Cli = struct {
                             var buf: [128]u8 = undefined;
                             var w: std.Io.Writer = .fixed(&buf);
                             try w.print("HTTP status code {d}", .{status_code});
+                            const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
+                                std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
+                                break :blk;
+                            };
                             try self.storage.icon_failed_add(.{
-                                .feed_id = icon.feed_id,
+                                .feed_id = feed_id,
                                 .last_msg = w.buffered(),
                             });
 
@@ -293,8 +292,12 @@ pub const Cli = struct {
 
                     // Inlined icon in html
                     const icon_opt = App.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
+                        const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
+                            std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
+                            continue;
+                        };
                         try self.storage.icon_failed_add(.{
-                            .feed_id = icon.feed_id,
+                            .feed_id = feed_id,
                             .last_msg = "Failed to fetch icon's html page to find inline icon",
                         });
                         continue;
@@ -305,8 +308,12 @@ pub const Cli = struct {
                             try self.storage.icon_update(icon.icon_url, icon_new);
                         }
                     } else {
+                        const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
+                            std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
+                            continue;
+                        };
                         try self.storage.icon_failed_add(.{
-                            .feed_id = icon.feed_id,
+                            .feed_id = feed_id,
                             .last_msg = "Didn't find inline icon in html page",
                         });
                     }

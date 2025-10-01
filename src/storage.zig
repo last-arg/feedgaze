@@ -1302,22 +1302,6 @@ pub const Storage = struct {
         return try iterator_to_slice(Feed, &stmt, allocator, .{});
     }
 
-    pub const IconAll = struct {
-        feed_id: usize,
-        page_url: []const u8,
-        icon_url: []const u8,
-        etag_or_last_modified_or_hash: []const u8,
-    };
-
-    pub fn feed_icons_all(self: *Self, allocator: Allocator) ![]IconAll {
-        const query =
-        \\SELECT feed_id, page_url, icon.icon_url, icon.etag_or_last_modified_or_hash
-        \\FROM feed
-        \\JOIN icon ON icon.icon_id = feed.icon_id
-        ;
-        return try selectAll(&self.sql_db, allocator, IconAll, query, .{});
-    }
-
     pub const Icon = struct {
         icon_id: u64,
         icon_url: []const u8,
@@ -1331,6 +1315,13 @@ pub const Storage = struct {
         \\FROM icon
         ;
         return try selectAll(&self.sql_db, allocator, Icon, query, .{});
+    }
+
+    pub fn feed_id_by_icon_id(self: *Self, icon_id: u64) !?u64 {
+        const query =
+            \\SELECT feed_id FROM feed WHERE icon_id = ?
+        ;
+        return try self.sql_db.one(u64, query, .{}, .{icon_id});
     }
 
     const IconMissing = struct {
