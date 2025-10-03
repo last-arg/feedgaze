@@ -1439,6 +1439,13 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, icon_failed);
     }
 
+    pub fn icon_failed_remove(self: *Self, feed_id: u64) !void {
+        const query =
+            \\DELETE FROM icon_failed WHERE feed_id = ?;
+        ;
+        try self.sql_db.exec(query, .{}, .{feed_id});
+    }
+
     pub fn html_selector_add(self: *Self, feed_id: usize, options: parse.HtmlOptions) !void {
         const query =
             \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)

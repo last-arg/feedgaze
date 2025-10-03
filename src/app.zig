@@ -362,6 +362,9 @@ pub const Cli = struct {
                             const icon_id_opt = try self.storage.icon_upsert(icon_new);
                             if (icon_id_opt) |icon_id| {
                                 try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                                self.storage.icon_failed_remove(icon.feed_id) catch |err| {
+                                    std.log.warn("Failed to remove feed from icon_failed table. Error: {}", .{err});
+                                };
                             }
                         }
                     }
