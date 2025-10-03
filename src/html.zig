@@ -214,7 +214,6 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
         // Have possible link with attributes
         var iter = AttributeIterator.init(input[index_after_name..]);
         const link_raw = LinkRaw.from_iter(&iter);
-        // print("raw: {any}\n", .{link_raw});
         index_curr = index_after_name + iter.pos_curr + 1;
 
         const rel = link_raw.rel orelse continue;
@@ -313,13 +312,16 @@ const AttributeIterator = struct {
 
     pub fn next(iter: *@This()) ?NameValue {
         var content = iter.input[iter.pos_curr..];
-        content = skip_whitespace(content);
         const start_len = content.len;
+        content = skip_whitespace(content);
         iter.pos_curr += start_len - content.len;
 
         const next_tag_start = mem.indexOfScalar(u8, content, '<') orelse content.len;
         const end_index = mem.lastIndexOfScalar(u8, content[0..next_tag_start], '>') orelse return null;
-        content = content[0..end_index];
+        content = mem.trimEnd(u8, content[0..end_index], &(.{'/'} ++ std.ascii.whitespace));
+        if (content.len == 0) {
+            return null;
+        }
 
         const index_equal = mem.indexOfScalar(u8, content, '=') orelse content.len;
         const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
@@ -335,8 +337,8 @@ const AttributeIterator = struct {
             return null;
         }
         
-        const index_start = index_min + 1;
-        if (index_start >= content.len) {
+        const value_index = index_min + 1;
+        if (value_index >= content.len) {
             iter.pos_curr += content.len;
             return null;
         }
@@ -345,27 +347,29 @@ const AttributeIterator = struct {
             .name = content[0..index_min],
         };
         
-        var index_content = index_start;
-        const first = content[index_start];
+        const first = content[value_index];
         if (first == '\'' or first == '"') {
-            const index_quote = mem.indexOfScalarPos(u8, content, index_start + 1, first) orelse index_whitespace;
-            attr_result.value = mem.trim(u8, content[index_start..index_quote], &.{first});
+            var index_content = value_index + 1;
+            const index_quote = mem.indexOfScalarPos(u8, content, index_content, first) orelse index_whitespace;
+            attr_result.value = mem.trim(u8, content[index_content..index_quote], &std.ascii.whitespace);
 
             index_content = index_quote;
-            if (content[index_quote] == first) {
+            if (content[index_content] == first) {
                 index_content += 1;
             }
-        } else {
-            index_content = index_whitespace + @intFromBool(index_whitespace < content.len);
-            attr_result.value = content[index_start..index_content];
-        }
 
-        if (index_content > content.len) {
-            iter.pos_curr += content.len;
-            return null;
+            if (index_content > content.len) {
+                iter.pos_curr += content.len;
+                return null;
+            }
+
+            iter.pos_curr += index_content;
+        } else {
+            // Value ends with whitespace. Attribute value does not have quotes.
+            const end = index_whitespace + @intFromBool(index_whitespace < content.len);
+            attr_result.value = content[value_index..end];
+            iter.pos_curr += end;
         }
-        
-        iter.pos_curr += index_content;
 
         return attr_result;
     }
