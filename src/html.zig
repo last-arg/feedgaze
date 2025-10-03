@@ -141,17 +141,6 @@ const LinkAttribute = enum {
     }
 };
 
-// Will return index of '>' end comment
-pub fn skip_comment(input: []const u8) ?usize {
-    if (mem.startsWith(u8, input, "!--")) {
-        if (mem.indexOf(u8, input[3..], "-->")) |index| {
-            // '-->'.len
-            return index + 3;
-        }
-    }
-    return null;
-}
-
 const LinkRaw = struct {
     rel: ?[]const u8 = null,
     type: ?[]const u8 = null,
@@ -202,10 +191,7 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
     var comment_range = comment_range_pos(input, 0);
     var index_curr = index_link_opt.?;
 
-    var count: u32 = 0;
     outer: while (index_link_opt) |index| : (index_link_opt = mem.indexOfPos(u8, input, index_curr, tag_link)) {
-        count += 1;
-        print("LINK: |{s}|\n", .{input[index..index+30]});
         while (comment_range) |range| {
             if (index < range.start) {
                 break;
@@ -213,7 +199,7 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
                 index_curr = range.end + 1;
                 continue :outer;
             } else if (index > range.end) {
-                index_curr = index;
+                index_curr = index + 1;
                 comment_range = comment_range_pos(input, range.end);
             }
         }
@@ -240,7 +226,6 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
             }
         }
     }
-    print("count: |{d}|\n", .{count});
 
     if (current_icon) |icon| {
         return icon.href;
