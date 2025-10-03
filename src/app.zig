@@ -1358,7 +1358,6 @@ pub const App = struct {
                 .port = true,
             })});
 
-            print("get html {s}\n", .{req_url});
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
             _ = try req.fetch(req_url, .{});
@@ -1366,11 +1365,9 @@ pub const App = struct {
             const body = req.response_200_and_has_body(req_url) orelse break :blk;
             const url_final = try req.get_url_slice();
             const uri_final = try std.Uri.parse(mem.trim(u8, url_final, &std.ascii.whitespace));
-            print("body.len {d}\n", .{body.len});
 
             try fixed_writer.flush();
             icon_url_opt = try get_icon_from_html(&fixed_writer, uri_final, body);
-            print("icon_opt {any}\n", .{icon_url_opt});
 
             if (icon_url_opt) |icon| {
                 const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
