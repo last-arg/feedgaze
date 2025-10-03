@@ -8,7 +8,7 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/adactio.html" },
     // .{ .name = "tmp_file", .path = "./test/rss2.xml" },
-    .{ .name = "tmp_file", .path = "./tmp/newel.html" },
+    .{ .name = "tmp_file", .path = "./tmp/csswizzardry.html" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
@@ -41,7 +41,7 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        // .use_llvm = true,
+        .use_llvm = true,
         // .use_lld = false,
     };
     const exe = b.addExecutable(opts_exe);
