@@ -316,16 +316,14 @@ const AttributeIterator = struct {
         content = skip_whitespace(content);
         iter.pos_curr += start_len - content.len;
 
-        const next_tag_start = mem.indexOfScalar(u8, content, '<') orelse content.len;
-        const end_index = mem.lastIndexOfScalar(u8, content[0..next_tag_start], '>') orelse return null;
-        content = mem.trimEnd(u8, content[0..end_index], &(.{'/'} ++ std.ascii.whitespace));
         if (content.len == 0) {
             return null;
         }
 
         const index_equal = mem.indexOfScalar(u8, content, '=') orelse content.len;
         const index_whitespace = mem.indexOfAny(u8, content, &std.ascii.whitespace) orelse content.len;
-        const index_min = @min(index_equal, index_whitespace);
+        const index_tag_end = mem.indexOfScalar(u8, content, '>') orelse content.len;
+        const index_min = @min(index_equal, index_whitespace, index_tag_end);
 
         if (index_min >= content.len) {
             iter.pos_curr += content.len;
@@ -365,8 +363,7 @@ const AttributeIterator = struct {
 
             iter.pos_curr += index_content;
         } else {
-            // Value ends with whitespace. Attribute value does not have quotes.
-            const end = index_whitespace + @intFromBool(index_whitespace < content.len);
+            const end = @min(index_whitespace, index_tag_end);
             attr_result.value = content[value_index..end];
             iter.pos_curr += end;
         }
