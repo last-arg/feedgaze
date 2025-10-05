@@ -6,9 +6,8 @@ pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
-    // .{ .name = "tmp_file", .path = "./tmp/adactio.html" },
-    // .{ .name = "tmp_file", .path = "./test/rss2.xml" },
-    .{ .name = "tmp_file", .path = "./tmp/csswizzardry.html" },
+    .{ .name = "tmp_file", .path = "./tmp/thinkdobecreate.com.html" },
+    // .{ .name = "tmp_file", .path = "./tmp/csswizzardry.html" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
     .{ .name = "rss2.xml", .path = "./test/rss2.xml" },
@@ -17,13 +16,7 @@ const anon_modules = .{
 };
 
 pub fn build(b: *Build) !void {
-    // const features = std.Target.Query.parse(.{
-    //     // .cpu_features = "native-sse-sse2+soft_float",
-    //     .cpu_features = "native-mmx-sse-sse2-sse3-sse4_1-sse4_2",
-    // }) catch unreachable;
-    const target = b.standardTargetOptions(.{
-        // .default_target = features
-    });
+    const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     var source_file: []const u8 = "src/main.zig";
