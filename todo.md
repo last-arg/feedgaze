@@ -5,9 +5,6 @@
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
-- improve --check-missing_icons:
-  - will refetch icons in the same domain
-  - some domains will have different icons - substack
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

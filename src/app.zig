@@ -321,10 +321,39 @@ pub const Cli = struct {
             },
             .missing => {
                 const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
+                defer arena.allocator().free(icons_missing);
                 progress_node.setEstimatedTotalItems(icons_missing.len);
+
+                var downloaded: std.MultiArrayList(struct{
+                    page_url: []const u8,
+                    icon_url: []const u8,
+                    icon_id: u64, // Need to update feed's icon_id column
+                    count: usize,
+                }) = .empty;
+                defer downloaded.deinit(arena.allocator());
+                try downloaded.setCapacity(arena.allocator(), icons_missing.len);
 
                 for (icons_missing) |icon| {
                     defer progress_node.completeOne();
+
+                    var index_opt: ?usize = null;
+                    for (downloaded.items(.page_url), 0..) |p_url, i| {
+                        const p_uri = std.Uri.parse(p_url) catch unreachable; // These urls should be valid
+                        const icon_uri = std.Uri.parse(icon.page_url) catch unreachable; // These urls should be valid
+                        if (mem.eql(u8, icon_uri.host.?.percent_encoded, p_uri.host.?.percent_encoded)) {
+                            index_opt = i;
+                            break;
+                        }
+                    }
+
+                    if (index_opt) |index| {
+                        const count = downloaded.items(.count)[index];
+                        if (count >= 2) {
+                            const icon_id = downloaded.items(.icon_id)[index];
+                            try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                            continue;
+                        }
+                    }
 
                     const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
@@ -337,6 +366,17 @@ pub const Cli = struct {
                     if (new_icon_opt) |new_icon| {
                         const icon_id_opt = try self.storage.icon_upsert(new_icon);
                         if (icon_id_opt) |icon_id| {
+                            if (index_opt) |index| {
+                                downloaded.items(.count)[index] = 2;
+                            } else {
+                                downloaded.appendAssumeCapacity(.{
+                                    .page_url = icon.page_url,
+                                    .icon_url = new_icon.url,
+                                    .icon_id = icon_id,
+                                    .count = 1,
+                                });
+                            }
+
                             try self.storage.feed_icon_update(icon.feed_id, icon_id);
                         }
                     }
