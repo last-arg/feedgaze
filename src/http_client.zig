@@ -50,11 +50,9 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     var url_buf: [url_buf_len]u8 = undefined;
     std.debug.assert(url.len < url_buf_len);
 
-    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
 
     var header_buf: [256]u8 = undefined;
-    var fb = std.io.fixedBufferStream(&header_buf);
-    const w = fb.writer();
+    var w: std.Io.Writer = .fixed(&header_buf);
     if (opts.etag_or_last_modified) |val| {
         const start = if (val[3] == ',')
             "If-Modified-Since: "
@@ -64,7 +62,7 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
         try w.writeAll(start);
         try w.writeAll(val);
         try w.writeByte(0);
-        try self.headers.add(@ptrCast(fb.getWritten()));
+        try self.headers.add(@ptrCast(w.buffered()));
     }
 
     // try self.client.setUrl(url_with_null);
@@ -77,6 +75,7 @@ pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Ea
     try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
     // try self.client.setVerbose(true);
 
+    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
     self.resp = try self.client.fetch(url_with_null, .{
         .writer = &self.writer.writer,
     });
@@ -115,8 +114,7 @@ pub fn fetch_image(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !v
     try self.headers.add("Accept: image/*");
 
     var header_buf: [256]u8 = undefined;
-    var fb = std.io.fixedBufferStream(&header_buf);
-    const w = fb.writer();
+    var w: std.Io.Writer = .fixed(&header_buf);
 
     if (opts.etag_or_last_modified) |val| {
         const start = if (val[3] == ',')
@@ -127,7 +125,7 @@ pub fn fetch_image(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !v
         try w.writeAll(start);
         try w.writeAll(val);
         try w.writeByte(0);
-        try self.headers.add(@ptrCast(fb.getWritten()));
+        try self.headers.add(@ptrCast(w.buffered()));
     }
 
     try self.client.setHeaders(self.headers);

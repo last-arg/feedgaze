@@ -130,22 +130,6 @@ const WriterContext = struct {
     len: usize,
 };
 
-pub fn buf_writer(ctx: *WriterContext) std.io.AnyWriter {
-    const w = std.io.AnyWriter{
-        .context = ctx,
-        .writeFn = struct {
-            fn func (context: *const anyopaque, bytes: []const u8) anyerror!usize {
-                const c: *WriterContext = @constCast(@alignCast(@ptrCast(context)));
-                mem.copyForwards(u8, c.buf[c.len..], bytes);
-                c.len += bytes.len;
-                return bytes.len;
-            }
-        }.func,
-    };
-
-    return w;
-}
-
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 // Mutates 'input' buffer
 // 'lt' and 'gt' are handled by html_unescaped_tags()
@@ -161,12 +145,7 @@ pub fn html_unescape(input: []u8) []u8 {
     const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
     const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
-    var ctx: WriterContext = .{
-        .buf = out,
-        .len = 0,
-    };
-    const w = buf_writer(&ctx);
-
+    var w: std.Io.Writer = .fixed(input);
     var buf_index_start: usize = 0;
 
     while (mem.indexOfScalarPos(u8, out, buf_index_start, '&')) |index| {
@@ -212,7 +191,7 @@ pub fn html_unescape(input: []u8) []u8 {
     }
 
     w.writeAll(out[buf_index_start..]) catch unreachable;
-    return out[0..ctx.len];
+    return w.buffered();
 }
 
 // Modifies 'input' buffer
@@ -280,7 +259,7 @@ fn ignore_these_errors(errors: []const super.html.Ast.Error, content: []const u8
 
 
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
-    var input = mem.trim(u8, text, &std.ascii.whitespace);
+    var input: []u8 = @constCast(@ptrCast(mem.trim(u8, text, &std.ascii.whitespace)));
     if (input.len == 0) {
         return "";
     }
@@ -311,11 +290,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 
     input = html_unescape(@constCast(input));
 
-    var ctx: WriterContext = .{
-        .buf = @constCast(input),
-        .len = 0,
-    };
-    const w = buf_writer(&ctx);
+    var w: std.Io.Writer = .fixed(input);
 
     // Remove extra whitespaces
     var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
@@ -323,14 +298,14 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         w.writeAll(first) catch unreachable;
 
         while (iter.next()) |chunk| {
-            if (ctx.len >= max_title_len) { break; }
+            if (w.buffered().len >= max_title_len) { break; }
 
             w.writeByte(' ') catch unreachable;
             w.writeAll(chunk) catch unreachable;
         }
     }
         
-    input = input[0..@min(ctx.len, max_title_len)];
+    input = input[0..@min(w.buffered().len, max_title_len)];
     if (stack_fallback.fixed_buffer_allocator.ownsPtr(@constCast(input.ptr))) {
         input = try allocator.dupe(u8, input);
     }
@@ -517,11 +492,7 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
     // NOTE: this input might still contains unescaped html entities
     const max_len = max_title_len + 20 + @divFloor(max_title_len, 10); 
 
-    var ctx: WriterContext = .{
-        .buf = input,
-        .len = 0,
-    };
-    const w = buf_writer(&ctx);
+    var w: std.Io.Writer = .fixed(input);
 
     var iter_text_node = IteratorTextNode.init(ast, input, node);
     if (iter_text_node.next()) |text_node| {
@@ -529,7 +500,7 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
         w.writeAll(text) catch unreachable;
     }
     while (iter_text_node.next()) |text_node| {
-        if (ctx.len > max_len) {
+        if (w.buffered().len > max_len) {
             break;
         }
         if (iter_text_node.has_space()) {
@@ -539,7 +510,7 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
         w.writeAll(text) catch unreachable;
     }
 
-    return input[0..ctx.len];
+    return w.buffered();
 }
 
 fn text_location_from_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?feed_types.Location {

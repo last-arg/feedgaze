@@ -420,7 +420,7 @@ pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
     try server.listen(); 
 }
 
-fn write_pick_urls(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
+fn write_pick_urls(writer: *std.Io.Writer, form_data: *httpz.key_value.StringKeyValue) !void {
     var iter = form_data.iterator();
     while (iter.next()) |kv| {
         if (mem.eql(u8, "url", kv.key)) {
@@ -438,7 +438,7 @@ const selector_names = .{
     "feed-date-format",
 };
 
-fn write_selectors(writer: anytype, form_data: *httpz.key_value.StringKeyValue) !void {
+fn write_selectors(writer: *std.Io.Writer, form_data: *httpz.key_value.StringKeyValue) !void {
     inline for (selector_names) |sel| {
         if (form_data.get(sel)) |raw| {
             const val = mem.trim(u8, raw, &std.ascii.whitespace);
@@ -487,7 +487,9 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         break :blk null;
     };
 
-    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+    var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
+    errdefer location_arr.deinit();
+    var w_arr = location_arr.writer;
 
     const url_input = mem.trim(
         u8, 
@@ -495,25 +497,25 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         &std.ascii.whitespace,
     );
     if (url_input.len == 0) {
-        try location_arr.writer(req.arena).writeAll("/feed/add?error=url-missing");
+        try w_arr.writeAll("/feed/add?error=url-missing");
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
         }
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
     _ = std.Uri.parse(url_input) catch {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     };
 
@@ -524,15 +526,15 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (url_picked.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?error=pick-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/pick?error=pick-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
         }
-        try write_pick_urls(location_arr.writer(req.arena), form_data);
-        try write_selectors(location_arr.writer(req.arena), form_data);
+        try write_pick_urls(&w_arr, form_data);
+        try write_selectors(&w_arr, form_data);
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
@@ -541,16 +543,16 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (!is_html_feed) {
         _ = std.Uri.parse(url_picked) catch {
             const url_comp: std.Uri.Component = .{ .raw = url_picked };
-            try location_arr.writer(req.arena).print("/feed/pick?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+            try w_arr.print("/feed/pick?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const c2: std.Uri.Component = .{ .raw = val };
-                try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
+                try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
             }
 
-            try write_pick_urls(location_arr.writer(req.arena), form_data);
-            try write_selectors(location_arr.writer(req.arena), form_data);
+            try write_pick_urls(&w_arr, form_data);
+            try write_selectors(&w_arr, form_data);
 
-            resp.header("Location", location_arr.items);
+            resp.header("Location", w_arr.buffered());
             return;
         };
     }
@@ -573,18 +575,18 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/pick?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
 
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
-        try write_pick_urls(location_arr.writer(req.arena), form_data);
-        try write_selectors(location_arr.writer(req.arena), form_data);
-        try location_arr.writer(req.arena).print("&pick-index={}", .{pick_index});
+        try write_pick_urls(&w_arr, form_data);
+        try write_selectors(&w_arr, form_data);
+        try w_arr.print("&pick-index={}", .{pick_index});
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
@@ -595,12 +597,12 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (is_html_feed and selector_container.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try location_arr.writer(req.arena).print("/feed/pick?error=empty-selector&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
-        try write_pick_urls(location_arr.writer(req.arena), form_data);
-        try write_selectors(location_arr.writer(req.arena), form_data);
-        try location_arr.writer(req.arena).print("&pick-index={}", .{pick_index});
+        try w_arr.print("/feed/pick?error=empty-selector&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try write_pick_urls(&w_arr, form_data);
+        try write_selectors(&w_arr, form_data);
+        try w_arr.print("&pick-index={}", .{pick_index});
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
@@ -678,8 +680,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         try db.tags_feed_add(feed_id, tags_ids);
     }
 
-    try location_arr.writer(req.arena).print("/feed/add?success={d}", .{feed_id});
-    resp.header("Location", location_arr.items);
+    try w_arr.print("/feed/add?success={d}", .{feed_id});
+    resp.header("Location", w_arr.buffered());
 }
 
 fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -907,7 +909,9 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         break :blk null;
     };
 
-    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+    var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
+    errdefer location_arr.deinit();
+    var w_arr = location_arr.writer;
 
     var url_tmp: ?[]const u8 = null;
    
@@ -917,7 +921,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             const location = blk: {
                 if (tags_input) |val| {
                     const c: std.Uri.Component = .{ .raw = val };
-                    break :blk try std.fmt.allocPrint(req.arena, "/feed/add?error=url-missing&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
+                    try w_arr.print("/feed/add?error=url-missing&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
+                    break :blk w_arr.buffered();
                 }
                 break :blk "/feed/add?error=url-missing";
             };
@@ -928,13 +933,14 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
         _ = std.Uri.parse(url) catch {
             const url_comp: std.Uri.Component = .{ .raw = url };
-            try std.fmt.format(location_arr.writer(req.arena), "/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        
+            try w_arr.print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const tags_comp: std.Uri.Component = .{ .raw = val };
-                try std.fmt.format(location_arr.writer(req.arena), "&input-tags={f}", .{std.fmt.alt(tags_comp, .formatEscaped)});
+                try w_arr.print("&input-tags={f}", .{std.fmt.alt(tags_comp, .formatEscaped)});
             }
 
-            resp.header("Location", location_arr.items);
+            resp.header("Location", w_arr.buffered());
             return;
         };
         url_tmp = url;
@@ -944,13 +950,13 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
-        try std.fmt.format(location_arr.writer(req.arena), "/feed/add?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/add?feed-exists={d}&input-url={f}", .{feed_id, std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try std.fmt.format(location_arr.writer(req.arena), "&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
 
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
@@ -965,12 +971,12 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
-        try location_arr.writer(req.arena).print("/feed/pick?input-url={f}", .{
+        try w_arr.print("/feed/pick?input-url={f}", .{
             std.fmt.alt(url_comp, .formatEscaped)
         });
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
-            try location_arr.writer(req.arena).print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
+            try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         for (html_parsed.links) |link| {
@@ -978,9 +984,9 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             const uri_final = try std.Uri.parse(url_final);
             const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
             const uri_component: std.Uri.Component = .{ .raw = url_str };
-            try location_arr.writer(req.arena).print("&url={f}", .{std.fmt.alt(uri_component, .formatEscaped)});
+            try w_arr.print("&url={f}", .{std.fmt.alt(uri_component, .formatEscaped)});
         }
-        resp.header("Location", location_arr.items);
+        resp.header("Location", w_arr.buffered());
         return;
     }
 
@@ -1020,8 +1026,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     const feed_id = feed.feed_id;
 
-
-    if (tags_input) |raw| {
+ if (tags_input) |raw| {
         errdefer |err| {
             std.log.err("Failed to add tags for new feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
         }
@@ -1042,8 +1047,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         try db.tags_feed_add(feed_id, tags_ids);
     }
 
-    try location_arr.writer(req.arena).print("/feed/add?success={d}", .{feed_id});
-    resp.header("Location", location_arr.items);
+    try w_arr.print("/feed/add?success={d}", .{feed_id});
+    resp.header("Location", w_arr.buffered());
 }
 
 fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1646,9 +1651,11 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
     if (builtin.mode == .Debug) {
         var buf: [256]u8 = undefined;
         const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
-        const file = try std.fs.cwd().openFile(p, .{});
+        var file = try std.fs.cwd().openFile(p, .{});
         defer file.close();
-        return try file.readToEndAlloc(allocator, std.math.maxInt(u32));
+        var reader_buf: [4096]u8 = undefined;
+        var reader = file.reader(&reader_buf);
+        return try reader.interface.allocRemaining(allocator, .unlimited);
     } else {
         return @embedFile(path);
     }
@@ -2020,9 +2027,10 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
         return;
     };
 
-    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
-    try location_arr.writer(req.arena).print("/tags?success={s}", .{tag.name});
-    resp.header("Location", location_arr.items);
+    var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
+    errdefer location_arr.deinit();
+    try location_arr.writer.print("/tags?success={s}", .{tag.name});
+    resp.header("Location", location_arr.writer.buffered());
 }
 
 fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -2045,24 +2053,25 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const db = global.storage;
     resp.status = 301;
 
-    var location_arr = try std.ArrayList(u8).initCapacity(req.arena, 64);
+    var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
+    errdefer location_arr.deinit();
     const tag_name_form = form_data.get("tag-name") orelse {
-        try location_arr.writer(req.arena).print("/tag/{d}/edit?error=invalid-form", .{tag_id});
-        resp.header("Location", location_arr.items);
+        try location_arr.writer.print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        resp.header("Location", location_arr.writer.buffered());
         return;
     };
 
     const tag_id_form_raw = form_data.get("tag-id") orelse {
-        try location_arr.writer(req.arena).print("/tag/{d}/edit?error=invalid-form", .{tag_id});
-        resp.header("Location", location_arr.items);
+        try location_arr.writer.print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        resp.header("Location", location_arr.writer.buffered());
         return;
     };
     const tag_id_form = std.fmt.parseUnsigned(usize, tag_id_form_raw, 10) catch return error.InvalidIdParam;
 
     try db.tag_update(.{ .tag_id = tag_id_form, .name = tag_name_form });
 
-    try location_arr.writer(req.arena).print("/tag/{d}/edit?success=", .{tag_id});
-    resp.header("Location", location_arr.items);
+    try location_arr.writer.print("/tag/{d}/edit?success=", .{tag_id});
+    resp.header("Location", location_arr.writer.buffered());
 }
 
 fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -2211,14 +2220,13 @@ const Layout = struct {
     const head_bottom = head_splits[2];
 
     tags_last_modified: i64 = 0,
-    sidebar_form_html: std.ArrayList(u8), 
+    sidebar_form_html: std.Io.Writer.Allocating, 
     storage: Storage,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
-        const html_output: std.ArrayList(u8) = .{};
         return .{
-            .sidebar_form_html = html_output,
+            .sidebar_form_html = .init(allocator),
             .storage = storage,
             .allocator = allocator,
         };
@@ -2277,9 +2285,9 @@ const Layout = struct {
             if (last_modified != self.tags_last_modified) {
                 const tags = try self.storage.tags_all(self.allocator);
                 defer self.allocator.free(tags);
-                try self.sidebar_form_html.resize(self.allocator, 0);
+                self.sidebar_form_html.shrinkRetainingCapacity(0);
                 try write_sidebar_form_new(
-                    self.sidebar_form_html.writer(self.allocator), tags, .{}
+                    &self.sidebar_form_html.writer, tags, .{}
                 );
                 self.tags_last_modified = last_modified; 
             }
@@ -2292,7 +2300,7 @@ const Layout = struct {
         const use_cached = opts.search.len == 0 and opts.tags_checked.len == 0 and !opts.has_untagged;
         if (use_cached) {
             if (try self.cache_sidebar_form()) {
-                try w.writeAll(self.sidebar_form_html.items);
+                try w.writeAll(self.sidebar_form_html.writer.buffered());
                 return;
             }
         }
@@ -2300,7 +2308,7 @@ const Layout = struct {
         try write_sidebar_form_new(w, tags, opts);
     }
 
-    fn write_sidebar_form_new(w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
+    fn write_sidebar_form_new(w: *std.Io.Writer, tags: [][]const u8, opts: HeadOptions) !void {
         try w.writeAll("<details>");
         try w.writeAll("<summary>");
         try w.writeAll("Filter feeds");
@@ -2509,19 +2517,22 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     if (feeds.len > 0) {
         try feeds_and_items_print(w, req.arena, db, feeds, global);
         if (feeds.len == config.query_feed_limit) {
-            var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
-            defer new_url_arr.deinit(req.arena);
-            new_url_arr.appendSliceAssumeCapacity("/feeds?");
+            // var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
+            var new_url_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 128);
+            defer new_url_arr.deinit();
+            var w_arr = new_url_arr.writer;
+
+            w_arr.writeAll("/feeds?") catch unreachable;
             for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
                 if (mem.eql(u8, "after", key)) {
                     continue;
                 }
-                try new_url_arr.appendSlice(req.arena, key);
-                try new_url_arr.append(req.arena, '=');
-                try new_url_arr.appendSlice(req.arena, value);
-                try new_url_arr.append(req.arena, '&');
+                try w_arr.writeAll(key);
+                try w_arr.writeByte('=');
+                try w_arr.writeAll(value);
+                try w_arr.writeByte('&');
             }
-            const current_path_len = new_url_arr.items.len;
+            const current_path_len = w_arr.buffered().len;
 
             try w.writeAll("<footer class='main-footer'>");
             try w.writeAll("<hr class='breakout'>");
@@ -2535,12 +2546,12 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             });
             if (has_prev) {
                 const href_prev = blk: {
-                    try new_url_arr.appendSlice(req.arena, "before");
-                    try new_url_arr.append(req.arena, '=');
+                    try w_arr.writeAll("before");
+                    try w_arr.writeByte('=');
                     const id_first = feeds[0].feed_id;
-                    try new_url_arr.writer(req.arena).print("{d}", .{id_first});
+                    try w_arr.print("{d}", .{id_first});
 
-                    break :blk new_url_arr.items;
+                    break :blk w_arr.buffered();
                 };
 
                 try w.print("<a href=\"{s}\">Previous</a>", .{href_prev});
@@ -2548,14 +2559,14 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
             // This is a little bit naughty
             // reusing memory that was used by 'href_prev'
-            new_url_arr.items.len = current_path_len;
+            new_url_arr.writer.end = current_path_len;
             const href_next = blk: {
-                try new_url_arr.appendSlice(req.arena, "after");
-                try new_url_arr.append(req.arena, '=');
+                try w_arr.writeAll("after");
+                try w_arr.writeByte('=');
                 const id_last = feeds[feeds.len - 1].feed_id;
-                try new_url_arr.writer(req.arena).print("{d}", .{id_last});
+                try w_arr.print("{d}", .{id_last});
 
-                break :blk new_url_arr.items;
+                break :blk w_arr.buffered();
             };
             try w.print("<a href=\"{s}\">Next</a>", .{href_next});
 

@@ -23,7 +23,7 @@
         },
         .curl = .{
             .url = "https://github.com/jiacai2050/zig-curl/archive/refs/heads/main.tar.gz",
-            .hash = "curl-0.3.1-P4tT4b_JAAC2bpWR1_NjsHTrg_Ufz2mmojU-e-y9k_99",
+            .hash = "curl-0.3.2-P4tT4XHoAABY8zNv06kqf32R0AxClKcsYxLI6WKXv84U",
         },
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",

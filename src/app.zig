@@ -617,13 +617,10 @@ pub const Cli = struct {
             }
             const rules = try self.storage.rules_filter(self.allocator, inputs[0]);
             const invalid_msg = "Enter valid input 'y' or 'n'.\n";
-            var buf: [16]u8 = undefined;
-            var fix_buf = std.io.fixedBufferStream(&buf);
 
             for (rules) |r| {
                 while (true) {
                     try self.out.print("Remove rule '{s}' -> '{s}'? (y/n) ", .{r.match_url, r.result_url});
-                    fix_buf.reset();
 
                     const raw_value = try self.in.takeDelimiterExclusive('\n');
                     const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
@@ -735,12 +732,9 @@ pub const Cli = struct {
             try self.out.print("{s} | {s}\n", .{feed.title orelse "<no-title>", feed.page_url orelse feed.feed_url});
         }
 
-        var buf: [16]u8 = undefined;
-        var fix_buf = std.io.fixedBufferStream(&buf);
         const invalid_msg = "Enter valid input 'y' or 'n'.\n";
         while (true) {
             try self.out.print("{s} tags to {d} feeds? (y/n) ", .{flag_upper_str, feeds.len});
-            fix_buf.reset();
             const raw_value = try self.in.takeDelimiterExclusive('\n');
             const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
 
@@ -1022,15 +1016,11 @@ pub const Cli = struct {
             return;
         }
 
-        var buf: [16]u8 = undefined;
-        var fix_buf = std.io.fixedBufferStream(&buf);
-
         for (feeds) |feed| {
             while (true) {
                 defer self.out.flush() catch {
                     std.log.warn("Failed to flush subcommand 'remove' text", .{});
                 };
-                fix_buf.reset();
                 try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
                 try self.out.flush();
                 const raw_value = try self.in.takeDelimiterExclusive('\n');

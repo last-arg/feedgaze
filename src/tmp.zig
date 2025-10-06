@@ -79,7 +79,7 @@ pub fn tmp_parse_icon() !void {
 
     const html = @import("html.zig");
     const icon = html.parse_icon(input); 
-    print("tmp.zig icon_url: {?s}\n", .{icon});
+    print("tmp.zig icon_url: |{?s}|\n", .{icon});
 }
 
 pub fn tmp_icon() !void {
@@ -89,7 +89,7 @@ pub fn tmp_icon() !void {
     defer arena.deinit();
     // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
     // const feed_url = "https://jakearchibald.com/";
-    const feed_url = "https://csswizardry.com";
+    const feed_url = "https://bsky.app/profile/bell.bz";
 
     const icon_url = App.fetch_icon(arena.allocator(), feed_url, .{}) catch |err| blk: {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
