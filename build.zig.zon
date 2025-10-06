@@ -27,7 +27,7 @@
         },
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrFm5BgBSwbIfjg-nFNI1HAJzzPVFHYInimLC8CfY",
+            .hash = "httpz-0.0.0-PNVzrFndBgDr9zQx7Mj_MFiqYslgcRlx45FJ_gERmRTb",
         },
         .@"known-folders" = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
@@ -35,7 +35,7 @@
         },
         .superhtml = .{
             .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
-            .hash = "superhtml-0.4.0-Y7MdPLJfJAALRrXh5WVKbHILfX-1IcVOxUQI8zuehwIM",
+            .hash = "superhtml-0.6.1-Y7MdPB5gJADyMOIs9CRDXP5QE2g9tJRPQgaV9ALyqoOW",
         },
         .compress = .{
             .url = "https://github.com/mattnite/compress/archive/refs/heads/main.tar.gz",
