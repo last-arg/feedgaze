@@ -6,7 +6,7 @@ pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
-    .{ .name = "tmp_file", .path = "./tmp/thinkdobecreate.com.html" },
+    .{ .name = "tmp_file", .path = "./tmp/feed_urls.txt" },
     // .{ .name = "tmp_file", .path = "./tmp/csswizzardry.html" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
@@ -34,15 +34,15 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        .use_llvm = true,
-        // .use_lld = false,
+        // .use_llvm = true,
+        // .use_lld = true,
     };
     const exe = b.addExecutable(opts_exe);
 
     b.installArtifact(exe);
 
     const exe_check = b.addExecutable(opts_exe);
-    commonModules(b, exe_check, .{ .target = target });
+    commonModules(b, exe_check, .{ .target = target, .optimize = optimize });
 
     const check = b.step("check", "Check if app compiles");
     check.dependOn(&exe_check.step);
@@ -107,9 +107,13 @@ pub fn build(b: *Build) !void {
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
-    const sqlite_dep = b.dependency("sqlite", dep_args);
+
+    const sqlite_dep = b.dependency("sqlite", .{
+        .target = dep_args.target,
+        .optimize = dep_args.optimize,
+        // .optimize = std.builtin.OptimizeMode.ReleaseSafe,
+    });
     step.linkSystemLibrary("sqlite3");
-    // step.installLibraryHeaders(sqlite_dep.artifact("sqlite"));
     step.root_module.addImport("sqlite", sqlite_dep.module("sqlite"));
 
     const args = b.dependency("args", dep_args);
@@ -121,8 +125,10 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const known_folders = b.dependency("known-folders", .{});
     step.root_module.addImport("known-folders", known_folders.module("known-folders"));
 
-    const curl = b.dependency("curl", .{.link_vendor = false});
-    step.root_module.addImport("curl", curl.module("curl"));
+    const dep_curl = b.dependency("curl", .{
+        // .link_vendor = false,
+    });
+    step.root_module.addImport("curl", dep_curl.module("curl"));
     step.linkSystemLibrary("curl");
 
     const httpz = b.dependency("httpz", .{});

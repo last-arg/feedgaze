@@ -18,6 +18,7 @@ pub const seconds_in_30_days = seconds_in_1_day * 30;
 
 pub const FetchHeaderOptions = struct {
     etag_or_last_modified: ?[]const u8 = null,
+    buffer_header: []u8,
 };
 
 pub const ShowOptions = struct {
@@ -223,7 +224,7 @@ pub const RssDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
         const str = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
         var ctx = str;
-        if (ctx[3] == ',') {
+        if (ctx.len > 3 and ctx[3] == ',') {
             // NOTE: Start day and comma (,) are optional
             ctx = ctx[5..];
         }

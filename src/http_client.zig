@@ -12,74 +12,168 @@ const print = std.debug.print;
 const Client = http.Client;
 const Allocator = mem.Allocator;
 const Request = http.Client.Request;
-pub const Response = curl.Easy.Response;
 const Uri = std.Uri;
 const assert = std.debug.assert;
 const curl = @import("curl");
+pub const Response = curl.Easy.Response;
 
-writer: std.Io.Writer.Allocating,
-headers: curl.Easy.Headers,
-client: curl.Easy,
-resp: ?curl.Easy.Response = null,
+client: http.Client,
+response: ?http.Client.Response = null,
+request: ?http.Client.Request = null,
 
 pub fn init(allocator: Allocator) !@This() {
-    var easy = try curl.Easy.init(.{.default_timeout_ms = 10000, .ca_bundle = try curl.allocCABundle(allocator)});
-    errdefer easy.deinit();
-
-    var headers: curl.Easy.Headers = .{};
-    try headers.add("Accept: application/atom+xml, application/rss+xml, text/xml, application/xml, text/html");
-
-    var writer = std.Io.Writer.Allocating.init(allocator);
-    errdefer writer.deinit();
+    var client: http.Client = .{
+        .allocator = allocator,
+    };
+    errdefer client.deinit();
 
     return .{
-        .writer = writer,
-        .headers = headers,
-        .client = easy,
+        .client = client,
     };
 }
 
 pub fn deinit(self: *@This()) void {
-    self.headers.deinit();
+    if (self.request) |*req| {
+        req.deinit();
+    }
     self.client.deinit();
-    self.writer.deinit();
 }
 
-pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !curl.Easy.Response {
-    const url_buf_len = 1024;
-    var url_buf: [url_buf_len]u8 = undefined;
-    std.debug.assert(url.len < url_buf_len);
+pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
+    const uri = try std.Uri.parse(url);
 
+    var request_opts: std.http.Client.RequestOptions = .{
+        .redirect_behavior = .init(5),
+        .headers = .{
+            .content_type = .{ .override = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" },
+        },
+    };
 
-    var header_buf: [256]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&header_buf);
     if (opts.etag_or_last_modified) |val| {
-        const start = if (val[3] == ',')
-            "If-Modified-Since: "
-        else
-            "If-None-Match: "
-        ;
-        try w.writeAll(start);
-        try w.writeAll(val);
-        try w.writeByte(0);
-        try self.headers.add(@ptrCast(w.buffered()));
+        const h: http.Header = .{
+            .name = if (val[3] == ',')
+                "If-Modified-Since"
+            else
+                "If-None-Match"
+            ,
+            .value = val,
+        };
+
+        request_opts.extra_headers = &.{ h };
     }
 
-    // try self.client.setUrl(url_with_null);
-    try self.client.setHeaders(self.headers);
-    try self.client.setMaxRedirects(5);
-    // Need to unset this if same request is using HEAD (head()) and then GET http method
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
-    const user_agent = "feedgaze/" ++ config.version;
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
-    // try self.client.setVerbose(true);
+    self.request = try self.client.request(.GET, uri, request_opts);
+    errdefer self.request.?.deinit();
 
-    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
-    self.resp = try self.client.fetch(url_with_null, .{
-        .writer = &self.writer.writer,
-    });
-    return self.resp.?;
+    try self.request.?.sendBodiless();
+
+    self.response = try self.request.?.receiveHead(opts.buffer_header);
+    
+    return self.response.?;
+}
+
+pub const CacheControl = struct {
+    etag: ?[]const u8 = null,
+    last_modified: ?[]const u8 = null,
+    update_interval: i64 = @import("./app_config.zig").update_interval,
+};
+
+pub fn parse_headers(bytes: []const u8) !CacheControl {
+    var result: CacheControl = .{};
+    var iter = mem.splitSequence(u8, bytes, "\r\n");
+    _ = iter.first();
+
+    while (iter.next()) |line| {
+        if (line.len == 0) return result;
+        switch (line[0]) {
+            ' ', '\t' => return error.HttpHeaderContinuationsUnsupported,
+            else => {},
+        }
+
+        var line_it = mem.splitScalar(u8, line, ':');
+        const header_name = line_it.next().?;
+        const header_value = mem.trim(u8, line_it.rest(), " \t");
+        if (header_name.len == 0) return error.HttpHeadersInvalid;
+
+        if (std.ascii.eqlIgnoreCase(header_name, "etag")) {
+            result.etag = header_value;
+        } else if (result.etag == null and std.ascii.eqlIgnoreCase(header_name, "last-modified")) {
+            result.last_modified = header_value;
+        } else if (std.ascii.eqlIgnoreCase(header_name, "cache-control")) {
+            const value = header_value;
+            var iter_value = std.mem.splitScalar(u8, value, ',');
+            while (iter_value.next()) |key_value| {
+                var pair_iter = std.mem.splitScalar(u8, key_value, '=');
+                var key = pair_iter.next() orelse continue;
+                key = std.mem.trim(u8, key, &std.ascii.whitespace);
+                if (std.mem.eql(u8, "no-cache", key)) {
+                    break;
+                }
+                var value_part = pair_iter.next() orelse continue;
+                value_part = std.mem.trim(u8, value_part, &std.ascii.whitespace);
+
+                if (std.mem.eql(u8, "max-age", key)) {
+                    result.update_interval = std.fmt.parseUnsigned(u32, value_part, 10) catch continue;
+                } else if (std.mem.eql(u8, "s-maxage", value)) {
+                    result.update_interval = std.fmt.parseUnsigned(u32, value_part, 10) catch continue;
+                    break;
+                }
+            }
+        } else if (std.ascii.eqlIgnoreCase(header_name, "expires")) {
+            const value = RssDateTime.parse(header_value) catch null;
+            if (value) |v| {
+                const interval = v - std.time.timestamp();
+                // Favour cache-control value over expires
+                if (interval > 0) {
+                    result.update_interval = interval;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+pub fn read_body(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) ![]const u8  {
+    const decompress_buffer: []u8 = switch (response.head.content_encoding) {
+        .identity => &.{},
+        .zstd => try allocator.alloc(u8, std.compress.zstd.default_window_len),
+        .deflate, .gzip => try allocator.alloc(u8, std.compress.flate.max_window_len),
+        .compress => return error.UnsupportedCompressionMethod,
+    };
+    defer allocator.free(decompress_buffer);
+
+    var transfer_buffer: [64]u8 = undefined;
+    var decompress: std.http.Decompress = undefined;
+    const reader = response.readerDecompressing(&transfer_buffer, &decompress, decompress_buffer);
+
+    _ = reader.streamRemaining(writer) catch |err| switch (err) {
+        error.ReadFailed => return response.bodyErr().?,
+        else => |e| return e,
+    };
+
+    return writer.buffered();
+}
+
+
+pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?FeedUpdate {
+    print("http status: {}\n", .{response.head.status});
+    if (response.head.status != .ok) {
+        return null;
+    }
+
+    const headers = try parse_headers(response.head.bytes);
+    var result: FeedUpdate = .{
+        .update_interval = headers.update_interval,
+    };
+
+    if (headers.etag orelse headers.last_modified) |val| {
+        result.etag_or_last_modified = try allocator.dupe(u8, val);
+    } 
+
+    _ = try read_body(response, writer, allocator);
+
+    return result;
 }
 
 pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]const u8 {

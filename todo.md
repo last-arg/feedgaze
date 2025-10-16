@@ -5,6 +5,13 @@
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
+- try std lib compression
+- https://github.com/ziglang/zig/pull/25495
+  - This should hopefully fix newer zig builds or point to what the problem is
+- explore zig std lib http client
+  - out of all feed urls 2 failed
+    - https://www.openmymind.net/atom.xml. Error: error.ConnectionTimedOut
+    - https://news.ycombinator.com/rss. Error: error.TlsInitializationFailed
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

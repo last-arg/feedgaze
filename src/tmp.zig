@@ -17,6 +17,7 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
+    try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
@@ -30,9 +31,37 @@ pub fn main() !void {
     // try tmp_progress();
     // try tmp_icon();
     // try fetch_image();
-    try tmp_parse_icon();
+    // try tmp_parse_icon();
     // try tmp_parse_html();
     // try tmp_iter_attrs();
+}
+
+pub fn std_http_client() !void {
+    var gen = std.heap.GeneralPurposeAllocator(.{}){};
+    var arena = std.heap.ArenaAllocator.init(gen.allocator());
+    defer arena.deinit();
+
+    const c = @import("http_client.zig");
+
+    var h = try c.init(arena.allocator());
+    defer h.deinit();
+     
+    // const url = "https://lobste.rs/";
+    const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
+    // const url = "https://google.com/";
+
+    var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
+    defer buf_arr.deinit();
+    
+    var buf_header: [8 * 1024]u8 = undefined;
+    var response = try h.fetch(url, .{
+        .buffer_header = &buf_header,
+    });
+
+    const re = try c.handle_response(&response, &buf_arr.writer, arena.allocator()) orelse unreachable;
+    // print("body: |{s}|\n", .{buf_arr.writer.buffered()});
+
+    print("header : |{?s}|\n", .{re.etag_or_last_modified});
 }
 
 
