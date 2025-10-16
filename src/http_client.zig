@@ -39,7 +39,13 @@ pub fn deinit(self: *@This()) void {
     self.client.deinit();
 }
 
-pub fn fetch(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
+pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?FeedUpdate {
+    var resp = try self.fetch_response(url, opts);
+    const re = try handle_response(&resp, writer, allocator);
+    return re;
+}
+
+pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
     const uri = try std.Uri.parse(url);
 
     var request_opts: std.http.Client.RequestOptions = .{
@@ -157,7 +163,6 @@ pub fn read_body(response: *http.Client.Response, writer: *std.Io.Writer, alloca
 
 
 pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?FeedUpdate {
-    print("http status: {}\n", .{response.head.status});
     if (response.head.status != .ok) {
         return null;
     }

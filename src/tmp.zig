@@ -46,22 +46,21 @@ pub fn std_http_client() !void {
     var h = try c.init(arena.allocator());
     defer h.deinit();
      
-    // const url = "https://lobste.rs/";
-    const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
+    const url = "https://lobste.rs/";
+    // const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
     // const url = "https://google.com/";
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
     
     var buf_header: [8 * 1024]u8 = undefined;
-    var response = try h.fetch(url, .{
+    const res = try h.fetch(&buf_arr.writer, arena.allocator(), url, .{
         .buffer_header = &buf_header,
     });
 
-    const re = try c.handle_response(&response, &buf_arr.writer, arena.allocator()) orelse unreachable;
     // print("body: |{s}|\n", .{buf_arr.writer.buffered()});
 
-    print("header : |{?s}|\n", .{re.etag_or_last_modified});
+    print("header : |{?}|\n", .{res});
 }
 
 
