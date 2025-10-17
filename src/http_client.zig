@@ -14,8 +14,6 @@ const Allocator = mem.Allocator;
 const Request = http.Client.Request;
 const Uri = std.Uri;
 const assert = std.debug.assert;
-const curl = @import("curl");
-pub const Response = curl.Easy.Response;
 
 client: http.Client,
 response: ?http.Client.Response = null,
@@ -51,7 +49,7 @@ pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions)
     var request_opts: std.http.Client.RequestOptions = .{
         .redirect_behavior = .init(5),
         .headers = .{
-            .content_type = .{ .override = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" },
+            .accept_encoding = .{ .override = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" },
         },
     };
 
@@ -198,56 +196,67 @@ pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]c
     return body;
 }
 
-pub fn fetch_image(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !void {
-    const url_buf_len = 1024;
-    var url_buf: [url_buf_len]u8 = undefined;
-    std.debug.assert(url.len < url_buf_len);
-
-    errdefer |err| {
-        if (err != error.InvalidResponse) {
-            std.log.warn("Failed to fetch image '{s}'. Error: {}", .{url, err});
-        }
-    }
-    // NOTE: currently head() is only used to check if favicon.ico exists.
-    // If in the future am going to use it for something else need to change this.
-    try self.headers.add("Accept: image/*");
-
-    var header_buf: [256]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&header_buf);
-
-    if (opts.etag_or_last_modified) |val| {
-        const start = if (val[3] == ',')
-            "If-Modified-Since: "
-        else
-            "If-None-Match: "
-        ;
-        try w.writeAll(start);
-        try w.writeAll(val);
-        try w.writeByte(0);
-        try self.headers.add(@ptrCast(w.buffered()));
-    }
-
-    try self.client.setHeaders(self.headers);
-    
-    try self.client.setMaxRedirects(3);
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 0)));
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
-    const user_agent = "feedgaze/" ++ config.version;
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
-    // try self.client.setVerbose(true);
-
-    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
-    self.resp = try self.client.fetch(url_with_null, .{
-         .writer = &self.writer.writer,
-    });
-}
-
-pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 {
-    const body = resp.body orelse {
-        std.log.warn("Icon url '{s}' returned no content.", .{url});
+pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?CacheControl {
+    if (response.head.status != .ok) {
         return null;
+    }
+
+    var headers = try parse_headers(response.head.bytes);
+    var result: CacheControl = .{
+        .update_interval = 0,
     };
 
+    if (headers.etag) |val| {
+        result.etag = try allocator.dupe(u8, val);
+    } else if (headers.last_modified) |val| {
+        result.last_modified = try allocator.dupe(u8, val);
+    } 
+
+    _ = try read_body(response, writer, allocator);
+
+    return result;
+}
+
+pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?CacheControl {
+    var resp = try self.fetch_image_response(url, opts);
+    const re = try handle_image_response(&resp, writer, allocator);
+    return re;
+}
+
+pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
+    const uri = try std.Uri.parse(url);
+
+    var request_opts: std.http.Client.RequestOptions = .{
+        .redirect_behavior = .init(5),
+        .headers = .{
+           .accept_encoding = .{ .override = "image/*" },
+        },
+    };
+
+    if (opts.etag_or_last_modified) |val| {
+        const h: http.Header = .{
+            .name = if (val[3] == ',')
+                "If-Modified-Since"
+            else
+                "If-None-Match"
+            ,
+            .value = val,
+        };
+
+        request_opts.extra_headers = &.{ h };
+    }
+
+    self.request = try self.client.request(.GET, uri, request_opts);
+    errdefer self.request.?.deinit();
+
+    try self.request.?.sendBodiless();
+
+    self.response = try self.request.?.receiveHead(opts.buffer_header);
+    
+    return self.response.?;
+}
+
+pub fn resp_to_icon_body(body: []const u8, url: []const u8) ?[]const u8 {
     if (body.items.len == 0) {
         std.log.warn("Icon url '{s}' returned no content.", .{url});
         return null;
@@ -262,51 +271,10 @@ pub fn resp_to_icon_body(resp: curl.Easy.Response, url: []const u8) ?[]const u8 
     return body.items;
 }
 
-pub fn head(self: *@This(), url: []const u8) !curl.Easy.Response {
-    const url_buf_len = 1024;
-    var url_buf: [url_buf_len]u8 = undefined;
-    std.debug.assert(url.len < url_buf_len);
-
-    // NOTE: currently head() is only used to check if favicon.ico exists.
-    // If in the future am going to use it for something else need to change this.
-    try self.headers.add("Accept", "image/*");
-    
-    const url_with_null = try std.fmt.bufPrintZ(&url_buf, "{s}", .{url});
-    try self.client.setUrl(url_with_null);
-    try self.client.setMaxRedirects(3);
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_NOBODY, @as(c_long, 1)));
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_FOLLOWLOCATION, @as(c_long, 1)));
-    const user_agent = "feedgaze/" ++ config.version;
-    try checkCode(curl.libcurl.curl_easy_setopt(self.client.handle, curl.libcurl.CURLOPT_USERAGENT, user_agent));
-    // try self.client.setVerbose(true);
-
-    const resp = try self.client.perform();
-    return resp;
+pub fn get_uri(self: *const @This()) !Uri {
+    return self.request.?.uri;
 }
 
-pub fn get_url_slice(self: *const @This()) ![]const u8 {
-    var cstr: [*c]const u8 = undefined;
-    try checkCode(
-        curl.libcurl.curl_easy_getinfo(self.client.handle, curl.libcurl.CURLINFO_EFFECTIVE_URL, &cstr)
-    );
-    return std.mem.span(cstr);
-}
-
-pub fn checkCode(code: curl.libcurl.CURLcode) !void {
-    if (code == curl.libcurl.CURLE_OK) {
-        return;
-    }
-
-    // https://curl.se/libcurl/c/libcurl-errors.html
-    std.log.debug("curl err code: {d}, msg: {s}", .{ code, curl.libcurl.curl_easy_strerror(code) });
-
-    return error.Unexpected;
-}
-
-pub fn etag_or_last_modified_from_resp(resp: @import("curl").Easy.Response) !?[]const u8 {
-    const header = try resp.getHeader("etag") orelse try resp.getHeader("etag");
-    if (header) |h| {
-        return h.get();
-    }
-    return null;
+pub fn get_url_slice(self: *const @This(), buf: []u8) ![]const u8 {
+    return std.fmt.bufPrint(buf, "{f}", .{self.request.?.uri});
 }

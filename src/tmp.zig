@@ -46,9 +46,10 @@ pub fn std_http_client() !void {
     var h = try c.init(arena.allocator());
     defer h.deinit();
      
-    const url = "https://lobste.rs/";
+    // const url = "https://lobste.rs/";
     // const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
-    // const url = "https://google.com/";
+    // const url = "https://google.com";
+    const url = "https://www.royalroad.com/";
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
@@ -57,10 +58,12 @@ pub fn std_http_client() !void {
     const res = try h.fetch(&buf_arr.writer, arena.allocator(), url, .{
         .buffer_header = &buf_header,
     });
+    _ = res;
+    print("buffer: {s}\n", .{buf_header[0..128]});
 
     // print("body: |{s}|\n", .{buf_arr.writer.buffered()});
 
-    print("header : |{?}|\n", .{res});
+    print("header : |{f}|\n", .{h.request.?.uri});
 }
 
 
@@ -140,14 +143,21 @@ pub fn fetch_image() !void {
     var arena = std.heap.ArenaAllocator.init(gen.allocator());
     defer arena.deinit();
     // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
-    const feed_url = "https://jakearchibald.com/c/favicon-3d730960.png";
-    // const feed_url = "https://www.joshwcomeau.com/favicon.png";
+    // const feed_url = "https://jakearchibald.com/c/favicon-3d730960.png";
+    const feed_url = "https://www.joshwcomeau.com/favicon.png";
 
     var req = try http_client.init(arena.allocator());
 
-    try req.fetch_image(feed_url, .{});
-    const resp_body = req.writer.writer.buffered();
+    var w_alloc: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
+    defer w_alloc.deinit();
 
+    var buf_header: [8 * 1024]u8 = undefined;
+    _ = try req.fetch_image(&w_alloc.writer, arena.allocator(), feed_url, .{
+        .buffer_header = &buf_header,
+    });
+    const resp_body = w_alloc.writer.buffered();
+
+    print("head_value: {s}\n", .{req.response.?.head.bytes});
 
     print("body: {d}\n", .{resp_body.len});
     print("body: {s}\n", .{resp_body[0..30]});
