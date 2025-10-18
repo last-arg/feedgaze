@@ -609,14 +609,21 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     // try to add new feed
     var app = App{.storage = db.*};
 
-    var fetch = try app.fetch_response(req.arena, feed_url);
+    var buffer_header: [1024]u8 = undefined;
+    var buffer_url: [1024]u8 = undefined;
+    var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
+    errdefer a_writer.deinit();
+
+    var fetch = try app.fetch_response(&a_writer.writer, req.arena, feed_url, .{
+        .buffer_header = &buffer_header,
+    });
     defer fetch.deinit();
 
-    var feed_options = FeedOptions.fromResponse(fetch.resp);
-    feed_options.body = fetch.req.writer.writer.buffered();
+    var feed_options = fetch.feed_opts;
+    feed_options.body = a_writer.writer.buffered();
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buffer_url);
 
     const html_opts: ?parse.HtmlOptions = if (feed_options.content_type == .html) .{
         .selector_container = selector_container,
@@ -960,14 +967,21 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
 
+    var buffer_header: [1024]u8 = undefined;
+    var buffer_url: [1024]u8 = undefined;
+    var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
+    errdefer a_writer.deinit();
+
     // try to add new feed
     var app = App{.storage = db.*};
 
-    var fetch = try app.fetch_response(req.arena, feed_url);
+    var fetch = try app.fetch_response(&a_writer.writer, req.arena, feed_url, .{
+        .buffer_header = &buffer_header,
+    });
     defer fetch.deinit();
 
-    var feed_options = FeedOptions.fromResponse(fetch.resp);
-    feed_options.body = fetch.req.writer.writer.buffered();
+    var feed_options = fetch.feed_opts;
+    feed_options.body = a_writer.writer.buffered();
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
@@ -980,7 +994,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         for (html_parsed.links) |link| {
-            const url_final = try fetch.req.get_url_slice();
+            const url_final = try fetch.req.get_url_slice(&buffer_url);
             const uri_final = try std.Uri.parse(url_final);
             const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
             const uri_component: std.Uri.Component = .{ .raw = url_str };
@@ -991,7 +1005,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buffer_url);
 
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
@@ -1220,15 +1234,22 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             var req_http = try http_client.init(req.arena);
             defer req_http.deinit();
 
-            req_http.fetch_image(icon_url_trimmed, .{}) catch break :blk null;
-            const resp_body = req_http.writer.writer.buffered();
+            var buffer_header: [1024]u8 = undefined;
+            var buffer_url: [1024]u8 = undefined;
+            var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
+            errdefer a_writer.deinit();
 
-            const resp_url = req_http.get_url_slice() catch |err| {
+            const cache_control = req_http.fetch_image(&a_writer.writer, req.arena, icon_url_trimmed, .{
+                .buffer_header = &buffer_header,
+            }) catch break :blk null;
+            const resp_body = a_writer.writer.buffered();
+
+            const resp_url = req_http.get_url_slice(&buffer_url) catch |err| {
                 std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});
                 break :blk null;
             };
 
-            const cache_value = try http_client.etag_or_last_modified_from_resp(req_http.resp.?);
+            const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
             const icon = feed_types.Icon.init(resp_url, resp_body, cache_value);
             break :blk try db.icon_upsert(icon);
         } else if (util.is_svg(icon_url_trimmed)) {
