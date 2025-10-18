@@ -134,64 +134,25 @@ const WriterContext = struct {
 // Mutates 'input' buffer
 // 'lt' and 'gt' are handled by html_unescaped_tags()
 pub fn html_unescape(input: []u8) []u8 {
-    // &amp; = &#38;
     var out = input;
+    // NOTE: if I remember correctly I do this because there an be double escaping
+    // of html symbols
     inline for (.{"&amp;", "&#38;"}) |ent| {
         const count = mem.replace(u8, out, ent, "&", out);
         const len = out.len - ((ent.len - 1) * count);
         out = out[0..len];
     }
 
-    const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
+    const entities = [_][]const u8{"&amp;", "&quot;", "&apos;", "&nbsp;"};
     const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
-    var w: std.Io.Writer = .fixed(input);
-    var buf_index_start: usize = 0;
-
-    while (mem.indexOfScalarPos(u8, out, buf_index_start, '&')) |index| {
-        w.writeAll(out[buf_index_start..index]) catch unreachable;
-        buf_index_start = index + 1;
-        const start = buf_index_start;
-        if (start >= out.len) { break; }
-
-        if (out[start] == '#') {
-            // numeric entities
-            var nr_start = start + 1; 
-            const end = mem.indexOfScalarPos(u8, out, nr_start, ';') orelse continue;
-            const is_hex = out[nr_start] == 'x' or out[nr_start] == 'X';
-            nr_start += @intFromBool(is_hex);
-            const value = out[nr_start..end];
-            if (value.len == 0) { continue; }
-            buf_index_start = end + 1;
-
-            const base: u8 = if (is_hex) 16 else 10;
-            const nr = std.fmt.parseUnsigned(u21, value, base) catch continue;
-            var buf_cp: [4]u8 = undefined;
-            const cp = std.unicode.utf8Encode(nr, &buf_cp) catch continue;
-            w.writeAll(buf_cp[0..cp]) catch unreachable;
-        } else {
-            // named entities
-            const index_opt: ?usize = blk: {
-                for (entities, 0..) |entity, i| {
-                    if (mem.startsWith(u8, out[start..], entity) and
-                        start + entity.len < out.len and out[start + entity.len] == ';'
-                    ) {
-                        break :blk i;
-                    }
-                }
-
-                break :blk null;
-            };
-
-            if (index_opt) |i| {
-                buf_index_start += entities[i].len + 1;
-                w.writeAll(raws[i]) catch unreachable;
-            }
-        }
+    inline for (entities, raws) |ent, raw| {
+        const count = mem.replace(u8, out, ent, raw, out);
+        const len = out.len - ((ent.len - 1) * count);
+        out = out[0..len];
     }
 
-    w.writeAll(out[buf_index_start..]) catch unreachable;
-    return w.buffered();
+    return out;
 }
 
 // Modifies 'input' buffer
@@ -290,7 +251,8 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
 
     input = html_unescape(@constCast(input));
 
-    var w: std.Io.Writer = .fixed(input);
+    var buf_title: [max_title_len]u8 = undefined;
+    var w: std.Io.Writer = .fixed(&buf_title);
 
     // Remove extra whitespaces
     var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
@@ -304,8 +266,10 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
             w.writeAll(chunk) catch unreachable;
         }
     }
+    assert(w.buffered().len <= max_title_len);
         
-    input = input[0..@min(w.buffered().len, max_title_len)];
+    @memcpy(input, w.buffered());
+
     if (stack_fallback.fixed_buffer_allocator.ownsPtr(@constCast(input.ptr))) {
         input = try allocator.dupe(u8, input);
     }

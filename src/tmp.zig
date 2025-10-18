@@ -13,7 +13,7 @@ pub const std_options: std.Options = .{
     //     .{.level = .info, .scope = .@"html/ast"} 
     // },
     // This set global log level
-    .log_level = .debug,
+    .log_level = .info,
 };
 
 pub fn main() !void {
@@ -32,7 +32,7 @@ pub fn main() !void {
     // try tmp_icon();
     // try fetch_image();
     // try tmp_parse_icon();
-    // try tmp_parse_html();
+    try tmp_parse_html();
     // try tmp_iter_attrs();
 }
 
@@ -99,7 +99,10 @@ pub fn tmp_parse_html() !void {
         .feed_url = "https://www.newelofknowledge.com/letters"
     }); 
 
+    print("title: {?s}\n", .{r.feed.title});
+    if (r.items.len > 0) {
     print("link: {?s}\n", .{r.items[0].link});
+    }
 }
 
 pub fn tmp_parse_icon() !void {
