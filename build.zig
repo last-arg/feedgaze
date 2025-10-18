@@ -34,7 +34,10 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        // .use_llvm = true,
+        // TODO: currently this will fail in debug build which uses zig's own
+        // backend. Just fails no specific error message.
+        // Have to enable 'use_llvm' to compile in debug mode
+        .use_llvm = true,
         // .use_lld = true,
     };
     const exe = b.addExecutable(opts_exe);
@@ -108,11 +111,7 @@ pub fn build(b: *Build) !void {
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
 
-    const sqlite_dep = b.dependency("sqlite", .{
-        // .target = dep_args.target,
-        // .optimize = dep_args.optimize,
-        // .optimize = std.builtin.OptimizeMode.ReleaseSafe,
-    });
+    const sqlite_dep = b.dependency("sqlite", dep_args);
     step.linkSystemLibrary("sqlite3");
     step.root_module.addImport("sqlite", sqlite_dep.module("sqlite"));
 
