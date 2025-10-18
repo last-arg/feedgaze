@@ -17,7 +17,7 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    try std_http_client();
+    // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
@@ -60,6 +60,7 @@ pub fn std_http_client() !void {
     });
     _ = res;
     print("buffer: {s}\n", .{buf_header[0..128]});
+    print("status: {}\n", .{h.response.?.head.status});
 
     // print("body: |{s}|\n", .{buf_arr.writer.buffered()});
 

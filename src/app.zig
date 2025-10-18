@@ -224,6 +224,11 @@ pub const Cli = struct {
         const progress_node = self.progress.start("Checking icons", 0);
         defer { progress_node.end(); }
 
+        var buffer_url: [1024]u8 = undefined;
+        var buffer_header: [1024]u8 = undefined;
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 8 * 1024);
+        defer a_writer.deinit();
+
         switch (check_type) {
             .all => {
                 const icons_existing = try self.storage.icon_all(arena.allocator());
@@ -235,6 +240,8 @@ pub const Cli = struct {
                         req.deinit();
                     }
 
+                    _ = a_writer.writer.consumeAll();
+
                     if (!util.is_data(icon.icon_url)) blk: {
                         const icon_cache_value = cache_value: {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
@@ -242,8 +249,9 @@ pub const Cli = struct {
                             }
                             break :cache_value icon.etag_or_last_modified_or_hash;
                         };
-                        req.fetch_image(icon.icon_url, .{
+                        const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
                             .etag_or_last_modified = icon_cache_value,
+                            .buffer_header = &buffer_header,
                         }) catch {
                             const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                                 std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
@@ -256,33 +264,38 @@ pub const Cli = struct {
                             break :blk;
                         };
 
-                        const status_code = req.resp.?.status_code;
-                        if (status_code == 304) {
+                        const status_code = req.response.?.head.status;
+                        if (status_code == .not_modified) {
                             continue;
                         }
 
-                        const resp_body = req.response_200_and_has_body(icon.icon_url) orelse {
-                            std.log.warn("Failed to get icon '{s}'. Got HTTP status code {d}", .{icon.icon_url, status_code});
-                            var buf: [128]u8 = undefined;
-                            var w: std.Io.Writer = .fixed(&buf);
-                            try w.print("HTTP status code {d}", .{status_code});
+                        const resp_body = a_writer.writer.buffered();
+                        if (resp_body.len == 0) {
+                            std.log.warn("Failed to get icon '{s}'. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
+
                             const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                                 std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
                                 break :blk;
                             };
+
+                            var buf: [128]u8 = undefined;
+                            var w: std.Io.Writer = .fixed(&buf);
+                            try w.print("HTTP status code {d}", .{status_code});
+
                             try self.storage.icon_failed_add(.{
                                 .feed_id = feed_id,
                                 .last_msg = w.buffered(),
                             });
 
                             break :blk;
-                        };
-                        const resp_url = req.get_url_slice() catch |err| {
+                        }
+
+                        const resp_url = req.get_url_slice(&buffer_url) catch |err| {
                             std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon.icon_url, err});
                             break :blk;
                         };
 
-                        const cache_value = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+                        const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
                         const icon_new = feed_types.Icon.init(resp_url, resp_body, cache_value);
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
                             try self.storage.icon_update(icon.icon_url, icon_new);
@@ -782,31 +795,36 @@ pub const Cli = struct {
         var fetch_2: ?App.RequestResponse = null;
         defer if (fetch_2) |*f| f.deinit();
 
-        var fetch = try app.fetch_response(arena.allocator(), url);
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
+        defer a_writer.deinit();
+
+        var buffer_header: [1024]u8 = undefined;
+        var fetch = try app.fetch_response(&a_writer.writer, arena.allocator(), url, .{
+            .buffer_header = &buffer_header,
+        });
         defer fetch.deinit();
 
-        const resp = fetch.resp;
-
-        var add_opts: Storage.AddOptions = .{ .feed_opts = FeedOptions.fromResponse(resp) };
-        add_opts.feed_opts.body = fetch.req.writer.writer.buffered();
+        var add_opts: Storage.AddOptions = .{ .feed_opts = fetch.feed_opts };
+        add_opts.feed_opts.body = a_writer.writer.buffered();
         if (add_opts.feed_opts.content_type == .html) {
             add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
         }
 
         var html_opts: ?FeedParser.HtmlOptions = null;
 
+        var buf_url: [1024]u8 = undefined;
         if (add_opts.feed_opts.content_type == .html) {
             const html_parsed = try html.parse_html(arena.allocator(), add_opts.feed_opts.body);
             const links = html_parsed.links;
 
             if (html_parsed.icon_url) |icon_url| {
                 const cache_val = add_opts.feed_opts.feed_updates.etag_or_last_modified;
-                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(), icon_url, cache_val);
+                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(&buf_url), icon_url, cache_val);
             }
 
             switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
                 .html => |user_html_opts| {
-                    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+                    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buf_url);
                     html_opts = user_html_opts;
                 },
                 .index => |index| {
@@ -826,17 +844,19 @@ pub const Cli = struct {
                         fetch_url = link.link;
                     }
 
-                    // Need to create new curl request
-                    fetch_2 = try app.fetch_response(arena.allocator(), fetch_url);
+                    // TODO: reset writer start to zero?
+                    fetch_2 = try app.fetch_response(&a_writer.writer, arena.allocator(), fetch_url, .{
+                        .buffer_header = &buffer_header,
+                    });
 
-                    add_opts.feed_opts = FeedOptions.fromResponse(fetch_2.?.resp);
-                    add_opts.feed_opts.body = fetch_2.?.req.writer.writer.buffered();
-                    add_opts.feed_opts.feed_url = try fetch_2.?.req.get_url_slice();
+                    add_opts.feed_opts = fetch_2.?.feed_opts;
+                    add_opts.feed_opts.body = a_writer.writer.buffered();
+                    add_opts.feed_opts.feed_url = try fetch_2.?.req.get_url_slice(&buf_url);
                     add_opts.feed_opts.title = link.title;
                 }
             }
         } else {
-            add_opts.feed_opts.feed_url = try fetch.req.get_url_slice();
+            add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buf_url);
         }
 
         if (add_opts.feed_opts.icon == null) {
@@ -1188,14 +1208,20 @@ pub const App = struct {
 
     const RequestResponse = struct {
         req: http_client,
-        resp: @import("http_client.zig").Response,
+        feed_opts: feed_types.FeedOptions,
 
         pub fn deinit(self: *@This()) void {
             self.req.deinit();
         }
     };
 
-    pub fn fetch_response(self: *@This(), allocator: std.mem.Allocator, input_url: []const u8) !RequestResponse {
+    pub fn fetch_response(
+        self: *@This(),
+        writer: *std.Io.Writer,
+        allocator: std.mem.Allocator,
+        input_url: []const u8,
+        opts: feed_types.FetchHeaderOptions,
+    ) !RequestResponse {
         const uri = std.Uri.parse(input_url) catch {
             return error.InvalidUrl;
         };
@@ -1214,16 +1240,16 @@ pub const App = struct {
 
         // fetch url content
         var req = try http_client.init(allocator);
-        const resp = try req.fetch(fetch_url, .{});
+        const resp = try req.fetch(writer, allocator, fetch_url, opts);
 
-        if (req.writer.writer.buffered().len == 0) {
+        if (writer.buffered().len == 0) {
             std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
             return error.EmptyBody;
         }
 
         return .{
             .req = req,
-            .resp = resp,
+            .feed_opts = resp.?,
         };
     }
 
@@ -1248,68 +1274,83 @@ pub const App = struct {
             return .failed;
         }; 
         defer req.deinit();
+
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
+        defer a_writer.deinit();
         
-        const resp = req.fetch(f_update.feed_url, .{
+        var buffer_header: [1028]u8 = undefined;
+        const resp = req.fetch(&a_writer.writer, arena.allocator(), f_update.feed_url, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
+            .buffer_header = &buffer_header,
         }) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 8);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
             return .failed;
-        };
-
-        if (resp.status_code == 304) {
-            // Resource hasn't been modified
-            try self.storage.updateLastUpdate(f_update.feed_id);
-            try self.storage.rate_limit_remove(f_update.feed_id);
-            return .no_changes;
-        } else if (resp.status_code == 503) {
-            const retry_ts = std.time.timestamp() + std.time.s_per_hour;
-            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-            return .failed;
-        } else if (resp.status_code == 429) {
-            std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
-            const now_utc_sec = std.time.timestamp();
-            const retry_reset = blk: {
-                if (try resp.getHeader("x-ratelimit-remaining")) |remaining| {
-                    const raw = remaining.get();
-                    std.debug.assert(raw.len > 0);
-                    const value = try std.fmt.parseFloat(f32, raw);
-                    if (value <= 0.0) {
-                        if (try resp.getHeader("x-ratelimit-reset")) |header| {
-                            if (std.fmt.parseUnsigned(i64, header.get(), 10)) |nr| {
-                                std.log.debug("x-ratelimit-reset", .{});
-                                break :blk now_utc_sec + nr + 1;
-                            } else |_| {}
+        } orelse {
+            const resp = req.response orelse unreachable;
+            const status_code = resp.head.status;
+            if (status_code == .not_modified) {
+                // Resource hasn't been modified
+                try self.storage.updateLastUpdate(f_update.feed_id);
+                try self.storage.rate_limit_remove(f_update.feed_id);
+                return .no_changes;
+            } else if (status_code == .service_unavailable) {
+                const retry_ts = std.time.timestamp() + std.time.s_per_hour;
+                try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+                return .failed;
+            } else if (status_code == .too_many_requests) {
+                std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
+                const now_utc_sec = std.time.timestamp();
+                const retry_reset = blk: {
+                    var header_map: http_client.HeaderMap = .init(arena.allocator());
+                    try header_map.ensureTotalCapacity(4);
+                    try http_client.fill_headers(req.response.?.head.bytes, &header_map, &.{
+                        "x-ratelimit-remaining",
+                        "x-ratelimit-reset",
+                        "retry-after",
+                        "x-rate-limit-reset",
+                    });
+                    if (header_map.get("x-ratelimit-remaining")) |remaining| {
+                        const raw = remaining;
+                        std.debug.assert(raw.len > 0);
+                        const value = try std.fmt.parseFloat(f32, raw);
+                        if (value <= 0.0) {
+                            if (header_map.get("x-ratelimit-reset")) |header| {
+                                if (std.fmt.parseUnsigned(i64, header, 10)) |nr| {
+                                    std.log.debug("x-ratelimit-reset", .{});
+                                    break :blk now_utc_sec + nr + 1;
+                                } else |_| {}
+                            }
                         }
                     }
-                }
 
-                if (try resp.getHeader("retry-after") orelse 
-                    try resp.getHeader("x-ratelimit-reset")) |header| {
-                        const raw = header.get();
-                        std.log.debug("header rate-limit: {s}", .{raw});
-                        if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
-                            break :blk now_utc_sec + nr + 1;
-                        } else |_| {}
+                    if (header_map.get("retry-after") orelse 
+                        header_map.get("x-ratelimit-reset")) |header| {
+                            const raw = header;
+                            std.log.debug("header rate-limit: {s}", .{raw});
+                            if (std.fmt.parseUnsigned(i64, raw, 10)) |nr| {
+                                break :blk now_utc_sec + nr + 1;
+                            } else |_| {}
 
-                        if (feed_types.RssDateTime.parse(raw)) |date_utc| {
-                            break :blk date_utc + 1;
-                        } else |_| {}
-                }
-                break :blk now_utc_sec + std.time.s_per_hour;
-            };
-            print("retry_reset: {d}\n", .{retry_reset});
-            try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
+                            if (feed_types.RssDateTime.parse(raw)) |date_utc| {
+                                break :blk date_utc + 1;
+                            } else |_| {}
+                    }
+                    break :blk now_utc_sec + std.time.s_per_hour;
+                };
+                try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
+                return .failed;
+            } else if (@intFromEnum(status_code) >= 400 and @intFromEnum(status_code) < 600) {
+                const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
+                try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
+                std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, status_code});
+                return .failed;
+            }
             return .failed;
-        } else if (resp.status_code >= 400 and resp.status_code < 600) {
-            const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
-            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-            std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, resp.status_code});
-            return .failed;
-        }
+        };
 
-        const body = req.writer.writer.buffered();
+        const body = a_writer.writer.buffered();
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
         var parsing: FeedParser = .init(body);
@@ -1325,9 +1366,7 @@ pub const App = struct {
             return .failed;
         };
 
-        const feed_update = FeedUpdate.fromCurlHeaders(resp);
-
-        self.storage.updateFeedAndItems(parsed, feed_update) catch |err| {
+        self.storage.updateFeedAndItems(parsed, resp.feed_updates) catch |err| {
             const retry_ts = std.time.timestamp() + (std.time.s_per_hour * 12);
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
@@ -1368,6 +1407,7 @@ pub const App = struct {
     // if return error -> failed icons
     pub fn fetch_icon(allocator: Allocator, input_url: []const u8, opts: FetchIconOptions) !?feed_types.Icon {
         var buf: [2 * 1024]u8 = undefined;
+        var buffer_header: [1024]u8 = undefined;
         var fixed_writer: std.Io.Writer = .fixed(&buf);
         var uri = try std.Uri.parse(mem.trim(u8, input_url, &std.ascii.whitespace));
         var icon_url_opt: ?[]const u8 = null;
@@ -1379,6 +1419,10 @@ pub const App = struct {
                 return out; 
             };
         }
+
+        var buf_url_slice: [1024]u8 = undefined;
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
+        defer a_writer.deinit();
 
         if (icon_url_opt == null) blk: {
             const req_url = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
@@ -1393,17 +1437,24 @@ pub const App = struct {
 
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
-            _ = try req.fetch(req_url, .{});
 
-            const body = req.response_200_and_has_body(req_url) orelse break :blk;
-            const url_final = try req.get_url_slice();
+            const feed_opts = try req.fetch(&a_writer.writer, allocator, req_url, .{
+                .buffer_header = &buffer_header,
+            });
+
+            const body = a_writer.writer.buffered();
+            if (body.len == 0) {
+                std.log.warn("Icon body is empty. Request url: {s}", .{req_url});
+                break :blk;
+            }
+            const url_final = try req.get_url_slice(&buf_url_slice);
             const uri_final = try std.Uri.parse(mem.trim(u8, url_final, &std.ascii.whitespace));
 
             try fixed_writer.flush();
             icon_url_opt = try get_icon_from_html(&fixed_writer, uri_final, body);
-
+            
             if (icon_url_opt) |icon| {
-                const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+                const etag_or_last_modified = feed_opts.?.feed_updates.etag_or_last_modified;
                 if (util.is_data(icon)) {
                     var buf_icon = try allocator.alloc(u8, url_final.len + icon.len);
                     const buf_url = buf_icon[0..url_final.len];
@@ -1428,20 +1479,26 @@ pub const App = struct {
             var req = try http_client.init(allocator);
             defer { req.deinit(); }
 
-            try req.fetch_image(req_icon_url, .{});
-            // Fetch icon body/content
-            const resp_body = req.response_200_and_has_body(req_icon_url) orelse {
-                std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
+            const cache_control = try req.fetch_image(&a_writer.writer, allocator, req_icon_url, .{
+                .buffer_header = &buffer_header,
+            }) orelse {
+                std.log.warn("Failed to fetch icon '{s}'. Status code: {}", .{req_icon_url, req.response.?.head.status});
                 break :blk;
             };
 
-            const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+            const body = a_writer.writer.buffered();
+            if (body.len == 0) {
+                std.log.warn("Icon body is empty. From: {s}", .{req_icon_url});
+                break :blk;
+            }
 
-            var buf_icon = try allocator.alloc(u8, req_icon_url.len + resp_body.len);
+            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
+
+            var buf_icon = try allocator.alloc(u8, req_icon_url.len + body.len);
             const buf_url = buf_icon[0..req_icon_url.len];
             @memcpy(buf_url, req_icon_url);
             const buf_data = buf_icon[req_icon_url.len..];
-            @memcpy(buf_data, resp_body);
+            @memcpy(buf_data, body);
 
             return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
         }
@@ -1466,14 +1523,18 @@ pub const App = struct {
                 .port = true,
             })});
 
-            try req.fetch_image(url_request, .{});
-            const body = req.response_200_and_has_body(url_request) orelse {
-                std.log.info("Fetching image error: Invalid HTTP status code {d}", .{req.resp.?.status_code});
-                return error.InvalidHttpStatusCode;
-            };
+            const cache_control = try req.fetch_image(&a_writer.writer, allocator, url_request, .{
+                .buffer_header = &buffer_header,
+            });
 
-            const url_favicon = try req.get_url_slice();
-            const etag_or_last_modified = try http_client.etag_or_last_modified_from_resp(req.resp.?);
+            const body = a_writer.writer.buffered();
+            if (body.len == 0) {
+                std.log.warn("Icon body is empty. From: {s}", .{url_request});
+                return null;
+            }
+
+            const url_favicon = try req.get_url_slice(&buf_url_slice);
+            const etag_or_last_modified = cache_control.?.etag orelse cache_control.?.last_modified;
 
             var buf_icon = try allocator.alloc(u8, url_favicon.len + body.len);
             const buf_url = buf_icon[0..url_favicon.len];

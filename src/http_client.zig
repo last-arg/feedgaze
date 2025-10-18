@@ -19,6 +19,21 @@ client: http.Client,
 response: ?http.Client.Response = null,
 request: ?http.Client.Request = null,
 
+pub const Response = http.Client.Response;
+pub const HeaderMap = std.ArrayHashMap([]const u8, []const u8, StringContext, true);
+
+const StringContext = struct {
+    pub fn hash(self: @This(), s: []const u8) u32 {
+        _ = self;
+        return std.array_hash_map.hashString(s);
+    }
+    pub fn eql(self: @This(), a: []const u8, b: []const u8, b_index: usize) bool {
+        _ = self;
+        _ = b_index;
+        return std.ascii.eqlIgnoreCase(a, b);
+    }
+};
+
 pub fn init(allocator: Allocator) !@This() {
     var client: http.Client = .{
         .allocator = allocator,
@@ -37,7 +52,7 @@ pub fn deinit(self: *@This()) void {
     self.client.deinit();
 }
 
-pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?FeedUpdate {
+pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?feed_types.FeedOptions {
     var resp = try self.fetch_response(url, opts);
     const re = try handle_response(&resp, writer, allocator);
     return re;
@@ -160,40 +175,29 @@ pub fn read_body(response: *http.Client.Response, writer: *std.Io.Writer, alloca
 }
 
 
-pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?FeedUpdate {
+pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?feed_types.FeedOptions {
     if (response.head.status != .ok) {
         return null;
     }
 
     const headers = try parse_headers(response.head.bytes);
-    var result: FeedUpdate = .{
-        .update_interval = headers.update_interval,
+    var result: feed_types.FeedOptions = .{
+        .feed_updates = .{
+            .update_interval = headers.update_interval,
+        },
     };
 
+    if (response.head.content_type) |ct|{
+        result.content_type = ContentType.fromString(ct);
+    }
+
     if (headers.etag orelse headers.last_modified) |val| {
-        result.etag_or_last_modified = try allocator.dupe(u8, val);
+        result.feed_updates.etag_or_last_modified = try allocator.dupe(u8, val);
     } 
 
     _ = try read_body(response, writer, allocator);
 
     return result;
-}
-
-pub fn response_200_and_has_body(self: *const @This(), req_url: []const u8) ?[]const u8 {
-    assert(self.resp != null);
-    const resp = self.resp orelse unreachable;
-    if (resp.status_code != 200) {
-        std.log.warn("Request to '{s}' failed. Status code: {}", .{req_url, resp.status_code});
-        return null;
-    }
-
-    const body = self.writer.writer.buffered();
-    // On 'https://statmodeling.stat.columbia.edu/favicon.ico' got empty body.
-    if (body.len == 0) {
-        return null;
-    }
-
-    return body;
 }
 
 pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?CacheControl {
@@ -276,5 +280,30 @@ pub fn get_uri(self: *const @This()) !Uri {
 }
 
 pub fn get_url_slice(self: *const @This(), buf: []u8) ![]const u8 {
-    return std.fmt.bufPrint(buf, "{f}", .{self.request.?.uri});
+    return try std.fmt.bufPrint(buf, "{f}", .{self.request.?.uri});
+}
+
+pub fn fill_headers(bytes: []const u8, map: *HeaderMap, keys: []const []const u8) !void {
+    var iter = mem.splitSequence(u8, bytes, "\r\n");
+    _ = iter.first();
+
+    while (iter.next()) |line| {
+        if (line.len == 0) return;
+        switch (line[0]) {
+            ' ', '\t' => return error.HttpHeaderContinuationsUnsupported,
+            else => {},
+        }
+
+        var line_it = mem.splitScalar(u8, line, ':');
+        const header_name = line_it.next().?;
+        const header_value = mem.trim(u8, line_it.rest(), " \t");
+        if (header_name.len == 0) return error.HttpHeadersInvalid;
+
+        for (keys) |key| {
+            if (std.ascii.eqlIgnoreCase(key, header_name)) {
+                map.putAssumeCapacity(key, header_value);
+                break;
+            }
+        }
+    }
 }

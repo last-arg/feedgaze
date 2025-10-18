@@ -109,8 +109,8 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.linkLibC();
 
     const sqlite_dep = b.dependency("sqlite", .{
-        .target = dep_args.target,
-        .optimize = dep_args.optimize,
+        // .target = dep_args.target,
+        // .optimize = dep_args.optimize,
         // .optimize = std.builtin.OptimizeMode.ReleaseSafe,
     });
     step.linkSystemLibrary("sqlite3");
@@ -124,12 +124,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const known_folders = b.dependency("known-folders", .{});
     step.root_module.addImport("known-folders", known_folders.module("known-folders"));
-
-    const dep_curl = b.dependency("curl", .{
-        // .link_vendor = false,
-    });
-    step.root_module.addImport("curl", dep_curl.module("curl"));
-    step.linkSystemLibrary("curl");
 
     const httpz = b.dependency("httpz", .{});
     step.root_module.addImport("httpz", httpz.module("httpz"));

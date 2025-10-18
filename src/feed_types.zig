@@ -329,75 +329,6 @@ pub const FeedRender = struct {
 pub const FeedUpdate = struct {
     etag_or_last_modified: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
-
-    pub fn fromCurlHeaders(easy: Response) @This() {
-        var feed_update = FeedUpdate{};
-
-        if (easy.getHeader("etag")) |header_opt| {
-            if (header_opt) |h| {
-                feed_update.etag_or_last_modified = h.get();
-            }
-        } else |_| {}
-
-        if (feed_update.etag_or_last_modified == null) {
-            if (easy.getHeader("last-modified")) |header_opt| {
-                if (header_opt) |header| {
-                    feed_update.etag_or_last_modified = header.get();
-                }
-            } else |_| {}
-        }
-
-        var update_interval: ?i64 = null;
-        if (easy.getHeader("cache-control")) |header| {
-            if (header) |h| {
-                const value = h.get();
-                var iter = std.mem.splitScalar(u8, value, ',');
-                while (iter.next()) |key_value| {
-                    var pair_iter = std.mem.splitScalar(u8, key_value, '=');
-                    var key = pair_iter.next() orelse continue;
-                    key = std.mem.trim(u8, key, &std.ascii.whitespace);
-                    if (std.mem.eql(u8, "no-cache", key)) {
-                        update_interval = null;
-                        break;
-                    }
-                    var iter_value = pair_iter.next() orelse continue;
-                    iter_value = std.mem.trim(u8, iter_value, &std.ascii.whitespace);
-
-                    if (std.mem.eql(u8, "max-age", key)) {
-                        update_interval = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
-                    } else if (std.mem.eql(u8, "s-maxage", value)) {
-                        update_interval = std.fmt.parseUnsigned(u32, iter_value, 10) catch continue;
-                        break;
-                    }
-                }
-            }
-        } else |_| {}
-
-        if (update_interval != null and update_interval.? == 0) {
-            update_interval = null;
-        }
-
-        if (update_interval == null) {
-            if (easy.getHeader("expires")) |header| {
-                if (header) |h| {
-                    const value = RssDateTime.parse(h.get()) catch null;
-                    if (value) |v| {
-                        const interval = v - std.time.timestamp();
-                        // Favour cache-control value over expires
-                        if (interval > 0) {
-                            update_interval = interval;
-                        }
-                    }
-                }
-            } else |_| {}
-        }
-
-        if (update_interval) |value| {
-            feed_update.update_interval = value;
-        }
-
-        return feed_update;
-    }
 };
 
 pub const ContentType = enum {
@@ -496,13 +427,4 @@ pub const FeedOptions = struct {
     feed_url: []const u8 = "",
     title: ?[]const u8 = null,
     icon: ?Icon = null,
-
-    pub fn fromResponse(resp: Response) @This() {
-        const header_value = resp.getHeader("content-type") catch null;
-        const content_type = ContentType.fromString(if (header_value) |v| v.get() else "");
-        return .{
-            .content_type = content_type,
-            .feed_updates = FeedUpdate.fromCurlHeaders(resp),
-        };
-    }
 };
