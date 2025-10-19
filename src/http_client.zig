@@ -62,6 +62,7 @@ pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions)
     const uri = try std.Uri.parse(url);
 
     var request_opts: std.http.Client.RequestOptions = .{
+        .keep_alive = false,
         .redirect_behavior = .init(5),
         .headers = .{
             .accept_encoding = .{ .override = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" },
@@ -174,7 +175,6 @@ pub fn read_body(response: *http.Client.Response, writer: *std.Io.Writer, alloca
     return writer.buffered();
 }
 
-
 pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?feed_types.FeedOptions {
     if (response.head.status != .ok) {
         return null;
@@ -231,6 +231,7 @@ pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOp
     const uri = try std.Uri.parse(url);
 
     var request_opts: std.http.Client.RequestOptions = .{
+        .keep_alive = false,
         .redirect_behavior = .init(5),
         .headers = .{
            .accept_encoding = .{ .override = "image/*" },

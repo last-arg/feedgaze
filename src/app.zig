@@ -1010,7 +1010,11 @@ pub const Cli = struct {
 
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
-            const r = try app.update_feed(&item_arena, f_update);
+            const r = app.update_feed(&item_arena, f_update) catch |err| {
+                std.log.info("Failed to update feed. Error: {}", .{err});
+                return false;
+            };
+
             switch (r) {
                 .added, .no_changes => {
                     progress_node.completeOne();
@@ -1279,7 +1283,7 @@ pub const App = struct {
         defer a_writer.deinit();
         
         var buffer_header: [1028]u8 = undefined;
-        const resp = req.fetch(&a_writer.writer, arena.allocator(), f_update.feed_url, .{
+        const resp_opt = req.fetch(&a_writer.writer, arena.allocator(), f_update.feed_url, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
             .buffer_header = &buffer_header,
         }) catch |err| {
@@ -1287,7 +1291,9 @@ pub const App = struct {
             try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
             std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
             return .failed;
-        } orelse {
+        };
+
+        if (resp_opt == null) {
             const resp = req.response orelse unreachable;
             const status_code = resp.head.status;
             if (status_code == .not_modified) {
@@ -1348,8 +1354,9 @@ pub const App = struct {
                 return .failed;
             }
             return .failed;
-        };
+        }
 
+        const resp = resp_opt orelse unreachable;
         const body = a_writer.writer.buffered();
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
