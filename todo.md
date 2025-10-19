@@ -16,6 +16,8 @@
 - Add sqlite table for failed feed requests?
 - 'https://mastodon.social/@deech'. Error: error.NoHtmlOptions
 - 'https://infosec.exchange/@letoram'. Error: error.NoHtmlOptions
+- TODO: remove whitespace before doing html unescaping and removing html tags?
+
 
 
 - Make sqlite returned primary keys into u64.

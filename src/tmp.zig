@@ -21,7 +21,7 @@ pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
-    // try run_parse_atom();
+    try run_parse();
     // try test_allocating();
     // try storage_item_interval();
     // try storage_test();
@@ -352,20 +352,24 @@ pub fn test_allocating() !void {
 
 }
 
-fn run_parse_atom() !void {
+fn run_parse() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     const content = @embedFile("tmp_file"); 
-    const feed = try @import("feed_parse.zig").parseAtom(alloc, content);
+    const fp = @import("feed_parse.zig");
+    var parser: fp = .init(content);
+    const feed = try parser.parse(alloc, null, .{
+        .feed_url = "https://bsky.app/profile/did:plc:5nq3pybl4nnoxfp3ovjy2lh7/rss",
+    });
     print("\nSTART {d}\n", .{feed.items.len});
-    // for (feed.items) |item| {
-    //     print("title: |{s}|\n", .{item.title});
-    //     print("link: |{?s}|\n", .{item.link});
-    //     // print("date: {?d}\n", .{item.updated_timestamp});
-    //     print("\n", .{});
-    // }
+    for (feed.items[0..1]) |item| {
+        print("title: |{s}|\n", .{item.title});
+        // print("link: |{?s}|\n", .{item.link});
+        // print("date: {?d}\n", .{item.updated_timestamp});
+        print("\n", .{});
+    }
 }
 
 
