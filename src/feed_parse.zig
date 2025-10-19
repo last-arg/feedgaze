@@ -453,10 +453,11 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
 }
 
 fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) ![]u8 {
-    // NOTE: this input might still contains unescaped html entities
+    // NOTE: this input might still contain unescaped html entities
     const max_len = max_title_len + 20 + @divFloor(max_title_len, 10); 
+    var buf_writer: [max_len]u8 = undefined;
 
-    var w: std.Io.Writer = .fixed(input);
+    var w: std.Io.Writer = .fixed(&buf_writer);
 
     var iter_text_node = IteratorTextNode.init(ast, input, node);
     if (iter_text_node.next()) |text_node| {
@@ -474,7 +475,9 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
         w.writeAll(text) catch unreachable;
     }
 
-    return w.buffered();
+    @memcpy(input[0..w.buffered().len], w.buffered());
+
+    return input;
 }
 
 fn text_location_from_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?feed_types.Location {
