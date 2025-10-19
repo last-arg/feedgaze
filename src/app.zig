@@ -1012,7 +1012,7 @@ pub const Cli = struct {
             _ = item_arena.reset(.retain_capacity);
             const r = app.update_feed(&item_arena, f_update) catch |err| {
                 std.log.info("Failed to update feed. Error: {}", .{err});
-                return false;
+                continue;
             };
 
             switch (r) {
@@ -1026,7 +1026,6 @@ pub const Cli = struct {
         return true;
     }
 
-    // TODO: reenable server
     pub fn server(self: *Self, opts: ServerOptions) !void {
         try @import("server.zig").start_server(self.storage, opts);
     }

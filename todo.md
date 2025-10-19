@@ -8,10 +8,15 @@
 - try std lib compression
 - https://github.com/ziglang/zig/pull/25495
   - This should hopefully fix newer zig builds or point to what the problem is
+  - for now use '.use_llvm = true' to avoid
 - explore zig std lib http client
   - out of all feed urls 2 failed
     - https://www.openmymind.net/atom.xml. Error: error.ConnectionTimedOut
     - https://news.ycombinator.com/rss. Error: error.TlsInitializationFailed
+- Add sqlite table for failed feed requests?
+- 'https://mastodon.social/@deech'. Error: error.NoHtmlOptions
+- 'https://infosec.exchange/@letoram'. Error: error.NoHtmlOptions
+
 
 - Make sqlite returned primary keys into u64.
   - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html

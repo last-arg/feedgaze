@@ -3,7 +3,7 @@ const print = std.debug.print;
 const Cli = @import("app.zig").Cli;
 
 pub const std_options: std.Options = .{
-    .log_level = .err,
+    .log_level = .info,
 };
 
 pub fn main() !void {

@@ -260,15 +260,19 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         w.writeAll(first) catch unreachable;
 
         while (iter.next()) |chunk| {
-            if (w.buffered().len >= max_title_len) { break; }
+            var rest_len = w.unusedCapacityLen();
+            if (rest_len == 0) {
+                break;
+            }
 
-            w.writeByte(' ') catch unreachable;
-            w.writeAll(chunk) catch unreachable;
+            w.writeByte(' ') catch break;
+            rest_len -= 1;
+            w.writeAll(chunk[0..@min(chunk.len, rest_len)]) catch unreachable;
         }
     }
     assert(w.buffered().len <= max_title_len);
         
-    @memcpy(input, w.buffered());
+    @memcpy(input[0..w.buffered().len], w.buffered());
 
     if (stack_fallback.fixed_buffer_allocator.ownsPtr(@constCast(input.ptr))) {
         input = try allocator.dupe(u8, input);

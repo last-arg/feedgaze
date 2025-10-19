@@ -35,10 +35,9 @@ const StringContext = struct {
 };
 
 pub fn init(allocator: Allocator) !@This() {
-    var client: http.Client = .{
+    const client: http.Client = .{
         .allocator = allocator,
     };
-    errdefer client.deinit();
 
     return .{
         .client = client,
@@ -46,8 +45,10 @@ pub fn init(allocator: Allocator) !@This() {
 }
 
 pub fn deinit(self: *@This()) void {
+    self.response = null;
     if (self.request) |*req| {
         req.deinit();
+        self.request = null;
     }
     self.client.deinit();
 }
