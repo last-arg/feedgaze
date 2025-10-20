@@ -61,13 +61,13 @@ pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: 
 
 pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
     const uri = try std.Uri.parse(url);
+    var extra_headers_arr: [2]std.http.Header = undefined;
+    extra_headers_arr[0] = .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" };
 
     var request_opts: std.http.Client.RequestOptions = .{
         .keep_alive = false,
         .redirect_behavior = .init(5),
-        .headers = .{
-            .accept_encoding = .{ .override = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" },
-        },
+        .extra_headers = extra_headers_arr[0..1],
     };
 
     if (opts.etag_or_last_modified) |val| {
@@ -79,8 +79,9 @@ pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions)
             ,
             .value = val,
         };
+        extra_headers_arr[1] = h;
 
-        request_opts.extra_headers = &.{ h };
+        request_opts.extra_headers = &extra_headers_arr;
     }
 
     self.request = try self.client.request(.GET, uri, request_opts);
@@ -230,13 +231,13 @@ pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator,
 
 pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
     const uri = try std.Uri.parse(url);
+    var extra_headers_arr: [2]std.http.Header = undefined;
+    extra_headers_arr[0] = .{ .name = "Accept", .value = "image/*" };
 
     var request_opts: std.http.Client.RequestOptions = .{
         .keep_alive = false,
         .redirect_behavior = .init(5),
-        .headers = .{
-           .accept_encoding = .{ .override = "image/*" },
-        },
+        .extra_headers = extra_headers_arr[0..1],
     };
 
     if (opts.etag_or_last_modified) |val| {
@@ -248,8 +249,9 @@ pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOp
             ,
             .value = val,
         };
+        extra_headers_arr[1] = h;
 
-        request_opts.extra_headers = &.{ h };
+        request_opts.extra_headers = &extra_headers_arr;
     }
 
     self.request = try self.client.request(.GET, uri, request_opts);

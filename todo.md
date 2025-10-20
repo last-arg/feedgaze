@@ -5,7 +5,6 @@
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
-- try std lib compression
 - https://github.com/ziglang/zig/pull/25495
   - This should hopefully fix newer zig builds or point to what the problem is
   - for now use '.use_llvm = true' to avoid
@@ -14,10 +13,9 @@
     - https://www.openmymind.net/atom.xml. Error: error.ConnectionTimedOut
     - https://news.ycombinator.com/rss. Error: error.TlsInitializationFailed
 - Add sqlite table for failed feed requests?
-- 'https://mastodon.social/@deech'. Error: error.NoHtmlOptions
-- 'https://infosec.exchange/@letoram'. Error: error.NoHtmlOptions
-- TODO: remove whitespace before doing html unescaping and removing html tags?
-
+- remove whitespace before doing html unescaping and removing html tags?
+- search page gives 500 error. Compression not working
+- try std lib compression
 
 
 - Make sqlite returned primary keys into u64.

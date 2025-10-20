@@ -17,11 +17,11 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    // try std_http_client();
+    try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
-    try run_parse();
+    // try run_parse();
     // try test_allocating();
     // try storage_item_interval();
     // try storage_test();
@@ -32,7 +32,7 @@ pub fn main() !void {
     // try tmp_icon();
     // try fetch_image();
     // try tmp_parse_icon();
-    try tmp_parse_html();
+    // try tmp_parse_html();
     // try tmp_iter_attrs();
 }
 
@@ -44,12 +44,13 @@ pub fn std_http_client() !void {
     const c = @import("http_client.zig");
 
     var h = try c.init(arena.allocator());
-    defer h.deinit();
+    // defer h.deinit();
      
     // const url = "https://lobste.rs/";
     // const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
-    // const url = "https://google.com";
-    const url = "https://www.royalroad.com/";
+    // const url = "http://google.com";
+    // const url = "https://www.royalroad.com/";
+    const url = "https://mastodon.social/@deech";
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
