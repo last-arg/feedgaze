@@ -14,8 +14,6 @@
     - https://news.ycombinator.com/rss. Error: error.TlsInitializationFailed
 - Add sqlite table for failed feed requests?
 - remove whitespace before doing html unescaping and removing html tags?
-- search page gives 500 error. Compression not working
-  - log error: OutOfMemory
 
 
 - Make sqlite returned primary keys into u64.

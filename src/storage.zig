@@ -956,8 +956,6 @@ pub const Storage = struct {
             (args.before != null and args.after == null) or
             (args.before == null and args.after != null)
         );
-        var savepoint = try self.sql_db.savepoint("search_complex");
-        defer savepoint.rollback();
 
         const query_where = try self.search_query_where(allocator, args);
         defer allocator.free(query_where);
@@ -966,12 +964,11 @@ pub const Storage = struct {
         \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{""});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         const result = try iterator_to_slice(types.Feed, &stmt, allocator, .{});
 
-        savepoint.commit();
         return result;
     }
 
