@@ -16,7 +16,6 @@ const parse = @import("./feed_parse.zig");
 const App = @import("app.zig").App;
 const builtin = @import("builtin");
 const util = @import("util.zig");
-const gzip = @import("compress").gzip;
 const AddRule = @import("add_rule.zig");
 const http_client = @import("./http_client.zig");
 
@@ -1678,12 +1677,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.flush();
 
     try w.flush();
-}
-
-fn compress_response(resp: *httpz.Response) !void {
-    var ar: std.Io.Reader = .fixed(resp.writer().buffered()[gzip_header_size..]);
-    resp.writer().end = 0;
-    try gzip.compress(&ar, resp.writer(), .{});
 }
 
 fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
