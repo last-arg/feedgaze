@@ -1419,7 +1419,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     errdefer feed_items.deinit(allocator);
 
     const timestamp_max = opts.latest_updated_timestamp orelse 0;
-    outer: for (parsed.items[0..1]) |item| {
+    outer: for (parsed.items) |item| {
         if (item.updated_timestamp) |ts| if (ts <= timestamp_max) {
             break :outer;
         };
