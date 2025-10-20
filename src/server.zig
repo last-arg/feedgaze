@@ -1735,17 +1735,14 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
         resp.content_type = .CSS;
     }
 
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
     if (src) |body| {
         resp.header("Cache-control", "public,max-age=31536000,immutable");
 
-        var aw: std.Io.Writer.Allocating = try .initCapacity(req.arena, 1024);
-        errdefer aw.deinit();
-
-        var ar: std.Io.Reader = .fixed(body);
-        try gzip.compress(&ar, &aw.writer, .{});
-
-        resp.header("content-encoding", "gzip");
-        resp.body = aw.writer.buffered();
+        var compress_opt = try compress_init(req, resp, &buf);
+        var w = if (compress_opt) |*c| &c.writer else resp.writer();
+        try w.writeAll(body);
+        try w.flush();
     }
 }
 
