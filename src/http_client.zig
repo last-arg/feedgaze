@@ -34,7 +34,7 @@ const StringContext = struct {
     }
 };
 
-pub fn init(allocator: Allocator) !@This() {
+pub fn init(allocator: Allocator) @This() {
     const client: http.Client = .{
         .allocator = allocator,
     };

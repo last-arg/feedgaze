@@ -17,6 +17,8 @@ const App = @import("app.zig").App;
 const builtin = @import("builtin");
 const util = @import("util.zig");
 const gzip = @import("compress").gzip;
+const AddRule = @import("add_rule.zig");
+const http_client = @import("./http_client.zig");
 
 // Date for machine "2011-11-18T14:54:39.929Z". For <time datetime="...">.
 const date_fmt = "{[year]d}-{[month]d:0>2}-{[day]d:0>2}T{[hour]d:0>2}:{[minute]d:0>2}:{[second]d:0>2}.000Z";
@@ -557,7 +559,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         };
     }
 
-    const feed_url = if (is_html_feed) url_input else url_picked;
+    var feed_url = if (is_html_feed) url_input else url_picked;
 
     const pick_index = blk: {
         var iter = form_data.iterator();
@@ -606,24 +608,35 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         return;
     }
 
-    // try to add new feed
-    var app = App{.storage = db.*};
-
     var buffer_header: [1024]u8 = undefined;
     var buffer_url: [1024]u8 = undefined;
     var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
     errdefer a_writer.deinit();
 
-    var fetch = try app.fetch_response(&a_writer.writer, req.arena, feed_url, .{
-        .buffer_header = &buffer_header,
-    });
-    defer fetch.deinit();
+    const uri = try std.Uri.parse(feed_url);
+    if (uri.host) |host| {
+        const host_str = util.uri_component_val(host);
+        const rules = try db.get_rules_for_host(req.arena, host_str);
+        defer req.arena.free(rules);
+        if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
+            std.log.info("Found matching rule. Using rule to transform url.", .{});
+            feed_url = try AddRule.transform_rule_match(req.arena, uri, rule_match);
+        }
+    }
 
-    var feed_options = fetch.feed_opts;
+    var client = http_client.init(req.arena);
+    defer client.deinit();
+    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_url, .{
+        .buffer_header = &buffer_header,
+    }) orelse {
+        std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
+        return;
+    };
+
     feed_options.body = a_writer.writer.buffered();
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buffer_url);
+    add_opts.feed_opts.feed_url = try client.get_url_slice(&buffer_url);
 
     const html_opts: ?parse.HtmlOptions = if (feed_options.content_type == .html) .{
         .selector_container = selector_container,
@@ -953,7 +966,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         url_tmp = url;
     }
 
-    const feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
+    var feed_url = mem.trim(u8, url_tmp.?, &std.ascii.whitespace);
 
     if (try db.get_feed_id_with_url(feed_url)) |feed_id| {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
@@ -972,15 +985,26 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
     errdefer a_writer.deinit();
 
-    // try to add new feed
-    var app = App{.storage = db.*};
-
-    var fetch = try app.fetch_response(&a_writer.writer, req.arena, feed_url, .{
+    const uri = try std.Uri.parse(feed_url);
+    if (uri.host) |host| {
+        const host_str = util.uri_component_val(host);
+        const rules = try db.get_rules_for_host(req.arena, host_str);
+        defer req.arena.free(rules);
+        if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
+            std.log.info("Found matching rule. Using rule to transform url.", .{});
+            feed_url = try AddRule.transform_rule_match(req.arena, uri, rule_match);
+        }
+    }
+    
+    var client = http_client.init(req.arena);
+    defer client.deinit();
+    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_url, .{
         .buffer_header = &buffer_header,
-    });
-    defer fetch.deinit();
+    }) orelse {
+        std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
+        return;
+    };
 
-    var feed_options = fetch.feed_opts;
     feed_options.body = a_writer.writer.buffered();
 
     if (feed_options.content_type == .html) {
@@ -994,7 +1018,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         for (html_parsed.links) |link| {
-            const url_final = try fetch.req.get_url_slice(&buffer_url);
+            const url_final = try client.get_url_slice(&buffer_url);
             const uri_final = try std.Uri.parse(url_final);
             const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
             const uri_component: std.Uri.Component = .{ .raw = url_str };
@@ -1005,7 +1029,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buffer_url);
+    add_opts.feed_opts.feed_url = try client.get_url_slice(&buffer_url);
 
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
@@ -1230,8 +1254,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             } 
 
             // is url
-            const http_client = @import("./http_client.zig");
-            var req_http = try http_client.init(req.arena);
+            var req_http = http_client.init(req.arena);
             defer req_http.deinit();
 
             var buffer_header: [1024]u8 = undefined;

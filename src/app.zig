@@ -234,7 +234,7 @@ pub const Cli = struct {
                 const icons_existing = try self.storage.icon_all(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_existing.len);
                 for (icons_existing) |icon| {
-                    var req = try http_client.init(arena.allocator());
+                    var req = http_client.init(arena.allocator());
                     defer {
                         progress_node.completeOne();
                         req.deinit();
@@ -782,29 +782,45 @@ pub const Cli = struct {
     }
 
     pub fn add(self: *Self, url_raw: []const u8) !usize {
-        const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
+        var url = mem.trim(u8, url_raw, &std.ascii.whitespace);
         if (try self.storage.hasFeedWithFeedUrl(url)) {
             return error.FeedExists;
         }
 
-        var app: App = .{ .storage = self.storage };
+        var uri = std.Uri.parse(url) catch {
+            return error.InvalidUrl;
+        };
+
+        if (uri.host) |host| {
+            const host_str = util.uri_component_val(host);
+            const rules = try self.storage.get_rules_for_host(self.allocator, host_str);
+            defer self.allocator.free(rules);
+            if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
+                std.log.info("Found matching rule. Using rule to transform url.", .{});
+                url = try AddRule.transform_rule_match(self.allocator, uri, rule_match);
+            }
+        }
 
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        var fetch_2: ?App.RequestResponse = null;
-        defer if (fetch_2) |*f| f.deinit();
+        // TODO: reuse client if possible
+        var client_2 = http_client.init(arena.allocator());
+        defer client_2.deinit();
 
         var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
         defer a_writer.deinit();
 
+        var client = http_client.init(arena.allocator());
+        defer client.deinit();
         var buffer_header: [1024]u8 = undefined;
-        var fetch = try app.fetch_response(&a_writer.writer, arena.allocator(), url, .{
+
+        
+        const feed_opts = try client.fetch(&a_writer.writer, arena.allocator(), url, .{
             .buffer_header = &buffer_header,
         });
-        defer fetch.deinit();
 
-        var add_opts: Storage.AddOptions = .{ .feed_opts = fetch.feed_opts };
+        var add_opts: Storage.AddOptions = .{ .feed_opts = feed_opts.? };
         add_opts.feed_opts.body = a_writer.writer.buffered();
         if (add_opts.feed_opts.content_type == .html) {
             add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
@@ -819,17 +835,17 @@ pub const Cli = struct {
 
             if (html_parsed.icon_url) |icon_url| {
                 const cache_val = add_opts.feed_opts.feed_updates.etag_or_last_modified;
-                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try fetch.req.get_url_slice(&buf_url), icon_url, cache_val);
+                add_opts.feed_opts.icon = feed_types.Icon.init_if_data(try client.get_url_slice(&buf_url), icon_url, cache_val);
             }
 
             switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
                 .html => |user_html_opts| {
-                    add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buf_url);
+                    add_opts.feed_opts.feed_url = try client.get_url_slice(&buf_url);
                     html_opts = user_html_opts;
                 },
                 .index => |index| {
                     const link = links[index];
-                    var fetch_url = url;
+                    var fetch_url = link.link;
                     var buf: [1024]u8 = undefined;
                     var buf_writer: std.Io.Writer = .fixed(&buf);
 
@@ -840,23 +856,35 @@ pub const Cli = struct {
                         const end = buf_writer.end;
                         try buf_writer.print("{f}", .{result.fmt(.all)});
                         fetch_url = buf_writer.buffered()[end..];
-                    } else {
-                        fetch_url = link.link;
+                    }
+
+                    uri = std.Uri.parse(url) catch {
+                        return error.InvalidUrl;
+                    };
+
+                    if (uri.host) |host| {
+                        const host_str = util.uri_component_val(host);
+                        const rules = try self.storage.get_rules_for_host(self.allocator, host_str);
+                        defer self.allocator.free(rules);
+                        if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
+                            std.log.info("Found matching rule. Using rule to transform url.", .{});
+                            fetch_url = try AddRule.transform_rule_match(self.allocator, uri, rule_match);
+                        }
                     }
 
                     // TODO: reset writer start to zero?
-                    fetch_2 = try app.fetch_response(&a_writer.writer, arena.allocator(), fetch_url, .{
+                    const feed_opts_2 = try client_2.fetch(&a_writer.writer, arena.allocator(), fetch_url, .{
                         .buffer_header = &buffer_header,
                     });
 
-                    add_opts.feed_opts = fetch_2.?.feed_opts;
+                    add_opts.feed_opts = feed_opts_2.?;
                     add_opts.feed_opts.body = a_writer.writer.buffered();
-                    add_opts.feed_opts.feed_url = try fetch_2.?.req.get_url_slice(&buf_url);
+                    add_opts.feed_opts.feed_url = try client_2.get_url_slice(&buf_url);
                     add_opts.feed_opts.title = link.title;
                 }
             }
         } else {
-            add_opts.feed_opts.feed_url = try fetch.req.get_url_slice(&buf_url);
+            add_opts.feed_opts.feed_url = try client.get_url_slice(&buf_url);
         }
 
         if (add_opts.feed_opts.icon == null) {
@@ -1218,44 +1246,6 @@ pub const App = struct {
         }
     };
 
-    pub fn fetch_response(
-        self: *@This(),
-        writer: *std.Io.Writer,
-        allocator: std.mem.Allocator,
-        input_url: []const u8,
-        opts: feed_types.FetchHeaderOptions,
-    ) !RequestResponse {
-        const uri = std.Uri.parse(input_url) catch {
-            return error.InvalidUrl;
-        };
-
-        var fetch_url = input_url;
-
-        if (uri.host) |host| {
-            const host_str = util.uri_component_val(host);
-            const rules = try self.storage.get_rules_for_host(allocator, host_str);
-            defer allocator.free(rules);
-            if (try AddRule.find_rule_match(uri, rules)) |rule| {
-                std.log.info("Found matching rule. Using rule to transform url.", .{});
-                fetch_url = try AddRule.transform_rule_match(allocator, uri, rule);
-            }
-        }
-
-        // fetch url content
-        var req = try http_client.init(allocator);
-        const resp = try req.fetch(writer, allocator, fetch_url, opts);
-
-        if (writer.buffered().len == 0) {
-            std.log.err("HTTP response body is empty. Request url: {s}", .{fetch_url});
-            return error.EmptyBody;
-        }
-
-        return .{
-            .req = req,
-            .feed_opts = resp.?,
-        };
-    }
-
     const UpdateResult = enum {
         added,
         no_changes,
@@ -1270,12 +1260,7 @@ pub const App = struct {
                 @panic("Failed to update (increase) feed's next update");
             };
         }
-        var req = http_client.init(arena.allocator()) catch |err| {
-            const retry_ts = std.time.timestamp() + (std.time.s_per_min * 20);
-            try self.storage.rate_limit_add(f_update.feed_id, retry_ts);
-            std.log.err("Failed to start http request to '{s}'. Error: {}", .{f_update.feed_url, err});
-            return .failed;
-        }; 
+        var req = http_client.init(arena.allocator()); 
         defer req.deinit();
 
         var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
@@ -1441,7 +1426,7 @@ pub const App = struct {
                 .port = true,
             })});
 
-            var req = try http_client.init(allocator);
+            var req = http_client.init(allocator);
             defer { req.deinit(); }
 
             const feed_opts = try req.fetch(&a_writer.writer, allocator, req_url, .{
@@ -1482,7 +1467,7 @@ pub const App = struct {
                 break :out fixed_writer.buffered()[start..];
             };
 
-            var req = try http_client.init(allocator);
+            var req = http_client.init(allocator);
             defer { req.deinit(); }
 
             const cache_control = try req.fetch_image(&a_writer.writer, allocator, req_icon_url, .{
@@ -1515,7 +1500,7 @@ pub const App = struct {
                 std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{s}'. Error: {}", .{input_url, err});
             }
 
-            var req = try http_client.init(allocator);
+            var req = http_client.init(allocator);
             defer { req.deinit(); }
 
             uri.path = .{ .raw = "/favicon.ico" };
