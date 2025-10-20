@@ -720,9 +720,9 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         return;
     }
         
-    const do_compression = try compress_init(req, resp);
-
-    var w = resp.writer();
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     try Layout.write_head(w, "Pick feed", .{});
 
@@ -897,9 +897,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     try w.writeAll("</main>");
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyValue, key: []const u8) ![]const u8 {
@@ -1100,9 +1098,9 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
         }
     }
 
-    const do_compression = try compress_init(req, resp);
-
-    var w = resp.writer();
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     try Layout.write_head(w, "Add feed", .{});
 
@@ -1184,9 +1182,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     try w.writeAll("</main>");
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1405,8 +1401,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         break :blk &.{};
     };
 
-    var w = resp.writer();
-    const do_compression = try compress_init(req, resp);
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     const title = feed.title orelse "";
     if (title.len > 0) {
@@ -1421,8 +1418,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.writeAll("<main class='flow'>");
     try w.writeAll("<h2>");
     if (feed.icon_id) |icon_id| {
-        var buf: [128]u8 = undefined;
-        if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
+        var buf_icon: [128]u8 = undefined;
+        if (global.icon_manage.icon_src_by_id(&buf_icon, icon_id, global.storage)) |path| {
             try w.print(
                 \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
             , .{path});
@@ -1680,9 +1677,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.flush();
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 fn compress_response(resp: *httpz.Response) !void {
@@ -1840,17 +1835,17 @@ fn has_encoding(req: *const httpz.Request, value: []const u8) bool {
 }
 
 const gzip_header_size = 16;
-fn compress_init(req: *httpz.Request, resp: *httpz.Response) !bool { 
+fn compress_init(req: *httpz.Request, resp: *httpz.Response, buf: []u8) !?std.compress.flate.Compress { 
     if (!has_encoding(req, "gzip")) {
-        return false;
+        return null;
     }
 
     // NOTE: make space for gzip header bytes.
     // Because I will be reusing Response.Writer buffer.
-    _ = try resp.writer().splatByte(' ', gzip_header_size);
+    // _ = try resp.writer().splatByte(' ', gzip_header_size);
     resp.header("Content-Encoding", "gzip");
-
-    return true;
+    try resp.buffer.ensureTotalCapacity(8 * 1024);
+    return try std.compress.flate.Compress.init(resp.writer(), buf, .gzip, .default);
 }
 
 fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1881,10 +1876,10 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     
     resp.content_type = .HTML;
 
-    const do_compression = try compress_init(req, resp);
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    var w = resp.writer();
-    
     try Layout.write_head(w, "Home - latest added feed items", .{});
 
     const tags = try db.tags_all(req.arena);
@@ -1988,9 +1983,10 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    // if (do_compression) {
+    //     try compress_response(resp);
+    // }
+    try w.flush();
 }
 
 fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
@@ -2140,9 +2136,9 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    const do_compression = try compress_init(req, resp);
-
-    var w = resp.writer();
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     try Layout.write_head(w, "Edit tag: {s}", .{tag.name});
 
@@ -2186,9 +2182,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -2204,9 +2198,9 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    const do_compression = try compress_init(req, resp);
-
-    var w = resp.writer();
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     try Layout.write_head(w, "Tags", .{});
 
@@ -2249,9 +2243,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 const Layout = struct {
@@ -2472,9 +2464,9 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     
     resp.content_type = .HTML;
 
-    const do_compression = try compress_init(req, resp);
-
-    var w = resp.writer();
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     try Layout.write_head(w, "Feeds", .{});
 
@@ -2625,9 +2617,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     try Layout.write_foot(w);
 
-    if (do_compression) {
-        try compress_response(resp);
-    }
+    try w.flush();
 }
 
 fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {

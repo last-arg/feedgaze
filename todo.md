@@ -15,6 +15,7 @@
 - Add sqlite table for failed feed requests?
 - remove whitespace before doing html unescaping and removing html tags?
 - search page gives 500 error. Compression not working
+  - log error: OutOfMemory
 - try std lib compression
 
 
