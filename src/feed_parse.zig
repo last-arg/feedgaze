@@ -509,6 +509,7 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
     return false;
 }
 
+// NOTE: Currently will cut off text if too long
 fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) ![]u8 {
     // NOTE: this input might still contain unescaped html entities
     const max_len = max_title_len + 20 + @divFloor(max_title_len, 10); 
@@ -522,14 +523,18 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
         w.writeAll(text) catch unreachable;
     }
     while (iter_text_node.next()) |text_node| {
-        if (w.buffered().len > max_len) {
+        var rest_len = w.unusedCapacityLen();
+        if (rest_len == 0) {
             break;
         }
+
         if (iter_text_node.has_space()) {
             w.writeByte(' ') catch unreachable;
+            rest_len -= 1;
         }
+
         const text = text_node.open.slice(input);
-        w.writeAll(text) catch unreachable;
+        w.writeAll(text[0..@min(text.len, rest_len)]) catch unreachable;
     }
 
     const dest = input[0..w.buffered().len]; 
@@ -1354,6 +1359,7 @@ const ParseOptions = struct {
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
     assert(util.is_url(opts.feed_url));
 
+    print("url: {s}\n", .{opts.feed_url});
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, self.content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 

@@ -20,8 +20,8 @@ pub fn main() !void {
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
-    try run_add_new_feed();
-    // try run_parse();
+    // try run_add_new_feed();
+    try run_parse();
     // try test_allocating();
     // try storage_item_interval();
     // try storage_test();
@@ -43,13 +43,13 @@ pub fn std_http_client() !void {
 
     const c = @import("http_client.zig");
 
-    var h = try c.init(arena.allocator());
+    var h = c.init(arena.allocator());
     // defer h.deinit();
      
     // const url = "https://lobste.rs/";
     // const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
-    const url = "http://google.com";
-    // const url = "https://www.royalroad.com/";
+    // const url = "http://google.com";
+    const url = "http://www.openmymind.net/atom.xml";
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
@@ -361,7 +361,7 @@ fn run_parse() !void {
     const fp = @import("feed_parse.zig");
     var parser: fp = .init(content);
     const feed = try parser.parse(alloc, null, .{
-        .feed_url = "https://bsky.app/profile/did:plc:5nq3pybl4nnoxfp3ovjy2lh7/rss",
+        .feed_url = "https://mastodon.gamedev.place/@lritter.rss",
     });
     print("\nSTART {d}\n", .{feed.items.len});
     for (feed.items[0..1]) |item| {

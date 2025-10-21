@@ -5,15 +5,15 @@
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
-- https://github.com/ziglang/zig/pull/25495
-  - This should hopefully fix newer zig builds or point to what the problem is
-  - for now use '.use_llvm = true' to avoid
 - explore zig std lib http client
   - out of all feed urls 2 failed
     - https://www.openmymind.net/atom.xml. Error: error.ConnectionTimedOut
     - https://news.ycombinator.com/rss. Error: error.TlsInitializationFailed
 - Add sqlite table for failed feed requests?
 - remove whitespace before doing html unescaping and removing html tags?
+  - &nbps; should be replaced with ' '
+  - <br> might need to be replaced with ' '. Or it get removed when removing html tags
+- fix cleaning titles: tmp/@freya.rss third item outputs partial title
 
 
 - Make sqlite returned primary keys into u64.
