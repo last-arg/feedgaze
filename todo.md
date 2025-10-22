@@ -13,7 +13,6 @@
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
   - <br> might need to be replaced with ' '. Or it get removed when removing html tags
-- fix cleaning titles: tmp/@freya.rss third item outputs partial title
 
 
 - Make sqlite returned primary keys into u64.

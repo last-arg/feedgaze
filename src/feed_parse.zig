@@ -192,6 +192,8 @@ pub fn html_unescape(input: []u8) []u8 {
         }
     }
 
+    w.writeAll(out[buf_index_start..]) catch unreachable;
+
     const buf_written = w.buffered();
     if (buf_written.len > 0) {
         out = out[0..buf_written.len];
