@@ -336,26 +336,30 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         }
     }
 
-    // Remove extra whitespaces
-    var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
-    if (iter.next()) |first| {
-        w.end = 0;
-        w.writeAll(first) catch unreachable;
+    const has_whitespace = mem.findAny(u8, out, std.ascii.whitespace[1..]) != null
+       or mem.find(u8, out, "  ") != null;
 
-        while (iter.next()) |chunk| {
-            const rest_len = max_title_len - w.end - chunk.len;
-            if (rest_len <= 1) {
-                break;
+    if (has_whitespace) {
+        var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
+        if (iter.next()) |first| {
+            w.end = 0;
+            w.writeAll(first) catch unreachable;
+
+            while (iter.next()) |chunk| {
+                const rest_len = max_title_len - w.end - chunk.len;
+                if (rest_len <= 1) {
+                    break;
+                }
+
+                w.writeByte(' ') catch break;
+                w.writeAll(chunk) catch unreachable;
             }
 
-            w.writeByte(' ') catch break;
-            w.writeAll(chunk) catch unreachable;
-        }
-
-        const value = w.buffered();
-        if (value.len != out.len) {
-            out = out[0..value.len];
-            @memcpy(out, value);
+            const value = w.buffered();
+            if (value.len != out.len) {
+                out = out[0..value.len];
+                @memcpy(out, value);
+            }
         }
     }
 
