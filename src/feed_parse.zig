@@ -133,89 +133,93 @@ const WriterContext = struct {
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 // Mutates 'input' buffer
 // 'lt' and 'gt' are handled by html_unescaped_tags()
-pub fn html_unescape(input: []u8) []u8 {
-    var out = input;
-    // NOTE: if I remember correctly I do this because there an be double escaping
-    // of html symbols
-    inline for (.{"&amp;", "&#38;"}) |ent| {
-        const count = mem.replace(u8, out, ent, "&", out);
-        const len = out.len - ((ent.len - 1) * count);
-        out = out[0..len];
-    }
-
-    const entities = [_][]const u8{"amp", "quot", "apos", "nbsp"};
+pub fn html_unescape(w: *std.Io.Writer, input: []u8) void {
+    const entities = [_][]const u8{"amp;", "quot;", "apos;", "nbsp;"};
     const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
 
-    var buf: [1024]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&buf);
-    var buf_index_start: usize = 0;
+    var iter = mem.splitScalar(u8, input, '&');
+    while (iter.next()) |slice_const| {
+        if (slice_const.len == 0) continue;
+        var slice = slice_const;
 
-    while (mem.indexOfScalarPos(u8, out, buf_index_start, '&')) |index| {
-        w.writeAll(out[buf_index_start..index]) catch unreachable;
-        buf_index_start = index + 1;
-        const start = buf_index_start;
-        if (start >= out.len) { break; }
-
-        if (out[start] == '#') {
-            // numeric entities
-            var nr_start = start + 1; 
-            const end = mem.indexOfScalarPos(u8, out, nr_start, ';') orelse continue;
-            const is_hex = out[nr_start] == 'x' or out[nr_start] == 'X';
-            nr_start += @intFromBool(is_hex);
-            const value = out[nr_start..end];
-            if (value.len == 0) { continue; }
-            buf_index_start = end + 1;
-
-            const base: u8 = if (is_hex) 16 else 10;
-            const nr = std.fmt.parseUnsigned(u21, value, base) catch continue;
-            var buf_cp: [4]u8 = undefined;
-            const cp = std.unicode.utf8Encode(nr, &buf_cp) catch continue;
-            w.writeAll(buf_cp[0..cp]) catch unreachable;
-        } else {
-            // named entities
-            const index_opt: ?usize = blk: {
-                for (entities, 0..) |entity, i| {
-                    if (mem.startsWith(u8, out[start..], entity) and
-                        start + entity.len < out.len and out[start + entity.len] == ';'
-                    ) {
-                        break :blk i;
-                    }
-                }
-
-                break :blk null;
-            };
-
-            if (index_opt) |i| {
-                buf_index_start += entities[i].len + 1;
-                w.writeAll(raws[i]) catch unreachable;
+        var print_amp = false;
+        // NOTE: if I remember correctly I do this because there an be double escaping
+        // of html symbols
+        inline for (.{"amp;", "#38;"}) |ent| {
+            if (mem.startsWith(u8, slice, ent)) {
+                print_amp = true;
+                slice = slice[ent.len..];
             }
         }
+
+        if (slice.len > 2 and slice[0] == '#') blk: {
+            // maybe numeric entity
+            const end = mem.indexOfScalar(u8, slice, ';') orelse break :blk;
+            const is_hex = slice[1] == 'x' or slice[1] == 'X';
+            const start = 1 + @intFromBool(is_hex);
+            const value = slice[start..end];
+            if (value.len == 0) { break :blk; }
+
+            const base: u8 = if (is_hex) 16 else 10;
+            const nr = std.fmt.parseUnsigned(u21, value, base) catch break :blk;
+            var buf_cp: [4]u8 = undefined;
+            const cp = std.unicode.utf8Encode(nr, &buf_cp) catch break :blk;
+            w.writeAll(buf_cp[0..cp]) catch unreachable;
+            slice = slice[end+1..];
+            print_amp = false;
+        } else {
+            // named entities
+            for (entities, 0..) |entity, i| {
+                if (mem.startsWith(u8, slice, entity)) {
+                    w.writeAll(raws[i]) catch unreachable;
+                    slice = slice[entity.len..];
+                    print_amp = false;
+                    break;
+                }
+            }
+        }
+
+        if (print_amp) {
+            w.writeAll("&") catch unreachable;
+        }
+
+        w.writeAll(slice) catch unreachable;
     }
-
-    w.writeAll(out[buf_index_start..]) catch unreachable;
-
-    const buf_written = w.buffered();
-    if (buf_written.len > 0) {
-        out = out[0..buf_written.len];
-        @memcpy(out, buf_written);
-    }
-
-    return out;
 }
 
 // Modifies 'input' buffer
-pub fn html_unescape_tags(input: []u8) []u8 {
-    const entities = [_][]const u8{"&lt;", "&gt;", "&#60;", "&#62;" };
+pub fn html_unescape_tags(writer: *std.Io.Writer, input: []u8) void {
+    const entities = [_][]const u8{"lt;", "gt;", "#60;", "#62;" };
     const raws = [_][]const u8{    "<",    ">"   , "<",     ">"  };
 
-    var out = input;
-    for (entities, raws) |ent, raw| {
-        const count = mem.replace(u8, out, ent, raw, out);
-        const len = out.len - ((ent.len - raw.len) * count);
-        out = out[0..len];
+    var w = writer;
+
+    var iter = mem.splitScalar(u8, input, '&');
+    if (iter.next()) |first| {
+        w.writeAll(first) catch unreachable;
     }
 
-    return out;
+    while (iter.next()) |possible_tag| {
+        var index: ?usize = null;
+        for (entities, 0..) |ent, i| {
+            if (mem.startsWith(u8, possible_tag, ent)) {
+                index = i;
+                break;
+            }
+        }
+
+        var rest = possible_tag;
+        if (index) |i| {
+            const raw = raws[i];
+            const ent = entities[i];
+            rest = rest[ent.len..];
+            w.writeAll(raw) catch unreachable;
+        } else {
+            w.writeAll("&") catch unreachable;
+        }
+
+        w.writeAll(rest) catch unreachable;
+    }
 }
 
 fn is_void(input: []const u8) bool {
@@ -268,7 +272,7 @@ fn ignore_these_errors(errors: []const super.html.Ast.Error, content: []const u8
 
 
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
-    var input: []u8 = @constCast(@ptrCast(mem.trim(u8, text, &std.ascii.whitespace)));
+    var input = mem.trim(u8, text, &std.ascii.whitespace);
     if (input.len == 0) {
         return "";
     }
@@ -276,64 +280,88 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     const do_html_unescape = mem.indexOfScalar(u8, input, '&') != null
         and mem.indexOfScalar(u8, input, ';') != null;
 
-    var stack_fallback = std.heap.stackFallback(1024, allocator);
-    var stack_alloc = stack_fallback.get();
-    // NOTE: not freeing
-    // - if on stack will be gone
-    // - if on heap just return as fn result
-    input = try stack_alloc.dupe(u8, input);
+    const remove_html_tags = mem.indexOfScalar(u8, input, '<') != null or
+        mem.find(u8, input, "lt;") != null;
+
+    if (!do_html_unescape and !remove_html_tags) {
+        // NOTE: not removing whitespace because I think it will be ok.
+        // If notice something off about titles check here. And if needed
+        // add whitespace removal
+        return input;
+    }
+    
+    // TODO: can I reduce or avoid this allocation?
+    const buf = try allocator.alloc(u8, input.len * 2);
+    errdefer allocator.free(buf);
+
+    var out = buf[0..input.len];
+    @memcpy(out, input);
+    const tmp = buf[input.len..];
+
+    var w: std.Io.Writer = .fixed(tmp);
 
     if (do_html_unescape) {
-        input = html_unescape_tags(@constCast(input));
+        html_unescape_tags(&w, out);
+        const value = w.buffered();
+        if (value.len != out.len) {
+            out = out[0..value.len];
+            @memcpy(out, value);
+        }
     }
 
-    const remove_html_tags = mem.indexOfScalar(u8, input, '<') != null;
     if (remove_html_tags) {
-        const ast = try super.html.Ast.init(allocator, input, .html, false);
+        const ast = try super.html.Ast.init(allocator, out, .html, false);
         defer ast.deinit(allocator);
-        if (ast.errors.len == 0 or ignore_these_errors(ast.errors, input)) {
-            input = try text_from_node(ast, @constCast(input), ast.nodes[0]);
+        if (ast.errors.len == 0 or ignore_these_errors(ast.errors, out)) {
+            w.end = 0;
+            try text_from_node(ast, &w, out, ast.nodes[0]);
+            const value = w.buffered();
+            out = out[0..value.len];
+            @memcpy(out, value);
         } else {
-            std.log.warn("Possible invalid HTML: '{s}'", .{input});
+            std.log.warn("Possible invalid HTML: '{s}'", .{out});
             for (ast.errors) |err| {
-                std.log.err("HTML error from '{s}': {}", .{err.main_location.slice(input), err.tag});
+                std.log.err("HTML error from '{s}': {}", .{err.main_location.slice(out), err.tag});
             }
         }
     }
 
-    input = html_unescape(@constCast(input));
-
-    var buf_title: [max_title_len]u8 = undefined;
-    var w: std.Io.Writer = .fixed(&buf_title);
+    if (do_html_unescape) {
+        w.end = 0;
+        html_unescape(&w, out);
+        const value = w.buffered();
+        if (value.len != out.len) {
+            out = out[0..value.len];
+            @memcpy(out, value);
+        }
+    }
 
     // Remove extra whitespaces
-    // TODO: remove whitespace before doing html unescaping and removing html tags?
-    var iter = mem.tokenizeAny(u8, input, &std.ascii.whitespace);
+    var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
     if (iter.next()) |first| {
+        w.end = 0;
         w.writeAll(first) catch unreachable;
 
         while (iter.next()) |chunk| {
-            var rest_len = w.unusedCapacityLen();
-            if (rest_len == 0) {
+            const rest_len = max_title_len - w.end - chunk.len;
+            if (rest_len <= 1) {
                 break;
             }
 
             w.writeByte(' ') catch break;
-            rest_len -= 1;
-            w.writeAll(chunk[0..@min(chunk.len, rest_len)]) catch unreachable;
+            w.writeAll(chunk) catch unreachable;
+        }
+
+        const value = w.buffered();
+        if (value.len != out.len) {
+            out = out[0..value.len];
+            @memcpy(out, value);
         }
     }
-    assert(w.buffered().len <= max_title_len);
+
+    out = out[0..@min(max_title_len, out.len)];
         
-    const dest = input[0..w.buffered().len];
-    @memcpy(dest, w.buffered());
-    input = dest;
-
-    if (stack_fallback.fixed_buffer_allocator.ownsPtr(@constCast(input.ptr))) {
-        input = try allocator.dupe(u8, input);
-    }
-
-    return input;
+    return out;
 }
 
 test "parseAtom" {
@@ -512,13 +540,7 @@ pub fn has_class(node: super.html.Ast.Node, code: []const u8, selector: []const 
 }
 
 // NOTE: Currently will cut off text if too long
-fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) ![]u8 {
-    // NOTE: this input might still contain unescaped html entities
-    const max_len = max_title_len + 20 + @divFloor(max_title_len, 10); 
-    var buf_writer: [max_len]u8 = undefined;
-
-    var w: std.Io.Writer = .fixed(&buf_writer);
-
+fn text_from_node(ast: super.html.Ast, w: *std.Io.Writer, input:[]const u8, node: super.html.Ast.Node) !void {
     var iter_text_node = IteratorTextNode.init(ast, input, node);
     if (iter_text_node.next()) |text_node| {
         const text = text_node.open.slice(input);
@@ -538,11 +560,6 @@ fn text_from_node(ast: super.html.Ast, input: []u8, node: super.html.Ast.Node) !
         const text = text_node.open.slice(input);
         w.writeAll(text[0..@min(text.len, rest_len)]) catch unreachable;
     }
-
-    const dest = input[0..w.buffered().len]; 
-    @memcpy(dest, w.buffered());
-
-    return dest;
 }
 
 fn text_location_from_node(ast: super.html.Ast, code: []const u8, node: super.html.Ast.Node) !?feed_types.Location {
@@ -1361,7 +1378,6 @@ const ParseOptions = struct {
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
     assert(util.is_url(opts.feed_url));
 
-    print("url: {s}\n", .{opts.feed_url});
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, self.content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 
@@ -1393,7 +1409,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     var buf_arr: [2 * 1024]u8 = undefined;
 
     if (parsed.feed.title) |loc| {
-        result.feed.title = try text_truncate_alloc(allocator, self.slice_from_loc(loc));
+        const text = self.slice_from_loc(loc);
+        result.feed.title = try text_truncate_alloc(allocator, text);
     }
 
     if (parsed.feed.page_url) |loc| {
@@ -1473,7 +1490,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         }
 
         if (item.title) |loc| {
-            new_item.title = try text_truncate_alloc(allocator, self.slice_from_loc(loc));
+            const text = self.slice_from_loc(loc);
+            new_item.title = try text_truncate_alloc(allocator, text);
         }
 
         feed_items.appendAssumeCapacity(new_item);
