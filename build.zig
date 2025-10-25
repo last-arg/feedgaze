@@ -7,7 +7,7 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/feed_urls.txt" },
-    .{ .name = "tmp_file", .path = "./tmp/@zachleat.rss" },
+    .{ .name = "tmp_file", .path = "./tmp/@freya.rss" },
     // .{ .name = "tmp_file", .path = "./test/atom.atom" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
@@ -38,7 +38,7 @@ pub fn build(b: *Build) !void {
         // TODO: currently this will fail in debug build which uses zig's own
         // backend. Just fails no specific error message.
         // Have to enable 'use_llvm' to compile in debug mode
-        .use_llvm = true,
+        // .use_llvm = true,
         // .use_lld = true,
     };
     const exe = b.addExecutable(opts_exe);

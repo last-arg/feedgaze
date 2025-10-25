@@ -156,7 +156,8 @@ pub fn html_unescape(w: *std.Io.Writer, input: []u8) void {
             // maybe numeric entity
             const end = mem.indexOfScalar(u8, slice, ';') orelse break :blk;
             const is_hex = slice[1] == 'x' or slice[1] == 'X';
-            const start = 1 + @intFromBool(is_hex);
+            // const start: u2 = 1 + @as(u2, @intCast(@intFromBool(is_hex)));
+            const start: u2 = if (is_hex) 2 else 1;
             const value = slice[start..end];
             if (value.len == 0) { break :blk; }
 
