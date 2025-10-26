@@ -964,7 +964,7 @@ pub const Storage = struct {
         \\ORDER BY updated_timestamp DESC, feed_id DESC LIMIT
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
-        const query = try std.fmt.allocPrint(allocator, query_fmt, .{""});
+        const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
         const result = try iterator_to_slice(types.Feed, &stmt, allocator, .{});
