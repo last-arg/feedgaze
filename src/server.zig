@@ -928,7 +928,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
     errdefer location_arr.deinit();
-    var w_arr = location_arr.writer;
+    var w_arr = &location_arr.writer;
 
     var url_tmp: ?[]const u8 = null;
    
