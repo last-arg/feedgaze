@@ -872,7 +872,7 @@ pub const Cli = struct {
                         }
                     }
 
-                    // TODO: reset writer start to zero?
+                    a_writer.shrinkRetainingCapacity(0);
                     const feed_opts_2 = try client_2.fetch(&a_writer.writer, arena.allocator(), fetch_url, .{
                         .buffer_header = &buffer_header,
                     });
