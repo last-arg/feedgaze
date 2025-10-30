@@ -398,21 +398,37 @@ pub const Icon = struct {
 
     // Hashed values start with 'hash'
     pub const hash_start = "hash";
-    pub const u64_hex_max_length = 16;
-    var hash_buf: [hash_start.len + u64_hex_max_length]u8 = undefined;
+    pub const last_modified_start = "last";
+    pub const u64_hex_max_length: u16 = 16;
+    const max_start = @max(hash_start.len, last_modified_start.len);
+    // Hash format: prefix + last-modified utc hex value (i64) + '-' + content hash
+    var hash_buf: [max_start + 1 + u64_hex_max_length * 2]u8 = undefined;
     fn content_cache_value(data: []const u8, etag_or_last_modified: ?[]const u8) []const u8 {
         if (etag_or_last_modified) |val| {
-            return val;
+            // Is etag
+            if (val.len >= 2 and
+                (val[0] == '"' or (val[0] == 'W' and val[1] == '/'))
+            ) {
+                return val;
+            }
         }
 
         var hasher = std.hash.Wyhash.init(0);
         std.hash.autoHashStrat(&hasher, data, .Deep);
         const val = hasher.final();
 
-
-        const hash_in_hex = std.fmt.bufPrint(&hash_buf, "{s}{x}", .{hash_start, val}) catch |err| {
+        const prefix, const date = blk: {
+            const parse_date = @import("feed_types.zig").RssDateTime.parse;
+            if (etag_or_last_modified) |raw| if (parse_date(raw)) |date_utc|{
+                break :blk .{last_modified_start, date_utc};
+            } else |err| {
+                std.log.warn("Failed to parse date '{s}'. Error: {}", .{raw, err});
+            };
+            break :blk .{hash_start, 0};
+        };
+        const hash_in_hex = std.fmt.bufPrint(&hash_buf, "{s}{x}-{x}", .{prefix, date, val}) catch |err| {
             std.log.err("Failed to print hashed value in hexdecimal. Error: {}", .{err});
-            // This should not happend because buffer has enough space
+            // This should not happen because buffer has enough space
             unreachable;
         };
       

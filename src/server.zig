@@ -275,7 +275,7 @@ pub const IconManage = struct {
 
         if (storage_opt) |storage|  {
             const icon_opt = storage.icon_by_id(self.allocator, id) catch |err| {
-                std.log.warn("Failed to get icon from database. Error: {}", .{err});
+                std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
                 return null;
             };
 

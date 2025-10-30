@@ -1372,9 +1372,6 @@ pub const App = struct {
             if (util.is_data(icon_url)) {
                 return icon_url; 
             } else {
-                writer.flush() catch {
-                    std.log.warn("Failed to clean/flush fetch_icon writer", .{});
-                };
                 writer.end = 0;
                 try writer.writeAll(icon_url);
                 const page_url_new = try uri.resolveInPlace(icon_url.len, &writer.buffer);
@@ -1412,7 +1409,7 @@ pub const App = struct {
         }
 
         var buf_url_slice: [1024]u8 = undefined;
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 16 * 1024);
         defer a_writer.deinit();
 
         if (icon_url_opt == null) blk: {
@@ -1470,6 +1467,7 @@ pub const App = struct {
             var req = http_client.init(allocator);
             defer { req.deinit(); }
 
+            a_writer.writer.end = 0;
             const cache_control = try req.fetch_image(&a_writer.writer, allocator, req_icon_url, .{
                 .buffer_header = &buffer_header,
             }) orelse {
@@ -1514,6 +1512,7 @@ pub const App = struct {
                 .port = true,
             })});
 
+            a_writer.writer.end = 0;
             const cache_control = try req.fetch_image(&a_writer.writer, allocator, url_request, .{
                 .buffer_header = &buffer_header,
             });

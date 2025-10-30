@@ -8,6 +8,7 @@
 - Add sqlite table for failed feed requests?
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
+- cli: change server to serve
 
 
 - Make sqlite returned primary keys into u64.
