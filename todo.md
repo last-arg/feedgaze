@@ -9,6 +9,8 @@
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
 - cli: change server to serve
+- when updating icon need to get utc from 'last...-' and turn it into
+  'last-modified' http header
 
 
 - Make sqlite returned primary keys into u64.

@@ -38,7 +38,7 @@ pub fn build(b: *Build) !void {
         // TODO: currently this will fail in debug build which uses zig's own
         // backend. Just fails no specific error message.
         // Have to enable 'use_llvm' to compile in debug mode
-        // .use_llvm = true,
+        .use_llvm = true,
         // .use_lld = true,
     };
     const exe = b.addExecutable(opts_exe);

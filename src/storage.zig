@@ -232,6 +232,16 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{.feed_id = feed_id, .next_utc_sec = utc_sec});
     }
 
+    pub fn request_failed_add(self: *Self, feed_id: usize, reason: []const u8) !void {
+        std.debug.assert(feed_id != 0);
+        const query =
+        \\INSERT INTO feed_request_failed
+        \\  (feed_id, reason) VALUES (@feed_id, @reason)
+        ;
+        
+        try self.sql_db.exec(query, .{}, .{.feed_id = feed_id, .reason = reason});
+    }
+
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
         // icon_upsert()
 
@@ -1612,6 +1622,13 @@ const tables = &[_][]const u8{
     \\  feed_id INTEGER NOT NULL UNIQUE,
     \\  last_failed_utc INTEGER DEFAULT (strftime('%s', 'now')),
     \\  last_msg TEXT DEFAULT NULL,
+    \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
+    \\) STRICT;
+    ,
+    \\CREATE TABLE IF NOT EXISTS feed_request_failed(
+    \\  feed_id INTEGER NOT NULL,
+    \\  utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+    \\  reason TEXT DEFAULT NULL,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
