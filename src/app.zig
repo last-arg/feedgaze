@@ -1039,7 +1039,7 @@ pub const Cli = struct {
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
             const r = app.update_feed(&item_arena, f_update) catch |err| {
-                std.log.info("Failed to update feed. Error: {}", .{err});
+                std.log.info("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
                 continue;
             };
 
