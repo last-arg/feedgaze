@@ -383,6 +383,7 @@ pub const Storage = struct {
                 \\  (select strftime('%s', 'now') >= {s} from rate_limit where rate_limit.feed_id = feed.feed_id),
                 \\  (strftime('%s', 'now') - last_update >= item_interval)
                 \\)
+                \\AND feed.feed_id not in (select distinct(feed_id) from feed_request_failed)
             , .{rate_limit_iif_utc_sec}));
         }
 
@@ -1217,8 +1218,9 @@ pub const Storage = struct {
         \\select min((
         \\  select last_update + item_interval from feed_update
         \\    where feed_id not in (select feed_id from rate_limit)
+        \\    AND feed_id not in (select distinct(feed_id) from feed_request_failed)
         \\  UNION
-        \\  select {s} from rate_limit
+        \\  select {s} from rate_limit where feed_id not in (select distinct(feed_id) from feed_request_failed)
         \\))
         , .{rate_limit_iif_utc_sec})
         ;
