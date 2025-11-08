@@ -205,6 +205,7 @@ pub const Storage = struct {
         const feed_id = parsed.feed.feed_id;
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
+        try self.feed_request_remove(feed_id);
         try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
 
         if (parsed.items.len == 0) {
@@ -216,6 +217,10 @@ pub const Storage = struct {
 
     pub fn rate_limit_remove(self: *Self, feed_id: usize) !void {
         try self.sql_db.exec("DELETE FROM rate_limit WHERE feed_id = ?", .{}, .{feed_id});
+    }
+
+    pub fn feed_request_remove(self: *Self, feed_id: usize) !void {
+        try self.sql_db.exec("DELETE FROM feed_request_failed WHERE feed_id = ?", .{}, .{feed_id});
     }
 
     pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
@@ -378,13 +383,20 @@ pub const Storage = struct {
 
         if (!options.force) {
             has_where = true;
+            const failed_request_query = select_request_failed ++
+            \\where feed_request_failed.feed_id = feed.feed_id having count(*) < 7
+            ;
             storage_arr.appendSliceAssumeCapacity(comptimePrint(
                 \\WHERE ifnull(
-                \\  (select strftime('%s', 'now') >= {s} from rate_limit where rate_limit.feed_id = feed.feed_id),
+                \\  (select strftime('%s', 'now') >= min(result) from
+                \\    (select {s} as result from rate_limit where rate_limit.feed_id = feed.feed_id
+                \\     union
+                \\     {s} 
+                \\    )
+                \\  ),
                 \\  (strftime('%s', 'now') - last_update >= item_interval)
                 \\)
-                \\AND feed.feed_id not in (select distinct(feed_id) from feed_request_failed)
-            , .{rate_limit_iif_utc_sec}));
+            , .{rate_limit_iif_utc_sec, failed_request_query}));
         }
 
         if (search_term) |term| {
@@ -1213,16 +1225,37 @@ pub const Storage = struct {
     \\) as INTEGER)
     ;
 
+    const select_request_failed =
+    \\select 
+    \\  max(utc_sec) + min(3600 * (count(*) * count(*)), 259200) as result
+    \\  from feed_request_failed
+    \\
+    ;
+
+    const failed_request_utc_sec = comptimePrint(
+    \\select min(result) from (
+    \\  {s}
+    \\  group by feed_id
+    \\  having count(*) < 7
+    \\)
+    , .{select_request_failed})
+    ;
+
     pub fn next_update_timestamp(self: *Self) !?i64 {
         const query = comptimePrint(
-        \\select min((
-        \\  select last_update + item_interval from feed_update
-        \\    where feed_id not in (select feed_id from rate_limit)
-        \\    AND feed_id not in (select distinct(feed_id) from feed_request_failed)
+        \\select min(val) from (
+        \\  select last_update + item_interval as val from feed_update
+        \\    where feed_id not in (
+        \\      select feed_id from rate_limit 
+        \\      UNION
+        \\      select feed_id from feed_request_failed
+        \\    )
         \\  UNION
         \\  select {s} from rate_limit where feed_id not in (select distinct(feed_id) from feed_request_failed)
-        \\))
-        , .{rate_limit_iif_utc_sec})
+        \\  UNION
+        \\  {s}
+        \\)
+        , .{rate_limit_iif_utc_sec, failed_request_utc_sec})
         ;
         return try one(&self.sql_db, i64, query, .{});
     }
@@ -1240,13 +1273,23 @@ pub const Storage = struct {
         const query = comptimePrint(
         \\select 
         \\  coalesce(
-        \\    (select {s} from rate_limit where feed_id = feed_update.feed_id), 
+        \\    (
+        \\      select min(result) from (select
+        \\        cast(iif(count < 3, next_utc_sec, 
+        \\          max(next_utc_sec,
+        \\            last_utc_sec + min(3600 * (count * count), 259200)
+        \\          )
+        \\        ) as INTEGER) as result
+        \\        from rate_limit where feed_id = @feed_id
+        \\        UNION
+        \\        {s} where feed_id = @feed_id
+        \\    ), 
         \\    last_update + item_interval
         \\  ) - strftime('%s', 'now')
-        \\from feed_update where feed_update.feed_id = ?;
+        \\from feed_update where feed_update.feed_id = @feed_id;
         , .{rate_limit_iif_utc_sec})
         ;
-        return try one(&self.sql_db, i64, query, .{feed_id});
+        return try one(&self.sql_db, i64, query, .{.feed_id = feed_id});
     }
 
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {
