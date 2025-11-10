@@ -369,10 +369,10 @@ pub const Storage = struct {
         \\  feed_update.etag_or_last_modified,
         \\  item.id as latest_item_id,
         \\  item.link as latest_item_link,
-        \\  max(item.updated_timestamp) as latest_updated_timestamp
+        \\  item.updated_timestamp as latest_updated_timestamp
         \\from feed
         \\LEFT JOIN feed_update ON feed.feed_id = feed_update.feed_id
-        \\LEFT JOIN item ON feed.feed_id = item.feed_id
+        \\LEFT JOIN item ON feed.feed_id = item.feed_id and item.position = 0
         \\
         ;
 
@@ -384,17 +384,17 @@ pub const Storage = struct {
         if (!options.force) {
             has_where = true;
             const failed_request_query = select_request_failed ++
-            \\where feed_request_failed.feed_id = feed.feed_id having count(*) < 7
+            \\where feed_request_failed.feed_id = feed.feed_id
             ;
             storage_arr.appendSliceAssumeCapacity(comptimePrint(
                 \\WHERE ifnull(
-                \\  (select strftime('%s', 'now') >= min(result) from
+                \\  (select unixepoch() >= min(result) from
                 \\    (select {s} as result from rate_limit where rate_limit.feed_id = feed.feed_id
                 \\     union
                 \\     {s} 
                 \\    )
                 \\  ),
-                \\  (strftime('%s', 'now') - last_update >= item_interval)
+                \\  (unixepoch() >= last_update + item_interval)
                 \\)
             , .{rate_limit_iif_utc_sec, failed_request_query}));
         }
@@ -1226,8 +1226,10 @@ pub const Storage = struct {
     ;
 
     const select_request_failed =
-    \\select 
-    \\  max(utc_sec) + min(3600 * (count(*) * count(*)), 259200) as result
+    \\select iif(count(*) < 7
+    \\    , max(utc_sec) + min(3600 * (count(*) * count(*)), 259200)
+    \\    , 9223372036854775807
+    \\  ) as result
     \\  from feed_request_failed
     \\
     ;
@@ -1236,7 +1238,6 @@ pub const Storage = struct {
     \\select min(result) from (
     \\  {s}
     \\  group by feed_id
-    \\  having count(*) < 7
     \\)
     , .{select_request_failed})
     ;
@@ -1251,7 +1252,7 @@ pub const Storage = struct {
         \\      select feed_id from feed_request_failed
         \\    )
         \\  UNION
-        \\  select {s} from rate_limit where feed_id not in (select distinct(feed_id) from feed_request_failed)
+        \\  select {s} from rate_limit
         \\  UNION
         \\  {s}
         \\)
