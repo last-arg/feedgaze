@@ -18,17 +18,8 @@ const builtin = @import("builtin");
 const util = @import("util.zig");
 const AddRule = @import("add_rule.zig");
 const http_client = @import("./http_client.zig");
-
-// Date for machine "2011-11-18T14:54:39.929Z". For <time datetime="...">.
-const date_fmt = "{[year]d}-{[month]d:0>2}-{[day]d:0>2}T{[hour]d:0>2}:{[minute]d:0>2}:{[second]d:0>2}.000Z";
-const date_len_max = std.fmt.count(date_fmt, .{
-    .year = 2222,
-    .month = 3,
-    .day = 2,
-    .hour = 2,
-    .minute = 2,
-    .second = 2,
-});
+const timestampToString = util.timestampToString;
+const date_len_max = util.date_len_max;
 
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
@@ -2889,23 +2880,6 @@ fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
 
     // mins > 0
     return try std.fmt.bufPrint(buf, "{d}m", .{mins});
-}
-
-fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
-    if (timestamp) |ts| {
-        const dt = Datetime.fromSeconds(@floatFromInt(ts));
-        const date_args = .{
-            .year = dt.date.year,
-            .month = dt.date.month,
-            .day = dt.date.day,
-            .hour = dt.time.hour,
-            .minute = dt.time.minute,
-            .second = dt.time.second,
-        };
-        return std.fmt.bufPrint(buf, date_fmt, date_args) catch unreachable; 
-    }
-
-    return "";
 }
 
 fn get_cookie_value(req: *httpz.Request) ?i64 {

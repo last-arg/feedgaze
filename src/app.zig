@@ -243,10 +243,23 @@ pub const Cli = struct {
                     _ = a_writer.writer.consumeAll();
 
                     if (!util.is_data(icon.icon_url)) blk: {
+                        var date_buf: [util.date_len_max]u8 = undefined;
                         const icon_cache_value = cache_value: {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
                                 break :cache_value null;
+                            } else if (mem.startsWith(u8, feed_types.Icon.last_modified_start, icon.etag_or_last_modified_or_hash)) {
+                                const end = mem.findScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
+                                    std.log.warn("Image hash is invalid. Hash: '{s}'", .{icon.etag_or_last_modified_or_hash});
+                                    break :cache_value null;
+                                };
+                                const hex_str = icon.etag_or_last_modified_or_hash[feed_types.Icon.last_modified_start.len..end];
+                                const utc_timestamp = std.fmt.parseInt(i64, hex_str, 10) catch |err| {
+                                    std.log.warn("Image hash contains invalid hexidecimal value. Hash: '{s}'. Error: {}", .{icon.etag_or_last_modified_or_hash, err});
+                                    break :cache_value null;
+                                };
+                                break :cache_value util.timestampToString(&date_buf, utc_timestamp);
                             }
+
                             break :cache_value icon.etag_or_last_modified_or_hash;
                         };
                         const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
