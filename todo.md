@@ -9,7 +9,6 @@
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
 - cli: change server to serve
-- feed page returns SQLiteError
 - got time in the future
   - https://a11yweekly.com/
 

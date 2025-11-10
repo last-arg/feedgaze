@@ -1276,19 +1276,15 @@ pub const Storage = struct {
         \\  coalesce(
         \\    (
         \\      select min(result) from (select
-        \\        cast(iif(count < 3, next_utc_sec, 
-        \\          max(next_utc_sec,
-        \\            last_utc_sec + min(3600 * (count * count), 259200)
-        \\          )
-        \\        ) as INTEGER) as result
+        \\        {s} as result
         \\        from rate_limit where feed_id = @feed_id
         \\        UNION
         \\        {s} where feed_id = @feed_id
-        \\    ), 
+        \\    )), 
         \\    last_update + item_interval
         \\  ) - strftime('%s', 'now')
         \\from feed_update where feed_update.feed_id = @feed_id;
-        , .{rate_limit_iif_utc_sec})
+        , .{rate_limit_iif_utc_sec, select_request_failed})
         ;
         return try one(&self.sql_db, i64, query, .{.feed_id = feed_id});
     }
