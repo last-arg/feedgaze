@@ -347,8 +347,8 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
             w.writeAll(first) catch unreachable;
 
             while (iter.next()) |chunk| {
-                const rest_len = max_title_len - w.end - chunk.len;
-                if (rest_len <= 1) {
+                const new_len = w.end + chunk.len;
+                if (new_len > max_title_len) {
                     break;
                 }
 
