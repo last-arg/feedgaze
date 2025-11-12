@@ -1440,7 +1440,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
     if (try db.feed_last_update(feed.feed_id)) |last_update| {
-        const date_for_machine = timestampToString(&date_buf, last_update);
         try w.print(
             \\<p>Last update was
             \\<em>
@@ -1450,7 +1449,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             \\</em>
             \\</p>
         , .{
-            date_for_machine,
+            timestampToString(&date_buf, last_update),
             date_readable(last_update),
         });
     }
@@ -1474,6 +1473,36 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     } else {
         try w.writeAll(
             \\<p>Next update unknown</p>
+        );
+    }
+
+    // Feed request(s) failed
+    const failed_requests = try db.get_failed_requests(req.arena, feed.feed_id);
+    if (failed_requests.len > 1) {
+        try w.writeAll(
+            \\<table class="table-striped">
+            \\<caption>Failed request(s)</caption>
+            \\<tr>
+            \\<th>Date</th>
+            \\<th>Error</th>
+            \\</tr>
+        );
+
+        for (failed_requests) |failed_request| {
+            try w.print(
+                \\<tr>
+                \\<td><time datetime="{[datetime]s}">{[time]s}</time></td>
+                \\<td>{[reason]s}</td>
+                \\</tr>
+            , .{
+                .reason = failed_request.reason,
+                .datetime = timestampToString(&date_buf, failed_request.utc_sec),
+                .time = date_readable(failed_request.utc_sec),
+            });
+        }
+
+        try w.writeAll(
+            \\</table>
         );
     }
 

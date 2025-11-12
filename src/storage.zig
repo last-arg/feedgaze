@@ -247,6 +247,22 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{.feed_id = feed_id, .reason = reason});
     }
 
+    const FeedFailedRequest = struct {
+        utc_sec: i64,
+        reason: []const u8,
+    };
+
+    pub fn get_failed_requests(self: *Self, allocator: Allocator, feed_id: u64) ![]FeedFailedRequest {
+        const query =
+        \\SELECT utc_sec, reason FROM feed_request_failed
+        \\WHERE feed_id = ?
+        \\ORDER BY utc_sec DESC
+        \\LIMIT 10
+        ;
+
+        return try selectAll(&self.sql_db, allocator, FeedFailedRequest, query, .{ feed_id });
+    }
+
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
         // icon_upsert()
 

@@ -5,12 +5,11 @@
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
-- Add sqlite table for failed feed requests?
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
-- cli: change server to serve
 - got time in the future
   - https://a11yweekly.com/
+- feed list: somekind of indicator if feed request has failed
 
 
 - Make sqlite returned primary keys into u64.
