@@ -352,7 +352,7 @@ const static_files = if (builtin.mode != .Debug) .{
     .{ "reload.js", 4 },
 };
 
-pub fn start_server(storage: Storage, opts: types.ServerOptions) !void {
+pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 

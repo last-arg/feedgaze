@@ -17,7 +17,7 @@ const args_parser = @import("zig-args");
 const ShowOptions = feed_types.ShowOptions;
 const UpdateOptions = feed_types.UpdateOptions;
 const TagOptions = feed_types.TagOptions;
-const ServerOptions = feed_types.ServerOptions;
+const ServeOptions = feed_types.ServeOptions;
 const FetchOptions = feed_types.FetchHeaderOptions;
 const fs = std.fs;
 const http_client = @import("./http_client.zig");
@@ -39,7 +39,7 @@ const CliVerb = union(enum) {
     update: UpdateOptions,
     rule: feed_types.RuleOptions,
     run: void,
-    server: ServerOptions,
+    serve: ServeOptions,
     tag: TagOptions,
     add: feed_types.AddOptions,
     batch: feed_types.BatchOptions,
@@ -192,7 +192,7 @@ pub const Cli = struct {
                     try self.storage.tags_feed_add(feed_id, tags_ids);
                 }
             },
-            .server => |opts| try self.server(opts),
+            .serve => |opts| try self.serve(opts),
             .rule => |opts| {
                 var arena = std.heap.ArenaAllocator.init(self.allocator);
                 defer arena.deinit();
@@ -453,7 +453,7 @@ pub const Cli = struct {
             \\  rule      Feed adding rules
             \\  run       Run update in foreground
             \\  show      Print feeds' items
-            \\  server    Start server
+            \\  serve    Start server
             \\  batch     Do batch actions
             \\
             \\General options:
@@ -507,8 +507,8 @@ pub const Cli = struct {
                 \\  -d, --database  Database location 
                 \\  -h, --help      Print this help and exit
                 ,
-                .server => 
-                \\Usage: feedgaze server [options]
+                .serve => 
+                \\Usage: feedgaze serve [options]
                 \\
                 \\  Launches server
                 \\
@@ -1067,7 +1067,7 @@ pub const Cli = struct {
         return true;
     }
 
-    pub fn server(self: *Self, opts: ServerOptions) !void {
+    pub fn serve(self: *Self, opts: ServeOptions) !void {
         try @import("server.zig").start_server(self.storage, opts);
     }
 

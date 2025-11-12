@@ -59,7 +59,7 @@ pub const UpdateOptions = struct {
     force: bool = false,
 };
 
-pub const ServerOptions = struct {
+pub const ServeOptions = struct {
     port: u16 = 1222,
 
     pub const shorthands = .{
