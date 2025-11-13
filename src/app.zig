@@ -931,18 +931,16 @@ pub const Cli = struct {
         }
         const html_option_index = links.len + 1;
         try writer.print("{d}. Add html as feed\n", .{html_option_index});
-        var buf: [32]u8 = undefined;
-        var fixed_writer: std.Io.Writer = .fixed(&buf);
         var index: usize = 0;
 
         while (index == 0 or index > links.len) {
-            _ = fixed_writer.consumeAll();
             try writer.writeAll("Enter number: ");
             try writer.flush();
+            reader.tossBuffered();
             const value_raw = try reader.takeDelimiterExclusive('\n');
             const value = mem.trim(u8, value_raw, &std.ascii.whitespace);
             index = std.fmt.parseUnsigned(usize, std.mem.trim(u8, value, &std.ascii.whitespace), 10) catch {
-                try writer.print("Provided input is not a number. Enter number between 1 - {d}\n", .{links.len + 1});
+                try writer.print("Provided input '{s}' is not a number. Enter number between 1 - {d}\n", .{value, links.len + 1});
                 continue;
             };
             if (index == html_option_index) {
