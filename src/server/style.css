@@ -395,6 +395,29 @@ main h3 {
   border-radius: 1px;
 }
 
+.feed-failed-msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4xs);
+  font-size: var(--size-xs);
+  font-style: italic;
+  color: var(--color-orange-30);
+}
+
+.feed-failed-msg::before {
+  font-style: normal;
+  content: "!";
+  background: var(--color-orange-50);
+  color: var(--color-orange-90);
+  line-height: 1.2;
+  width: 0.9em;
+  display: inline-block;
+  text-align: center;
+  border-radius: 3px;
+  font-size: var(--size-l);
+}
+
 .feed-edit {
   font-size: var(--size-xs);
   --color-text-link: var(--color-text-link-secondary);

@@ -2527,6 +2527,8 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
         break :trimmed null;
     };
+
+    const failed_requests = try db.feed_request_failed_ids(req.arena);
     
     const feeds = blk: {
         const after = after: {
@@ -2562,7 +2564,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         \\</header>
     );
     if (feeds.len > 0) {
-        try feeds_and_items_print(w, req.arena, db, feeds, global);
+        try feeds_and_items_print(w, req.arena, db, feeds, global, failed_requests);
         if (feeds.len == config.query_feed_limit) {
             // var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
             var new_url_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 128);
@@ -2631,7 +2633,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     try w.flush();
 }
 
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global) !void {
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global, failed_requests_ids: []u64) !void {
     try w.writeAll("<div class='flow'>");
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
@@ -2649,6 +2651,12 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try feed_render(w, feed);
         try feed_edit_link_render(w, feed.feed_id);
         try w.writeAll("</div>");
+
+        if (mem.findScalar(u64, failed_requests_ids, @intCast(feed.feed_id))) |_| {
+            try w.writeAll(
+            \\<p class="feed-failed-msg">Last update failed</p>
+            );
+        }
 
         const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {

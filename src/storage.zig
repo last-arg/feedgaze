@@ -223,6 +223,13 @@ pub const Storage = struct {
         try self.sql_db.exec("DELETE FROM feed_request_failed WHERE feed_id = ?", .{}, .{feed_id});
     }
 
+    pub fn feed_request_failed_ids(self: *Self, allocator: Allocator) ![]u64 {
+        const query =
+        \\select distinct(feed_id) from feed_request_failed
+        ;
+        return try selectAll(&self.sql_db, allocator, u64, query, .{});
+    }
+
     pub fn rate_limit_add(self: *Self, feed_id: usize, utc_sec: i64) !void {
         std.debug.assert(feed_id != 0);
         const query =

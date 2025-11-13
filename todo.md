@@ -9,8 +9,9 @@
   - &nbps; should be replaced with ' '
 - got time in the future
   - https://a11yweekly.com/
-- feed list: somekind of indicator if feed request has failed
+- root page: show failed feed indicator?
 - functions should take Uri type instead of []const u8
+- web page: nothing happens when saving feed 
 
 
 - Make sqlite returned primary keys into u64.
