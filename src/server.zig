@@ -1471,6 +1471,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         });
         // TODO: add update link/button if can update now 
     } else {
+        // TODO: if too many failed requests updating will be disabled 
         try w.writeAll(
             \\<p>Next update unknown</p>
         );

@@ -20,8 +20,8 @@ pub fn main() !void {
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
-    // try run_add_new_feed();
-    try run_parse();
+    try run_add_new_feed();
+    // try run_parse();
     // try test_allocating();
     // try storage_item_interval();
     // try storage_test();
@@ -402,7 +402,7 @@ pub fn run_add_new_feed() !void {
         .progress = progress_node,
     };
     // const input = "https://www.newelofknowledge.com/letters";
-    const input = "https://www.factorio.com/blog/rss";
+    const input = "https://h4x0r.org/";
     // const input = "https://lobste.rs/";
     // const input = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
     // const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";

@@ -821,13 +821,12 @@ pub const Cli = struct {
         var client_2 = http_client.init(arena.allocator());
         defer client_2.deinit();
 
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
+        var a_writer: std.Io.Writer.Allocating = try .initCapacity(self.allocator, 32 * 1024);
         defer a_writer.deinit();
 
         var client = http_client.init(arena.allocator());
         defer client.deinit();
         var buffer_header: [1024]u8 = undefined;
-
         
         const feed_opts = try client.fetch(&a_writer.writer, arena.allocator(), url, .{
             .buffer_header = &buffer_header,
@@ -871,7 +870,7 @@ pub const Cli = struct {
                         fetch_url = buf_writer.buffered()[end..];
                     }
 
-                    uri = std.Uri.parse(url) catch {
+                    uri = std.Uri.parse(fetch_url) catch {
                         return error.InvalidUrl;
                     };
 
@@ -886,14 +885,16 @@ pub const Cli = struct {
                     }
 
                     a_writer.shrinkRetainingCapacity(0);
-                    const feed_opts_2 = try client_2.fetch(&a_writer.writer, arena.allocator(), fetch_url, .{
+                    const fetch_url_2 = try arena.allocator().dupe(u8, fetch_url);
+                    const title = if (link.title) |t| try arena.allocator().dupe(u8, t) else null;
+                    const feed_opts_2 = try client_2.fetch(&a_writer.writer, arena.allocator(), fetch_url_2, .{
                         .buffer_header = &buffer_header,
                     });
 
                     add_opts.feed_opts = feed_opts_2.?;
                     add_opts.feed_opts.body = a_writer.writer.buffered();
                     add_opts.feed_opts.feed_url = try client_2.get_url_slice(&buf_url);
-                    add_opts.feed_opts.title = link.title;
+                    add_opts.feed_opts.title = title;
                 }
             }
         } else {

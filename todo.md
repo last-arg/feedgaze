@@ -10,6 +10,7 @@
 - got time in the future
   - https://a11yweekly.com/
 - feed list: somekind of indicator if feed request has failed
+- functions should take Uri type instead of []const u8
 
 
 - Make sqlite returned primary keys into u64.
