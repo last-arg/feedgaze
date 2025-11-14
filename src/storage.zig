@@ -470,7 +470,7 @@ pub const Storage = struct {
     };
 
     pub fn update_feed_fields(self: *Self, allocator: Allocator, fields: FeedFields) !void {
-        var savepoint = try self.sql_db.savepoint("update_feed_fields");
+        var savepoint = try self.sql_db.savepoint("update_feed");
         defer savepoint.rollback();
 
         // Remove tags that aren't part of .tags 

@@ -1288,7 +1288,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .icon_id = icon_id,
         .tags = tags.items,
     };
-    db.update_feed_fields(req.arena, fields) catch {
+    db.update_feed_fields(req.arena, fields) catch |err| {
+        std.log.err("Failed to update feed. Error {}", .{err});
         const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=feed", .{req.url.path});
         resp.header("Location", url_redirect);
         return;
@@ -1514,19 +1515,21 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     if (query_kv.get("error")) |error_value| {
+        try w.writeAll("<p class='callout danger'>");
         if (mem.eql(u8, "delete", error_value)) {
-            try w.writeAll("<p>Failed to delete feed</p>");
+            try w.writeAll("Failed to delete feed");
         } else if (mem.eql(u8, "feed", error_value)) {
-            try w.writeAll("<p>Failed to update feed</p>");
+            try w.writeAll("Failed to update feed");
         } else if (mem.eql(u8, "html", error_value)) {
-            try w.writeAll("<p>Failed to update feed html fields</p>");
+            try w.writeAll("Failed to update feed html fields");
         } else if (mem.eql(u8, "item-selector", error_value)) {
-            try w.writeAll("<p>Fill in 'Feed item selector' field</p>");
+            try w.writeAll("Fill in 'Feed item selector' field");
         } else {
-            try w.writeAll("<p>Failed to save feed changes</p>");
+            try w.writeAll("Failed to save feed changes");
             // TODO: list errors?
             // TODO: show errors near input fields?
         }
+        try w.writeAll("</p>");
     }
     
     try w.writeAll("<h3>Edit feed</h3>");
