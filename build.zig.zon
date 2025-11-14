@@ -11,7 +11,7 @@
     .dependencies = .{
         .sqlite = .{
             .url = "https://github.com/vrischmann/zig-sqlite/archive/refs/heads/master.tar.gz",
-            .hash = "sqlite-3.48.0-F2R_a5yODgDFvwwsytm7ZONcSqYBo3qv1PmXOtw3tqLA",
+            .hash = "sqlite-3.48.0-F2R_a8eODgD9X8XjvWlZ1K7C-tDuHae4FuShM2N-yIT2",
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
