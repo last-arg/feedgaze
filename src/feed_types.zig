@@ -88,28 +88,28 @@ pub const Feed = struct {
     };
 };
 
-// TODO: pass in writer instead of allocator
-pub fn url_create(alloc: std.mem.Allocator, input: []const u8, base_url: Uri) ![]const u8 {
+pub fn resolve_and_write_url(writer: *std.Io.Writer, input: []const u8, base_url: Uri) !void {
     if (mem.startsWith(u8, input, "http")) {
-        return alloc.dupe(u8, input);
+        try writer.writeAll(input);
+        return;
     } else if (mem.startsWith(u8, input, "//")) {
-        return try std.fmt.allocPrint(alloc, "https:{s}", .{input});
+        try writer.writeAll("https:");
+        try writer.writeAll(input);
+        return;
     }
-    var aw: std.Io.Writer.Allocating = .init(alloc);
-    errdefer aw.deinit();
 
-    try std.Uri.writeToStream(&base_url, &aw.writer, .{
+    try std.Uri.writeToStream(&base_url, writer, .{
         .scheme = true,
         .authentication = true,
         .authority = true,
         .port = true,
     });
-    if (input.len > 0 and input[0] != '/') {
-        try aw.writer.writeAll("/");
-    }
-    try aw.writer.writeAll(input);
 
-    return aw.writer.buffered();
+    if (input.len > 0 and input[0] != '/') {
+        try writer.writeByte('/');
+    }
+
+    try writer.writeAll(input);
 }
 
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3

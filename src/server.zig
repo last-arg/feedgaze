@@ -1006,11 +1006,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
         const html_parsed = try html.parse_html(req.arena, feed_options.body);
         for (html_parsed.links) |link| {
+            try w_arr.writeAll("&url=");
             const url_final = try client.get_url_slice(&buffer_url);
             const uri_final = try std.Uri.parse(url_final);
-            const url_str = try feed_types.url_create(req.arena, link.link, uri_final);
-            const uri_component: std.Uri.Component = .{ .raw = url_str };
-            try w_arr.print("&url={f}", .{std.fmt.alt(uri_component, .formatEscaped)});
+            try feed_types.resolve_and_write_url(w_arr, link.link, uri_final);
         }
         resp.header("Location", w_arr.buffered());
         return;
