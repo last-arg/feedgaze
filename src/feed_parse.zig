@@ -1053,16 +1053,12 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
         }
     }.less_than);
 
-    // TODO?: should all or some date values default
-    // to current datetime?
-    var month: u32 = 0;
-    var year: u32 = 0;
-    var day: u32 = 0;
-    var hour: u32 = 0;
-    var minute: u32 = 0;
-    var second: u32 = 0;
-    var timezone: ?dt.datetime.Timezone = null;
-
+    var result: datetime.Datetime = .{
+        .date = datetime.Date.now(),
+        .time = .{},
+        .zone = datetime.timezones.UTC,
+    };
+    
     for (date_fmts.items, 0..) |date_fmt, date_i| {
         const fmt_len = date_fmt.str.len;
         const end = @min(date_fmt.index + fmt_len, raw.len);
@@ -1088,21 +1084,21 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
             }
             
             const raw_number = raw_value[0..end_number];
-            if (std.fmt.parseUnsigned(u32, raw_number, 10)) |value| {
+            if (std.fmt.parseUnsigned(u16, raw_number, 10)) |value| {
                 if (std.mem.eql(u8, "YY", date_fmt.str)) {
-                    year = 2000 + value;
+                    result.date.year = 2000 + value;
                 } else if (std.mem.eql(u8, "YYYY", date_fmt.str)) {
-                    year = value;
+                    result.date.year = @intCast(value);
                 } else if (std.mem.eql(u8, "MM", date_fmt.str)) {
-                    month = value;
+                    result.date.month = @intCast(value);
                 } else if (std.mem.eql(u8, "DD", date_fmt.str)) {
-                    day = value;
+                    result.date.day = @intCast(value);
                 } else if (std.mem.eql(u8, "HH", date_fmt.str)) {
-                    hour = value;
+                    result.time.hour = @intCast(value);
                 } else if (std.mem.eql(u8, "mm", date_fmt.str)) {
-                    minute = value;
+                    result.time.minute = @intCast(value);
                 } else if (std.mem.eql(u8, "ss", date_fmt.str)) {
-                    second = value;
+                    result.time.second = @intCast(value);
                 }
             } else |_| {
                 // NOTE: This should not happen.
@@ -1110,7 +1106,7 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
             }
         } else if (std.mem.eql(u8, "MMM", date_fmt.str)) {
             if (datetime.Month.parseAbbr(raw_value)) |value| {
-                month = @intFromEnum(value);
+                result.date.month = @intFromEnum(value);
             } else |_| {
                 std.log.warn("Failed to parse months abbreviated value from '{s}'", .{raw_value});
             }
@@ -1152,14 +1148,13 @@ pub fn seconds_from_date_format(raw: []const u8, date_format: []const u8) ?i64 {
             const all_minutes: i16 = @intCast(hours * 60 + minutes);
             const offset = sign * all_minutes;
 
-            timezone = dt.datetime.Timezone.create(raw[index..end_tz], offset, .no_dst);
+            result.zone = datetime.Timezone.create(raw[index..end_tz], offset, .no_dst);
         } else {
             std.log.warn("Failed to find valid date value for '{s}' from '{s}'", .{date_fmt.str, raw_value});
         }
     }
 
-    const date = datetime.Datetime.create(year, month, day, hour, minute, second, 0, timezone) catch return null;
-    return @intFromFloat(date.toSeconds());
+    return @intFromFloat(result.toSeconds());
 }
 
 // NOTE: <time> valid set of date formats 

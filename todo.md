@@ -7,11 +7,8 @@
 - if link and id are same only save link to save space
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
-- got time in the future
-  - https://a11yweekly.com/
 - root page: show failed feed indicator?
 - functions should take Uri type instead of []const u8
-- web page: nothing happens when saving feed 
 
 
 - Make sqlite returned primary keys into u64.
