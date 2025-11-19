@@ -295,6 +295,7 @@ pub const FeedItem = struct {
     // TODO: this should not be null. See if there is a reason why I marked it
     // as null? Probably item_id is null before adding item to DB. Have
     // different types for inserting and retrieving item?
+    // sqlite auto-increment starts from 1
     item_id: ?usize = null,
     title: []const u8,
     id: ?[]const u8 = null,

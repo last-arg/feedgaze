@@ -2009,7 +2009,7 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     const title = feed.title orelse "";
     try w.print(
         \\<div class="item-extra">
-        \\<a href="/feed/{d}" title="{s}">{s}</a>
+        \\<div><a href="/feed/{d}" title="{s}">{s}</a></div>
     , .{ feed.feed_id, title, title });
 
     try w.print(

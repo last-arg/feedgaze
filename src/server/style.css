@@ -208,11 +208,11 @@ main h2 {
   margin-inline-end: var(--size-xl);
   max-width: 40ch;
   /* make sure .item-extra column is aligned */
-  width: 200%;
+  width: 1000%;
 }
 
-relative-time {
-  display: inline-block;
+main > relative-time {
+  display: block;
 }
 
 relative-time > ul {
@@ -225,13 +225,12 @@ relative-time > ul {
   min-width: 7ch;
 }
 
-.item-extra a,
+.item-extra > div,
 .feed-external-url span {
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
-  line-clamp: 1;
+  display: block;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 a.feed-external-url {
@@ -239,6 +238,8 @@ a.feed-external-url {
   display: flex;
   align-items: center;
   gap: var(--size-5xs);
+  max-width: 100%;
+  width: fit-content;
 }
 
 .truncate-1 {
