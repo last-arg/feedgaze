@@ -10,8 +10,6 @@
 - root page: show failed feed indicator?
 - functions should take Uri type instead of []const u8
 - decode text (html) after removing html tags
-- css/style root page. When screen gets smaller can move main content left
-  to center it. This also makes sure that items' links displays more text.
 - add trigger when:
   - failed request is added
   - rate limit is added

@@ -24,8 +24,9 @@
   }
 }
 
-:root {
-  --max-width: 55ch;
+footer hr,
+header hr {
+  margin-inline: -50vw;
 }
 
 body {
@@ -51,8 +52,14 @@ hr {
 }
 
 body > div {
-  max-width: var(--max-width);
-  margin-inline: auto;
+  --min-width: 50ch;
+  --max-width: 75ch;
+  --diff: calc((var(--min-width) - var(--max-width)));
+  margin-inline-start: calc(max(0px,
+      (0.65 * max(0px, 100% - var(--min-width)))
+      + (.35 * min(var(--diff), var(--max-width) - 100%))
+    )
+  );
   padding-inline: var(--size-m);
   padding-block: var(--size-4xs) var(--size-m);
 }
@@ -213,10 +220,6 @@ main h2 {
 
 main > relative-time {
   display: block;
-}
-
-relative-time > ul {
-  margin-inline-end: calc(-0.5 * max(0px, calc(100vw - var(--max-width))));
 }
 
 .item-extra {

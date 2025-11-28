@@ -2422,7 +2422,7 @@ const Layout = struct {
 
         try self.write_sidebar_form(w, tags, opts);
 
-        try w.writeAll("<hr class='breakout'>");
+        try w.writeAll("<hr>");
         try w.writeAll("</header>");
     }
 
@@ -2586,7 +2586,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const current_path_len = w_arr.buffered().len;
 
             try w.writeAll("<footer class='main-footer'>");
-            try w.writeAll("<hr class='breakout'>");
+            try w.writeAll("<hr>");
 
             const has_prev = try db.feeds_search_has_previous(req.arena, .{ 
                 .search = feed_search_value, 
