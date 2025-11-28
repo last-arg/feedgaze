@@ -9,7 +9,6 @@
   - &nbps; should be replaced with ' '
 - root page: show failed feed indicator?
 - functions should take Uri type instead of []const u8
-- decode text (html) after removing html tags
 - add trigger when:
   - failed request is added
   - rate limit is added

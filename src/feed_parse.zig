@@ -132,10 +132,9 @@ const WriterContext = struct {
 
 // https://html.spec.whatwg.org/multipage/syntax.html#syntax-charref
 // Mutates 'input' buffer
-// 'lt' and 'gt' are handled by html_unescaped_tags()
 pub fn html_unescape(w: *std.Io.Writer, input: []u8) void {
-    const entities = [_][]const u8{"amp;", "quot;", "apos;", "nbsp;"};
-    const raws = [_][]const u8{    "&",   "\"",   "'",    " "};
+    const entities = [_][]const u8{"amp;", "quot;", "apos;", "nbsp;", "lt;", "gt;"};
+    const raws = [_][]const u8{    "&",    "\"",    "'",     " ",     "<",   ">"};
 
     var iter = mem.splitScalar(u8, input, '&');
     while (iter.next()) |slice_const| {
@@ -143,7 +142,7 @@ pub fn html_unescape(w: *std.Io.Writer, input: []u8) void {
         var slice = slice_const;
 
         var print_amp = false;
-        // NOTE: if I remember correctly I do this because there an be double escaping
+        // NOTE: if I remember correctly I do this because there can be double escaping
         // of html symbols
         inline for (.{"amp;", "#38;"}) |ent| {
             if (mem.startsWith(u8, slice, ent)) {
