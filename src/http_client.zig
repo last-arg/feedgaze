@@ -207,7 +207,7 @@ pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Wr
         return null;
     }
 
-    var headers = try parse_headers(response.head.bytes);
+    const headers = try parse_headers(response.head.bytes);
     var result: CacheControl = .{
         .update_interval = 0,
     };

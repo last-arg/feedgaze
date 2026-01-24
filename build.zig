@@ -42,6 +42,7 @@ pub fn build(b: *Build) !void {
         // .use_lld = true,
     };
     const exe = b.addExecutable(opts_exe);
+    exe.is_linking_libc = true;
 
     b.installArtifact(exe);
 
@@ -110,11 +111,11 @@ pub fn build(b: *Build) !void {
 }
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
-    step.linkLibC();
+    const root = step.root_module;
 
     const sqlite_dep = b.dependency("sqlite", dep_args);
-    step.linkSystemLibrary("sqlite3");
-    step.root_module.addImport("sqlite", sqlite_dep.module("sqlite"));
+    root.linkSystemLibrary("sqlite3", .{});
+    root.addImport("sqlite", sqlite_dep.module("sqlite"));
 
     const args = b.dependency("args", dep_args);
     step.root_module.addImport("zig-args", args.module("args"));

@@ -248,7 +248,7 @@ pub const Cli = struct {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
                                 break :cache_value null;
                             } else if (mem.startsWith(u8, feed_types.Icon.last_modified_start, icon.etag_or_last_modified_or_hash)) {
-                                const end = mem.findScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
+                                const end = mem.indexOfScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
                                     std.log.warn("Image hash is invalid. Hash: '{s}'", .{icon.etag_or_last_modified_or_hash});
                                     break :cache_value null;
                                 };
@@ -1137,6 +1137,7 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
     const db_path = blk: {
         const db_path = path orelse db_path: {
             const kf = @import("known-folders");
+
             const data_dir = try kf.getPath(alloc, .data) orelse unreachable;
             const file_path = try std.fs.path.joinZ(alloc, &.{data_dir, "feedgaze",  "feedgaze.sqlite"});
 

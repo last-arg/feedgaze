@@ -15,7 +15,7 @@
         },
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "args-0.0.0-CiLiqojRAACGzDRO7A9dw7kWSchNk29caJZkXuMCb0Cn",
+            .hash = "args-0.0.0-CiLiqo_RAADz2TiHUzG5-0Mk7IZHR-h1SZgUrb_k4c7d",
         },
         .@"zig-datetime" = .{
             .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.zip",
@@ -23,15 +23,15 @@
         },
         .httpz = .{
             .url = "https://github.com/karlseguin/http.zig/archive/refs/heads/master.tar.gz",
-            .hash = "httpz-0.0.0-PNVzrFndBgDr9zQx7Mj_MFiqYslgcRlx45FJ_gERmRTb",
+            .hash = "httpz-0.0.0-PNVzrIowBwAFr_kqBN1W4KBMC2Ofutasj2ZfNAIcfTzF",
         },
         .@"known-folders" = .{
-            .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJtTTAADUOhGKM0sxzG4eMkNQxRvx9e5dfHVyaeA3",
+            .url = "https://github.com/ziglibs/known-folders/archive/83d39161eac2ed6f37ad3cb4d9dd518696ce90bb.tar.gz",
+            .hash = "known_folders-0.0.0-Fy-PJv3LAAABBRVoZWVrKZdyLoUfl5VRY5fqRRRdnF5L",
         },
         .superhtml = .{
             .url = "https://github.com/kristoff-it/superhtml/archive/refs/heads/main.tar.gz",
-            .hash = "superhtml-0.6.1-Y7MdPB5gJADyMOIs9CRDXP5QE2g9tJRPQgaV9ALyqoOW",
+            .hash = "superhtml-0.6.2-Y7MdPNQ5JADfMyZ7UpZ77gKBt_5IZPVpAXre7LYp_alf",
         },
     },
 }

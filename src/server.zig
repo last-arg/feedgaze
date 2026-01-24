@@ -2654,7 +2654,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try feed_edit_link_render(w, feed.feed_id);
         try w.writeAll("</div>");
 
-        if (mem.findScalar(u64, failed_requests_ids, @intCast(feed.feed_id))) |_| {
+        if (mem.indexOfScalar(u64, failed_requests_ids, @intCast(feed.feed_id))) |_| {
             try w.writeAll(
             \\<p class="feed-failed-msg">Last update failed</p>
             );

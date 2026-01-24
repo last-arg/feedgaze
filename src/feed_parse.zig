@@ -272,7 +272,7 @@ fn ignore_these_errors(errors: []const super.html.Ast.Error, content: []const u8
 
 
 pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
-    var input = mem.trim(u8, text, &std.ascii.whitespace);
+    const input = mem.trim(u8, text, &std.ascii.whitespace);
     if (input.len == 0) {
         return "";
     }
@@ -281,7 +281,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         and mem.indexOfScalar(u8, input, ';') != null;
 
     const remove_html_tags = mem.indexOfScalar(u8, input, '<') != null or
-        mem.find(u8, input, "lt;") != null;
+        mem.indexOfPos(u8, input, 0, "lt;") != null;
 
     if (!do_html_unescape and !remove_html_tags) {
         // NOTE: not removing whitespace because I think it will be ok.
@@ -336,8 +336,8 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         }
     }
 
-    const has_whitespace = mem.findAny(u8, out, std.ascii.whitespace[1..]) != null
-       or mem.find(u8, out, "  ") != null;
+    const has_whitespace = mem.indexOfAnyPos(u8, out, 0, std.ascii.whitespace[1..]) != null
+       or mem.indexOfPos(u8, out, 0, "  ") != null;
 
     if (has_whitespace) {
         var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
