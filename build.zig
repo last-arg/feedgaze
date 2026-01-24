@@ -41,6 +41,18 @@ pub fn build(b: *Build) !void {
         .use_llvm = true,
         // .use_lld = true,
     };
+
+    const command_minify = b.addSystemCommand(&.{
+        "esbuild",
+        "--log-level=error",
+        "--bundle",
+        "--minify",
+        "src/server/main.css",
+        "--outfile=src/server/main.min.css"
+    });
+    command_minify.stdio = .inherit;
+    b.getInstallStep().dependOn(&command_minify.step);
+    
     const exe = b.addExecutable(opts_exe);
     exe.is_linking_libc = true;
 

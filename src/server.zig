@@ -340,13 +340,11 @@ fn hash_static_file(comptime path: []const u8) u64 {
 }
 
 const static_files = if (builtin.mode != .Debug) .{
-    .{ "kelp.css", hash_static_file("server/kelp.css") },
-    .{ "style.css", hash_static_file("server/style.css") },
+    .{ "main.min.css", hash_static_file("server/main.min.css") },
     .{ "main.js", hash_static_file("server/main.js") },
     .{ "relative-time.js", hash_static_file("server/relative-time.js") },
 } else .{
-    .{ "kelp.css", 0 },
-    .{ "style.css", 1 },
+    .{ "main.css", 0 },
     .{ "main.js", 2 },
     .{ "relative-time.js", 3 },
     .{ "reload.js", 4 },
@@ -1743,12 +1741,22 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
         src = try get_file(req.arena, "server/reload.js");
         resp.content_type = .JS;
-    } else if (mem.endsWith(u8, req.url.path, "style.css")) {
-        src = try get_file(req.arena, "server/style.css");
+    } else if (mem.endsWith(u8, req.url.path, "main.min.css")) {
+        src = try get_file(req.arena, "server/main.min.css");
         resp.content_type = .CSS;
-    } else if (mem.endsWith(u8, req.url.path, "kelp.css")) {
-        src = try get_file(req.arena, "server/kelp.css");
-        resp.content_type = .CSS;
+    }
+
+    if (builtin.mode == .Debug) {
+        if (mem.endsWith(u8, req.url.path, "style.css")) {
+            src = try get_file(req.arena, "server/style.css");
+            resp.content_type = .CSS;
+        } else if (mem.endsWith(u8, req.url.path, "kelp.css")) {
+            src = try get_file(req.arena, "server/kelp.css");
+            resp.content_type = .CSS;
+        } else if (mem.endsWith(u8, req.url.path, "main.css")) {
+            src = try get_file(req.arena, "server/main.css");
+            resp.content_type = .CSS;
+        }
     }
 
     var buf: [std.compress.flate.max_window_len]u8 = undefined;
@@ -2294,7 +2302,7 @@ const Layout = struct {
             const filetype = name[last_dot_index + 1..];
 
             if (mem.eql(u8, filetype, "css")) {
-                try writer.writeAll("<link rel=stylesheet type='text/css' href='/public/");
+                try writer.writeAll("<link rel=stylesheet type=text/css href='/public/");
             } else if (mem.eql(u8, filetype, "js")) {
                 try writer.writeAll("<script");
                 if (std.mem.eql(u8, name, "main.js")) {

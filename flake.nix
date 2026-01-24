@@ -21,6 +21,7 @@
               sqlite
               pkg-config
               curl
+              esbuild
             ];
           };
         }
