@@ -7,7 +7,11 @@
 - if link and id are same only save link to save space
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
-- root page: show failed feed indicator?
+- root page:
+  - show failed feed indicator?
+  - limit how many items rendered
+    - Paginate if there are too many items?
+      Only paginate if items are new?
 - functions should take Uri type instead of []const u8
 - add trigger when:
   - failed request is added

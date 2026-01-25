@@ -42,19 +42,23 @@ pub fn build(b: *Build) !void {
         // .use_lld = true,
     };
 
-    const command_minify = b.addSystemCommand(&.{
-        "esbuild",
-        "--allow-overwrite",
-        "--log-level=error",
-        "--bundle",
-        "--minify",
-        "src/server/main.css",
-        "src/server/main.js",
-        "src/server/relative-time.js",
-        "--outdir=src/server/dist"
-    });
-    command_minify.stdio = .inherit;
-    b.getInstallStep().dependOn(&command_minify.step);
+    if (@import("builtin").mode != .Debug) {
+        const esbuild = b.findProgram(&.{"esbuild"}, &.{}) catch
+            @panic("Could not find command 'esbuild'");
+        const command_minify = b.addSystemCommand(&.{
+            esbuild,
+            "--allow-overwrite",
+            "--log-level=error",
+            "--bundle",
+            "--minify",
+            "src/server/main.css",
+            "src/server/main.js",
+            "src/server/relative-time.js",
+            "--outdir=src/server/dist"
+        });
+        // command_minify.stdio = .inherit;
+        b.getInstallStep().dependOn(&command_minify.step);
+    }
     
     const exe = b.addExecutable(opts_exe);
     exe.is_linking_libc = true;
