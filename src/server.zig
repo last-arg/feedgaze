@@ -340,9 +340,9 @@ fn hash_static_file(comptime path: []const u8) u64 {
 }
 
 const static_files = if (builtin.mode != .Debug) .{
-    .{ "main.min.css", hash_static_file("server/main.min.css") },
-    .{ "main.js", hash_static_file("server/main.js") },
-    .{ "relative-time.js", hash_static_file("server/relative-time.js") },
+    .{ "main.css", hash_static_file("server/dist/main.css") },
+    .{ "main.js", hash_static_file("server/dist/main.js") },
+    .{ "relative-time.js", hash_static_file("server/dist/relative-time.js") },
 } else .{
     .{ "main.css", 0 },
     .{ "main.js", 2 },
@@ -1732,30 +1732,32 @@ fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void
 fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     _ = global; // autofix
     var src: ?[]const u8 = null;
+    const prefix_dir = if (builtin.mode == .Debug) "server" else "server/dist";
+
     if (mem.endsWith(u8, req.url.path, "main.js")) {
-        src = try get_file(req.arena, "server/main.js");
+        src = try get_file(req.arena, prefix_dir ++ "/main.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
-        src = try get_file(req.arena, "server/relative-time.js");
+        src = try get_file(req.arena, prefix_dir ++ "/relative-time.js");
         resp.content_type = .JS;
-    } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
-        src = try get_file(req.arena, "server/reload.js");
-        resp.content_type = .JS;
-    } else if (mem.endsWith(u8, req.url.path, "main.min.css")) {
-        src = try get_file(req.arena, "server/main.min.css");
+    } else if (mem.endsWith(u8, req.url.path, "main.css")) {
+        src = try get_file(req.arena, prefix_dir ++ "/main.css");
         resp.content_type = .CSS;
     }
 
     if (builtin.mode == .Debug) {
         if (mem.endsWith(u8, req.url.path, "style.css")) {
-            src = try get_file(req.arena, "server/style.css");
+            src = try get_file(req.arena, prefix_dir ++ "/style.css");
             resp.content_type = .CSS;
         } else if (mem.endsWith(u8, req.url.path, "kelp.css")) {
-            src = try get_file(req.arena, "server/kelp.css");
+            src = try get_file(req.arena, prefix_dir ++ "/kelp.css");
             resp.content_type = .CSS;
         } else if (mem.endsWith(u8, req.url.path, "main.css")) {
-            src = try get_file(req.arena, "server/main.css");
+            src = try get_file(req.arena, prefix_dir ++ "/main.css");
             resp.content_type = .CSS;
+        } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
+            src = try get_file(req.arena, prefix_dir ++ "/reload.js");
+            resp.content_type = .JS;
         }
     }
 

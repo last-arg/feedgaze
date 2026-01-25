@@ -44,11 +44,14 @@ pub fn build(b: *Build) !void {
 
     const command_minify = b.addSystemCommand(&.{
         "esbuild",
+        "--allow-overwrite",
         "--log-level=error",
         "--bundle",
         "--minify",
         "src/server/main.css",
-        "--outfile=src/server/main.min.css"
+        "src/server/main.js",
+        "src/server/relative-time.js",
+        "--outdir=src/server/dist"
     });
     command_minify.stdio = .inherit;
     b.getInstallStep().dependOn(&command_minify.step);
