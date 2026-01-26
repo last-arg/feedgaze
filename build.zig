@@ -56,8 +56,20 @@ pub fn build(b: *Build) !void {
             "src/server/relative-time.js",
             "--outdir=src/server/dist"
         });
-        // command_minify.stdio = .inherit;
         b.getInstallStep().dependOn(&command_minify.step);
+
+        if (b.findProgram(&.{"purgecss"}, &.{})) |purgecss| {
+            const command_purgecss = b.addSystemCommand(&.{
+                purgecss,
+                "--config",
+                "./purgecss-cli.config.js"
+            });
+            command_purgecss.step.dependOn(&command_minify.step);
+            b.getInstallStep().dependOn(&command_purgecss.step);
+        } else |_| {
+            std.log.err("Missing command 'purgecss'. Can't remove unused CSS", .{});
+        }
+        
     }
     
     const exe = b.addExecutable(opts_exe);

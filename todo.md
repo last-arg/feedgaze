@@ -1,7 +1,6 @@
 # Initial
 - website:
   - minify html
-  - remove unused css
   - need to url escape link paths?
   - server: limit inline icon size
 - if link and id are same only save link to save space
