@@ -1320,6 +1320,7 @@ pub const Storage = struct {
         const query = 
         \\SELECT feed_id, title, link, updated_timestamp, created_timestamp
         \\FROM item WHERE created_timestamp > strftime("%s", "now", "-3 days") ORDER BY created_timestamp DESC
+        \\LIMIT 125
         ;
         return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
     }
