@@ -54,7 +54,7 @@ fn isValidTag(content: []const u8, tag: []const u8) bool {
     return false;
 }
 
-const IconSize = struct {
+pub const IconSize = struct {
     width: u32 = 0,
     height: u32 = 0,
 
@@ -89,6 +89,19 @@ const IconSize = struct {
     pub fn dist_from_icon_size(self: *const @This()) i32 {
         return @as(i32, @intCast(self.width)) - @as(i32, @intCast(app_config.icon_size));
     }
+
+    pub fn pick_icon(a: @This(), b: @This()) @This() {
+        const a_dist = a.dist_from_icon_size();
+        const b_dist = b.dist_from_icon_size();
+
+        if (b_dist <= 0 and (b_dist > a_dist or a_dist > 0)) {
+            return b;
+        } else if (b_dist > 0 and a_dist > 0 and b_dist < a_dist) {
+            return b;
+        }
+
+        return a;
+    }
 };
 
 const LinkIcon = struct {
@@ -108,17 +121,8 @@ const LinkIcon = struct {
         const new_icon = b orelse return curr_icon;
 
         if (curr_icon.size.has_size() and new_icon.size.has_size()) {
-            const curr_dist = curr_icon.size.dist_from_icon_size();
-            const new_dist = new_icon.size.dist_from_icon_size();
-
-            if (new_dist <= 0
-                and (new_dist > curr_dist or curr_dist > 0)
-            ) {
-                return new_icon;
-            } else if (new_dist > 0
-                and curr_dist > 0 
-                and new_dist < curr_dist
-            ) {
+            const icon_size = IconSize.pick_icon(curr_icon.size, new_icon.size);
+            if (std.meta.eql(new_icon.size, icon_size)) {
                 return new_icon;
             }
         } else if (new_icon.size.has_size()) {
