@@ -3,6 +3,8 @@
   - minify html
   - need to url escape link paths?
   - server: limit inline icon size
+    - zignal
+    - zstbi
 - if link and id are same only save link to save space
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '

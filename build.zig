@@ -139,6 +139,25 @@ pub fn build(b: *Build) !void {
     const run_unit_tests = b.addRunArtifact(test_cmd);
     const test_step = b.step("test", "Run file tests");
     test_step.dependOn(&run_unit_tests.step);
+
+
+    const opts_ico: Build.ExecutableOptions = .{
+        .name = "img_ico",
+        .root_module = b.createModule(.{ // this line was added
+            .root_source_file = b.path("src/img_ico.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    };
+
+    const exe_ico = b.addExecutable(opts_ico);
+    b.installArtifact(exe);
+    const ico_cmd = b.addRunArtifact(exe_ico);
+
+    const ico_step = b.step("ico", "run img_ico");
+    ico_step.dependOn(&ico_cmd.step);
+    
+    
 }
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
