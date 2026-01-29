@@ -143,6 +143,8 @@ pub const IconManage = struct {
         };
 
         const hash_val = std.mem.trim(u8, icon.etag_or_last_modified_or_hash, &.{'W', '/', '"'});
+        // Hashes used as url path name. Can't have slashes (/) 
+        std.mem.replaceScalar(u8, @constCast(hash_val), '/', '_');
 
         const url_start = self.url_string_bytes.items.len; 
         try self.url_string_bytes.appendSlice(self.allocator, icon.icon_url);
