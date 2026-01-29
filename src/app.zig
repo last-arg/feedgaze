@@ -1446,11 +1446,14 @@ pub const App = struct {
             })});
 
             var req = http_client.init(allocator);
-            defer { req.deinit(); }
+            defer req.deinit();
 
-            const feed_opts = try req.fetch(&a_writer.writer, allocator, req_url, .{
+            const feed_opts = req.fetch(&a_writer.writer, allocator, req_url, .{
                 .buffer_header = &buffer_header,
-            });
+            }) catch |err| {
+                std.log.warn("Failed to fetch '{s}'. Error: {}", .{req_url, err});
+                break :blk;
+            };
 
             const body = a_writer.writer.buffered();
             if (body.len == 0) {

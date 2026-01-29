@@ -85,7 +85,6 @@ pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions)
     }
 
     self.request = try self.client.request(.GET, uri, request_opts);
-    errdefer self.request.?.deinit();
 
     try self.request.?.sendBodiless();
 
@@ -261,7 +260,6 @@ pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOp
     }
 
     self.request = try self.client.request(.GET, uri, request_opts);
-    errdefer self.request.?.deinit();
 
     try self.request.?.sendBodiless();
 
