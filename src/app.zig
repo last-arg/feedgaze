@@ -25,6 +25,7 @@ const html = @import("./html.zig");
 const AddRule = @import("add_rule.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
+const minify_ico = @import("img_ico.zig").minify_ico;
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -309,7 +310,13 @@ pub const Cli = struct {
                         };
 
                         const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-                        const icon_new = feed_types.Icon.init(resp_url, resp_body, cache_value);
+                        const img_data = img_data: {
+                            if (cache_control.?.is_ico) {
+                                break :img_data try minify_ico(&a_writer.writer, resp_body);
+                            }
+                            break :img_data resp_body;
+                        };
+                        const icon_new = feed_types.Icon.init(resp_url, img_data, cache_value);
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
                             try self.storage.icon_update(icon.icon_url, icon_new);
                         }
@@ -1425,6 +1432,8 @@ pub const App = struct {
         var a_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 16 * 1024);
         defer a_writer.deinit();
 
+        var return_writer: std.Io.Writer.Allocating = .init(allocator);
+
         if (icon_url_opt == null) blk: {
             const req_url = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
                 .scheme = true,
@@ -1455,13 +1464,13 @@ pub const App = struct {
             icon_url_opt = try get_icon_from_html(&fixed_writer, uri_final, body);
             
             if (icon_url_opt) |icon| {
-                const etag_or_last_modified = feed_opts.?.feed_updates.etag_or_last_modified;
                 if (util.is_data(icon)) {
-                    var buf_icon = try allocator.alloc(u8, url_final.len + icon.len);
-                    const buf_url = buf_icon[0..url_final.len];
-                    @memcpy(buf_url, url_final);
-                    const buf_data = buf_icon[url_final.len..];
-                    @memcpy(buf_data, icon);
+                    try return_writer.ensureTotalCapacityPrecise(url_final.len + icon.len);
+                    try return_writer.writer.writeAll(url_final);
+                    try return_writer.writer.writeAll(icon);
+                    const buf_url = return_writer.writer.buffered()[0..url_final.len];
+                    const buf_data = return_writer.writer.buffered()[url_final.len..];
+                    const etag_or_last_modified = feed_opts.?.feed_updates.etag_or_last_modified;
                     return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
                 }
             }
@@ -1494,13 +1503,19 @@ pub const App = struct {
                 break :blk;
             }
 
-            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
+            const img_data = img_data: {
+                if (cache_control.is_ico) {
+                    break :img_data try minify_ico(&a_writer.writer, body);
+                }
+                break :img_data body;
+            };
 
-            var buf_icon = try allocator.alloc(u8, req_icon_url.len + body.len);
-            const buf_url = buf_icon[0..req_icon_url.len];
-            @memcpy(buf_url, req_icon_url);
-            const buf_data = buf_icon[req_icon_url.len..];
-            @memcpy(buf_data, body);
+            try return_writer.ensureTotalCapacityPrecise(req_icon_url.len + img_data.len);
+            try return_writer.writer.writeAll(req_icon_url);
+            try return_writer.writer.writeAll(img_data);
+            const buf_url = return_writer.writer.buffered()[0..req_icon_url.len];
+            const buf_data = return_writer.writer.buffered()[img_data.len..];
+            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
 
             return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
         }
@@ -1528,7 +1543,7 @@ pub const App = struct {
             a_writer.writer.end = 0;
             const cache_control = try req.fetch_image(&a_writer.writer, allocator, url_request, .{
                 .buffer_header = &buffer_header,
-            });
+            }) orelse return null;
 
             const body = a_writer.writer.buffered();
             if (body.len == 0) {
@@ -1536,14 +1551,21 @@ pub const App = struct {
                 return null;
             }
 
-            const url_favicon = try req.get_url_slice(&buf_url_slice);
-            const etag_or_last_modified = cache_control.?.etag orelse cache_control.?.last_modified;
+            const img_data = img_data: {
+                if (cache_control.is_ico) {
+                    break :img_data try minify_ico(&a_writer.writer, body);
+                }
+                break :img_data body;
+            };
 
-            var buf_icon = try allocator.alloc(u8, url_favicon.len + body.len);
-            const buf_url = buf_icon[0..url_favicon.len];
-            @memcpy(buf_url, url_favicon);
-            const buf_data = buf_icon[url_favicon.len..];
-            @memcpy(buf_data, body);
+            const url_favicon = try req.get_url_slice(&buf_url_slice);
+
+            try return_writer.ensureTotalCapacityPrecise(url_favicon.len + img_data.len);
+            try return_writer.writer.writeAll(url_favicon);
+            try return_writer.writer.writeAll(img_data);
+            const buf_url = return_writer.writer.buffered()[0..url_favicon.len];
+            const buf_data = return_writer.writer.buffered()[img_data.len..];
+            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
 
             return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
         }
