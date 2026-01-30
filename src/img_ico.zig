@@ -77,6 +77,7 @@ pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
 
     const img_data = src[icon_offset..icon_offset + icon_size];
     var w = writer;
+    const start_ico = w.buffered().len;
     try w.ensureUnusedCapacity(22 + img_data.len);
 
     // Write .ico header
@@ -98,7 +99,7 @@ pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
     w.writeAll(img_data) catch unreachable;
     try w.flush();
 
-    return w.buffered();
+    return w.buffered()[start_ico..];
 }
 
 pub fn main() !void {
