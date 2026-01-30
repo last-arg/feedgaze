@@ -1517,7 +1517,7 @@ pub const App = struct {
             try return_writer.writer.writeAll(req_icon_url);
             try return_writer.writer.writeAll(img_data);
             const buf_url = return_writer.writer.buffered()[0..req_icon_url.len];
-            const buf_data = return_writer.writer.buffered()[img_data.len..];
+            const buf_data = return_writer.writer.buffered()[req_icon_url.len..];
             const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
 
             return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
@@ -1567,7 +1567,7 @@ pub const App = struct {
             try return_writer.writer.writeAll(url_favicon);
             try return_writer.writer.writeAll(img_data);
             const buf_url = return_writer.writer.buffered()[0..url_favicon.len];
-            const buf_data = return_writer.writer.buffered()[img_data.len..];
+            const buf_data = return_writer.writer.buffered()[url_favicon.len..];
             const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
 
             return feed_types.Icon.init(buf_url, buf_data, etag_or_last_modified);
