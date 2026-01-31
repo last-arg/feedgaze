@@ -460,7 +460,7 @@ pub const Cli = struct {
             \\  rule      Feed adding rules
             \\  run       Run update in foreground
             \\  show      Print feeds' items
-            \\  serve    Start server
+            \\  serve     Start server
             \\  batch     Do batch actions
             \\
             \\General options:
