@@ -1233,6 +1233,10 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const icon_id = blk: {
         const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
 
+        if (icon_url_trimmed.len == 0) {
+            break :blk null;
+        }
+
         if (util.is_url(icon_url_trimmed)) {
             if (try db.icon_get_id(icon_url_trimmed)) |icon_id| {
                 break :blk icon_id;
