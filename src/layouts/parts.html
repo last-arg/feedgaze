@@ -25,3 +25,49 @@
 <label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
 .tag_link
 <a class='{[class]s}' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
+.button_primary
+<button class='muted primary' name='action' value='save'>{s}</button>
+.button_danger
+<button class='outline danger' name='action' value='delete'>{s}</button>
+.button_danger_link
+<button class='btn-link padding-0 danger' name='action' value='delete'>{s}</button>
+.form_input
+<div class="form-input">
+  <div>
+    <label for="new_tags">New tags</label>
+    <em>Tags are comma separated</em>
+  </div>
+  <input type="text" id="new_tags" name="new_tags">
+</div>
+.fieldset_tags
+<fieldset>
+  <legend>Tags</legend>
+  <div class='feed-tag-list'>
+    .fieldset_tag
+    <label for="{[prefix]s}{[tag_index]d}">
+    <input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+    <span class='truncate-1' title="{[tag]s}">{[tag]s}</span>
+    </label>
+    .end_fieldset_tag
+  </div>
+</fieldset>
+.feed_delete_msg
+<div class='message'>
+  <p>Feed deleted</p>
+  <a href='/'>Close message</a>
+</div>
+.last_update_msg
+<p>Last update was <relative-time update="false"><time datetime="{s}">{s}</time></relative-time>.</p>
+.next_update_msg
+<p>Next update <relative-time update=false><time datetime={s}>{s}</time></relative-time> ({s})</p>
+.form_post_update
+<form method=POST action=/update>
+  <p>
+    <button class="btn-link">Check for updates.</button>
+    Might take some time.
+  </p>
+</form>
+
+
+
+

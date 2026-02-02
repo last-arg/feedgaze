@@ -1642,9 +1642,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
     
-    try w.writeAll("<fieldset>");
-    try w.writeAll("<legend>Tags</legend>");
-    try w.writeAll("<div class='feed-tag-list'>");
+    try w.writeAll(zts.s(parts, "fieldset_tags"));
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -1655,30 +1653,15 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             break :blk "";
         };
         const tag_escaped = try parse.html_escape(req.arena, tag);
-        const tag_fmt = 
-        \\<label for="{[prefix]s}{[tag_index]d}">
-        \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-        \\<span class='truncate-1' title="{[tag]s}">{[tag]s}</span>
-        \\</label>
-        ;
-        try w.print(tag_fmt, .{
+        try w.print(zts.s(parts, "fieldset_tag"), .{
             .tag = tag_escaped,
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
         });
     }
-    try w.writeAll("</div>");
-    try w.writeAll("</fieldset>");
-    try w.writeAll(
-        \\<div class="form-input">
-        \\  <div>
-        \\    <label for="new_tags">New tags</label>
-        \\    <em>Tags are comma separated</em>
-        \\  </div>
-        \\  <input type="text" id="new_tags" name="new_tags">
-        \\</div>
-    );
+    try w.writeAll(zts.s(parts, "end_fieldset_tag"));
+    try w.writeAll(zts.s(parts, "form_input"));
 
     try w.writeAll("<div>");
     try btn_primary(w, "Save feed changes");
@@ -1726,16 +1709,16 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
 }
 
 fn btn_primary(w: anytype, text: []const u8) !void {
-    try w.print("<button class='muted primary' name='action' value='save'>{s}</button>", .{text});
+    try w.print(zts.s(parts, "button_primary"), .{text});
 }
 
 fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void {
     switch (btn_type) {
         .button => {
-            try w.print("<button class='outline danger' name='action' value='delete'>{s}</button>", .{text});
+            try w.print(zts.s(parts, "button_danger"), .{text});
         },
         .link => {
-            try w.print("<button class='btn-link padding-0 danger' name='action' value='delete'>{s}</button>", .{text});
+            try w.print(zts.s(parts, "button_danger_link"), .{text});
         },
     }
 }
@@ -1924,12 +1907,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     const query = try req.query();
     if (query.get("msg")) |value| {
         if (mem.eql(u8, "delete", value)) {
-            try w.writeAll(
-                \\<div class='message'>
-                \\<p>Feed deleted</p>
-                \\<a href='/'>Close message</a>
-                \\</div>
-            );
+            try w.writeAll(zts.s(parts, "feed_delete_msg"));
         }
     }
 
@@ -1942,24 +1920,16 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         if (countdown_ts <= now_ts) {
             if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
                 const date_readable_str = date_readable(recent_timestamp);
-                try w.print(
-                    \\<p>Last update was <relative-time update="false"><time datetime="{s}">{s}</time></relative-time>.</p>
-                , .{
+                try w.print(zts.s(parts, "last_update_msg"), .{
                     timestampToString(&date_buf, recent_timestamp),
                     date_readable_str,
                 });
             };
 
-            try w.writeAll(
-                \\<form method=POST action=/update>
-                \\<p>
-                \\<button class="btn-link">Check for updates.</button>
-                \\Might take some time.</p>
-                \\</form>
-            );
+            try w.writeAll(zts.s(parts, "form_post_update"));
         } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
-            try w.print("<p>Next update <relative-time update=false><time datetime={s}>{s}</time></relative-time> ({s})</p>", .{
+            try w.print(zts.s(parts, "next_update_msg"), .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
                 date_readable_str,
