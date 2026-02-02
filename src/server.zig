@@ -716,7 +716,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Pick feed", .{});
+    try Layout.write_head(w, "Pick feed");
 
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
@@ -1093,7 +1093,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Add feed", .{});
+    try Layout.write_head(w, "Add feed");
 
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
@@ -1403,9 +1403,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const title = feed.title orelse "";
     if (title.len > 0) {
-        try Layout.write_head(w, "Feed - {s}", .{title});
+        var buf_tag: [1024]u8 = undefined;
+        var write_tag: std.Io.Writer = .fixed(&buf_tag);
+        try write_tag.print("Feed - {s}", .{title});
+        try Layout.write_head(w, write_tag.buffered());
     } else {
-        try Layout.write_head(w, "Feed", .{});
+        try Layout.write_head(w, "Feed");
     }
 
     const tags = try db.tags_all(req.arena);
@@ -1911,7 +1914,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Home - latest added feed items", .{});
+    try Layout.write_head(w, "Home - latest added feed items");
 
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
@@ -2165,7 +2168,10 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Edit tag: {s}", .{tag.name});
+    var buf_tag: [512]u8 = undefined;
+    var write_tag: std.Io.Writer = .fixed(&buf_tag);
+    try write_tag.print("Edit tag: {s}", .{tag.name});
+    try Layout.write_head(w, write_tag.buffered());
 
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
@@ -2227,7 +2233,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Tags", .{});
+    try Layout.write_head(w, "Tags");
 
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
@@ -2272,13 +2278,11 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 const Layout = struct {
-    const splits = base_split();
-    const head = splits[0]; 
-    const foot = splits[1];
-    const head_splits = head_split(head);
-    const head_top = head_splits[0];
-    const head_middle = head_splits[1];
-    const head_bottom = head_splits[2];
+    const base = @embedFile("./layouts/base.html");
+    const head_top = zts.s(base, null); 
+    const head_script = zts.s(base, "script");
+    const head_bottom = zts.s(base, "end_script");
+    const foot = zts.s(base, "foot");
 
     tags_last_modified: i64 = 0,
     sidebar_form_html: std.Io.Writer.Allocating, 
@@ -2329,10 +2333,9 @@ const Layout = struct {
         }
     }
 
-    pub fn write_head(writer: *std.Io.Writer, comptime fmt: []const u8, args: anytype) !void {
-        try writer.writeAll(head_top);
-        try writer.print(fmt, args);
-        try writer.writeAll(head_middle);
+    pub fn write_head(writer: *std.Io.Writer, title: []const u8) !void {
+        try writer.print(head_top, .{ .title = title });
+        try writer.writeAll(head_script);
         try write_static_files(writer);
         try writer.writeAll(head_bottom);
     }
@@ -2437,26 +2440,6 @@ const Layout = struct {
         try w.writeAll("<hr>");
         try w.writeAll("</header>");
     }
-
-    fn base_split() [2][]const u8 {
-        const base_layout = @embedFile("./layouts/base.html");
-        var base_iter = mem.splitSequence(u8, base_layout, "[content]");
-        const head_tmp = base_iter.next() orelse @compileError("Failed to split base.html");
-        const foot_tmp = base_iter.next() orelse @compileError("Failed to split base.html. Missing split string '[content]' ");
-        return .{head_tmp, foot_tmp};
-    }
-
-    fn head_split(input: []const u8) [3][]const u8 {
-        @setEvalBranchQuota(2000);
-        var base_iter = mem.splitSequence(u8, input, "[title]");
-        const top = base_iter.next() orelse @compileError("Failed to split base.html");
-        const tmp_bottom = base_iter.next() orelse @compileError("Failed to split base.html");
-        var bottom_iter = mem.splitSequence(u8, tmp_bottom, "[links_and_scripts]");
-        const middle = bottom_iter.next() orelse @compileError("Failed to split base.html");
-        const bottom = bottom_iter.next() orelse @compileError("Failed to split base.html");
-        return .{top, middle, bottom};
-    }
-
 };
 
 const CacheOptions = struct {
@@ -2493,7 +2476,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Feeds", .{});
+    try Layout.write_head(w, "Feeds");
 
     const query = try req.query();
     const search_value = query.get("search");
