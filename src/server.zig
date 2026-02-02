@@ -20,10 +20,12 @@ const AddRule = @import("add_rule.zig");
 const http_client = @import("./http_client.zig");
 const timestampToString = util.timestampToString;
 const date_len_max = util.date_len_max;
+const zts = @import("zts");
 
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
+const parts = @embedFile("./layouts/parts.html");
 
 const static_files_hash = blk: {
     var hasher = std.hash.Wyhash.init(0);
@@ -2057,20 +2059,14 @@ fn timestamp_render(w: anytype, timestamp: ?i64) !void {
 
         const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
         const date_display_value = try date_display(&date_display_buf, now_sec, ts);
-        const time_fmt = 
-            \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-        ;
         const age_class = age_class_from_time(ts);
-        try w.print(time_fmt, .{
+        try w.print(zts.s(parts, "date"), .{
             .date = timestampToString(&date_buf, ts),
             .date_display = date_display_value,
             .age_class = age_class,
         });
     } else {
-        const no_date_fmt = 
-            \\<span class="no-date">&#8212;</span>
-        ;
-        try w.print(no_date_fmt, .{});
+        try w.print(zts.s(parts, "no_date"), .{});
     }
 }
 
@@ -2778,16 +2774,10 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
     const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
 
     if (item.link) |link| {
-        const item_link_fmt =
-            \\<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}" rel="noreferrer noopener">{[title]s}</a>
-        ;
         const link_escaped = try parse.html_escape(allocator, link);
-        try w.print(item_link_fmt, .{ .title = item_title, .link = link_escaped, .class = opts.class });
+        try w.print(zts.s(parts, "feed_item_link"), .{ .title = item_title, .link = link_escaped, .class = opts.class });
     } else {
-        const item_title_fmt =
-            \\<p class="{[class]s}" title="{[title]s}">{[title]s}</p>
-        ;
-        try w.print(item_title_fmt, .{ .title = item_title, .class = opts.class });
+        try w.print(zts.s(parts, "feed_item_no_link"), .{ .title = item_title, .class = opts.class });
     }
 }
 
@@ -2802,15 +2792,9 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
     };
 
     if (feed.page_url) |page_url| {
-        const feed_link_fmt = 
-        \\<a class="feed-title truncate-1" href="{[page_url]s}" rel="noreferrer noopener">{[title]s}</a>
-        ;
-        try w.print(feed_link_fmt, .{ .page_url = page_url, .title = title });
+        try w.print(zts.s(parts, "feed_link"), .{ .page_url = page_url, .title = title });
     } else {
-        const feed_title_fmt =
-        \\<p class="feed-title truncate-1">{[title]s}</p>
-        ;
-        try w.print(feed_title_fmt, .{ .title = title });
+        try w.print(zts.s(parts, "feed_no_link"), .{ .title = title });
     }
 
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
@@ -2820,9 +2804,7 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
     const age_class = age_class_from_time(feed.updated_timestamp);
     const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
 
-    try w.print( 
-        \\<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
-    , .{
+    try w.print(zts.s(parts, "date"), .{
         .age_class = age_class,
         .date = timestampToString(&date_buf, feed.updated_timestamp),
         .date_display = date_display_val,
@@ -2837,28 +2819,15 @@ const HeadOptions = struct {
 
 fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []const u8) !void {
     if (mem.eql(u8, path, curr_path)) {
-        const fmt = 
-        \\<a href="{s}" aria-current="page">{s}</a>
-        ;
-        try w.print(fmt, .{path, name});
+        try w.print(zts.s(parts, "nav_link_current"), .{path, name});
     } else {
-        const fmt = 
-        \\<a href="{s}">{s}</a>
-        ;
-        try w.print(fmt, .{path, name});
+        try w.print(zts.s(parts, "nav_link"), .{path, name});
     }
 }
 
 fn untagged_label_render(w: anytype, has_untagged: bool) !void {
-    try w.writeAll("<div class='tag'>");
     const is_checked: []const u8 = if (has_untagged) "checked" else "";
-    const tag_fmt = 
-    \\<input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
-    \\<label class="visually-hidden" for="untagged">{[value]s}</label>
-    ;
-    try w.print(tag_fmt, .{ .value = untagged, .is_checked = is_checked });
-    try w.print("<a class='truncate-1' href='/?untagged=' title='untagged'>{s}</a>", .{ untagged });
-    try w.writeAll("</div>");
+    try w.print(zts.s(parts, "untagged"), .{ .value = untagged, .is_checked = is_checked });
 }
 
 fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
@@ -2870,30 +2839,17 @@ fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][
             break;
         }
     }
-    try tag_input_render(w, .{
+
+    try w.print(zts.s(parts, "tag_input"), .{
         .tag = tag,
         .tag_index = index,
         .is_checked = is_checked,
+        .prefix = "tag-id-",
         .label_class = "visually-hidden",
     });
+
     try tag_link_print(w, tag, .link);
     try w.writeAll("</div>");
-}
-
-const InputRenderArgs = struct{
-    tag: []const u8, 
-    tag_index: usize, 
-    is_checked: []const u8,
-    prefix: []const u8 = "tag-id-",
-    label_class: []const u8 = &.{},
-};
-
-fn tag_input_render(w: anytype, args: InputRenderArgs) !void {
-    const tag_fmt = 
-    \\<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
-    \\<label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
-    ;
-    try w.print(tag_fmt, args);
 }
 
 fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !void {
@@ -2901,11 +2857,8 @@ fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !voi
         .link => "truncate-1",
         .badge => "badge"
     };
-    const tag_link_fmt = 
-    \\<a class='{[class]s}' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
-    ;
 
-    try w.print(tag_link_fmt, .{ .class = class, .tag = tag });
+    try w.print(zts.s(parts, "tag_link"), .{ .class = class, .tag = tag });
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {

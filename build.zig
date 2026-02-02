@@ -181,4 +181,7 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
 
     const superhtml = b.dependency("superhtml", .{});
     step.root_module.addImport("superhtml", superhtml.module("superhtml"));
+
+    const zts = b.dependency("zts", .{});
+    step.root_module.addImport("zts", zts.module("zts"));
 }

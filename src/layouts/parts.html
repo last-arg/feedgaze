@@ -1,0 +1,27 @@
+.feed_item_link
+<a href="{[link]s}" class="item-link {[class]s}" title="{[title]s}" rel="noreferrer noopener">{[title]s}</a>
+.feed_item_no_link
+<p class="{[class]s}" title="{[title]s}">{[title]s}</p>
+.date
+<time class="{[age_class]s}" datetime="{[date]s}">{[date_display]s}</time>
+.no_date
+<span class="no-date">&#8212;</span>
+.feed_link
+<a class="feed-title truncate-1" href="{[page_url]s}" rel="noreferrer noopener">{[title]s}</a>
+.feed_no_link
+<p class="feed-title truncate-1">{[title]s}</p>
+.nav_link
+<a href="{s}">{s}</a>
+.nav_link_current
+<a href="{s}" aria-current="page">{s}</a>
+.untagged
+<div class='tag'>
+  <input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
+  <label class="visually-hidden" for="untagged">{[value]s}</label>
+  <a class='truncate-1' href='/?untagged=' title='untagged'>{[value]s}</a>
+</div>
+.tag_input
+<input type="checkbox" name="tag" id="{[prefix]s}{[tag_index]d}" value="{[tag]s}" {[is_checked]s}>
+<label class="{[label_class]s}" for="{[prefix]s}{[tag_index]d}">{[tag]s}</label>
+.tag_link
+<a class='{[class]s}' href="/feeds?tag={[tag]s}" title="{[tag]s}">{[tag]s}</a>
