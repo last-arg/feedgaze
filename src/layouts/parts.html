@@ -10,10 +10,6 @@
 <a class="feed-title truncate-1" href="{[page_url]s}" rel="noreferrer noopener">{[title]s}</a>
 .feed_no_link
 <p class="feed-title truncate-1">{[title]s}</p>
-.nav_link
-<a href="{s}">{s}</a>
-.nav_link_current
-<a href="{s}" aria-current="page">{s}</a>
 .untagged
 <div class='tag'>
   <input type="checkbox" name="untagged" id="untagged" {[is_checked]s}>
@@ -67,7 +63,18 @@
     Might take some time.
   </p>
 </form>
-
-
-
-
+.body_header
+<header class='body-header'>
+  <div class='nav'>
+    <h1>
+      <a href="/" {[attrs]s}>feedgaze</a>
+    </h1>
+    <nav>
+      .nav_link
+      <span>|</span><a href="{[href]s}" {[attrs]s}>{[text]s}</a>
+      .end_nav_link
+    </nav>
+  </div>
+  .include_filter_feeds
+  <hr>
+</header>

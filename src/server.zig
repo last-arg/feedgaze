@@ -1642,7 +1642,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
     
-    try w.writeAll(zts.s(parts, "fieldset_tags"));
+    try w.writeAll(parts_get("fieldset_tags"));
     for (tags_all, 0..) |tag, i| {
         const is_checked = blk: {
             for (feed_tags) |f_tag| {
@@ -1653,15 +1653,15 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             break :blk "";
         };
         const tag_escaped = try parse.html_escape(req.arena, tag);
-        try w.print(zts.s(parts, "fieldset_tag"), .{
+        try w.print(parts_get("fieldset_tag"), .{
             .tag = tag_escaped,
             .tag_index = i,
             .is_checked = is_checked,
             .prefix = "tag-edit-",
         });
     }
-    try w.writeAll(zts.s(parts, "end_fieldset_tag"));
-    try w.writeAll(zts.s(parts, "form_input"));
+    try w.writeAll(parts_get("end_fieldset_tag"));
+    try w.writeAll(parts_get("form_input"));
 
     try w.writeAll("<div>");
     try btn_primary(w, "Save feed changes");
@@ -1709,16 +1709,16 @@ fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8
 }
 
 fn btn_primary(w: anytype, text: []const u8) !void {
-    try w.print(zts.s(parts, "button_primary"), .{text});
+    try w.print(parts_get("button_primary"), .{text});
 }
 
 fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void {
     switch (btn_type) {
         .button => {
-            try w.print(zts.s(parts, "button_danger"), .{text});
+            try w.print(parts_get("button_danger"), .{text});
         },
         .link => {
-            try w.print(zts.s(parts, "button_danger_link"), .{text});
+            try w.print(parts_get("button_danger_link"), .{text});
         },
     }
 }
@@ -1907,7 +1907,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     const query = try req.query();
     if (query.get("msg")) |value| {
         if (mem.eql(u8, "delete", value)) {
-            try w.writeAll(zts.s(parts, "feed_delete_msg"));
+            try w.writeAll(parts_get("feed_delete_msg"));
         }
     }
 
@@ -1920,16 +1920,16 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         if (countdown_ts <= now_ts) {
             if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
                 const date_readable_str = date_readable(recent_timestamp);
-                try w.print(zts.s(parts, "last_update_msg"), .{
+                try w.print(parts_get("last_update_msg"), .{
                     timestampToString(&date_buf, recent_timestamp),
                     date_readable_str,
                 });
             };
 
-            try w.writeAll(zts.s(parts, "form_post_update"));
+            try w.writeAll(parts_get("form_post_update"));
         } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
-            try w.print(zts.s(parts, "next_update_msg"), .{
+            try w.print(parts_get("next_update_msg"), .{
                 timestampToString(&date_buf, countdown_ts),
                 date_readable_str,
                 date_readable_str,
@@ -2033,13 +2033,13 @@ fn timestamp_render(w: anytype, timestamp: ?i64) !void {
         const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
         const date_display_value = try date_display(&date_display_buf, now_sec, ts);
         const age_class = age_class_from_time(ts);
-        try w.print(zts.s(parts, "date"), .{
+        try w.print(parts_get("date"), .{
             .date = timestampToString(&date_buf, ts),
             .date_display = date_display_value,
             .age_class = age_class,
         });
     } else {
-        try w.print(zts.s(parts, "no_date"), .{});
+        try w.print(parts_get("no_date"), .{});
     }
 }
 
@@ -2380,13 +2380,9 @@ const Layout = struct {
     }
 
     pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {
-        try w.writeAll("<header class='body-header'>");
-
-        try w.writeAll("<div class='nav'>");
-        try w.writeAll("<h1>");
-        try nav_link_render("/", "feedgaze", w, request_url_path);
-        try w.writeAll("</h1>");
-        try w.writeAll("<span>|</span>");
+        try w.print(parts_get("body_header"), .{
+            .attrs = if (mem.eql(u8, request_url_path, "/")) "aria-current='page'" else "",
+        });
 
         const menu_items = [_]struct{path: []const u8, name: []const u8}{
             .{.path = "/feeds", .name = "Feeds"},
@@ -2394,23 +2390,24 @@ const Layout = struct {
             .{.path = "/feed/add", .name = "Add feed"},
         };
 
-        try w.writeAll("<nav>");
-        const first_item = menu_items[0];
-        try nav_link_render(first_item.path, first_item.name, w, request_url_path);
-
-        for (menu_items[1..]) |item| {
-            try w.writeAll("<span>|</span>");
-            try nav_link_render(item.path, item.name, w, request_url_path);
+        for (menu_items) |item| {
+            const attrs = if (mem.eql(u8, request_url_path, item.path)) "aria-current='page'" else "";
+            try w.print(parts_get("nav_link"), .{
+                .href = item.path,
+                .attrs = attrs,
+                .text = item.name,
+            });
         }
-        try w.writeAll("</nav>");
-        try w.writeAll("</div>");
 
+        try w.writeAll(parts_get("end_nav_link"));
         try self.write_sidebar_form(w, tags, opts);
-
-        try w.writeAll("<hr>");
-        try w.writeAll("</header>");
+        try w.writeAll(parts_get("include_filter_feeds"));
     }
 };
+
+fn parts_get(comptime name: []const u8) []const u8 {
+    return mem.trim(u8, zts.s(parts, name), &std.ascii.whitespace);
+}
 
 const CacheOptions = struct {
     cache_control: []const u8 = "no-cache",
@@ -2728,9 +2725,9 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
 
     if (item.link) |link| {
         const link_escaped = try parse.html_escape(allocator, link);
-        try w.print(zts.s(parts, "feed_item_link"), .{ .title = item_title, .link = link_escaped, .class = opts.class });
+        try w.print(parts_get("feed_item_link"), .{ .title = item_title, .link = link_escaped, .class = opts.class });
     } else {
-        try w.print(zts.s(parts, "feed_item_no_link"), .{ .title = item_title, .class = opts.class });
+        try w.print(parts_get("feed_item_no_link"), .{ .title = item_title, .class = opts.class });
     }
 }
 
@@ -2745,9 +2742,9 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
     };
 
     if (feed.page_url) |page_url| {
-        try w.print(zts.s(parts, "feed_link"), .{ .page_url = page_url, .title = title });
+        try w.print(parts_get("feed_link"), .{ .page_url = page_url, .title = title });
     } else {
-        try w.print(zts.s(parts, "feed_no_link"), .{ .title = title });
+        try w.print(parts_get("feed_no_link"), .{ .title = title });
     }
 
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
@@ -2757,7 +2754,7 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
     const age_class = age_class_from_time(feed.updated_timestamp);
     const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
 
-    try w.print(zts.s(parts, "date"), .{
+    try w.print(parts_get("date"), .{
         .age_class = age_class,
         .date = timestampToString(&date_buf, feed.updated_timestamp),
         .date_display = date_display_val,
@@ -2770,17 +2767,9 @@ const HeadOptions = struct {
     has_untagged: bool = false,
 };
 
-fn nav_link_render(path: []const u8, name: []const u8, w: anytype, curr_path: []const u8) !void {
-    if (mem.eql(u8, path, curr_path)) {
-        try w.print(zts.s(parts, "nav_link_current"), .{path, name});
-    } else {
-        try w.print(zts.s(parts, "nav_link"), .{path, name});
-    }
-}
-
 fn untagged_label_render(w: anytype, has_untagged: bool) !void {
     const is_checked: []const u8 = if (has_untagged) "checked" else "";
-    try w.print(zts.s(parts, "untagged"), .{ .value = untagged, .is_checked = is_checked });
+    try w.print(parts_get("untagged"), .{ .value = untagged, .is_checked = is_checked });
 }
 
 fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
@@ -2793,7 +2782,7 @@ fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][
         }
     }
 
-    try w.print(zts.s(parts, "tag_input"), .{
+    try w.print(parts_get("tag_input"), .{
         .tag = tag,
         .tag_index = index,
         .is_checked = is_checked,
@@ -2811,7 +2800,7 @@ fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !voi
         .badge => "badge"
     };
 
-    try w.print(zts.s(parts, "tag_link"), .{ .class = class, .tag = tag });
+    try w.print(parts_get("tag_link"), .{ .class = class, .tag = tag });
 }
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
