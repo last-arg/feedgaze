@@ -2146,41 +2146,25 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
     
-    try w.writeAll("<main class='flow'>");
-    try w.print("<h2>Edit tag: {s}</h2>", .{tag.name});
+    try w.print(parts_get("tag_edit_page"), .{tag.name});
 
     const query_kv = try req.query();
     if (query_kv.get("success")) |_| {
-        try w.writeAll("<div>");
-        try w.writeAll("<p>Saved changes</p>");
-        try w.writeAll("</div>");
+        try w.writeAll(parts_get("tags_query_success"));
     } else if (query_kv.get("error")) |val| {
         if (mem.eql(u8, "invalid-form", val)) {
-            try w.writeAll("<div>");
-            try w.writeAll("<p>Invalid form</p>");
-            try w.writeAll("</div>");
+            try w.writeAll(parts_get("tags_query_invalid_form"));
         }
     }
 
-    try w.writeAll("<form class='flow' method='post'>");
-    try w.writeAll("<div>");
-    try w.writeAll("<div>");
-    try w.writeAll("<label for='tag-name'>Tag name</label>");
-    try w.writeAll("</div>");
-    try w.print("<input class='char-len-s' type='text' id='tag-name' name='tag-name' value='{s}'>", .{tag.name});
-    try w.writeAll("</div>");
-    try w.print("<input type='hidden' name='tag-id' value='{d}'>", .{tag.tag_id});
+    try w.print(parts_get("tag_edit_form"), .{ .tag_name = tag.name, .tag_id = tag.tag_id });
 
     try w.writeAll("<div>");
     try btn_primary(w, "Save changes");
     try w.writeAll("</div>");
     try btn_delete(w, "Delete tag", .button);
 
-    try w.writeAll("</div>");
-    try w.writeAll("</form>");
-
-    try w.writeAll("</main>");
-
+    try w.writeAll(parts_get("include_buttons"));
     try Layout.write_foot(w);
 
     try w.flush();
@@ -2213,12 +2197,12 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const query_kv = try req.query();
     if (query_kv.get("error")) |err_value| {
         if (mem.eql(u8, "delete", err_value)) {
-            try w.writeAll(parts_get("query_delete"));
+            try w.writeAll(parts_get("tags_query_delete"));
         } else if (mem.eql(u8, "missing", err_value)) {
-            try w.writeAll(parts_get("query_missing"));
+            try w.writeAll(parts_get("tags_query_missing"));
         } 
     } else if (query_kv.get("success")) |_| {
-        try w.writeAll(parts_get("query_success"));
+        try w.writeAll(parts_get("tags_query_success"));
     }
 
     try w.writeAll(parts_get("tags_list"));

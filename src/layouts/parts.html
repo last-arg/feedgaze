@@ -104,11 +104,11 @@
 .tags_page
 <main class='flow'>
   <header class='main-header'><h2>Tags</h2></header>
-  .query_delete
+  .tags_query_delete
   <p>Failed to delete tag</p>
-  .query_missing
+  .tags_query_missing
   <p>Tag doesn't exist</p>
-  .query_success
+  .tags_query_success
   <p>Tag deleted</p>
   .tags_list
   <ul class='tags-all stack list-unstyled' role='list'>
@@ -125,4 +125,24 @@
     .end_tag_item
   </ul>
 </main>
+.tag_edit_page
+<main class='flow'>
+  <h2>Edit tag: {s}</h2>
+  .tags_query_success
+  <div><p>Saved changes</p></div>
+  .tags_query_invalid_form
+  <div><p>Invalid form</p></div>
+  .tag_edit_form
+  <form class='flow' method='post'>
+    <div>
+      <div>
+        <label for='tag-name'>Tag name</label>
+      </div>
+      <input class='char-len-s' type='text' id='tag-name' name='tag-name' value='{[tag_name]s}'>
+    </div>
+    <input type='hidden' name='tag-id' value='{[tag_id]d}'>
+    .include_buttons
+  </form>
+</main>
+
 
