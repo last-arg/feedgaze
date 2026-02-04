@@ -101,7 +101,28 @@
     </form>
   </div>
 </details>
-
-
-
+.tags_page
+<main class='flow'>
+  <header class='main-header'><h2>Tags</h2></header>
+  .query_delete
+  <p>Failed to delete tag</p>
+  .query_missing
+  <p>Tag doesn't exist</p>
+  .query_success
+  <p>Tag deleted</p>
+  .tags_list
+  <ul class='tags-all stack list-unstyled' role='list'>
+    .tag_item
+    <li class='tag-item'>
+      .tag_actions
+      <div class='tag-actions cluster align-center'>
+        <a href='/tag/{[tag_id]d}/edit'>Edit</a>
+        <form action="/tag/{[tag_id]d}/delete" method="POST">
+        .footer_tag_item
+        </form>
+      </div>
+    </li>
+    .end_tag_item
+  </ul>
+</main>
 

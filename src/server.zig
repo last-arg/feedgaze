@@ -2208,39 +2208,31 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='flow'>");
-    try w.writeAll("<header class='main-header'><h2>Tags</h2></header>");
+    try w.writeAll(parts_get("tags_page"));
 
     const query_kv = try req.query();
     if (query_kv.get("error")) |err_value| {
         if (mem.eql(u8, "delete", err_value)) {
-            try w.writeAll("<p>Failed to delete tag</p>");
+            try w.writeAll(parts_get("query_delete"));
         } else if (mem.eql(u8, "missing", err_value)) {
-            try w.writeAll("<p>Tag doesn't exist</p>");
+            try w.writeAll(parts_get("query_missing"));
         } 
     } else if (query_kv.get("success")) |_| {
-        try w.writeAll("<p>Tag deleted</p>");
+        try w.writeAll(parts_get("query_success"));
     }
 
-    try w.writeAll("<ul class='tags-all stack list-unstyled' role='list'>");
+    try w.writeAll(parts_get("tags_list"));
     const tag_ids = try db.tags_all_with_ids(req.arena);
     for (tag_ids) |tag| {
-        try w.writeAll("<li class='tag-item'>");
+        try w.writeAll(parts_get("tag_item"));
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
         try tag_link_print(w, tag_name_escaped, .link);
-        try w.print("<div class='tag-actions cluster align-center'>", .{});
-        try w.print("<a href='/tag/{d}/edit'>Edit</a>", .{tag.tag_id});
-        try w.print(
-            \\<form action="/tag/{d}/delete" method="POST">
-        , .{tag.tag_id});
+        try w.print(parts_get("tag_actions"), .{ .tag_id = tag.tag_id });
         try btn_delete(w, "Delete", .link);
-        try w.writeAll("</form>");
-
-        try w.print("</div>", .{});
-        try w.writeAll("</li>");
+        try w.writeAll(parts_get("footer_tag_item"));
     }
-    try w.writeAll("</ul>");
-    try w.writeAll("</main>");
+
+    try w.writeAll(parts_get("end_tag_item"));
 
     try Layout.write_foot(w);
 
