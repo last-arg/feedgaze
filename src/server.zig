@@ -2343,40 +2343,14 @@ const Layout = struct {
     }
 
     fn write_sidebar_form_new(w: *std.Io.Writer, tags: [][]const u8, opts: HeadOptions) !void {
-        try w.writeAll("<details>");
-        try w.writeAll("<summary>");
-        try w.writeAll("Filter feeds");
-        try w.writeAll("</summary>");
-        try w.writeAll("<div class='filter-wrapper'>");
-        try w.writeAll("<form action='/feeds' class='stack'>");
-        // NOTE: don't want tags-only button to be the 'default' button. This is
-        // used when enter is pressed in input (text) field.
-        try w.writeAll(
-        \\<button aria-hidden="true" style="display: none">Default form action</button>
-        );
-        try w.writeAll("<fieldset class='tags stack'>");
-        try w.writeAll("<legend>Tags</legend>");
+        try w.writeAll(parts_get("filter_feeds"));
 
-        try w.writeAll("<div class='tag-list'>");
         try untagged_label_render(w, opts.has_untagged);
         for (tags, 0..) |tag, i| {
             try tag_label_render(w, tag, i + 1, opts.tags_checked);
         }
-        try w.writeAll("</div>");
-        try w.writeAll("</fieldset>");
-        try w.writeAll("<div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>");
 
-        try w.print(
-        \\<div>
-        \\  <label class="form-heading" for="search_value">Filter feeds</label>
-        \\  <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="{s}"></div>
-        \\  <button class="form-submit muted primary">Filter all</button>
-        \\</div>
-        , .{ opts.search });
-
-        try w.writeAll("</form>");
-        try w.writeAll("</div>");
-        try w.writeAll("</details>");
+        try w.print(parts_get("include_tags"), .{ .value = opts.search });
     }
 
     pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {

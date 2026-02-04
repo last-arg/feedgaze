@@ -78,3 +78,30 @@
   .include_filter_feeds
   <hr>
 </header>
+.filter_feeds
+<details>
+  <summary>Filter feeds</summary>
+  <div class='filter-wrapper'>
+    <form action='/feeds' class='stack'>
+      <!-- NOTE: don't want tags-only button to be the 'default' button. This is
+      used when enter is pressed in input (text) field. -->
+      <button aria-hidden="true" style="display: none">Default form action</button>
+      <fieldset class='tags stack'>
+        <legend>Tags</legend>
+        <div class='tag-list'>
+        .include_tags
+        </div>
+      </fieldset>
+      <div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>
+      <div>
+        <label class="form-heading" for="search_value">Filter feeds</label>
+        <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="{[value]s}"></div>
+        <button class="form-submit muted primary">Filter all</button>
+      </div>
+    </form>
+  </div>
+</details>
+
+
+
+
