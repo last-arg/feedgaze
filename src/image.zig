@@ -2,23 +2,113 @@ const std = @import("std");
 const html = @import("./html.zig");
 const z = @import("zignal");
 const print = std.debug.print;
+const mem = std.mem;
+
+pub const Type = enum {
+    png, // image/png
+    jpeg, // image/jpeg
+    jpg, // image/jpeg
+    webp, // image/webp
+    avif, // image/avif
+    svg, // image/svg+xml
+    ico, // image/x-icon
+
+    pub fn from_string(str: []const u8) ?@This() {
+        if (mem.eql(u8, str, "x-icon") or mem.eql(u8, str, "vnd.microsoft.icon")) {
+            return .ico;
+        } else if (mem.eql(u8, str, "jpg")) {
+            return .jpg;
+        }
+        return std.meta.stringToEnum(@This(), str);
+    }
+
+    pub fn from_data(data: []const u8) ?Type {
+        if (is_png(data)) {
+            return .png;
+        } else if (is_jpg(data)) {
+            return .jpg;
+        } else if (is_webp(data)) {
+            return .webp;
+        } else if (is_ico(data)) {
+            return .ico;
+        } else if (is_avif(data)) {
+            return .avif;
+        }
+         
+        return null;
+    }
+
+    pub fn to_content_type(self: @This()) []const u8 {
+        return switch (self) {
+            .png => "image/png",
+            .jpeg => "image/jpeg",
+            .jpg => "image/jpeg",
+            .webp => "image/webp",
+            .avif => "image/avif",
+            .svg => "image/svg+xml",
+            .ico => "image/x-icon",
+        };
+    }
+
+    pub fn to_string(value: @This()) []const u8 {
+        return switch (value) {
+            .png => ".png",
+            .jpeg => ".jpeg",
+            .jpg => ".jpg",
+            .webp => ".webp",
+            .avif => ".avif",
+            .svg => ".svg",
+            .ico => ".ico",
+        };
+    }
+
+    fn is_png(data: []const u8) bool {
+        const png_sig = .{ 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
+        return mem.startsWith(u8, data, &png_sig);
+    }
+
+    fn is_avif(data: []const u8) bool {
+        const sig = .{0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66};
+        return mem.startsWith(u8, data[4..], &sig);
+    }
+
+    fn is_jpg(data: []const u8) bool {
+        const sig_start = .{ 0xFF, 0xD8 };
+        const sig_end = .{ 0xFF, 0xD9};
+
+        return mem.startsWith(u8, data, &sig_start)
+            or mem.endsWith(u8, data, &sig_end);
+    }
+
+    fn is_webp(data: []const u8) bool {
+        const sig_from_0 = .{ 0x52, 0x49, 0x46, 0x46 };
+        const sig_from_8 = .{ 0x57, 0x45, 0x42, 0x50 };
+        return mem.startsWith(u8, data, &sig_from_0)
+            or mem.startsWith(u8, data[8..], &sig_from_8);
+    }
+
+    fn is_ico(data: []const u8) bool {
+        const sig = .{0x00, 0x00, 0x01, 0x00};
+        return mem.startsWith(u8, data, &sig);
+    }
+};
 
 const IcoType = enum(u16) {
     ico = 1,
     cur = 2,
 };
 
-pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
-    const reserved = std.mem.readInt(u16, src[0..2], .little);
+pub fn minify_ico(writer: *std.Io.Writer, data: []const u8) ![]const u8 {
+    const reserved = std.mem.readInt(u16, data[0..2], .little);
     if (reserved != 0) {
         return error.InvalidIcoImage;
     }
 
-    const type_raw = std.mem.readInt(u16, src[2..4], .little);
-    const count = std.mem.readInt(u16, src[4..6], .little);
+    const type_raw = std.mem.readInt(u16, data[2..4], .little);
+    const count = std.mem.readInt(u16, data[4..6], .little);
 
     if (count == 1) {
-        return src;
+        return data;
     }
     
     const type_enum = try std.meta.intToEnum(IcoType, type_raw);
@@ -26,7 +116,7 @@ pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
         return error.CurImageUnsupported;
     }
 
-    const img_entries = src[6..6 + count*16];
+    const img_entries = data[6..6 + count*16];
     var icon_curr: html.IconSize = .{};
     var icon_idx: usize = 0;
     var icon_offset: u32 = 0;
@@ -77,7 +167,7 @@ pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
         }
     }
 
-    const img_data = src[icon_offset..icon_offset + icon_size];
+    const img_data = data[icon_offset..icon_offset + icon_size];
     var w = writer;
     const start_ico = w.buffered().len;
     try w.ensureUnusedCapacity(22 + img_data.len);
@@ -104,19 +194,11 @@ pub fn minify_ico(writer: *std.Io.Writer, src: []const u8) ![]const u8 {
     return w.buffered()[start_ico..];
 }
 
-pub fn main() !void {
-    const img = @embedFile("./tmp.ico");
-
-    var buf: [1024 * 1024]u8 = undefined;
-    var io = std.Io.Writer.fixed(&buf);
-    const v = try minify_ico(&io, img);
-    std.debug.print("len: {}\n", .{v.len});
-}
-
 const PngColor = z.Rgba;
 const PngImage = z.Image(PngColor);
 const img_size = 64;
 var png_buf: [img_size * img_size]PngColor = undefined;
+
 pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !PngImage {
     const i = try z.png.loadFromBytes(PngColor, allocator, data, .{});
     std.debug.assert(i.rows > img_size and i.cols > img_size);
@@ -129,4 +211,16 @@ pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !PngImage {
     return new;
 }
 
+pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ?[]const u8 {
+    _ = allocator; // autofix
+    const img_type = img_type_opt orelse Type.from_data(data) orelse {
+        std.log.warn("Failed to figure out image type from image data", .{});
+        return null;
+    };
 
+    switch(img_type) {
+        .png => {},
+        .ico => {},
+        .avif, .jpeg, .jpg, .svg, .webp => {},
+    }
+}

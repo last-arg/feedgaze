@@ -14,6 +14,7 @@ const Allocator = mem.Allocator;
 const Request = http.Client.Request;
 const Uri = std.Uri;
 const assert = std.debug.assert;
+const image = @import("./image.zig");
 
 client: http.Client,
 response: ?http.Client.Response = null,
@@ -97,7 +98,7 @@ pub const CacheControl = struct {
     etag: ?[]const u8 = null,
     last_modified: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,
-    is_ico: bool = false,
+    image_type: ?image.Type = null,
 };
 
 pub fn parse_headers(bytes: []const u8) !CacheControl {
@@ -219,8 +220,7 @@ pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Wr
     } 
 
     if (response.head.content_type) |ct| {
-        result.is_ico = mem.eql(u8, ct, "image/vnd.microsoft.icon")
-            or mem.eql(u8, ct, "image/x-icon");
+        result.image_type = image.Type.from_string(ct);
     }
 
     _ = try read_body(response, writer, allocator);

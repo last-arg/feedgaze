@@ -311,7 +311,7 @@ pub const Cli = struct {
 
                         const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
                         const img_data = img_data: {
-                            if (cache_control.?.is_ico) {
+                            if (cache_control.?.image_type == .png) {
                                 break :img_data try minify_ico(&a_writer.writer, resp_body);
                             }
                             break :img_data resp_body;
@@ -1507,7 +1507,7 @@ pub const App = struct {
             }
 
             const img_data = img_data: {
-                if (cache_control.is_ico) {
+                if (cache_control.image_type == .ico) {
                     break :img_data try minify_ico(&a_writer.writer, body);
                 }
                 break :img_data body;
@@ -1555,7 +1555,7 @@ pub const App = struct {
             }
 
             const img_data = img_data: {
-                if (cache_control.is_ico) {
+                if (cache_control.image_type == .ico) {
                     break :img_data try minify_ico(&a_writer.writer, body);
                 }
                 break :img_data body;

@@ -21,6 +21,7 @@ const http_client = @import("./http_client.zig");
 const timestampToString = util.timestampToString;
 const date_len_max = util.date_len_max;
 const zts = @import("zts");
+const image = @import("./image.zig");
 
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
@@ -53,48 +54,7 @@ const Global = struct {
     icon_manage: *IconManage,
 };
 
-const IconFileType = enum {
-    png, // image/png
-    jpeg, // image/jpeg
-    jpg, // image/jpeg
-    webp, // image/webp
-    avif, // image/avif
-    svg, // image/svg+xml
-    ico, // image/x-icon
-
-    fn from_string(str: []const u8) ?@This() {
-        if (mem.eql(u8, str, "x-icon")) {
-            return .ico;
-        } else if (mem.eql(u8, str, "jpg")) {
-            return .jpg;
-        }
-        return std.meta.stringToEnum(@This(), str);
-    }
-
-    pub fn to_content_type(self: @This()) []const u8 {
-        return switch (self) {
-            .png => "image/png",
-            .jpeg => "image/jpeg",
-            .jpg => "image/jpeg",
-            .webp => "image/webp",
-            .avif => "image/avif",
-            .svg => "image/svg+xml",
-            .ico => "image/x-icon",
-        };
-    }
-
-    pub fn to_string(value: @This()) []const u8 {
-        return switch (value) {
-            .png => ".png",
-            .jpeg => ".jpeg",
-            .jpg => ".jpg",
-            .webp => ".webp",
-            .avif => ".avif",
-            .svg => ".svg",
-            .ico => ".ico",
-        };
-    }
-};
+const IconFileType = image.Type;
 
 pub const IconManage = struct {
     storage: Cache,
@@ -134,7 +94,7 @@ pub const IconManage = struct {
                 is_icon_inline = true;
                 const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
                 break :blk .{page_url_decoded, data_img.file_type};
-            } else if (file_type_from_data(icon.icon_data)
+            } else if (image.Type.from_data(icon.icon_data)
                 orelse file_type_from_url(icon.icon_url)
             ) |file_type| {
                 break :blk .{icon.icon_data, file_type};
@@ -170,52 +130,6 @@ pub const IconManage = struct {
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
         });
         return index;
-    }
-
-    fn is_png(data: []const u8) bool {
-        const png_sig = .{ 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-        return mem.startsWith(u8, data, &png_sig);
-    }
-
-    fn is_avif(data: []const u8) bool {
-        const sig = .{0x66, 0x74, 0x79, 0x70, 0x61, 0x76, 0x69, 0x66};
-        return mem.startsWith(u8, data[4..], &sig);
-    }
-
-    fn is_jpg(data: []const u8) bool {
-        const sig_start = .{ 0xFF, 0xD8 };
-        const sig_end = .{ 0xFF, 0xD9};
-
-        return mem.startsWith(u8, data, &sig_start)
-            or mem.endsWith(u8, data, &sig_end);
-    }
-
-    fn is_webp(data: []const u8) bool {
-        const sig_from_0 = .{ 0x52, 0x49, 0x46, 0x46 };
-        const sig_from_8 = .{ 0x57, 0x45, 0x42, 0x50 };
-        return mem.startsWith(u8, data, &sig_from_0)
-            or mem.startsWith(u8, data[8..], &sig_from_8);
-    }
-
-    fn is_ico(data: []const u8) bool {
-        const sig = .{0x00, 0x00, 0x01, 0x00};
-        return mem.startsWith(u8, data, &sig);
-    }
-    
-    fn file_type_from_data(data: []const u8) ?IconFileType {
-        if (is_png(data)) {
-            return .png;
-        } else if (is_jpg(data)) {
-            return .jpg;
-        } else if (is_webp(data)) {
-            return .webp;
-        } else if (is_ico(data)) {
-            return .ico;
-        } else if (is_avif(data)) {
-            return .avif;
-        }
-         
-        return null;
     }
 
     fn file_type_from_url(input: []const u8) ?IconFileType {
