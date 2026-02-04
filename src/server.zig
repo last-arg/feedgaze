@@ -409,6 +409,10 @@ pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
     router.get("/icons/:filename", icons_get, .{});
     router.get("/favicon.ico", favicon_get, .{});
 
+    if (@import("builtin").mode == .Debug) {
+        router.get("/sse", sse_stream, .{});
+    }
+
     std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
     // start the server in the current thread, blocking.
     try server.listen(); 
@@ -2803,3 +2807,44 @@ fn get_cookie_value(req: *httpz.Request) ?i64 {
     return null;
 }
 
+fn sse_stream(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
+    try resp.startEventStream(try StreamContext.init(), StreamContext.handle);
+}
+
+const StreamContext = struct {
+    var stats: [files.len]std.fs.File.Stat = undefined;
+    const files: [3][]const u8 = [_][]const u8{
+        "./src/server/dist/main.css",
+        "./src/server/dist/main.js",
+        "./src/server/dist/relative-time.js",
+    };
+
+    pub fn init() !StreamContext {
+        stats = try file_stats();
+        return .{};
+    }
+
+    fn file_stats() ![files.len]std.fs.File.Stat {
+        const cwd = std.fs.cwd(); 
+        var result: [files.len]std.fs.File.Stat = undefined;
+        for (files, 0..) |f, i| {
+            result[i] = try cwd.statFile(f);
+        }
+
+        return result;
+    }
+
+    fn handle(_: StreamContext, stream: std.net.Stream) void {
+        std.log.info("Start SSE stream", .{});
+        while (true) {
+            const new_stats = file_stats() catch @panic("SSE stream crash");
+            if (!std.meta.eql(stats, new_stats)) {
+                stream.writeAll("event: reload\n") catch return;
+                stream.writeAll("data: reload\n\n") catch return;
+                std.log.info("reload browser", .{});
+                stats = new_stats;
+            }
+            std.Thread.sleep(@intCast(std.time.ns_per_s));
+        }
+    }
+};
