@@ -37,5 +37,9 @@
             .url = "https://github.com/zigster64/zts/archive/refs/heads/main.tar.gz",
             .hash = "zts-0.14.1-_M80Of22AgBwArz6uCXR49IoEjlzNt5yhu7KV8cWl5jr",
         },
+        .zignal = .{
+            .url = "git+https://github.com/arrufat/zignal/#fae3f98d3d2d1256672c4c5be55a4a8e81abd0a6",
+            .hash = "zignal-0.9.0-dev-OrZ3sxsyJgBMqEt9QGlKRE6WvDuC-zyx50xo6_s7cGip",
+        },
     },
 }

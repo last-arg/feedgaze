@@ -1,5 +1,7 @@
 const std = @import("std"); 
 const html = @import("./html.zig");
+const z = @import("zignal");
+const print = std.debug.print;
 
 const IcoType = enum(u16) {
     ico = 1,
@@ -110,3 +112,21 @@ pub fn main() !void {
     const v = try minify_ico(&io, img);
     std.debug.print("len: {}\n", .{v.len});
 }
+
+const PngColor = z.Rgba;
+const PngImage = z.Image(PngColor);
+const img_size = 64;
+var png_buf: [img_size * img_size]PngColor = undefined;
+pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !PngImage {
+    const i = try z.png.loadFromBytes(PngColor, allocator, data, .{});
+    std.debug.assert(i.rows > img_size and i.cols > img_size);
+    var new = PngImage.empty;
+    new.data = &png_buf;
+    new.rows = img_size;
+    new.cols = img_size;
+    new.stride = img_size;
+    try i.resize(allocator, new, .lanczos);
+    return new;
+}
+
+

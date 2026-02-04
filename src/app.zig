@@ -25,7 +25,7 @@ const html = @import("./html.zig");
 const AddRule = @import("add_rule.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
-const minify_ico = @import("img_ico.zig").minify_ico;
+const minify_ico = @import("image.zig").minify_ico;
 
 pub const Response = struct {
     feed_update: FeedUpdate,

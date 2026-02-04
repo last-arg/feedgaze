@@ -17,10 +17,11 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
+    try zignal();
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
-    try run_add_new_feed();
+    // try run_add_new_feed();
     // try run_parse();
     // try test_allocating();
     // try storage_item_interval();
@@ -34,6 +35,15 @@ pub fn main() !void {
     // try tmp_parse_icon();
     // try tmp_parse_html();
     // try tmp_iter_attrs();
+}
+
+const z = @import("zignal");
+pub fn zignal() !void {
+    const data = @embedFile("./tmp.png");
+    var a = std.heap.GeneralPurposeAllocator(.{}){};
+
+    const img = try @import("image.zig").resize_png(a.allocator(), data);
+    try z.png.save(z.Rgba, a.allocator(), img, "./out.png");
 }
 
 pub fn std_http_client() !void {

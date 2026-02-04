@@ -142,9 +142,9 @@ pub fn build(b: *Build) !void {
 
 
     const opts_ico: Build.ExecutableOptions = .{
-        .name = "img_ico",
+        .name = "image",
         .root_module = b.createModule(.{ // this line was added
-            .root_source_file = b.path("src/img_ico.zig"),
+            .root_source_file = b.path("src/image.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -154,7 +154,7 @@ pub fn build(b: *Build) !void {
     b.installArtifact(exe);
     const ico_cmd = b.addRunArtifact(exe_ico);
 
-    const ico_step = b.step("ico", "run img_ico");
+    const ico_step = b.step("image", "run image");
     ico_step.dependOn(&ico_cmd.step);
     
     
@@ -182,6 +182,12 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const superhtml = b.dependency("superhtml", .{});
     step.root_module.addImport("superhtml", superhtml.module("superhtml"));
 
-    const zts = b.dependency("zts", .{});
+    const zts = b.dependency("zts", dep_args);
     step.root_module.addImport("zts", zts.module("zts"));
+
+    const zignal = b.dependency("zignal", dep_args);
+    // And assuming that your b.addExecutable `exe`:
+    step.root_module.addImport("zignal", zignal.module("zignal"));
+    // If you're creating a `module` using b.createModule, then:
+    step.root_module.addImport("zignal", zignal.module("zignal"));
 }
