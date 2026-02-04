@@ -2563,7 +2563,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             }
         }
         try feed_render(w, feed);
-        try feed_edit_link_render(w, feed.feed_id);
+
         try w.writeAll("</div>");
 
         if (mem.indexOfScalar(u64, failed_requests_ids, @intCast(feed.feed_id))) |_| {
@@ -2649,13 +2649,6 @@ fn age_class_from_time(time: ?i64) []const u8 {
     return "";
 }
 
-fn feed_edit_link_render(w: anytype, feed_id: usize) !void {
-    const edit_fmt = 
-    \\<a class="feed-edit" href="/feed/{d}">Edit feed</a>
-    ;
-    try w.print(edit_fmt, .{ feed_id });
-}
-
 const ItemRenderOptions = struct {
     class: []const u8 = "",
     is_new_item: bool = false,
@@ -2709,6 +2702,11 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
         .date = timestampToString(&date_buf, feed.updated_timestamp),
         .date_display = date_display_val,
     });
+
+    const edit_fmt = 
+    \\<a class="feed-edit" href="/feed/{d}">Edit feed</a>
+    ;
+    try w.print(edit_fmt, .{ feed.feed_id });
 }
 
 const HeadOptions = struct {
