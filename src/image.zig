@@ -194,16 +194,19 @@ pub fn minify_ico(writer: *std.Io.Writer, data: []const u8) ![]const u8 {
     return w.buffered()[start_ico..];
 }
 
-const PngColor = z.Rgba;
-const PngImage = z.Image(PngColor);
-const img_size = 64;
-var png_buf: [img_size * img_size]PngColor = undefined;
+pub const Color = z.Rgba;
+pub const Image = z.Image(Color);
+const img_size = @import("./app_config.zig").icon_size;
+var img_buf: [img_size * img_size]Color = undefined;
 
-pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !PngImage {
-    const i = try z.png.loadFromBytes(PngColor, allocator, data, .{});
+pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !Image {
+    const i = try z.png.loadFromBytes(Color, allocator, data, .{});
+    if (i.rows <= img_size or i.cols <= img_size) {
+        return i;
+    }
     std.debug.assert(i.rows > img_size and i.cols > img_size);
-    var new = PngImage.empty;
-    new.data = &png_buf;
+    var new = Image.empty;
+    new.data = &img_buf;
     new.rows = img_size;
     new.cols = img_size;
     new.stride = img_size;
@@ -211,16 +214,58 @@ pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !PngImage {
     return new;
 }
 
-pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ?[]const u8 {
-    _ = allocator; // autofix
-    const img_type = img_type_opt orelse Type.from_data(data) orelse {
-        std.log.warn("Failed to figure out image type from image data", .{});
-        return null;
-    };
+pub fn resize_jpeg(allocator: std.mem.Allocator, data: []const u8) !Image {
+    const i = try z.jpeg.loadFromBytes(Color, allocator, data, .{});
+    if (i.rows <= img_size or i.cols <= img_size) {
+        return i;
+    }
+    std.debug.assert(i.rows > img_size and i.cols > img_size);
+    var new = Image.empty;
+    new.data = &img_buf;
+    new.rows = img_size;
+    new.cols = img_size;
+    new.stride = img_size;
+    try i.resize(allocator, new, .lanczos);
+    return new;
+}
 
+pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ![]const u8 {
+    const img_type_from_data = Type.from_data(data) orelse {
+        std.log.warn("Could not figure out image file type base on file content. File type base on HTTP 'Content-type' is '{?}'", .{img_type_opt});
+        return error.UnknownImageType;
+    };
+    const img_type = img_type_opt orelse img_type_from_data;
+
+    if (img_type_from_data != img_type) {
+        std.log.warn("Image file type and http 'Content-Type' don't match. Using file type from image content", .{});
+    }
+    
     switch(img_type) {
-        .png => {},
-        .ico => {},
-        .avif, .jpeg, .jpg, .svg, .webp => {},
+        .png => {
+            var img = try resize_png(allocator, data);
+            errdefer img.deinit(allocator);
+            if (img.rows <= img_size or img.cols <= img_size) {
+                return data;
+            }
+            return try z.png.encode(Color, allocator, img, .{});
+        },
+        .jpeg, .jpg => {
+            var img = try resize_jpeg(allocator, data);
+            errdefer img.deinit(allocator);
+            if (img.rows <= img_size or img.cols <= img_size) {
+                return data;
+            }
+            return try z.jpeg.encode(Color, allocator, img, .{});
+        },
+        .ico => {
+            var io_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 20 * 1024);
+            errdefer io_writer.deinit();
+            var writer = io_writer.writer;
+            const result = try minify_ico(&writer, data);
+            return result;
+        },
+        .avif, .svg, .webp => {
+            return data;
+        },
     }
 }

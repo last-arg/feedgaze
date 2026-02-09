@@ -25,7 +25,7 @@ const html = @import("./html.zig");
 const AddRule = @import("add_rule.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
-const minify_ico = @import("image.zig").minify_ico;
+const image = @import("image.zig");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -310,12 +310,7 @@ pub const Cli = struct {
                         };
 
                         const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-                        const img_data = img_data: {
-                            if (cache_control.?.image_type == .png) {
-                                break :img_data try minify_ico(&a_writer.writer, resp_body);
-                            }
-                            break :img_data resp_body;
-                        };
+                        const img_data = try image.process(arena.allocator(), resp_body, cache_control.?.image_type);
                         const icon_new = feed_types.Icon.init(resp_url, img_data, cache_value);
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
                             try self.storage.icon_update(icon.icon_url, icon_new);
@@ -909,6 +904,10 @@ pub const Cli = struct {
         }
 
         if (add_opts.feed_opts.icon == null) {
+            // TODO: feed_url and page_url might have different domains.
+            // Favour page_url for domains.
+            // Would have to change things in '.index'
+            // And not have 'add_opts.feed_opts.feed_url' as input
             add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), add_opts.feed_opts.feed_url, .{
                 .html_body = if (add_opts.feed_opts.content_type == .html) add_opts.feed_opts.body else null,
             }) catch null;
@@ -1506,12 +1505,7 @@ pub const App = struct {
                 break :blk;
             }
 
-            const img_data = img_data: {
-                if (cache_control.image_type == .ico) {
-                    break :img_data try minify_ico(&a_writer.writer, body);
-                }
-                break :img_data body;
-            };
+            const img_data = try image.process(allocator, body, cache_control.image_type);
 
             try return_writer.ensureTotalCapacityPrecise(req_icon_url.len + img_data.len);
             try return_writer.writer.writeAll(req_icon_url);
@@ -1554,12 +1548,7 @@ pub const App = struct {
                 return null;
             }
 
-            const img_data = img_data: {
-                if (cache_control.image_type == .ico) {
-                    break :img_data try minify_ico(&a_writer.writer, body);
-                }
-                break :img_data body;
-            };
+            const img_data = try image.process(allocator, body, cache_control.image_type);
 
             const url_favicon = try req.get_url_slice(&buf_url_slice);
 

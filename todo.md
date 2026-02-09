@@ -1,10 +1,20 @@
 # Initial
+- jamesg.blog should find icon from page
+- move icon fetching code from app.zig
+- handle updating better when pc comes out of suspend 
+- server crash:
+  - panic: integer part of floating point value out of bounds
+  - Try to open https://news.ycombinator.com/ Edit feed link 
+  - This might happen because hackernews update has failed
 - website:
   - minify html
   - need to url escape link paths?
   - server: limit inline icon size
     - zignal
     - zstbi
+  - a11y styling
+    - https://github.com/Terryc21/XcodeResources/blob/main/Colorblind_Accessibility_Guide.md
+    - change info, warning, error colors where necessary
 - if link and id are same only save link to save space
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
@@ -18,6 +28,19 @@
   - failed request is added
   - rate limit is added
   - when feed is updated?
+- feedgaze batch --check-failed-icons logs:
+```
+warning: Icon body is empty. Request url: https://faultlore.com
+warning: Failed to fetch fallback icon '/favicon.ico' for 'https://thesquareplanet.com/'. Error: error.InvalidIcoImage
+warning: Icon body is empty. From: https://statmodeling.stat.columbia.edu/favicon.ico
+warning: Icon body is empty. From: https://www.forgottenconqueror.com/favicon.ico
+warning: Failed to fetch icon 'https://www.divergent-desktop.org/favicon.png'. Status code: .not_found
+warning: Failed to fetch 'https://news.ycombinator.com'. Error: error.TlsInitializationFailed
+warning: Failed to fetch fallback icon '/favicon.ico' for 'https://news.ycombinator.com/'. Error: error.TlsInitializationFailed
+warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut
+warning: Failed to fetch fallback icon '/favicon.ico' for 'https://www.openmymind.net/'. Error: error.ConnectionTimedOut
+```
+  - thesquareplanet.com/favicon.ico returns .png file
 
 
 - Make sqlite returned primary keys into u64.
@@ -32,7 +55,7 @@ sqlite busy error
   - try https://github.com/n0s4/flags
 
 - icons 
-  - compress (gzip/br) .ico and svg?
+  - compress (gzip/br) svg?
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself
   - resize bigger icons?

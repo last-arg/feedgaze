@@ -42,8 +42,11 @@ pub fn zignal() !void {
     const data = @embedFile("./tmp.png");
     var a = std.heap.GeneralPurposeAllocator(.{}){};
 
-    const img = try @import("image.zig").resize_png(a.allocator(), data);
-    try z.png.save(z.Rgba, a.allocator(), img, "./out.png");
+    const image = @import("image.zig");
+    const img = try image.process(a.allocator(), data, .png);
+    print("|{d} -> {d}|\n", .{data.len, img.len});
+    // print("|{d}|\n", .{s.len});
+    // try z.png.save(z.Rgba, a.allocator(), img, "./out.png");
 }
 
 pub fn std_http_client() !void {
