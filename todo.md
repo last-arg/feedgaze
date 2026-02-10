@@ -1,5 +1,4 @@
 # Initial
-- jamesg.blog should find icon from page
 - move icon fetching code from app.zig
 - handle updating better when pc comes out of suspend 
 - server crash:

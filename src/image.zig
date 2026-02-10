@@ -11,15 +11,20 @@ pub const Type = enum {
     webp, // image/webp
     avif, // image/avif
     svg, // image/svg+xml
-    ico, // image/x-icon
+    ico, // image/x-icon, image/vnd.microsoft.icon
 
     pub fn from_string(str: []const u8) ?@This() {
-        if (mem.eql(u8, str, "x-icon") or mem.eql(u8, str, "vnd.microsoft.icon")) {
+        var iter = mem.splitScalar(u8, str, '/');
+        _ = iter.next() orelse return null;
+        const end = iter.next() orelse return null;
+        if (mem.eql(u8, end, "x-icon") or mem.eql(u8, end, "vnd.microsoft.icon")) {
             return .ico;
-        } else if (mem.eql(u8, str, "jpg")) {
+        } else if (mem.eql(u8, end, "svg+xml")) {
+            return .svg;
+        } else if (mem.eql(u8, end, "jpg")) {
             return .jpg;
         }
-        return std.meta.stringToEnum(@This(), str);
+        return std.meta.stringToEnum(@This(), end);
     }
 
     pub fn from_data(data: []const u8) ?Type {
@@ -31,6 +36,8 @@ pub const Type = enum {
             return .webp;
         } else if (is_ico(data)) {
             return .ico;
+        } else if (is_svg(data)) {
+            return .svg;
         } else if (is_avif(data)) {
             return .avif;
         }
@@ -60,6 +67,17 @@ pub const Type = enum {
             .svg => ".svg",
             .ico => ".ico",
         };
+    }
+
+    fn is_svg(data: []const u8) bool {
+        var haystack = data[0..@min(data.len, 4 * 1024)];
+        if (mem.indexOf(u8, haystack, "<?xml")) |idx| {
+            haystack = haystack[idx + 5..];
+        } else {
+            return false;
+        }
+
+        return mem.containsAtLeast(u8, haystack, 1, "<svg");
     }
 
     fn is_png(data: []const u8) bool {
@@ -230,14 +248,21 @@ pub fn resize_jpeg(allocator: std.mem.Allocator, data: []const u8) !Image {
 }
 
 pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ![]const u8 {
-    const img_type_from_data = Type.from_data(data) orelse {
-        std.log.warn("Could not figure out image file type base on file content. File type base on HTTP 'Content-type' is '{?}'", .{img_type_opt});
+    const img_type_from_data = Type.from_data(data) orelse blk: {
+        std.log.warn("Could not figure out image file type based on file content", .{});
+        if (img_type_opt) |img_type| {
+            std.log.warn("Will use file type {} from HTTP header 'Content-type'", .{img_type});
+        }
+        break :blk null;
+    
+    };
+
+    const img_type = img_type_opt orelse img_type_from_data orelse {
         return error.UnknownImageType;
     };
-    const img_type = img_type_opt orelse img_type_from_data;
 
     if (img_type_from_data != img_type) {
-        std.log.warn("Image file type and http 'Content-Type' don't match. Using file type from image content", .{});
+        std.log.warn("Image file type and HTTP 'Content-Type' don't match. Using file type from image content", .{});
     }
     
     switch(img_type) {

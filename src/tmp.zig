@@ -17,7 +17,7 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main() !void {
-    try zignal();
+    // try zignal();
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
@@ -30,7 +30,7 @@ pub fn main() !void {
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    // try tmp_icon();
+    try tmp_icon();
     // try fetch_image();
     // try tmp_parse_icon();
     // try tmp_parse_html();
@@ -39,7 +39,7 @@ pub fn main() !void {
 
 const z = @import("zignal");
 pub fn zignal() !void {
-    const data = @embedFile("./tmp.png");
+    const data = @embedFile("./tmp1.png");
     var a = std.heap.GeneralPurposeAllocator(.{}){};
 
     const image = @import("image.zig");
@@ -137,7 +137,7 @@ pub fn tmp_icon() !void {
     defer arena.deinit();
     // const feed_url = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
     // const feed_url = "https://jakearchibald.com/";
-    const feed_url = "https://bsky.app/profile/bell.bz";
+    const feed_url = "https://jamesg.blog/";
 
     const icon_url = App.fetch_icon(arena.allocator(), feed_url, .{}) catch |err| blk: {
         std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
@@ -163,7 +163,7 @@ pub fn fetch_image() !void {
     // const feed_url = "https://jakearchibald.com/c/favicon-3d730960.png";
     const feed_url = "https://www.joshwcomeau.com/favicon.png";
 
-    var req = try http_client.init(arena.allocator());
+    var req = http_client.init(arena.allocator());
 
     var w_alloc: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer w_alloc.deinit();
