@@ -20,7 +20,7 @@ pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
     };
 }
 
-pub fn is_svg(data: []const u8) bool {
+pub fn is_inline_svg(data: []const u8) bool {
     std.debug.assert(!std.ascii.isWhitespace(data[0]));
     return std.mem.startsWith(u8, data, "<svg");
 }

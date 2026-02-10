@@ -1184,7 +1184,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
             const icon = feed_types.Icon.init(resp_url, resp_body, cache_value);
             break :blk try db.icon_upsert(icon);
-        } else if (util.is_svg(icon_url_trimmed)) {
+        } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
             const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
             const data = try std.fmt.allocPrint(req.arena, "data:image/svg+xml,{s}", .{page_url_decoded});
