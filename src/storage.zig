@@ -1248,6 +1248,10 @@ pub const Storage = struct {
     \\) as INTEGER)
     ;
 
+    // TODO: add special value for else branch that show that count exceeds or is 7
+    // Or return also count(*) and let code handle it?
+    // This was caused by problem when datetime library could not handle
+    // max_int value.
     const select_request_failed =
     \\select iif(count(*) < 7
     \\    , max(utc_sec) + min(3600 * (count(*) * count(*)), 259200)
@@ -1293,23 +1297,25 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{});
     }
 
+    // NOTE: null means that there have been to many failed feed requests in a row
     pub fn next_update_feed(self: *Self, feed_id: usize) !?i64 {
-        const query = comptimePrint(
-        \\select 
-        \\  coalesce(
-        \\    (
-        \\      select min(result) from (select
-        \\        {s} as result
-        \\        from rate_limit where feed_id = @feed_id
-        \\        UNION
-        \\        {s} where feed_id = @feed_id
-        \\    )), 
-        \\    last_update + item_interval
-        \\  ) - strftime('%s', 'now')
-        \\from feed_update where feed_update.feed_id = @feed_id;
-        , .{rate_limit_iif_utc_sec, select_request_failed})
+        const query =
+            \\select case
+            \\  when count(*) == 0 then (select last_update + item_interval from feed_update where feed_id = @feed_id)
+            \\  when count(*) >= 7 then null
+            \\  when count(*) > 0 and req.feed_id is not null then max(req.utc_sec) + min(3600 * (count(*) * count(*)), 259200)
+            \\  when rl.count >= 3 then max(rl.next_utc_sec, rl.last_utc_sec + min(3600 * (rl.count * rl.count), 259200))
+            \\  when rl.count > 0 then rl.next_utc_sec
+            \\end - strftime('%s', 'now')
+            \\from feed_request_failed as req
+            \\left join rate_limit as rl on rl.feed_id = req.feed_id
+            \\where req.feed_id = @feed_id
         ;
-        return try one(&self.sql_db, i64, query, .{.feed_id = feed_id});
+        const result = try one(&self.sql_db, i64, query, .{.feed_id = feed_id});
+        if (result) |val| if (val != 0) {
+            return val;
+        };
+        return null;
     }
 
     pub fn feed_last_update(self: *Self, feed_id: usize) !?i64 {

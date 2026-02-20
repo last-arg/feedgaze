@@ -1399,8 +1399,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         // TODO: add update link/button if can update now 
     } else {
         // TODO: if too many failed requests updating will be disabled 
+        // TODO: add link/button to run update right now
         try w.writeAll(
-            \\<p>Next update unknown</p>
+            \\<p>Updating is disabled. Failed to fetch feed too many times.</p>
         );
     }
 

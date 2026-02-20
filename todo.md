@@ -1,10 +1,8 @@
 # Initial
 - move icon fetching code from app.zig
 - handle updating better when pc comes out of suspend 
-- server crash:
-  - panic: integer part of floating point value out of bounds
-  - Try to open https://news.ycombinator.com/ Edit feed link 
-  - This might happen because hackernews update has failed
+- add special value to 'select_request_failed'?
+- replace zig-datetime with zeit?
 - website:
   - minify html
   - need to url escape link paths?
