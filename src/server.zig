@@ -1729,9 +1729,9 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 std.log.warn("Request icon file type and current icon type don't match. Request icon type: {s}. Current icon type: {}.", .{file_type_raw, ft_req});
                 break :blk;
             }
-            resp.header("Content-Type", ft_req.to_content_type());
         };
 
+        resp.header("Content-Type", file_type.?.to_content_type());
         resp.header("Cache-control", "public,max-age=31536000,immutable");
         const body = body: {
             const data = global.icon_manage.get_data_string_by_index(index);
