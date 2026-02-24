@@ -16,7 +16,8 @@ const Uri = std.Uri;
 const assert = std.debug.assert;
 const image = @import("./image.zig");
 
-const user_agent = "feedgaze";
+const build_zon = @import("build_zig_zon");
+const user_agent = "feedgaze/" ++ build_zon.version;
 
 client: http.Client,
 response: ?http.Client.Response = null,

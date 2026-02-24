@@ -190,4 +190,10 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.root_module.addImport("zignal", zignal.module("zignal"));
     // If you're creating a `module` using b.createModule, then:
     step.root_module.addImport("zignal", zignal.module("zignal"));
+
+    step.root_module.addImport("build_zig_zon", b.createModule(.{
+        .root_source_file = b.path("build.zig.zon"),
+        .target = dep_args.target,
+        .optimize = dep_args.optimize,
+    }));
 }
