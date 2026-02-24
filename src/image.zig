@@ -70,14 +70,12 @@ pub const Type = enum {
     }
 
     fn is_svg(data: []const u8) bool {
-        var haystack = data[0..@min(data.len, 4 * 1024)];
+        var haystack = data[0..@min(data.len, 1024)];
         if (mem.indexOf(u8, haystack, "<?xml")) |idx| {
             haystack = haystack[idx + 5..];
-        } else {
-            return false;
         }
 
-        return mem.containsAtLeast(u8, haystack, 1, "<svg");
+        return mem.containsAtLeast(u8, haystack, 0, "<svg");
     }
 
     fn is_png(data: []const u8) bool {
