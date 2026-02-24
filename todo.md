@@ -28,16 +28,12 @@
 - feedgaze batch --check-failed-icons logs:
 ```
 warning: Icon body is empty. Request url: https://faultlore.com
-warning: Failed to fetch fallback icon '/favicon.ico' for 'https://thesquareplanet.com/'. Error: error.InvalidIcoImage
 warning: Icon body is empty. From: https://statmodeling.stat.columbia.edu/favicon.ico
 warning: Icon body is empty. From: https://www.forgottenconqueror.com/favicon.ico
 warning: Failed to fetch icon 'https://www.divergent-desktop.org/favicon.png'. Status code: .not_found
+warning: Failed to fetch 'http://ruoyusun.com'. Error: error.TlsInitializationFailed
 warning: Failed to fetch 'https://news.ycombinator.com'. Error: error.TlsInitializationFailed
-warning: Failed to fetch fallback icon '/favicon.ico' for 'https://news.ycombinator.com/'. Error: error.TlsInitializationFailed
-warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut
-warning: Failed to fetch fallback icon '/favicon.ico' for 'https://www.openmymind.net/'. Error: error.ConnectionTimedOut
-```
-  - thesquareplanet.com/favicon.ico returns .png file
+warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut```
 
 
 - Make sqlite returned primary keys into u64.

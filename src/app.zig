@@ -1450,8 +1450,8 @@ pub const App = struct {
             const feed_opts = req.fetch(&a_writer.writer, allocator, req_url, .{
                 .buffer_header = &buffer_header,
             }) catch |err| {
-                std.log.warn("Failed to fetch '{s}'. Error: {}", .{req_url, err});
-                break :blk;
+                std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_url, err});
+                return null;
             };
 
             const body = a_writer.writer.buffered();
@@ -1492,9 +1492,12 @@ pub const App = struct {
             defer { req.deinit(); }
 
             a_writer.writer.end = 0;
-            const cache_control = try req.fetch_image(&a_writer.writer, allocator, req_icon_url, .{
+            const cache_control = req.fetch_image(&a_writer.writer, allocator, req_icon_url, .{
                 .buffer_header = &buffer_header,
-            }) orelse {
+            }) catch |err| {
+                std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_icon_url, err});
+                return null;
+            } orelse {
                 std.log.warn("Failed to fetch icon '{s}'. Status code: {}", .{req_icon_url, req.response.?.head.status});
                 break :blk;
             };
