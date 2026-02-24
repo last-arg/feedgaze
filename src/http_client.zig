@@ -16,6 +16,8 @@ const Uri = std.Uri;
 const assert = std.debug.assert;
 const image = @import("./image.zig");
 
+const user_agent = "feedgaze";
+
 client: http.Client,
 response: ?http.Client.Response = null,
 request: ?http.Client.Request = null,
@@ -62,16 +64,18 @@ pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: 
 
 pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
     const uri = try std.Uri.parse(url);
-    var extra_headers_arr: [2]std.http.Header = undefined;
+    var extra_headers_arr: [3]std.http.Header = undefined;
     extra_headers_arr[0] = .{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" };
+    extra_headers_arr[1] = .{ .name = "User-Agent", .value = user_agent };
 
     var request_opts: std.http.Client.RequestOptions = .{
         .keep_alive = false,
         .redirect_behavior = .init(5),
-        .extra_headers = extra_headers_arr[0..1],
+        .extra_headers = extra_headers_arr[0..2],
     };
 
     if (opts.etag_or_last_modified) |val| {
+        std.debug.assert(val.len > 0);
         const h: http.Header = .{
             .name = if (val[3] == ',')
                 "If-Modified-Since"
@@ -80,7 +84,7 @@ pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions)
             ,
             .value = val,
         };
-        extra_headers_arr[1] = h;
+        extra_headers_arr[2] = h;
 
         request_opts.extra_headers = &extra_headers_arr;
     }
@@ -236,16 +240,19 @@ pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator,
 
 pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
     const uri = try std.Uri.parse(url);
-    var extra_headers_arr: [2]std.http.Header = undefined;
+    var extra_headers_arr: [3]std.http.Header = undefined;
     extra_headers_arr[0] = .{ .name = "Accept", .value = "image/*" };
+    extra_headers_arr[1] = .{ .name = "User-Agent", .value = user_agent };
+
 
     var request_opts: std.http.Client.RequestOptions = .{
         .keep_alive = false,
         .redirect_behavior = .init(5),
-        .extra_headers = extra_headers_arr[0..1],
+        .extra_headers = extra_headers_arr[0..2],
     };
 
     if (opts.etag_or_last_modified) |val| {
+        std.debug.assert(val.len > 0);
         const h: http.Header = .{
             .name = if (val[3] == ',')
                 "If-Modified-Since"
@@ -254,7 +261,7 @@ pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOp
             ,
             .value = val,
         };
-        extra_headers_arr[1] = h;
+        extra_headers_arr[2] = h;
 
         request_opts.extra_headers = &extra_headers_arr;
     }
