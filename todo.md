@@ -3,6 +3,7 @@
 - handle updating better when pc comes out of suspend 
 - add special value to 'select_request_failed'?
 - replace zig-datetime with zeit?
+- don't like extra allocting in 'icon_all' fn. see if can get sqlite-zig to work with readField()
 - website:
   - minify html
   - need to url escape link paths?

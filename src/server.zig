@@ -95,11 +95,11 @@ pub const IconManage = struct {
                 const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
                 break :blk .{page_url_decoded, data_img.file_type};
             } else if (image.Type.from_data(icon.icon_data)
-                orelse file_type_from_url(icon.icon_url)
+                orelse file_type_from_uri(icon.icon_url)
             ) |file_type| {
                 break :blk .{icon.icon_data, file_type};
             } else {
-                std.log.warn("Unknown icon from '{s}'", .{icon.icon_url});
+                std.log.warn("Unknown icon from '{f}'", .{icon.icon_url});
                 return error.UnknownIcon;
             }
         };
@@ -109,7 +109,9 @@ pub const IconManage = struct {
         std.mem.replaceScalar(u8, @constCast(hash_val), '/', '_');
 
         const url_start = self.url_string_bytes.items.len; 
-        try self.url_string_bytes.appendSlice(self.allocator, icon.icon_url);
+        var buf: [1024]u8 = undefined;
+        const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.icon_url});
+        try self.url_string_bytes.appendSlice(self.allocator, icon_url);
         const url_end = self.url_string_bytes.items.len; 
 
         const data_start = self.data_string_bytes.items.len; 
@@ -132,9 +134,8 @@ pub const IconManage = struct {
         return index;
     }
 
-    fn file_type_from_url(input: []const u8) ?IconFileType {
-        const url = std.Uri.parse(input) catch return null;
-        const path = util.uri_component_val(url.path);
+    fn file_type_from_uri(uri: std.Uri) ?IconFileType {
+        const path = util.uri_component_val(uri.path);
         var iter = mem.splitBackwardsScalar(u8, path, '.');
         const filetype_raw = iter.first();
         return IconFileType.from_string(filetype_raw);
@@ -1169,7 +1170,6 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             defer req_http.deinit();
 
             var buffer_header: [1024]u8 = undefined;
-            var buffer_url: [1024]u8 = undefined;
             var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
             errdefer a_writer.deinit();
 
@@ -1179,13 +1179,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             }) catch break :blk null;
             const resp_body = a_writer.writer.buffered();
 
-            const resp_url = req_http.get_url_slice(&buffer_url) catch |err| {
-                std.log.warn("Failed to get requests effective url that was started by '{s}'. Error: {}", .{icon_url, err});
-                break :blk null;
-            };
-
             const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-            const icon = feed_types.Icon.init(resp_url, resp_body, cache_value);
+            const icon = feed_types.Icon.init(req_http.get_uri(), resp_body, cache_value);
             break :blk try db.icon_upsert(icon);
         } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
@@ -1195,7 +1190,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 break :blk icon_id;
             } 
 
-            const icon = feed_types.Icon.init(page_url, data, null);
+            const page_uri = try std.Uri.parse(page_url);
+            const icon = feed_types.Icon.init(page_uri, data, null);
             break :blk try db.icon_upsert(icon);
         } else {
             std.log.info("User entered invalid icon input: '{s}'", .{icon_url_trimmed});

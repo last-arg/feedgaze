@@ -376,24 +376,24 @@ pub const FeedToUpdate = struct {
 };
 
 pub const Icon = struct {
-    url: []const u8,
+    url: std.Uri,
     data: []const u8,
     etag_or_last_modified_or_hash: []const u8,
 
-    pub fn init(url: []const u8, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
+    pub fn init(uri: std.Uri, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
         return .{
-            .url = url,
+            .url = uri,
             .data = data, 
             .etag_or_last_modified_or_hash = content_cache_value(data, etag_or_last_modified),
         };
     }
 
-    pub fn init_if_data(url: []const u8, data: []const u8, etag_or_last_modified: ?[]const u8) ?@This() {
+    pub fn init_if_data(uri: std.Uri, data: []const u8, etag_or_last_modified: ?[]const u8) ?@This() {
         if (!util.is_data(data)) {
             return null;
         }
 
-        return init(url, data, etag_or_last_modified);
+        return init(uri, data, etag_or_last_modified);
     }
 
 
@@ -442,6 +442,7 @@ pub const FeedOptions = struct {
     content_type: ?ContentType = null,
     feed_updates: FeedUpdate = .{},
     feed_url: []const u8 = "",
+    // TODO?: add feed_uri: std.Uri to replace feed_url?
     title: ?[]const u8 = null,
     icon: ?Icon = null,
 };

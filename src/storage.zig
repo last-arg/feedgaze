@@ -623,7 +623,6 @@ pub const Storage = struct {
     }
 
     pub fn icon_upsert(self: *Self, icon: types.Icon) !?u64 {
-        assert(if (std.Uri.parse(icon.url)) |_| true else |_| false);
         assert(icon.data.len > 0);
         assert(icon.etag_or_last_modified_or_hash.len > 0);
 
@@ -640,12 +639,15 @@ pub const Storage = struct {
             \\RETURNING icon_id;
         ;
 
+        var buf: [1024]u8 = undefined;
+        const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.url});
+
         const icon_id = try self.sql_db.one(u64, query, .{}, .{
-            .icon_url = icon.url,
+            .icon_url = icon_url,
             .icon_data = sql.Blob{ .data = icon.data },
             .cache_value = icon.etag_or_last_modified_or_hash,
         }) orelse try self.sql_db.one(u64, "select icon_id from icon where icon_url = ?", .{}, .{
-            icon.url,
+            icon_url,
         });
 
         return icon_id;
@@ -1383,9 +1385,29 @@ pub const Storage = struct {
 
     pub const Icon = struct {
         icon_id: u64,
-        icon_url: []const u8,
+        icon_url: std.Uri,
         icon_data: []const u8,
         etag_or_last_modified_or_hash: []const u8,
+
+        const Raw = struct {
+            icon_id: u64,
+            icon_url: []const u8,
+            icon_data: []const u8,
+            etag_or_last_modified_or_hash: []const u8,
+        };
+
+        pub fn from_raw(raw: Raw) !Icon {
+            return .{
+                .icon_id = raw.icon_id,
+                .icon_url = try std.Uri.parse(raw.icon_url),
+                .icon_data = raw.icon_data,
+                .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
+            };
+        }
+
+        pub fn is_data(self: *const Icon) bool {
+            return mem.eql(u8, self.icon_url.scheme, "data");
+        }
     };
 
     pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
@@ -1393,7 +1415,16 @@ pub const Storage = struct {
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
-        return try selectAll(&self.sql_db, allocator, Icon, query, .{});
+        const raws = try selectAll(&self.sql_db, allocator, Icon.Raw, query, .{});
+        // TODO: don't like this extra allocating
+        const icons = try allocator.alloc(Icon, raws.len);
+        for (icons, raws) |*icon, raw| {
+            icon.icon_id = raw.icon_id;
+            icon.icon_url = try std.Uri.parse(raw.icon_url);
+            icon.icon_data = raw.icon_data;
+            icon.etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash;
+        }
+        return icons;
     }
 
     pub fn feed_id_by_icon_id(self: *Self, icon_id: u64) !?u64 {
@@ -1437,13 +1468,17 @@ pub const Storage = struct {
         return try selectAll(&self.sql_db, allocator, IconFailed, query, .{});
     }
     
-    pub fn icon_update(self: *Self, curr_icon_url: []const u8, icon: types.Icon) !void {
-        assert(is_url(curr_icon_url));
-        assert(is_url(icon.url));
+    // TODO?: make curr_icon_url into std.Uri?
+    pub fn icon_update(self: *Self, curr_icon_uri: std.Uri, icon: types.Icon) !void {
         assert(icon.data.len > 0);
 
+        var buf_curr: [1024]u8 = undefined;
+        const curr_icon_url = try std.fmt.bufPrint(&buf_curr, "{f}", .{curr_icon_uri});
+
+        var buf_icon: [1024]u8 = undefined;
+        const icon_url = try std.fmt.bufPrint(&buf_icon, "{f}", .{icon.url});
         const data = sql.Blob{ .data = icon.data };
-        if (mem.eql(u8, curr_icon_url, icon.url)) {
+        if (mem.eql(u8, curr_icon_url, icon_url)) {
             const query = 
             \\UPDATE icon SET
             \\  icon_data = ?,
@@ -1461,7 +1496,7 @@ pub const Storage = struct {
             \\WHERE icon_url = ?;
             ;
 
-            const values = .{icon.url, data, icon.etag_or_last_modified_or_hash, curr_icon_url};
+            const values = .{icon_url, data, icon.etag_or_last_modified_or_hash, curr_icon_url};
             try self.sql_db.exec(query, .{}, values);
         }
     }
@@ -1471,7 +1506,11 @@ pub const Storage = struct {
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        return try self.sql_db.oneAlloc(Icon, allocator,  query, .{}, .{id});
+        const raw_opt = try self.sql_db.oneAlloc(Icon.Raw, allocator,  query, .{}, .{id});
+        if (raw_opt) |raw| {
+            return try Icon.from_raw(raw);
+        }
+        return null;
     }
     
     pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
