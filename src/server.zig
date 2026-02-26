@@ -536,7 +536,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     var client = http_client.init(req.arena);
     defer client.deinit();
-    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_url, .{
+    const feed_uri = try std.Uri.parse(feed_url);
+    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
@@ -559,7 +560,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, .{
+        add_opts.feed_opts.icon = App.fetch_icon(req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
             std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
@@ -906,7 +907,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     
     var client = http_client.init(req.arena);
     defer client.deinit();
-    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_url, .{
+    const feed_uri = try std.Uri.parse(feed_url);
+    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
@@ -941,7 +943,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = App.fetch_icon(req.arena, add_opts.feed_opts.feed_url, .{
+        add_opts.feed_opts.icon = App.fetch_icon(req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
             std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
@@ -1171,7 +1173,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             var a_writer: std.Io.Writer.Allocating = try .initCapacity(req.arena, 8 * 1024);
             errdefer a_writer.deinit();
 
-            const cache_control = req_http.fetch_image(&a_writer.writer, req.arena, icon_url_trimmed, .{
+            const icon_uri = try std.Uri.parse(icon_url_trimmed);
+            const cache_control = req_http.fetch_image(&a_writer.writer, req.arena, icon_uri, .{
                 .buffer_header = &buffer_header,
             }) catch break :blk null;
             const resp_body = a_writer.writer.buffered();

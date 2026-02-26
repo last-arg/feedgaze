@@ -57,14 +57,13 @@ pub fn deinit(self: *@This()) void {
     self.client.deinit();
 }
 
-pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?feed_types.FeedOptions {
-    var resp = try self.fetch_response(url, opts);
+pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, uri: std.Uri, opts: FetchHeaderOptions) !?feed_types.FeedOptions {
+    var resp = try self.fetch_response(uri, opts);
     const re = try handle_response(&resp, writer, allocator);
     return re;
 }
 
-pub fn fetch_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
-    const uri = try std.Uri.parse(url);
+pub fn fetch_response(self: *@This(), uri: std.Uri, opts: FetchHeaderOptions) !http.Client.Response {
     var buf_header: [3]std.http.Header = undefined;
     var extra_headers_arr: std.ArrayList(std.http.Header) = .initBuffer(&buf_header);
     extra_headers_arr.appendAssumeCapacity(.{ .name = "Accept", .value = "application/atom+xml, application/rss+xml, text/xml, application/xml, text/html" });
@@ -233,14 +232,13 @@ pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Wr
     return result;
 }
 
-pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, url: []const u8, opts: FetchHeaderOptions) !?CacheControl {
-    var resp = try self.fetch_image_response(url, opts);
+pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, uri: std.Uri, opts: FetchHeaderOptions) !?CacheControl {
+    var resp = try self.fetch_image_response(uri, opts);
     const re = try handle_image_response(&resp, writer, allocator);
     return re;
 }
 
-pub fn fetch_image_response(self: *@This(), url: []const u8, opts: FetchHeaderOptions) !http.Client.Response {
-    const uri = try std.Uri.parse(url);
+pub fn fetch_image_response(self: *@This(), uri: std.Uri, opts: FetchHeaderOptions) !http.Client.Response {
     var buf_header: [3]std.http.Header = undefined;
     var extra_headers_arr: std.ArrayList(std.http.Header) = .initBuffer(&buf_header);
     extra_headers_arr.appendAssumeCapacity(.{ .name = "Accept", .value = "image/*" });
@@ -291,7 +289,7 @@ pub fn resp_to_icon_body(body: []const u8, url: []const u8) ?[]const u8 {
     return body.items;
 }
 
-pub fn get_uri(self: *const @This()) !Uri {
+pub fn get_uri(self: *const @This()) Uri {
     return self.request.?.uri;
 }
 

@@ -12,6 +12,8 @@
   - a11y styling
     - https://github.com/Terryc21/XcodeResources/blob/main/Colorblind_Accessibility_Guide.md
     - change info, warning, error colors where necessary
+    - colors from? https://design.homeoffice.gov.uk/design-system/components?name=Alert
+    - should also add icon
 - if link and id are same only save link to save space
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
@@ -20,7 +22,6 @@
   - limit how many items rendered
     - Paginate if there are too many items?
       Only paginate if items are new?
-- functions should take Uri type instead of []const u8
 - add trigger when:
   - failed request is added
   - rate limit is added
