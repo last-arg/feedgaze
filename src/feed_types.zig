@@ -326,15 +326,6 @@ pub const FeedItemRender = struct {
     };
 };
 
-pub const FeedRender = struct {
-    feed_id: usize,
-    title: []const u8,
-    feed_url: []const u8,
-    page_url: ?[]const u8,
-    updated_timestamp: ?i64,
-    icon_url: ?[]const u8,
-};
-
 pub const FeedUpdate = struct {
     etag_or_last_modified: ?[]const u8 = null,
     update_interval: i64 = @import("./app_config.zig").update_interval,

@@ -1058,15 +1058,6 @@ pub const Storage = struct {
     \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
     ;
 
-    pub fn feeds_tagless(self: *Self, allocator: Allocator) ![]types.FeedRender {
-        const query_fmt = 
-        \\select * from feed where feed_id not in (
-        \\  select distinct(feed_id) from feed_tag
-        \\) order by updated_timestamp DESC;
-        ;
-        return try selectAll(&self.sql_db, allocator, types.FeedRender, query_fmt, .{});
-    }
-
     pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.Feed {
         const query = 
         \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
