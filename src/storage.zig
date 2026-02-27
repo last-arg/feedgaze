@@ -740,12 +740,28 @@ pub const Storage = struct {
         try self.sql_db.exec(del_query, .{}, .{ feed_id, self.options.max_item_count });
     }
 
-    pub fn feed_items_with_feed_id(self: *Self, alloc: Allocator, feed_id: usize) ![]FeedItemRender {
-        const query_item =
+    pub fn feed_items_with_feed_id(self: *Self, allocator: Allocator, feed_id: usize) ![]FeedItemRender {
+        const query =
             \\select feed_id, title, link, updated_timestamp, created_timestamp
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
         ;
-        return try selectAll(&self.sql_db, alloc, FeedItemRender, query_item, .{feed_id});
+
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(FeedItemRender.Raw, .{feed_id});
+
+        var rows: ArrayList(FeedItemRender) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .title = row.title,
+                .link = if (row.link) |link| try std.Uri.parse(link) else null, 
+                .updated_timestamp = row.updated_timestamp,
+                .created_timestamp = row.created_timestamp,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
@@ -1330,7 +1346,23 @@ pub const Storage = struct {
         \\FROM item WHERE created_timestamp > strftime("%s", "now", "-3 days") ORDER BY created_timestamp DESC
         \\LIMIT 125
         ;
-        return try selectAll(&self.sql_db, allocator, FeedItemRender, query, .{});
+
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(FeedItemRender.Raw, .{});
+
+        var rows: ArrayList(FeedItemRender) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .title = row.title,
+                .link = if (row.link) |link| try std.Uri.parse(link) else null, 
+                .updated_timestamp = row.updated_timestamp,
+                .created_timestamp = row.created_timestamp,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub fn get_latest_change(self: *Self) !?i64 {

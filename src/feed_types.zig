@@ -313,9 +313,17 @@ pub const FeedItem = struct {
 pub const FeedItemRender = struct {
     feed_id: usize,
     title: []const u8,
-    link: ?[]const u8,
+    link: ?std.Uri,
     updated_timestamp: ?i64,
     created_timestamp: i64,
+
+    pub const Raw = struct {
+        feed_id: usize,
+        title: []const u8,
+        link: ?[]const u8,
+        updated_timestamp: ?i64,
+        created_timestamp: i64,
+    };
 };
 
 pub const FeedRender = struct {

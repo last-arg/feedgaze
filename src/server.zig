@@ -2585,8 +2585,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
     const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
 
     if (item.link) |link| {
-        const link_escaped = try parse.html_escape(allocator, link);
-        try w.print(parts_get("feed_item_link"), .{ .title = item_title, .link = link_escaped, .class = opts.class });
+        try w.print(parts_get("feed_item_link"), .{ .title = item_title, .link = link, .class = opts.class });
     } else {
         try w.print(parts_get("feed_item_no_link"), .{ .title = item_title, .class = opts.class });
     }
