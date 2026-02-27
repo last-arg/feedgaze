@@ -242,7 +242,7 @@ pub const Cli = struct {
 
                     _ = a_writer.writer.consumeAll();
 
-                    if (!util.is_data(icon.icon_url)) blk: {
+                    if (!icon.is_data()) blk: {
                         var date_buf: [util.date_len_max]u8 = undefined;
                         const icon_cache_value = cache_value: {
                             if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
@@ -285,7 +285,7 @@ pub const Cli = struct {
 
                         const resp_body = a_writer.writer.buffered();
                         if (resp_body.len == 0) {
-                            std.log.warn("Failed to get icon '{s}'. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
+                            std.log.warn("Failed to get icon '{f}'. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
 
                             const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                                 std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
@@ -348,7 +348,7 @@ pub const Cli = struct {
                 progress_node.setEstimatedTotalItems(icons_missing.len);
 
                 var downloaded: std.MultiArrayList(struct{
-                    page_url: []const u8,
+                    page_url: std.Uri,
                     icon_id: u64, // Need to update feed's icon_id column
                     count: usize,
                 }) = .empty;
@@ -360,9 +360,7 @@ pub const Cli = struct {
 
                     var index_opt: ?usize = null;
                     for (downloaded.items(.page_url), 0..) |p_url, i| {
-                        const p_uri = std.Uri.parse(p_url) catch unreachable; // These urls should be valid
-                        const icon_uri = std.Uri.parse(icon.page_url) catch unreachable; // These urls should be valid
-                        if (mem.eql(u8, icon_uri.host.?.percent_encoded, p_uri.host.?.percent_encoded)) {
+                        if (mem.eql(u8, icon.page_url.host.?.percent_encoded, p_url.host.?.percent_encoded)) {
                             index_opt = i;
                             break;
                         }
@@ -377,8 +375,7 @@ pub const Cli = struct {
                         }
                     }
 
-                    const page_uri = try std.Uri.parse(icon.page_url);
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), page_uri, .{}) catch {
+                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",

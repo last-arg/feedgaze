@@ -1441,7 +1441,12 @@ pub const Storage = struct {
 
     const IconMissing = struct {
         feed_id: usize,
-        page_url: []const u8,
+        page_url: std.Uri,
+
+        pub const Raw = struct {
+            feed_id: usize,
+            page_url: []const u8,
+        };
     };
 
     pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]IconMissing {
@@ -1450,7 +1455,19 @@ pub const Storage = struct {
         \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
         \\AND feed.feed_id NOT IN (select feed_id from icon_failed);
         ;
-        return try selectAll(&self.sql_db, allocator, IconMissing, query, .{});
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(IconMissing.Raw, .{});
+
+        var rows: ArrayList(IconMissing) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .page_url = try std.Uri.parse(row.page_url),
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub const IconFailed = struct {
