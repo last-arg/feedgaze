@@ -241,7 +241,6 @@ pub const Cli = struct {
                     }
 
                     _ = a_writer.writer.consumeAll();
-                    const icon_uri = try std.Uri.parse(icon.icon_url);
 
                     if (!util.is_data(icon.icon_url)) blk: {
                         var date_buf: [util.date_len_max]u8 = undefined;
@@ -264,7 +263,7 @@ pub const Cli = struct {
                             break :cache_value icon.etag_or_last_modified_or_hash;
                         };
 
-                        const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon_uri, .{
+                        const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
                             .etag_or_last_modified = icon_cache_value,
                             .buffer_header = &buffer_header,
                         }) catch {
@@ -309,13 +308,13 @@ pub const Cli = struct {
                         const img_data = try image.process(arena.allocator(), resp_body, cache_control.?.image_type);
                         const icon_new = feed_types.Icon.init(req.get_uri(), img_data, cache_value);
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            try self.storage.icon_update(icon_uri, icon_new);
+                            try self.storage.icon_update(icon.icon_url, icon_new);
                         }
                         continue;
                     }
 
                     // Inlined icon in html
-                    const icon_opt = App.fetch_icon(arena.allocator(), icon_uri, .{}) catch {
+                    const icon_opt = App.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
                         const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                             std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
                             continue;
@@ -329,7 +328,7 @@ pub const Cli = struct {
 
                     if (icon_opt) |icon_new| {
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            try self.storage.icon_update(icon_uri, icon_new);
+                            try self.storage.icon_update(icon.icon_url, icon_new);
                         }
                     } else {
                         const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {

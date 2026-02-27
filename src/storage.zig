@@ -1410,12 +1410,26 @@ pub const Storage = struct {
         }
     };
 
-    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon.Raw {
+    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
-        return try selectAll(&self.sql_db, allocator, Icon.Raw, query, .{});
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(Icon.Raw, .{});
+
+        var rows: ArrayList(Icon) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .icon_id = row.icon_id,
+                .icon_url = try std.Uri.parse(row.icon_url),
+                .icon_data = row.icon_data,
+                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub fn feed_id_by_icon_id(self: *Self, icon_id: u64) !?u64 {

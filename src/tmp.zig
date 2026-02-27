@@ -25,12 +25,12 @@ pub fn main() !void {
     // try run_parse();
     // try test_allocating();
     // try storage_item_interval();
-    // try storage_test();
+    try storage_test();
     // try find_dir();
     // try http_head();
     // try zig_http();
     // try tmp_progress();
-    try tmp_icon();
+    // try tmp_icon();
     // try fetch_image();
     // try tmp_parse_icon();
     // try tmp_parse_html();
@@ -332,8 +332,9 @@ pub fn storage_test() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    const storage = try Storage.init("./tmp/feeds.db");
-    _ = storage; // autofix
+    var storage = try Storage.init("./tmp/feeds.db");
+    const icons = try storage.icon_all(arena.allocator());
+    print("len: {d}\n", .{icons.len});
 }
 
 pub fn storage_item_interval() !void {
