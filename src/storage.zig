@@ -1472,8 +1472,14 @@ pub const Storage = struct {
 
     pub const IconFailed = struct {
         feed_id: usize,
-        page_url: []const u8,
+        page_url: std.Uri,
         etag_or_last_modified_or_hash: []const u8,
+
+        pub const Raw = struct {
+            feed_id: usize,
+            page_url: []const u8,
+            etag_or_last_modified_or_hash: []const u8,
+        };
     };
 
     // Failed icon request might icon status in DB:
@@ -1487,7 +1493,20 @@ pub const Storage = struct {
         \\JOIN feed ON icon_failed.feed_id = feed.feed_id
         \\AND feed.page_url IS NOT NULL
         ;
-        return try selectAll(&self.sql_db, allocator, IconFailed, query, .{});
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(IconFailed.Raw, .{});
+
+        var rows: ArrayList(IconFailed) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .page_url = try std.Uri.parse(row.page_url),
+                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
     
     // TODO?: make curr_icon_url into std.Uri?

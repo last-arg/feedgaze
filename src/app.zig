@@ -408,9 +408,7 @@ pub const Cli = struct {
                 for (icons_failed) |icon| {
                     defer progress_node.completeOne();
 
-
-                    const page_uri = try std.Uri.parse(icon.page_url);
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), page_uri, .{}) catch {
+                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
