@@ -1410,21 +1410,12 @@ pub const Storage = struct {
         }
     };
 
-    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
+    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon.Raw {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
-        const raws = try selectAll(&self.sql_db, allocator, Icon.Raw, query, .{});
-        // TODO: don't like this extra allocating
-        const icons = try allocator.alloc(Icon, raws.len);
-        for (icons, raws) |*icon, raw| {
-            icon.icon_id = raw.icon_id;
-            icon.icon_url = try std.Uri.parse(raw.icon_url);
-            icon.icon_data = raw.icon_data;
-            icon.etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash;
-        }
-        return icons;
+        return try selectAll(&self.sql_db, allocator, Icon.Raw, query, .{});
     }
 
     pub fn feed_id_by_icon_id(self: *Self, icon_id: u64) !?u64 {
