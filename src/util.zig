@@ -1,6 +1,7 @@
 const std = @import("std");
 const datetime = @import("zig-datetime").datetime;
 const Datetime = datetime.Datetime;
+const html = @import("./html.zig");
 
 pub fn is_url(url: []const u8) bool {
     return if (std.Uri.parse(url)) |_| true else |_| false;
@@ -51,4 +52,24 @@ pub fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
     }
 
     return "";
+}
+
+pub fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {
+    if (html.parse_icon(html_body)) |icon_url| {
+        if (is_data(icon_url)) {
+            return icon_url; 
+        } else {
+            writer.end = 0;
+            try writer.writeAll(icon_url);
+            const page_url_new = try uri.resolveInPlace(icon_url.len, &writer.buffer);
+            try std.Uri.Format.default(.{
+                .uri = &page_url_new,
+                .flags = .all,
+            }, writer);
+
+            return writer.buffered()[icon_url.len..];
+        }
+    }
+
+    return null;
 }

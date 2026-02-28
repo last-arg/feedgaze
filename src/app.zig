@@ -314,7 +314,7 @@ pub const Cli = struct {
                     }
 
                     // Inlined icon in html
-                    const icon_opt = App.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
+                    const icon_opt = http_client.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
                         const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                             std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
                             continue;
@@ -375,7 +375,7 @@ pub const Cli = struct {
                         }
                     }
 
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
+                    const new_icon_opt = http_client.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -408,7 +408,7 @@ pub const Cli = struct {
                 for (icons_failed) |icon| {
                     defer progress_node.completeOne();
 
-                    const new_icon_opt = App.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
+                    const new_icon_opt = http_client.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -903,7 +903,7 @@ pub const Cli = struct {
             // And not have 'add_opts.feed_opts.feed_url' as input
              
             const feed_uri_for_icon = try std.Uri.parse(mem.trim(u8, add_opts.feed_opts.feed_url, &std.ascii.whitespace));
-            add_opts.feed_opts.icon = App.fetch_icon(arena.allocator(), feed_uri_for_icon, .{
+            add_opts.feed_opts.icon = http_client.fetch_icon(arena.allocator(), feed_uri_for_icon, .{
                 .html_body = if (add_opts.feed_opts.content_type == .html) add_opts.feed_opts.body else null,
             }) catch null;
         }
@@ -1382,192 +1382,7 @@ pub const App = struct {
         return .added;
     }
 
-    fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {
-        if (html.parse_icon(html_body)) |icon_url| {
-            if (util.is_data(icon_url)) {
-                return icon_url; 
-            } else {
-                writer.end = 0;
-                try writer.writeAll(icon_url);
-                const page_url_new = try uri.resolveInPlace(icon_url.len, &writer.buffer);
-                try std.Uri.Format.default(.{
-                    .uri = &page_url_new,
-                    .flags = .all,
-                }, writer);
-
-                return writer.buffered()[icon_url.len..];
-            }
-        }
-
-        return null;
-    }
-
-    const FetchIconOptions = struct {
-        html_body: ?[]const u8 = null,
-        etag_or_last_modified: ?[]const u8 = null,
-    };
-    // if return null -> missing icons
-    // if return error -> failed icons
-    pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptions) !?feed_types.Icon {
-        var buf: [2 * 1024]u8 = undefined;
-        var buffer_header: [1024]u8 = undefined;
-        var fixed_writer: std.Io.Writer = .fixed(&buf);
-        var uri = uri_input;
-        var icon_url_opt: ?[]const u8 = null;
-
-        // Found 'data:...' icon from existing html content
-        if (opts.html_body) |html_body| {
-            icon_url_opt = try get_icon_from_html(&fixed_writer, uri, html_body);
-            if (icon_url_opt) |icon| if (util.is_data(icon)) {
-                return feed_types.Icon.init(uri, icon, opts.etag_or_last_modified);
-            };
-        }
-
-        var buf_url_slice: [1024]u8 = undefined;
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 16 * 1024);
-        defer a_writer.deinit();
-
-        var return_writer: std.Io.Writer.Allocating = .init(allocator);
-
-        if (icon_url_opt == null) blk: {
-            const req_url = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
-                .scheme = true,
-                .authentication = true,
-                .authority = true,
-                .path = false,
-                .query = false,
-                .fragment = false,
-                .port = true,
-            })});
-
-            var req = http_client.init(allocator);
-            defer req.deinit();
-
-            const feed_uri = try std.Uri.parse(req_url);
-            const feed_opts = req.fetch(&a_writer.writer, allocator, feed_uri, .{
-                .buffer_header = &buffer_header,
-            }) catch |err| {
-                std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_url, err});
-                return null;
-            };
-
-            const body = a_writer.writer.buffered();
-            if (body.len == 0) {
-                std.log.warn("Icon body is empty. Request url: {s}", .{req_url});
-                break :blk;
-            }
-
-            try fixed_writer.flush();
-            icon_url_opt = try get_icon_from_html(&fixed_writer, req.get_uri(), body);
-            
-            if (icon_url_opt) |icon| {
-                if (util.is_data(icon)) {
-                    const url_final = try req.get_url_slice(&buf_url_slice);
-                    try return_writer.ensureTotalCapacityPrecise(url_final.len + icon.len);
-                    return_writer.writer.writeAll(url_final) catch unreachable;
-                    return_writer.writer.writeAll(icon) catch unreachable;
-                    const buf_url = return_writer.writer.buffered()[0..url_final.len];
-                    const buf_data = return_writer.writer.buffered()[url_final.len..];
-                    const etag_or_last_modified = feed_opts.?.feed_updates.etag_or_last_modified;
-                    const buf_uri = try std.Uri.parse(buf_url);
-                    return feed_types.Icon.init(buf_uri, buf_data, etag_or_last_modified);
-                }
-            }
-        }
-
-        if (icon_url_opt) |icon_url| blk: {
-            const req_icon_url = out: {
-                var buf_rest = fixed_writer.unusedCapacitySlice();
-                try fixed_writer.writeAll(icon_url);
-                const page_url_new = try uri.resolveInPlace(icon_url.len, &buf_rest);
-                const start = fixed_writer.end;
-                try fixed_writer.print("{f}", .{ page_url_new });
-                break :out fixed_writer.buffered()[start..];
-            };
-
-            var req = http_client.init(allocator);
-            defer { req.deinit(); }
-
-            a_writer.writer.end = 0;
-            const icon_uri = try std.Uri.parse(req_icon_url);
-            const cache_control = req.fetch_image(&a_writer.writer, allocator, icon_uri, .{
-                .buffer_header = &buffer_header,
-            }) catch |err| {
-                std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_icon_url, err});
-                return null;
-            } orelse {
-                std.log.warn("Failed to fetch icon '{s}'. Status code: {}", .{req_icon_url, req.response.?.head.status});
-                break :blk;
-            };
-
-            const body = a_writer.writer.buffered();
-            if (body.len == 0) {
-                std.log.warn("Icon body is empty. From: {s}", .{req_icon_url});
-                break :blk;
-            }
-
-            const img_data = try image.process(allocator, body, cache_control.image_type);
-
-            try return_writer.ensureTotalCapacityPrecise(req_icon_url.len + img_data.len);
-            return_writer.writer.writeAll(req_icon_url) catch unreachable;
-            return_writer.writer.writeAll(img_data) catch unreachable;
-            const buf_url = return_writer.writer.buffered()[0..req_icon_url.len];
-            const buf_data = return_writer.writer.buffered()[req_icon_url.len..];
-            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
-
-            const buf_uri = try std.Uri.parse(buf_url);
-            return feed_types.Icon.init(buf_uri, buf_data, etag_or_last_modified);
-        }
-
-        // Fallback icon. See if there is and icon in '/favicon.ico'
-        {
-            errdefer |err| {
-                std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{f}'. Error: {}", .{uri, err});
-            }
-
-            var req = http_client.init(allocator);
-            defer { req.deinit(); }
-
-            uri.path = .{ .raw = "/favicon.ico" };
-            const url_request = try std.fmt.bufPrint(&buf, "{f}", .{uri.fmt(.{
-                .scheme = true,
-                .authentication = true,
-                .authority = true,
-                .path = true,
-                .query = false,
-                .fragment = false,
-                .port = true,
-            })});
-
-            a_writer.writer.end = 0;
-            const icon_uri = try std.Uri.parse(url_request);
-            const cache_control = try req.fetch_image(&a_writer.writer, allocator, icon_uri, .{
-                .buffer_header = &buffer_header,
-            }) orelse return null;
-
-            const body = a_writer.writer.buffered();
-            if (body.len == 0) {
-                std.log.warn("Icon body is empty. From: {s}", .{url_request});
-                return null;
-            }
-
-            const img_data = try image.process(allocator, body, cache_control.image_type);
-
-            const url_favicon = try req.get_url_slice(&buf_url_slice);
-
-            try return_writer.ensureTotalCapacityPrecise(url_favicon.len + img_data.len);
-            return_writer.writer.writeAll(url_favicon) catch unreachable;
-            return_writer.writer.writeAll(img_data) catch unreachable;
-            const buf_url = return_writer.writer.buffered()[0..url_favicon.len];
-            const buf_data = return_writer.writer.buffered()[url_favicon.len..];
-            const etag_or_last_modified = cache_control.etag orelse cache_control.last_modified;
-
-            const buf_uri = try std.Uri.parse(buf_url);
-            return feed_types.Icon.init(buf_uri, buf_data, etag_or_last_modified);
-        }
-
-        return null;
-    }
+    
 };
 
 fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {
