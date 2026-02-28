@@ -605,7 +605,7 @@ pub const Storage = struct {
                 .updated_timestamp = item.updated_timestamp,
                 .position = i,
             });
-            item.item_id = item_id;
+            item.item_id = if (item_id) |id| @enumFromInt(id) else .unassigned;
         }
         return inserts;
     }
