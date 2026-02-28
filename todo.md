@@ -4,7 +4,6 @@
 - replace zig-datetime with zeit?
 - website:
   - minify html
-  - need to url escape link paths?
   - server: limit inline icon size
     - zignal
     - zstbi
@@ -17,14 +16,13 @@
 - remove whitespace before doing html unescaping and removing html tags?
   - &nbps; should be replaced with ' '
 - root page:
-  - show failed feed indicator?
+  - show failed feed request indicator?
   - limit how many items rendered
     - Paginate if there are too many items?
-      Only paginate if items are new?
+    - Only paginate if items are new?
 - add trigger when:
   - failed request is added
   - rate limit is added
-  - when feed is updated?
 - feedgaze batch --check-failed-icons logs:
 ```
 warning: Icon body is empty. Request url: https://faultlore.com
@@ -36,8 +34,6 @@ warning: Failed to fetch 'https://news.ycombinator.com'. Error: error.TlsInitial
 warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut```
 
 
-- Make sqlite returned primary keys into u64.
-  - Use zig's enums to create a newtype? https://matklad.github.io/2025/03/19/comptime-zig-orm.html
 - failed feed requests
   - keep count how many times feed has failed to fetch?
   - save date when it failed first time? Or last?
@@ -51,14 +47,6 @@ sqlite busy error
   - compress (gzip/br) svg?
     - If I request gzip/br I should not have to compress myself
     - If there is no compressed icon then need to compress myself
-  - resize bigger icons?
-  - icon file types
-    - favour some file types?
-    - favor svg over raster images?
-- icons http 
-  - save http etag or last-modified
-    - make own out of content if no http etag or last-modified?
-  - only make on request to same domains
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - add transactions

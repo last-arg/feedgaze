@@ -1559,7 +1559,6 @@ pub const Storage = struct {
         return try rows.toOwnedSlice(allocator);
     }
     
-    // TODO?: make curr_icon_url into std.Uri?
     pub fn icon_update(self: *Self, curr_icon_uri: std.Uri, icon: types.Icon) !void {
         assert(icon.data.len > 0);
 

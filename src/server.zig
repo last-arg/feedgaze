@@ -21,6 +21,7 @@ const timestampToString = util.timestampToString;
 const date_len_max = util.date_len_max;
 const zts = @import("zts");
 const image = @import("./image.zig");
+const comptimePrint = std.fmt.comptimePrint;
 
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
@@ -409,7 +410,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         &std.ascii.whitespace,
     );
     if (url_input.len == 0) {
-        try w_arr.writeAll("/feed/add?error=url-missing");
+        try w_arr.print("/feed/add?error={f}", .{ UrlQueryError.url_missing });
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
             try w_arr.print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
@@ -421,7 +422,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     _ = std.Uri.parse(url_input) catch {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try w_arr.print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/add?error={f}&input-url={f}", .{UrlQueryError.invalid_url, std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c2: std.Uri.Component = .{ .raw = val };
             try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
@@ -438,7 +439,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (url_picked.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try w_arr.print("/feed/pick?error=pick-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.pick_url, std.fmt.alt(url_comp, .formatEscaped)});
         if (tags_input) |val| {
             const c: std.Uri.Component = .{ .raw = val };
             try w_arr.print("&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
@@ -455,7 +456,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (!is_html_feed) {
         _ = std.Uri.parse(url_picked) catch {
             const url_comp: std.Uri.Component = .{ .raw = url_picked };
-            try w_arr.print("/feed/pick?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+            try w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.invalid_url, std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const c2: std.Uri.Component = .{ .raw = val };
                 try w_arr.print("&input-tags={f}", .{std.fmt.alt(c2, .formatEscaped)});
@@ -509,7 +510,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     );
     if (is_html_feed and selector_container.len == 0) {
         const url_comp: std.Uri.Component = .{ .raw = url_input };
-        try w_arr.print("/feed/pick?error=empty-selector&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+        try w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.empty_selector, std.fmt.alt(url_comp, .formatEscaped)});
         try write_pick_urls(&w_arr, form_data);
         try write_selectors(&w_arr, form_data);
         try w_arr.print("&pick-index={}", .{pick_index});
@@ -621,13 +622,15 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var query = try req.query();
 
     const url_raw = query.get("input-url") orelse {
-        resp.header("Location", "/feed/add?error=url-missing");
+        const redirect = comptimePrint("/feed/add?error={f}", .{ UrlQueryError.url_missing });
+        resp.header("Location", redirect);
         return;
     }; 
 
     const url = mem.trim(u8, url_raw, &std.ascii.whitespace);
     if (url.len == 0) {
-        resp.header("Location", "/feed/add?error=url-missing");
+        const redirect = comptimePrint("/feed/add?error={f}", .{ UrlQueryError.url_missing });
+        resp.header("Location", redirect);
         return;
     }
         
@@ -656,14 +659,14 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             try w.writeAll("<p class='callout danger'>Enter valid feed ID.</p>");
         }
     } else if (query.get("error")) |value| {
-        if (mem.eql(u8, "invalid-url", value)) {
-            try w.writeAll("<p class='callout danger'>Enter valid url.</p>");
-        } else if (mem.eql(u8, "url-missing", value)) {
-            try w.writeAll("<p class='callout danger>Pick feed option.</p>");
-        } else if (mem.eql(u8, "empty-selector", value)) {
-            try w.writeAll("<p class='callout danger>Fill in 'Feed item selector'.</p>");
-        } else if (mem.eql(u8, "pick-url", value)) {
-            try w.writeAll("<p class='callout danger>Pick one of the feed options.</p>");
+        switch (UrlQueryError.from_string(value)) {
+            .invalid_url => try w.writeAll("<p class='callout danger'>Enter valid url.</p>"),
+            .url_missing => try w.writeAll("<p class='callout danger>Pick feed option.</p>"),
+            .empty_selector => try w.writeAll("<p class='callout danger>Fill in 'Feed item selector'.</p>"),
+            .pick_url => try w.writeAll("<p class='callout danger>Pick one of the feed options.</p>"),
+            else => {
+                std.log.warn("Unexpected error '{s}' happened", .{value});
+            }
         }
     }
 
@@ -850,10 +853,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
             const location = blk: {
                 if (tags_input) |val| {
                     const c: std.Uri.Component = .{ .raw = val };
-                    try w_arr.print("/feed/add?error=url-missing&input-tags={f}", .{std.fmt.alt(c, .formatEscaped)});
+                    try w_arr.print("/feed/add?error={f}&input-tags={f}", .{UrlQueryError.url_missing, std.fmt.alt(c, .formatEscaped)});
                     break :blk w_arr.buffered();
                 }
-                break :blk "/feed/add?error=url-missing";
+                break :blk comptimePrint("/feed/add?error={f}", .{ UrlQueryError.url_missing });
             };
 
             resp.header("Location", location);
@@ -863,7 +866,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         _ = std.Uri.parse(url) catch {
             const url_comp: std.Uri.Component = .{ .raw = url };
         
-            try w_arr.print("/feed/add?error=invalid-url&input-url={f}", .{std.fmt.alt(url_comp, .formatEscaped)});
+            try w_arr.print("/feed/add?error={f}&input-url={f}", .{UrlQueryError.invalid_url, std.fmt.alt(url_comp, .formatEscaped)});
             if (tags_input) |val| {
                 const tags_comp: std.Uri.Component = .{ .raw = val };
                 try w_arr.print("&input-tags={f}", .{std.fmt.alt(tags_comp, .formatEscaped)});
@@ -1045,9 +1048,10 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
             try w.writeAll("<p>Failed to get id for feed that already exists.</p>");
         }
     } else if (query.get("error")) |value| {
-        if (mem.eql(u8, "invalid-url", value)) {
+        const err_enum = UrlQueryError.from_string(value);
+        if (err_enum == .invalid_url) {
             try w.writeAll("<p class='callout danger'>Enter valid feed/page link</p>");
-        } else if (mem.eql(u8, "url-missing", value)) {
+        } else if (err_enum == .url_missing) {
             try w.writeAll("<p class='callout danger'>Fill in feed/page link</p>");
         }
     }
@@ -1105,7 +1109,7 @@ fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
     resp.status = 301;
     db.deleteFeed(feed_id) catch {
         // On failure redirect to feed page. Display error message
-        const url_redirect = try std.fmt.allocPrint(req.arena, "/feed/{d}/?error=delete", .{feed_id});
+        const url_redirect = try std.fmt.allocPrint(req.arena, "/feed/{d}/?error={f}", .{feed_id, UrlQueryError.delete});
         resp.header("Location", url_redirect);
         return;
     };
@@ -1213,7 +1217,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     };
     db.update_feed_fields(req.arena, fields) catch |err| {
         std.log.err("Failed to update feed. Error {}", .{err});
-        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=feed", .{req.url.path});
+        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error={f}", .{req.url.path, UrlQueryError.feed});
         resp.header("Location", url_redirect);
         return;
     };
@@ -1221,7 +1225,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     if (try db.html_selector_has(feed_id)) {
         const selector_item = get_field(form_data, "html-item-selector") catch return error.MissingFormFieldHtmlItemSelector;
         if (selector_item == null) {
-            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=item-selector", .{req.url.path});
+            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error={f}", .{req.url.path, UrlQueryError.item_selector});
             resp.header("Location", url_redirect);
             return;
         }
@@ -1235,7 +1239,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         };
 
         db.html_selector_update(feed_id, update_fields) catch {
-            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error=html", .{req.url.path});
+            const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error={f}", .{req.url.path, UrlQueryError.html});
             resp.header("Location", url_redirect);
             return;
         };
@@ -1400,10 +1404,10 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         });
         // TODO: add update link/button if can update now 
     } else {
-        // TODO: if too many failed requests updating will be disabled 
+        // TODO: if too many failed requests automatic updating will be disabled 
         // TODO: add link/button to run update right now
         try w.writeAll(
-            \\<p>Updating is disabled. Failed to fetch feed too many times.</p>
+            \\<p>Updating for this feed is disabled. Failed to fetch feed too many times.</p>
         );
     }
 
@@ -1445,19 +1449,22 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     if (query_kv.get("error")) |error_value| {
         try w.writeAll("<p class='callout danger'>");
-        if (mem.eql(u8, "delete", error_value)) {
-            try w.writeAll("Failed to delete feed");
-        } else if (mem.eql(u8, "feed", error_value)) {
-            try w.writeAll("Failed to update feed");
-        } else if (mem.eql(u8, "html", error_value)) {
-            try w.writeAll("Failed to update feed html fields");
-        } else if (mem.eql(u8, "item-selector", error_value)) {
-            try w.writeAll("Fill in 'Feed item selector' field");
-        } else {
-            try w.writeAll("Failed to save feed changes");
-            // TODO: list errors?
-            // TODO: show errors near input fields?
+
+        const err_enum = UrlQueryError.from_string(error_value);
+        switch(err_enum) {
+            .delete => try w.writeAll("Failed to delete feed"),
+            .feed => try w.writeAll("Failed to update feed"),
+            .html => try w.writeAll("Failed to update feed html fields"),
+            .item_selector => try w.writeAll("Fill in 'Feed item selector' field"),
+            .unknown => {
+                try w.writeAll("Failed to save feed changes");
+                std.log.warn("Unknown error happened when trying to save feed. Error: {s}", .{error_value});
+            },
+            else => {
+                std.log.warn("Error {s} should not have happened when saving feed", .{error_value});
+            }
         }
+           
         try w.writeAll("</p>");
     }
     
@@ -1966,17 +1973,20 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     resp.status = 301;
     const tag = db.tag_with_id(req.arena, tag_id) catch {
         // On failure redirect to feed page. Display error message
-        resp.header("Location", "/tags?error=delete");
+        const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
+        resp.header("Location", redirect);
         return;
     } orelse {
         // On failure redirect to feed page. Display error message
-        resp.header("Location", "/tags?error=delete");
+        const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
+        resp.header("Location", redirect);
         return;
     };
 
     db.tags_remove_with_id(tag_id) catch {
         // On failure redirect to feed page. Display error message
-        resp.header("Location", "/tags?error=delete");
+        const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
+        resp.header("Location", redirect);
         return;
     };
 
@@ -2009,13 +2019,15 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
     errdefer location_arr.deinit();
     const tag_name_form = form_data.get("tag-name") orelse {
-        try location_arr.writer.print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        const fmt = comptimePrint("/tag/{{d}}/edit?error={f}", .{ UrlQueryError.invalid_form });
+        try location_arr.writer.print(fmt, .{tag_id});
         resp.header("Location", location_arr.writer.buffered());
         return;
     };
 
     const tag_id_form_raw = form_data.get("tag-id") orelse {
-        try location_arr.writer.print("/tag/{d}/edit?error=invalid-form", .{tag_id});
+        const fmt = comptimePrint("/tag/{{d}}/edit?error={f}", .{ UrlQueryError.invalid_form });
+        try location_arr.writer.print(fmt, .{tag_id});
         resp.header("Location", location_arr.writer.buffered());
         return;
     };
@@ -2035,7 +2047,8 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const tag = try db.tag_with_id(req.arena, tag_id) orelse {
         resp.status = 301;
-        resp.header("Location", "/tags?error=missing");
+        const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.missing });
+        resp.header("Location", redirect);
         return;
     };
 
@@ -2067,7 +2080,9 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     if (query_kv.get("success")) |_| {
         try w.writeAll(parts_get("tags_query_success"));
     } else if (query_kv.get("error")) |val| {
-        if (mem.eql(u8, "invalid-form", val)) {
+        const err_enum = UrlQueryError.from_string(val);
+
+        if (err_enum == .invalid_form) {
             try w.writeAll(parts_get("tags_query_invalid_form"));
         }
     }
@@ -2111,9 +2126,10 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const query_kv = try req.query();
     if (query_kv.get("error")) |err_value| {
-        if (mem.eql(u8, "delete", err_value)) {
+        const err_enum = UrlQueryError.from_string(err_value);
+        if (err_enum == .delete) {
             try w.writeAll(parts_get("tags_query_delete"));
-        } else if (mem.eql(u8, "missing", err_value)) {
+        } else if (err_enum == .missing) {
             try w.writeAll(parts_get("tags_query_missing"));
         } 
     } else if (query_kv.get("success")) |_| {
@@ -2557,6 +2573,7 @@ fn age_class_from_time(time: ?i64) []const u8 {
             
     if (time) |updated_timestamp| {
         // TODO: date might be in the future?
+        // Cap future date to now?
         if (updated_timestamp > age_3days_ago) {
             return "age-newest";
         } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
@@ -2760,5 +2777,39 @@ const StreamContext = struct {
             }
             std.Thread.sleep(@intCast(std.time.ns_per_s));
         }
+    }
+};
+
+const UrlQueryError = enum(u8) {
+    delete,
+    feed,
+    html,
+    item_selector,
+    url_missing,
+    invalid_url,
+    pick_url,
+    empty_selector,
+    invalid_form,
+    missing,
+    unknown,
+
+    pub fn to_string(val: UrlQueryError) []const u8 {
+        return switch(val) {
+            .item_selector => "item-selector",
+            .url_missing => "url-missing",
+            .invalid_url => "invalid-url",
+            .pick_url => "pick-url",
+            .empty_selector => "empty-selector",
+            .invalid_form => "invalid-form",
+            else => @tagName(val),
+        };
+    }
+
+    pub fn format(self: @This(), w: *std.Io.Writer) !void {
+        try w.writeAll(self.to_string());
+    }
+
+    pub fn from_string(raw: []const u8) UrlQueryError {
+        return std.meta.stringToEnum(UrlQueryError, raw) orelse .unknown;
     }
 };
