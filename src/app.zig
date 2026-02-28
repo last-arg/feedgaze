@@ -1052,7 +1052,7 @@ pub const Cli = struct {
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
             const r = app.update_feed(&item_arena, f_update) catch |err| {
-                std.log.info("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+                std.log.info("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
                 continue;
             };
 
@@ -1284,13 +1284,13 @@ pub const App = struct {
         defer a_writer.deinit();
         
         var buffer_header: [1028]u8 = undefined;
-        const feed_uri = try std.Uri.parse(f_update.feed_url);
+        const feed_uri = f_update.feed_url;
         const resp_opt = req.fetch(&a_writer.writer, arena.allocator(), feed_uri, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
             .buffer_header = &buffer_header,
         }) catch |err| {
             try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to fetch feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            std.log.err("Failed to fetch feed '{f}'. Error: {}", .{f_update.feed_url, err});
             return .failed;
         };
 
@@ -1308,7 +1308,7 @@ pub const App = struct {
                 try self.storage.request_failed_add(f_update.feed_id, resp.head.reason);
                 return .failed;
             } else if (status_code == .too_many_requests) {
-                std.log.warn("Rate limit hit with feed '{s}'", .{f_update.feed_url});
+                std.log.warn("Rate limit hit with feed '{f}'", .{f_update.feed_url});
                 const now_utc_sec = std.time.timestamp();
                 const retry_reset = blk: {
                     var header_map: http_client.HeaderMap = .init(arena.allocator());
@@ -1352,7 +1352,7 @@ pub const App = struct {
                 return .failed;
             } else if (@intFromEnum(status_code) >= 400 and @intFromEnum(status_code) < 600) {
                 try self.storage.request_failed_add(f_update.feed_id, resp.head.reason);
-                std.log.err("Request to '{s}' failed with status code {d}", .{f_update.feed_url, status_code});
+                std.log.err("Request to '{f}' failed with status code {d}", .{f_update.feed_url, status_code});
                 try self.storage.rate_limit_remove(f_update.feed_id);
                 return .failed;
             }
@@ -1372,13 +1372,13 @@ pub const App = struct {
         }) catch |err| {
             try self.storage.rate_limit_remove(f_update.feed_id);
             try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to parse feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            std.log.err("Failed to parse feed '{f}'. Error: {}", .{f_update.feed_url, err});
             return .failed;
         };
 
         self.storage.updateFeedAndItems(parsed, resp.feed_updates) catch |err| {
             try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to update feed '{s}'. Error: {}", .{f_update.feed_url, err});
+            std.log.err("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
             try self.storage.rate_limit_remove(f_update.feed_id);
             return .failed;
         };

@@ -428,7 +428,7 @@ pub const ContentType = enum {
 
 pub const FeedToUpdate = struct {
     feed_id: Feed.ID,
-    feed_url: []const u8,
+    feed_url: std.Uri,
     etag_or_last_modified: ?[]const u8 = null,
     latest_item_id: ?[]const u8 = null,
     latest_item_link: ?[]const u8 = null,
@@ -446,7 +446,7 @@ pub const FeedToUpdate = struct {
     pub fn from_raw(raw: Raw) !FeedToUpdate {
         return .{
             .feed_id = @enumFromInt(raw.feed_id),
-            .feed_url = raw.feed_url,
+            .feed_url = try std.Uri.parse(raw.feed_url),
             .etag_or_last_modified = raw.etag_or_last_modified,
             .latest_item_id = raw.latest_item_id,
             .latest_item_link = raw.latest_item_link,
