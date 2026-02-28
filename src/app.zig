@@ -748,7 +748,7 @@ pub const Cli = struct {
         try self.out.print("{s} tags from feeds:\n", .{flag_upper_str});
 
         for (feeds) |feed| {
-            try self.out.print("{s} | {s}\n", .{feed.title orelse "<no-title>", feed.page_url orelse feed.feed_url});
+            try self.out.print("{s} | {f}\n", .{feed.title orelse "<no-title>", feed.page_url orelse feed.feed_url});
         }
 
         const invalid_msg = "Enter valid input 'y' or 'n'.\n";
@@ -910,7 +910,7 @@ pub const Cli = struct {
         
         var parser: FeedParser = .init(add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
-            .feed_url = add_opts.feed_opts.feed_url,
+            .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
         });
 
         const feed = try self.storage.addFeed(parsed, add_opts);
@@ -1085,7 +1085,7 @@ pub const Cli = struct {
                 defer self.out.flush() catch {
                     std.log.warn("Failed to flush subcommand 'remove' text", .{});
                 };
-                try self.out.print("Delete feed '{s}' (Y/N)? ", .{feed.feed_url});
+                try self.out.print("Delete feed '{f}' (Y/N)? ", .{feed.feed_url});
                 try self.out.flush();
                 const raw_value = try self.in.takeDelimiterExclusive('\n');
                 const value = mem.trim(u8, raw_value, &std.ascii.whitespace);
@@ -1093,7 +1093,7 @@ pub const Cli = struct {
                 if (value.len == 1) {
                     if (value[0] == 'y' or value[0] == 'Y') {
                         try self.storage.deleteFeed(feed.feed_id);
-                        try self.out.print("Removed feed '{s}'\n", .{feed.feed_url});
+                        try self.out.print("Removed feed '{f}'\n", .{feed.feed_url});
                         break;
                     } else if (value[0] == 'n' or value[0] == 'N') {
                         break;
@@ -1113,7 +1113,7 @@ pub const Cli = struct {
         for (feeds) |feed| {
             const title = feed.title orelse "<no title>";
             const url_out = feed.page_url orelse feed.feed_url;
-            _ = try self.out.print("{s} - {s}\n", .{ title, url_out });
+            _ = try self.out.print("{s} - {f}\n", .{ title, url_out });
             const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
             if (items.len == 0) {
                 _ = try self.out.write("  ");
@@ -1362,7 +1362,7 @@ pub const App = struct {
         var parsing: FeedParser = .init(body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
-            .feed_url = f_update.feed_url,
+            .feed_url = feed_uri,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,
         }) catch |err| {

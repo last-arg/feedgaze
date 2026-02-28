@@ -75,10 +75,19 @@ pub const Location = struct {
 pub const Feed = struct {
     feed_id: usize = 0,
     title: ?[]const u8 = null,
-    feed_url: []const u8,
-    page_url: ?[]const u8 = null,
+    feed_url: std.Uri,
+    page_url: ?std.Uri = null,
     icon_id: ?u64 = null,
     updated_timestamp: ?i64 = null,
+
+    pub const Raw = struct {
+        feed_id: usize = 0,
+        title: ?[]const u8 = null,
+        feed_url: []const u8,
+        page_url: ?[]const u8 = null,
+        icon_id: ?u64 = null,
+        updated_timestamp: ?i64 = null,
+    };
 
     pub const Parsed = struct {
         title: ?Location = null,

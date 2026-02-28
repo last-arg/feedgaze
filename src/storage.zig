@@ -271,8 +271,6 @@ pub const Storage = struct {
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !usize {
-        // icon_upsert()
-
         const query =
             \\INSERT INTO feed (title, feed_url, page_url, icon_id, updated_timestamp)
             \\VALUES (
@@ -285,10 +283,21 @@ pub const Storage = struct {
             \\RETURNING feed_id;
         ;
 
+        var buf_page_url: [1024]u8 = undefined;
+        const page_url = blk: {
+            if (feed.page_url) |url| {
+                break :blk try std.fmt.bufPrint(&buf_page_url, "{f}", .{url});
+            }
+            break :blk null;
+        };
+
+        var buf_feed_url: [1024]u8 = undefined;
+        const feed_url = try std.fmt.bufPrint(&buf_feed_url, "{f}", .{feed.feed_url});
+
         const feed_id = try one(&self.sql_db, usize, query, .{
             .title = feed.title orelse "",
-            .feed_url = feed.feed_url,
-            .page_url = feed.page_url,
+            .feed_url = feed_url,
+            .page_url = page_url,
             .icon_id = feed.icon_id,
             .updated_timestamp = feed.updated_timestamp,
         });
@@ -307,6 +316,8 @@ pub const Storage = struct {
             \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
+
+        
         return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
     }
 
@@ -315,7 +326,24 @@ pub const Storage = struct {
             \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
         ;
-        return try selectAll(&self.sql_db, allocator, Feed, query, .{ url, url });
+
+        var stmt = try self.sql_db.prepareDynamic(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(Feed.Raw, .{url, url});
+
+        var rows: ArrayList(Feed) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .title = row.title,
+                .feed_url = try std.Uri.parse(row.feed_url),
+                .page_url = if (row.page_url) |link| try std.Uri.parse(link) else null,
+                .icon_id = row.icon_id,
+                .updated_timestamp = row.updated_timestamp,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
@@ -351,7 +379,8 @@ pub const Storage = struct {
 
         var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
         defer stmt.deinit();
-        return try iterator_to_slice(Feed, &stmt, allocator, values.items);
+
+        return try feed_slice_from_statement(allocator, &stmt, values.items);
     }
 
     fn iterator_to_slice(T: type, stmt: *sql.DynamicStatement, allocator: Allocator, values: anytype) ![]T {
@@ -1014,7 +1043,7 @@ pub const Storage = struct {
         return aw.writer.buffered();
     }
 
-    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]types.Feed {
+    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]Feed {
         assert(
             (args.before == null and args.after == null) or
             (args.before != null and args.after == null) or
@@ -1031,9 +1060,25 @@ pub const Storage = struct {
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         var stmt = try self.sql_db.prepareDynamic(query);
         defer stmt.deinit();
-        const result = try iterator_to_slice(types.Feed, &stmt, allocator, .{});
 
-        return result;
+        return try feed_slice_from_statement(allocator, &stmt, .{});
+    }
+
+    fn feed_slice_from_statement(allocator: Allocator, stmt: anytype, iter_args: anytype) ![]Feed {
+        var iter = try stmt.iterator(Feed.Raw, iter_args);
+
+        var rows: ArrayList(Feed) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, .{
+                .feed_id = row.feed_id,
+                .title = row.title,
+                .feed_url = try std.Uri.parse(row.feed_url),
+                .page_url = if (row.page_url) |link| try std.Uri.parse(link) else null,
+                .icon_id = row.icon_id,
+                .updated_timestamp = row.updated_timestamp,
+            });
+        } 
+        return try rows.toOwnedSlice(allocator);
     }
 
     pub fn feeds_search_has_previous(self: *Self, allocator: Allocator, args: FeedSearchArgs) !bool {
@@ -1058,27 +1103,21 @@ pub const Storage = struct {
     \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
     ;
 
-    pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?types.Feed {
+    pub fn feed_with_id(self: *Self, allocator: Allocator, id: usize) !?Feed {
         const query = 
         \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
         \\WHERE feed_id = ?;
         ;
-        return oneAlloc(&self.sql_db, allocator, types.Feed, query, .{id});
-    }
+        const raw = try oneAlloc(&self.sql_db, allocator, Feed.Raw, query, .{id}) orelse return null;
 
-    const FeedModifty = struct {
-        feed_id: usize,
-        title: []const u8,
-        page_url: ?[]const u8,
-    };
-    pub fn feed_modify(self: *Self, feed: FeedModifty) !void {
-        const query =
-            \\UPDATE feed SET
-            \\  title = @title,
-            \\  page_url = @page_url
-            \\WHERE feed_id = @feed_id;
-        ;
-        try self.sql_db.exec(query, .{}, feed);
+        return .{
+            .feed_id = raw.feed_id,
+            .title = raw.title,
+            .feed_url = try std.Uri.parse(raw.feed_url),
+            .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
+            .icon_id = raw.icon_id,
+            .updated_timestamp = raw.updated_timestamp,
+        };
     }
 
     // const InsertRuleHost = struct {
@@ -1348,7 +1387,7 @@ pub const Storage = struct {
             try rows.append(allocator, .{
                 .feed_id = row.feed_id,
                 .title = row.title,
-                .link = if (row.link) |link| try std.Uri.parse(link) else null, 
+                .link = if (row.link) |link| try std.Uri.parse(link) else null,
                 .updated_timestamp = row.updated_timestamp,
                 .created_timestamp = row.created_timestamp,
             });
@@ -1385,7 +1424,7 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{});
     }
 
-    pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const usize) ![]types.Feed {
+    pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const usize) ![]Feed {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
         query_al.appendSliceAssumeCapacity(
@@ -1403,7 +1442,8 @@ pub const Storage = struct {
 
         var stmt = try self.sql_db.prepareDynamic(query_al.items);
         defer stmt.deinit();
-        return try iterator_to_slice(Feed, &stmt, allocator, .{});
+
+        return try feed_slice_from_statement(allocator, &stmt, query_al.items);
     }
 
     pub const Icon = struct {

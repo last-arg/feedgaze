@@ -1369,14 +1369,12 @@ test "getContentType" {
 
 const ParseOptions = struct {
     feed_id: ?u64 = null,
-    feed_url: []const u8,
+    feed_url: std.Uri,
     feed_to_update: ?feed_types.FeedToUpdate = null,
     latest_updated_timestamp: ?i64 = null,
 };
 
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
-    assert(util.is_url(opts.feed_url));
-
     // Server might return wrong content/file type for content. Like: 'https://jakearchibald.com/'
     const ct = getContentType(mem.trim(u8, self.content, &std.ascii.whitespace)) orelse return error.UnknownContentType;
 
@@ -1403,7 +1401,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         result.feed.page_url = result.feed.feed_url;
     }
 
-    const base = try Uri.parse(result.feed.feed_url);
+    const base = result.feed.feed_url;
 
     var buf_arr: [2 * 1024]u8 = undefined;
 
@@ -1416,12 +1414,10 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         const page_url = self.slice_from_loc(loc);
         if (is_relative_path(page_url)) {
             var buf: []u8 = &buf_arr;
-            const page_url_decoded = std.Uri.percentDecodeBackwards(buf, page_url);
-            buf = buf[page_url_decoded.len..];
-            const page_url_new = try Uri.resolveInPlace(base, page_url_decoded.len, &buf);
-            result.feed.page_url = try std.fmt.allocPrint(allocator, "{f}", .{page_url_new});
+            std.mem.copyForwards(u8, buf, page_url);
+            result.feed.page_url = try Uri.resolveInPlace(base, page_url.len, &buf);
         } else {
-            result.feed.page_url = page_url;
+            result.feed.page_url = try Uri.parse(page_url);
         }
     }
 

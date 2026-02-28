@@ -572,7 +572,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var parsing: parse = .init(add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, html_opts, .{
-        .feed_url = add_opts.feed_opts.feed_url,
+        .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
     });
   
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -955,7 +955,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var parsing: parse = .init(add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, null, .{
-        .feed_url = add_opts.feed_opts.feed_url,
+        .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
     });
 
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -1341,26 +1341,27 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             , .{path});
         }
     }
-    try w.writeAll(if (title.len > 0) title else feed.page_url orelse feed.feed_url);
+    if (title.len > 0) {
+        try w.writeAll(title);
+    } else {
+        try w.print("{f}", .{feed.page_url orelse feed.feed_url});
+    }
     try w.writeAll("</h2>");
 
     try w.writeAll("<div class='feed-info flow'>");
     try w.writeAll("<p>Page link: ");
     if (feed.page_url) |page_url| {
-        const page_url_encoded = try parse.html_escape(req.arena, page_url);
         try w.print(
-        \\<a href="{s}" class="inline-block" rel="noreferrer noopener">{s}</a>
-        , .{page_url_encoded, page_url_encoded});
+        \\<a href="{f}" class="inline-block" rel="noreferrer noopener">{f}</a>
+        , .{page_url, page_url});
     } else {
         try w.writeAll("no url");
     }
     try w.writeAll("</p>");
 
-    const feed_url_encoded_attr = try parse.html_escape(req.arena, feed.feed_url);
-    const feed_url_encoded = try parse.html_escape(req.arena, feed.feed_url);
     try w.print(
-        \\<p>Feed link: <a href="{s}" rel="noreferrer noopener">{s}</a></p>
-    , .{ feed_url_encoded_attr, feed_url_encoded });
+        \\<p>Feed link: <a href="{f}" rel="noreferrer noopener">{f}</a></p>
+    , .{ feed.feed_url, feed.feed_url });
 
     var date_buf: [date_len_max]u8 = undefined;
     const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
@@ -1468,7 +1469,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\</div>
     \\<div>
     \\  <div><label for="page_url">Page link</label></div>
-    \\  <input type="text" id="page_url" name="page_url" value="{[page_url]s}">
+    \\  <input type="text" id="page_url" name="page_url" value="{[page_url]f}">
     \\</div>
     \\<div>
     \\  <div><label for="icon_url">Icon link</label></div>
@@ -1476,13 +1477,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\</div>
     ;
 
-    const page_url = blk: {
-        if (feed.page_url) |page_url| {
-            const page_url_escaped = try parse.html_escape(req.arena, page_url);
-            break :blk page_url_escaped;
-        }
-        break :blk "";
-    };
+    const page_url = feed.page_url orelse std.Uri{.scheme = ""};
 
     const icon_url = blk: {
         if (feed.icon_id) |icon_id| {
@@ -1505,7 +1500,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .icon_url = icon_url,
     });
 
-    if (mem.eql(u8, page_url, feed.feed_url)) {
+    if (std.meta.eql(page_url, feed.feed_url)) {
         if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
             const selector_template = 
                 \\<div>
@@ -1914,7 +1909,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
     try item_render(w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
 
-    const url = try std.Uri.parse(feed.page_url orelse feed.feed_url);
+    const url = feed.page_url orelse feed.feed_url;
     const title = feed.title orelse "";
     try w.print(
         \\<div class="item-extra">
