@@ -95,6 +95,17 @@ pub const Feed = struct {
         updated_timestamp: ?i64 = null,
         icon_id: ?u64 = null,
     };
+
+    pub fn from_raw(raw: Raw) !Feed {
+        return .{
+            .feed_id = raw.feed_id,
+            .title = raw.title,
+            .feed_url = try std.Uri.parse(raw.feed_url),
+            .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
+            .icon_id = raw.icon_id,
+            .updated_timestamp = raw.updated_timestamp,
+        };
+    }
 };
 
 pub fn resolve_and_write_url(writer: *std.Io.Writer, input: []const u8, base_url: Uri) !void {
@@ -333,6 +344,16 @@ pub const FeedItemRender = struct {
         updated_timestamp: ?i64,
         created_timestamp: i64,
     };
+
+    pub fn from_raw(raw: Raw) !FeedItemRender {
+        return .{
+            .feed_id = raw.feed_id,
+            .title = raw.title,
+            .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
+            .updated_timestamp = raw.updated_timestamp,
+            .created_timestamp = raw.created_timestamp,
+        };
+    }
 };
 
 pub const FeedUpdate = struct {

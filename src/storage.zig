@@ -316,7 +316,6 @@ pub const Storage = struct {
             \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
-
         
         return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
     }
@@ -334,14 +333,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(Feed) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .title = row.title,
-                .feed_url = try std.Uri.parse(row.feed_url),
-                .page_url = if (row.page_url) |link| try std.Uri.parse(link) else null,
-                .icon_id = row.icon_id,
-                .updated_timestamp = row.updated_timestamp,
-            });
+            try rows.append(allocator, try Feed.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -782,13 +774,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(FeedItemRender) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .title = row.title,
-                .link = if (row.link) |link| try std.Uri.parse(link) else null, 
-                .updated_timestamp = row.updated_timestamp,
-                .created_timestamp = row.created_timestamp,
-            });
+            try rows.append(allocator, try FeedItemRender.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -1069,14 +1055,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(Feed) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .title = row.title,
-                .feed_url = try std.Uri.parse(row.feed_url),
-                .page_url = if (row.page_url) |link| try std.Uri.parse(link) else null,
-                .icon_id = row.icon_id,
-                .updated_timestamp = row.updated_timestamp,
-            });
+            try rows.append(allocator, try Feed.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -1384,13 +1363,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(FeedItemRender) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .title = row.title,
-                .link = if (row.link) |link| try std.Uri.parse(link) else null,
-                .updated_timestamp = row.updated_timestamp,
-                .created_timestamp = row.created_timestamp,
-            });
+            try rows.append(allocator, try FeedItemRender.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -1485,12 +1458,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(Icon) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .icon_id = row.icon_id,
-                .icon_url = try std.Uri.parse(row.icon_url),
-                .icon_data = row.icon_data,
-                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
-            });
+            try rows.append(allocator, try Icon.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -1510,6 +1478,13 @@ pub const Storage = struct {
             feed_id: usize,
             page_url: []const u8,
         };
+
+        pub fn from_raw(raw: Raw) !IconMissing {
+            return .{
+                .feed_id = raw.feed_id,
+                .page_url = try std.Uri.parse(raw.page_url),
+            };
+        }
     };
 
     pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]IconMissing {
@@ -1525,10 +1500,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(IconMissing) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .page_url = try std.Uri.parse(row.page_url),
-            });
+            try rows.append(allocator, try IconMissing.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
@@ -1543,6 +1515,14 @@ pub const Storage = struct {
             page_url: []const u8,
             etag_or_last_modified_or_hash: []const u8,
         };
+
+        pub fn from_raw(raw: Raw) !IconFailed {
+            return .{
+                .feed_id = raw.feed_id,
+                .page_url = try std.Uri.parse(raw.page_url),
+                .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
+            };
+        }
     };
 
     // Failed icon request might icon status in DB:
@@ -1563,11 +1543,7 @@ pub const Storage = struct {
 
         var rows: ArrayList(IconFailed) = .{};
         while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, .{
-                .feed_id = row.feed_id,
-                .page_url = try std.Uri.parse(row.page_url),
-                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
-            });
+            try rows.append(allocator, try IconFailed.from_raw(row));
         } 
         return try rows.toOwnedSlice(allocator);
     }
