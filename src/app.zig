@@ -4,7 +4,6 @@ const Allocator = mem.Allocator;
 const Storage = @import("./storage.zig").Storage;
 const feed_types = @import("./feed_types.zig");
 const Feed = feed_types.Feed;
-const FeedOptions = feed_types.FeedOptions;
 const FeedItem = feed_types.FeedItem;
 const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
@@ -1254,15 +1253,6 @@ test "feedgaze.show" {
 
 pub const App = struct {
     storage: Storage, 
-
-    const RequestResponse = struct {
-        req: http_client,
-        feed_opts: feed_types.FeedOptions,
-
-        pub fn deinit(self: *@This()) void {
-            self.req.deinit();
-        }
-    };
 
     const UpdateResult = enum {
         added,

@@ -521,8 +521,8 @@ pub const FeedOptions = struct {
     body: []const u8 = "",
     content_type: ?ContentType = null,
     feed_updates: FeedUpdate = .{},
-    feed_url: []const u8 = "",
     // TODO?: add feed_uri: std.Uri to replace feed_url?
+    feed_url: []const u8 = "",
     title: ?[]const u8 = null,
     icon: ?Icon = null,
 };
