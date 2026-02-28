@@ -787,7 +787,7 @@ pub const Cli = struct {
         }
     }
 
-    pub fn add(self: *Self, url_raw: []const u8) !usize {
+    pub fn add(self: *Self, url_raw: []const u8) !Feed.ID {
         var url = mem.trim(u8, url_raw, &std.ascii.whitespace);
         if (try self.storage.hasFeedWithFeedUrl(url)) {
             return error.FeedExists;

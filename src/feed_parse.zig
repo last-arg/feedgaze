@@ -1368,7 +1368,7 @@ test "getContentType" {
 }
 
 const ParseOptions = struct {
-    feed_id: ?u64 = null,
+    feed_id: Feed.ID = .unassigned,
     feed_url: std.Uri,
     feed_to_update: ?feed_types.FeedToUpdate = null,
     latest_updated_timestamp: ?i64 = null,
@@ -1391,8 +1391,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         .feed = .{ .feed_url = opts.feed_url },
     };
 
-    if (opts.feed_id) |feed_id| {
-        result.feed.feed_id = feed_id;
+    if (opts.feed_id != .unassigned) {
+        result.feed.feed_id = opts.feed_id;
     }
 
     if (ct == .html) {

@@ -73,12 +73,17 @@ pub const Location = struct {
 };
 
 pub const Feed = struct {
-    feed_id: usize = 0,
+    feed_id: ID = .unassigned,
     title: ?[]const u8 = null,
     feed_url: std.Uri,
     page_url: ?std.Uri = null,
     icon_id: ?u64 = null,
     updated_timestamp: ?i64 = null,
+
+    pub const ID = enum(u64) {
+        unassigned = 0,
+        _
+    };
 
     pub const Raw = struct {
         feed_id: usize = 0,
@@ -98,7 +103,7 @@ pub const Feed = struct {
 
     pub fn from_raw(raw: Raw) !Feed {
         return .{
-            .feed_id = raw.feed_id,
+            .feed_id = @enumFromInt(raw.feed_id),
             .title = raw.title,
             .feed_url = try std.Uri.parse(raw.feed_url),
             .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
@@ -311,7 +316,7 @@ test "RssDateTime.parse" {
 }
 
 pub const FeedItem = struct {
-    feed_id: usize = 0,
+    feed_id: Feed.ID = .unassigned,
     // TODO: this should not be null. See if there is a reason why I marked it
     // as null? Probably item_id is null before adding item to DB. Have
     // different types for inserting and retrieving item?
@@ -341,7 +346,7 @@ pub const FeedItem = struct {
 
     pub fn from_raw(raw: Raw) !FeedItem {
         return .{
-            .feed_id = raw.feed_id,
+            .feed_id = @enumFromInt(raw.feed_id),
             .item_id = raw.item_id,
             .title = raw.title,
             .id = raw.id,
@@ -352,7 +357,7 @@ pub const FeedItem = struct {
 };
 
 pub const FeedItemRender = struct {
-    feed_id: usize,
+    feed_id: Feed.ID,
     title: []const u8,
     link: ?std.Uri,
     updated_timestamp: ?i64,
@@ -368,7 +373,7 @@ pub const FeedItemRender = struct {
 
     pub fn from_raw(raw: Raw) !FeedItemRender {
         return .{
-            .feed_id = raw.feed_id,
+            .feed_id = @enumFromInt(raw.feed_id),
             .title = raw.title,
             .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
             .updated_timestamp = raw.updated_timestamp,
@@ -417,12 +422,32 @@ pub const ContentType = enum {
 };
 
 pub const FeedToUpdate = struct {
-    feed_id: usize,
+    feed_id: Feed.ID,
     feed_url: []const u8,
     etag_or_last_modified: ?[]const u8 = null,
     latest_item_id: ?[]const u8 = null,
     latest_item_link: ?[]const u8 = null,
     latest_updated_timestamp: ?i64 = null,
+
+    pub const Raw = struct { 
+        feed_id: u64,
+        feed_url: []const u8,
+        etag_or_last_modified: ?[]const u8 = null,
+        latest_item_id: ?[]const u8 = null,
+        latest_item_link: ?[]const u8 = null,
+        latest_updated_timestamp: ?i64 = null,
+    };
+
+    pub fn from_raw(raw: Raw) !FeedToUpdate {
+        return .{
+            .feed_id = @enumFromInt(raw.feed_id),
+            .feed_url = raw.feed_url,
+            .etag_or_last_modified = raw.etag_or_last_modified,
+            .latest_item_id = raw.latest_item_id,
+            .latest_item_link = raw.latest_item_link,
+            .latest_updated_timestamp = raw.latest_updated_timestamp,
+        };
+    }
 };
 
 pub const Icon = struct {

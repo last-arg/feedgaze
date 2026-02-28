@@ -1099,7 +1099,8 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
 fn feed_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
-    const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
+    const feed_id_u64 = std.fmt.parseUnsigned(u64, feed_id_raw, 10) catch return error.InvalidIdParam;
+    const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
 
     const db = global.storage;
     resp.status = 301;
@@ -1128,7 +1129,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
 
     const feed_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
-    const feed_id = std.fmt.parseUnsigned(usize, feed_id_raw, 10) catch return error.InvalidIdParam;
+    const feed_id_u64 = std.fmt.parseUnsigned(u64, feed_id_raw, 10) catch return error.InvalidIdParam;
+    const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
 
     const title = form_data.get("title") orelse return error.MissingFormFieldPageTitle;
     const page_url = form_data.get("page_url") orelse return error.MissingFormFieldPageUrl;
@@ -1280,8 +1282,9 @@ fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = global.storage;
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
-    const id = std.fmt.parseUnsigned(usize, id_raw, 10) catch return error.InvalidIdParam;
-    const feed = db.feed_with_id(req.arena, id) catch {
+    const feed_id_u64 = std.fmt.parseUnsigned(u64, id_raw, 10) catch return error.InvalidIdParam;
+    const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
+    const feed = db.feed_with_id(req.arena, feed_id) catch {
         return error.DatabaseFailure;
     } orelse {
         resp.status = 404;
@@ -1291,7 +1294,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     resp.content_type = .HTML;
 
-    if (try db.get_latest_feed_change(id)) |latest| {
+    if (try db.get_latest_feed_change(feed_id)) |latest| {
         const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest, static_files_hash});
         if (resp_cache(req, resp, etag_out, .{})) {
             resp.status = 304;
@@ -1869,7 +1872,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             resp.headers.add("Set-Cookie", cookie_value);
         }
 
-        var ids_al = try std.ArrayList(usize).initCapacity(req.arena, items.len);
+        var ids_al = try std.ArrayList(types.Feed.ID).initCapacity(req.arena, items.len);
         defer ids_al.deinit(req.arena);
         for (items) |item| { ids_al.appendAssumeCapacity(item.feed_id); }
         const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
@@ -2332,14 +2335,16 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .has_untagged = has_untagged,
     });
 
-    const before = before: {
+    const before: types.Feed.ID = before: {
         if (query.get("before")) |value| {
             const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
             if (trimmed.len > 0) {
-                break :before std.fmt.parseInt(usize, trimmed, 10) catch null;
+                if (std.fmt.parseInt(u64, trimmed, 10)) |feed_id_u64| {
+                    break :before @enumFromInt(feed_id_u64);
+                } else |_| {}
             }
         }
-        break :before null;
+        break :before .unassigned;
     };
 
     const is_tags_only = query.get("tags-only") != null;
@@ -2358,16 +2363,18 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const failed_requests = try db.feed_request_failed_ids(req.arena);
     
     const feeds = blk: {
-        const after = after: {
-            if (before == null) {
+        const after: types.Feed.ID = after: {
+            if (before == .unassigned) {
                 if (query.get("after")) |value| {
                     const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
                     if (trimmed.len > 0) {
-                        break :after std.fmt.parseInt(usize, trimmed, 10) catch null;
+                        if (std.fmt.parseInt(u64, trimmed, 10)) |feed_id_u64| {
+                            break :after @enumFromInt(feed_id_u64);
+                        } else |_| {}
                     }
                 }
             }
-            break :after null;
+            break :after .unassigned;
         };
 
         break :blk try db.feeds_search_complex(req.arena, .{ 
@@ -2417,7 +2424,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 .search = feed_search_value, 
                 .tags = tags_active.items, 
                 .before = feeds[0].feed_id,
-                .after = null, 
+                .after = .unassigned, 
                 .has_untagged = has_untagged,
             });
             if (has_prev) {
@@ -2479,7 +2486,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         try w.writeAll("</div>");
 
-        if (mem.indexOfScalar(u64, failed_requests_ids, @intCast(feed.feed_id))) |_| {
+        if (mem.indexOfScalar(u64, failed_requests_ids, @intFromEnum(feed.feed_id))) |_| {
             try w.writeAll(
             \\<p class="feed-failed-msg">Last update failed</p>
             );
