@@ -316,10 +316,11 @@ pub const FeedItem = struct {
     // as null? Probably item_id is null before adding item to DB. Have
     // different types for inserting and retrieving item?
     // sqlite auto-increment starts from 1
+    // Also Raw struct?
     item_id: ?usize = null,
     title: []const u8,
     id: ?[]const u8 = null,
-    link: ?[]const u8 = null,
+    link: ?std.Uri = null,
     updated_timestamp: ?i64 = null,
 
     pub const Parsed = struct {
@@ -328,6 +329,26 @@ pub const FeedItem = struct {
         link: ?Location = null,
         updated_timestamp: ?i64 = null,
     };
+
+    pub const Raw = struct {
+        feed_id: usize = 0,
+        item_id: ?usize = null,
+        title: []const u8,
+        id: ?[]const u8 = null,
+        link: ?[]const u8 = null,
+        updated_timestamp: ?i64 = null,
+    };
+
+    pub fn from_raw(raw: Raw) !FeedItem {
+        return .{
+            .feed_id = raw.feed_id,
+            .item_id = raw.item_id,
+            .title = raw.title,
+            .id = raw.id,
+            .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
+            .updated_timestamp = raw.updated_timestamp,
+        };
+    }
 };
 
 pub const FeedItemRender = struct {

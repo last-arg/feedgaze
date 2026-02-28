@@ -1474,14 +1474,15 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
                 break :outer;
             };
 
+            const link_uri = try std.Uri.parse(link);
             // Don't add feed items with duplicate links
             for (feed_items.items) |feed_item| {
-                if (mem.eql(u8, feed_item.link.?, link)) {
+                if (std.meta.eql(feed_item.link.?, link_uri)) {
                     continue :outer;
                 }
             }
 
-            new_item.link = link;
+            new_item.link = link_uri;
         }
 
         if (item.title) |loc| {

@@ -574,12 +574,14 @@ pub const Storage = struct {
             \\RETURNING item_id;
         ;
 
+        var buf_link: [1024]u8 = undefined;
         const len = @min(inserts.len, app_config.max_items);
         for (inserts[0..len], 0..) |*item, i| {
+            const link = try std.fmt.bufPrint(&buf_link, "{f}", .{item.link.?});
             const item_id = try one(&self.sql_db, usize, query, .{
                 .feed_id = item.feed_id,
                 .title = item.title,
-                .link = item.link,
+                .link = link,
                 .id = item.id,
                 .updated_timestamp = item.updated_timestamp,
                 .position = i,
@@ -596,7 +598,18 @@ pub const Storage = struct {
             \\WHERE feed_id = ?
             \\ORDER BY position ASC LIMIT ?;
         ;
-        return try selectAll(&self.sql_db, allocator, FeedItem, query, .{ feed_id, opts.@"item-limit" });
+
+        var stmt = try self.sql_db.prepare(query);
+        defer stmt.deinit();
+
+        var iter = try stmt.iterator(FeedItem.Raw, .{ feed_id, opts.@"item-limit" });
+
+        var rows: ArrayList(FeedItem) = .{};
+        while (try iter.nextAlloc(allocator, .{})) |row| {
+            try rows.append(allocator, try FeedItem.from_raw(row));
+        } 
+
+        return try rows.toOwnedSlice(allocator);
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
@@ -732,13 +745,16 @@ pub const Storage = struct {
             \\VALUES (@feed_id, @title, @updated_timestamp, @position)
             \\;
         ;
+
+        var buf_link: [1024]u8 = undefined;
         
         for (inserts, 0..) |item, i| {
             if (item.id != null or item.link != null) {
+                const link = try std.fmt.bufPrint(&buf_link, "{f}", .{item.link.?});
                 try self.sql_db.exec(query_with_id, .{}, .{
                     .feed_id = item.feed_id,
                     .title = item.title,
-                    .link = item.link,
+                    .link = link,
                     .id = item.id,
                     .updated_timestamp = item.updated_timestamp,
                     .position = i,

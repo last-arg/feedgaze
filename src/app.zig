@@ -1122,8 +1122,12 @@ pub const Cli = struct {
             }
 
             for (items) |item| {
-                // _ = try self.out.print("{d}. ", .{item.item_id.?});
-                _ = try self.out.print("\n  {s}\n  {s}\n", .{ item.title, item.link orelse "<no link>" });
+                _ = try self.out.print("\n  {s}\n", .{ item.title });
+                if (item.link) |link| {
+                    _ = try self.out.print("  {f}\n", .{ link });
+                } else {
+                    _ = try self.out.writeAll("  <no link>\n");
+                }
             }
             _ = try self.out.write("\n");
         }
