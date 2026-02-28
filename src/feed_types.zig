@@ -77,7 +77,7 @@ pub const Feed = struct {
     title: ?[]const u8 = null,
     feed_url: std.Uri,
     page_url: ?std.Uri = null,
-    icon_id: ?u64 = null,
+    icon_id: IconRender.ID = .unassigned,
     updated_timestamp: ?i64 = null,
 
     pub const ID = enum(u64) {
@@ -107,7 +107,7 @@ pub const Feed = struct {
             .title = raw.title,
             .feed_url = try std.Uri.parse(raw.feed_url),
             .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
-            .icon_id = raw.icon_id,
+            .icon_id = if (raw.icon_id) |id| @enumFromInt(id) else .unassigned,
             .updated_timestamp = raw.updated_timestamp,
         };
     }
@@ -525,4 +525,40 @@ pub const FeedOptions = struct {
     // TODO?: add feed_uri: std.Uri to replace feed_url?
     title: ?[]const u8 = null,
     icon: ?Icon = null,
+};
+
+pub const IconRender = struct {
+    icon_id: ID,
+    icon_url: std.Uri,
+    icon_data: []const u8,
+    etag_or_last_modified_or_hash: []const u8,
+
+    pub const ID = enum(u64) {
+        unassigned = 0,
+        _,
+
+        pub fn is_valid(id: @This()) bool {
+            return id != .unassigned;
+        }
+    };
+
+    pub const Raw = struct {
+        icon_id: u64,
+        icon_url: []const u8,
+        icon_data: []const u8,
+        etag_or_last_modified_or_hash: []const u8,
+    };
+
+    pub fn from_raw(raw: Raw) !@This() {
+        return .{
+            .icon_id = @enumFromInt(raw.icon_id),
+            .icon_url = try std.Uri.parse(raw.icon_url),
+            .icon_data = raw.icon_data,
+            .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
+        };
+    }
+
+    pub fn is_data(self: *const @This()) bool {
+        return mem.eql(u8, self.icon_url.scheme, "data");
+    }
 };

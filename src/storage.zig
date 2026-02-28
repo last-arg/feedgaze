@@ -5,6 +5,7 @@ const Allocator = mem.Allocator;
 const ArrayList = std.ArrayList;
 const types = @import("./feed_types.zig");
 const Feed = types.Feed;
+const Icon = types.IconRender;
 const FeedItem = types.FeedItem;
 const FeedItemRender = types.FeedItemRender;
 const FeedUpdate = types.FeedUpdate;
@@ -172,13 +173,13 @@ pub const Storage = struct {
         feed_opts: FeedOptions,
     };
 
-    pub fn addFeed(self: *Self, parsed_feed: parse.ValidFeed, opts: AddOptions) !struct{feed_id: Feed.ID, icon_id: ?u64} {
+    pub fn addFeed(self: *Self, parsed_feed: parse.ValidFeed, opts: AddOptions) !struct{feed_id: Feed.ID, icon_id: Icon.ID} {
         var parsed = parsed_feed;
         const feed_opts = opts.feed_opts;
 
-        parsed.feed.icon_id = if (feed_opts.icon) |icon|
-            try self.icon_upsert(icon)
-        else null;
+        if (feed_opts.icon) |icon| {
+            parsed.feed.icon_id = try self.icon_upsert(icon);
+        }
 
         const feed_id = try self.insertFeed(parsed.feed);
         parsed.feed.feed_id = feed_id;
@@ -296,11 +297,11 @@ pub const Storage = struct {
         var buf_feed_url: [1024]u8 = undefined;
         const feed_url = try std.fmt.bufPrint(&buf_feed_url, "{f}", .{feed.feed_url});
 
-        const feed_id = try one(&self.sql_db, usize, query, .{
+        const feed_id = try one(&self.sql_db, u64, query, .{
             .title = feed.title orelse "",
             .feed_url = feed_url,
             .page_url = page_url,
-            .icon_id = feed.icon_id,
+            .icon_id = @intFromEnum(feed.icon_id),
             .updated_timestamp = feed.updated_timestamp,
         }) orelse return Error.FeedExists;
 
@@ -504,7 +505,7 @@ pub const Storage = struct {
         feed_id: Feed.ID,
         title: []const u8,
         page_url: []const u8,
-        icon_id: ?u64 = null,
+        icon_id: types.IconRender.ID = .unassigned,
         tags: [][]const u8,
     };
 
@@ -565,7 +566,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{
             fields.title,
             fields.page_url,
-            fields.icon_id,
+            @intFromEnum(fields.icon_id),
             @intFromEnum(fields.feed_id),
         });
 
@@ -677,7 +678,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{});
     }
 
-    pub fn icon_upsert(self: *Self, icon: types.Icon) !?u64 {
+    pub fn icon_upsert(self: *Self, icon: types.Icon) !Icon.ID {
         assert(icon.data.len > 0);
         assert(icon.etag_or_last_modified_or_hash.len > 0);
 
@@ -697,7 +698,7 @@ pub const Storage = struct {
         var buf: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.url});
 
-        const icon_id = try self.sql_db.one(u64, query, .{}, .{
+        const icon_id_opt = try self.sql_db.one(u64, query, .{}, .{
             .icon_url = icon_url,
             .icon_data = sql.Blob{ .data = icon.data },
             .cache_value = icon.etag_or_last_modified_or_hash,
@@ -705,7 +706,11 @@ pub const Storage = struct {
             icon_url,
         });
 
-        return icon_id;
+        if (icon_id_opt) |icon_id| {
+            return @enumFromInt(icon_id);
+        }
+
+        return .unassigned;
     }
 
     pub fn updateLastUpdate(self: *Self, feed_id: Feed.ID) !void {
@@ -1451,33 +1456,6 @@ pub const Storage = struct {
         return try feed_slice_from_statement(allocator, &stmt, query_al.items);
     }
 
-    pub const Icon = struct {
-        icon_id: u64,
-        icon_url: std.Uri,
-        icon_data: []const u8,
-        etag_or_last_modified_or_hash: []const u8,
-
-        const Raw = struct {
-            icon_id: u64,
-            icon_url: []const u8,
-            icon_data: []const u8,
-            etag_or_last_modified_or_hash: []const u8,
-        };
-
-        pub fn from_raw(raw: Raw) !Icon {
-            return .{
-                .icon_id = raw.icon_id,
-                .icon_url = try std.Uri.parse(raw.icon_url),
-                .icon_data = raw.icon_data,
-                .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
-            };
-        }
-
-        pub fn is_data(self: *const Icon) bool {
-            return mem.eql(u8, self.icon_url.scheme, "data");
-        }
-    };
-
     pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
@@ -1495,11 +1473,11 @@ pub const Storage = struct {
         return try rows.toOwnedSlice(allocator);
     }
 
-    pub fn feed_id_by_icon_id(self: *Self, icon_id: u64) !?Feed.ID {
+    pub fn feed_id_by_icon_id(self: *Self, icon_id: Icon.ID) !?Feed.ID {
         const query =
             \\SELECT feed_id FROM feed WHERE icon_id = ?
         ;
-        const feed_id = try self.sql_db.one(u64, query, .{}, .{icon_id}) orelse return null;
+        const feed_id = try self.sql_db.one(u64, query, .{}, .{@intFromEnum(icon_id)}) orelse return null;
         return @enumFromInt(feed_id);
     }
 
@@ -1614,12 +1592,12 @@ pub const Storage = struct {
         }
     }
 
-    pub fn icon_by_id(self: *Self, allocator: Allocator, id: u64) !?Icon {
+    pub fn icon_by_id(self: *Self, allocator: Allocator, id: Icon.ID) !?Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        const raw_opt = try self.sql_db.oneAlloc(Icon.Raw, allocator,  query, .{}, .{id});
+        const raw_opt = try self.sql_db.oneAlloc(Icon.Raw, allocator,  query, .{}, .{@intFromEnum(id)});
         if (raw_opt) |raw| {
             return try Icon.from_raw(raw);
         }
@@ -1634,25 +1612,27 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{icon_url});
     }
 
-    pub fn icon_get_id(self: *Self, icon_url: []const u8) !?u64 {
+    pub fn icon_get_id(self: *Self, icon_url: []const u8) !?Icon.ID {
         assert(is_url_or_data(icon_url));
         const query = 
         \\select icon_id FROM icon
         \\WHERE icon_url = ? or icon_data = ?
         \\LIMIT 1;
         ;
-        return try self.sql_db.one(u64, query, .{}, .{icon_url, icon_url});
+        const raw = try self.sql_db.one(u64, query, .{}, .{icon_url, icon_url}) orelse return .unassigned;
+        return @enumFromInt(raw);
     }
 
-    pub fn feed_icon_update(self: *Self, feed_id: Feed.ID, icon_id: u64) !void {
+    pub fn feed_icon_update(self: *Self, feed_id: Feed.ID, icon_id: Icon.ID) !void {
         assert(feed_id != .unassigned);
+        assert(icon_id != .unassigned);
         const query = 
         \\UPDATE feed SET
         \\  icon_id = ?
         \\WHERE feed_id = ?;
         ;
 
-        try self.sql_db.exec(query, .{}, .{icon_id, @intFromEnum(feed_id)});
+        try self.sql_db.exec(query, .{}, .{@intFromEnum(icon_id), @intFromEnum(feed_id)});
     }
 
     pub const IconFailedInsert = struct {

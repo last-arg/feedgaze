@@ -72,7 +72,7 @@ pub const IconManage = struct {
     };
 
     const Cache = std.MultiArrayList(struct{
-        icon_id: u64,
+        icon_id: types.IconRender.ID,
         icon_data: Location,
         is_inline: bool = false,
         icon_url: Location,
@@ -87,7 +87,7 @@ pub const IconManage = struct {
         };
     }
 
-    pub fn add(self: *@This(), icon: Storage.Icon) !usize {
+    pub fn add(self: *@This(), icon: types.IconRender) !usize {
         var is_icon_inline = false;
         const data, const file_type = blk: {
             if (data_image(icon.icon_data)) |data_img| {
@@ -176,7 +176,7 @@ pub const IconManage = struct {
         };
     }
 
-    pub fn index_by_id(self: *@This(), id: u64, storage_opt: ?*Storage) ?usize {
+    pub fn index_by_id(self: *@This(), id: types.IconRender.ID, storage_opt: ?*Storage) ?usize {
         for (self.storage.items(.icon_id), 0..) |icon_id, i| {
             if (id == icon_id) {
                 return i;
@@ -206,7 +206,7 @@ pub const IconManage = struct {
         return self.storage.items(.is_inline)[index];
     }
 
-    pub fn icon_src_by_id(self: *@This(), buf: []u8, id: u64, db: ?*Storage) ?[]const u8 {
+    pub fn icon_src_by_id(self: *@This(), buf: []u8, id: types.IconRender.ID, db: ?*Storage) ?[]const u8 {
         const index = self.index_by_id(id, db) orelse return null;
         const icon = self.storage.get(index);
         if (icon.file_type) |ft| {
@@ -577,10 +577,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
   
     const feed = try db.addFeed(parsed_feed, add_opts);
 
-    if (feed.icon_id) |icon_id| {
+    if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
-            .icon_id = icon_id,
+            .icon_id = feed.icon_id,
             .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
@@ -960,10 +960,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     const feed = try db.addFeed(parsed_feed, add_opts);
 
-    if (feed.icon_id) |icon_id| {
+    if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
-            .icon_id = icon_id,
+            .icon_id = feed.icon_id,
             .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
@@ -1155,11 +1155,11 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const db = global.storage;
 
-    const icon_id = blk: {
+    const icon_id: types.IconRender.ID = blk: {
         const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
 
         if (icon_url_trimmed.len == 0) {
-            break :blk null;
+            break :blk .unassigned;
         }
 
         if (util.is_url(icon_url_trimmed)) {
@@ -1178,7 +1178,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const icon_uri = try std.Uri.parse(icon_url_trimmed);
             const cache_control = req_http.fetch_image(&a_writer.writer, req.arena, icon_uri, .{
                 .buffer_header = &buffer_header,
-            }) catch break :blk null;
+            }) catch break :blk .unassigned;
             const resp_body = a_writer.writer.buffered();
 
             const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
@@ -1201,7 +1201,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             // TODO: make use aware of mistake
         }
 
-        break :blk null;
+        break :blk .unassigned;
     };
 
     resp.status = 303;
@@ -1336,9 +1336,9 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("<main class='flow'>");
     try w.writeAll("<h2>");
-    if (feed.icon_id) |icon_id| {
+    if (feed.icon_id.is_valid()) {
         var buf_icon: [128]u8 = undefined;
-        if (global.icon_manage.icon_src_by_id(&buf_icon, icon_id, global.storage)) |path| {
+        if (global.icon_manage.icon_src_by_id(&buf_icon, feed.icon_id, global.storage)) |path| {
             try w.print(
                 \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
             , .{path});
@@ -1483,8 +1483,8 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const page_url = feed.page_url orelse std.Uri{.scheme = ""};
 
     const icon_url = blk: {
-        if (feed.icon_id) |icon_id| {
-            if (global.icon_manage.index_by_id(icon_id, global.storage)) |index| {
+        if (feed.icon_id.is_valid()) {
+            if (global.icon_manage.index_by_id(feed.icon_id, global.storage)) |index| {
                 if (global.icon_manage.is_inline(index)) {
                     const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
@@ -1924,8 +1924,8 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     , .{ url.fmt(.all) });
 
     var buf: [128]u8 = undefined;
-    if (feed.icon_id) |icon_id| {
-        if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
+    if (feed.icon_id.is_valid()) {
+        if (global.icon_manage.icon_src_by_id(&buf, feed.icon_id, global.storage)) |path| {
             try w.print(
                 \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
             , .{path});
@@ -2475,8 +2475,8 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         try w.writeAll("<header>");
 
         try w.writeAll("<div class='feed-header-top'>");
-        if (feed.icon_id) |icon_id| {
-            if (global.icon_manage.icon_src_by_id(&buf, icon_id, global.storage)) |path| {
+        if (feed.icon_id.is_valid()) {
+            if (global.icon_manage.icon_src_by_id(&buf, feed.icon_id, global.storage)) |path| {
                 try w.print(
                     \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
                 , .{path});

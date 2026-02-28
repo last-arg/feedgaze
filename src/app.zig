@@ -349,7 +349,7 @@ pub const Cli = struct {
 
                 var downloaded: std.MultiArrayList(struct{
                     page_url: std.Uri,
-                    icon_id: u64, // Need to update feed's icon_id column
+                    icon_id: feed_types.IconRender.ID,
                     count: usize,
                 }) = .empty;
                 defer downloaded.deinit(arena.allocator());
@@ -384,8 +384,8 @@ pub const Cli = struct {
                     };
 
                     if (new_icon_opt) |new_icon| {
-                        const icon_id_opt = try self.storage.icon_upsert(new_icon);
-                        if (icon_id_opt) |icon_id| {
+                        const icon_id = try self.storage.icon_upsert(new_icon);
+                        if (icon_id.is_valid()) {
                             if (index_opt) |index| {
                                 downloaded.items(.count)[index] = 2;
                             } else {
@@ -418,8 +418,8 @@ pub const Cli = struct {
 
                     if (new_icon_opt) |icon_new| {
                         if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            const icon_id_opt = try self.storage.icon_upsert(icon_new);
-                            if (icon_id_opt) |icon_id| {
+                            const icon_id = try self.storage.icon_upsert(icon_new);
+                            if (icon_id.is_valid()) {
                                 try self.storage.feed_icon_update(icon.feed_id, icon_id);
                                 self.storage.icon_failed_remove(icon.feed_id) catch |err| {
                                     std.log.warn("Failed to remove feed from icon_failed table. Error: {}", .{err});
