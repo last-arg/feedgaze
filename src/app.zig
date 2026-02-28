@@ -845,7 +845,7 @@ pub const Cli = struct {
 
             switch (try getUserInput(arena.allocator(), links, self.out, self.in)) {
                 .html => |user_html_opts| {
-                    add_opts.feed_opts.feed_url = try client.get_url_slice(&buf_url);
+                    add_opts.feed_opts.feed_url = try std.Uri.parse(try client.get_url_slice(&buf_url));
                     html_opts = user_html_opts;
                 },
                 .index => |index| {
@@ -887,12 +887,12 @@ pub const Cli = struct {
 
                     add_opts.feed_opts = feed_opts_2.?;
                     add_opts.feed_opts.body = a_writer.writer.buffered();
-                    add_opts.feed_opts.feed_url = try client_2.get_url_slice(&buf_url);
+                    add_opts.feed_opts.feed_url = try std.Uri.parse(try client_2.get_url_slice(&buf_url));
                     add_opts.feed_opts.title = title;
                 }
             }
         } else {
-            add_opts.feed_opts.feed_url = try client.get_url_slice(&buf_url);
+            add_opts.feed_opts.feed_url = try std.Uri.parse(try client.get_url_slice(&buf_url));
         }
 
         if (add_opts.feed_opts.icon == null) {
@@ -901,7 +901,7 @@ pub const Cli = struct {
             // Would have to change things in '.index'
             // And not have 'add_opts.feed_opts.feed_url' as input
              
-            const feed_uri_for_icon = try std.Uri.parse(mem.trim(u8, add_opts.feed_opts.feed_url, &std.ascii.whitespace));
+            const feed_uri_for_icon = add_opts.feed_opts.feed_url;
             add_opts.feed_opts.icon = http_client.fetch_icon(arena.allocator(), feed_uri_for_icon, .{
                 .html_body = if (add_opts.feed_opts.content_type == .html) add_opts.feed_opts.body else null,
             }) catch null;
@@ -909,7 +909,7 @@ pub const Cli = struct {
         
         var parser: FeedParser = .init(add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
-            .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
+            .feed_url = add_opts.feed_opts.feed_url,
         });
 
         const feed = try self.storage.addFeed(parsed, add_opts);

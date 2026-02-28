@@ -11,7 +11,6 @@ const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
 const html = @import("./html.zig");
 const feed_types = @import("./feed_types.zig");
-const FeedOptions = feed_types.FeedOptions;
 const parse = @import("./feed_parse.zig");
 const App = @import("app.zig").App;
 const builtin = @import("builtin");
@@ -548,7 +547,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     feed_options.body = a_writer.writer.buffered();
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try client.get_url_slice(&buffer_url);
+    add_opts.feed_opts.feed_url = try std.Uri.parse(try client.get_url_slice(&buffer_url));
 
     const html_opts: ?parse.HtmlOptions = if (feed_options.content_type == .html) .{
         .selector_container = selector_container,
@@ -564,7 +563,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         add_opts.feed_opts.icon = http_client.fetch_icon(req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
-            std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.warn("Failed to fetch icon with input url '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
             break :blk null;
         };
     }
@@ -572,7 +571,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var parsing: parse = .init(add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, html_opts, .{
-        .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
+        .feed_url = add_opts.feed_opts.feed_url,
     });
   
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -593,7 +592,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     if (tags_input) |raw| {
         errdefer |err| {
-            std.log.err("Failed to add tags for new feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
         }
 
         var iter = mem.splitScalar(u8, raw, ',');
@@ -939,7 +938,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     }
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
-    add_opts.feed_opts.feed_url = try client.get_url_slice(&buffer_url);
+    add_opts.feed_opts.feed_url = try std.Uri.parse(try client.get_url_slice(&buffer_url));
 
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
@@ -947,7 +946,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         add_opts.feed_opts.icon = http_client.fetch_icon(req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
-            std.log.warn("Failed to fetch icon with input url '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.warn("Failed to fetch icon with input url '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
             break :blk null;
         };
     }
@@ -955,7 +954,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var parsing: parse = .init(add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, null, .{
-        .feed_url = try std.Uri.parse(add_opts.feed_opts.feed_url),
+        .feed_url = add_opts.feed_opts.feed_url,
     });
 
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -976,7 +975,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
  if (tags_input) |raw| {
         errdefer |err| {
-            std.log.err("Failed to add tags for new feed '{s}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
         }
 
         var iter = mem.splitScalar(u8, raw, ',');
