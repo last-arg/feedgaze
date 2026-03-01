@@ -1880,7 +1880,11 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
         var ids_al = try std.ArrayList(types.Feed.ID).initCapacity(req.arena, items.len);
         defer ids_al.deinit(req.arena);
-        for (items) |item| { ids_al.appendAssumeCapacity(item.feed_id); }
+        for (items) |item| {
+            if (!mem.containsAtLeastScalar(types.Feed.ID, ids_al.items, 1, item.feed_id)) {
+                ids_al.appendAssumeCapacity(item.feed_id);
+            }
+        }
         const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
 
