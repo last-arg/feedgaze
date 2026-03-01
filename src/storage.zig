@@ -1453,7 +1453,7 @@ pub const Storage = struct {
         var stmt = try self.sql_db.prepareDynamic(query_al.items);
         defer stmt.deinit();
 
-        return try feed_slice_from_statement(allocator, &stmt, query_al.items);
+        return try feed_slice_from_statement(allocator, &stmt, .{});
     }
 
     pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
