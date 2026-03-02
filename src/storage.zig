@@ -1376,7 +1376,7 @@ pub const Storage = struct {
             \\  when count(*) > 0 and req.feed_id is not null then max(req.utc_sec) + min(3600 * (count(*) * count(*)), 259200)
             \\  when rl.count >= 3 then max(rl.next_utc_sec, rl.last_utc_sec + min(3600 * (rl.count * rl.count), 259200))
             \\  when rl.count > 0 then rl.next_utc_sec
-            \\end - strftime('%s', 'now')
+            \\end
             \\from feed_request_failed as req
             \\left join rate_limit as rl on rl.feed_id = req.feed_id
             \\where req.feed_id = @feed_id

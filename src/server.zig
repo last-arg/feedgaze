@@ -1370,7 +1370,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     , .{ feed.feed_url, feed.feed_url });
 
     var date_buf: [date_len_max]u8 = undefined;
-    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
 
     if (try db.feed_last_update(feed.feed_id)) |last_update| {
         try w.print(
@@ -1388,8 +1387,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
-        const ts = now_sec + utc_sec;
-        const date_for_machine = timestampToString(&date_buf, ts);
+        const date_for_machine = timestampToString(&date_buf, utc_sec);
         try w.print(
             \\<p>Next update
             \\<em>
@@ -1400,7 +1398,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             \\</p>
         , .{
             date_for_machine,
-            date_readable(ts),
+            date_readable(utc_sec),
         });
         // TODO: add update link/button if can update now 
     } else {
