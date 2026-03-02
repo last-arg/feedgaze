@@ -952,7 +952,11 @@ pub const Storage = struct {
     };
 
     fn search_query_where(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]const u8 {
-        assert(args.before != .unassigned and args.after != .unassigned);
+        assert(
+            (args.before == .unassigned and args.after == .unassigned) or
+            (args.before != .unassigned and args.after == .unassigned) or
+            (args.before == .unassigned and args.after != .unassigned)
+        );
 
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
@@ -1075,7 +1079,11 @@ pub const Storage = struct {
     }
 
     pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]Feed {
-        assert(args.before != .unassigned and args.after != .unassigned);
+        assert(
+            (args.before == .unassigned and args.after == .unassigned) or
+            (args.before != .unassigned and args.after == .unassigned) or
+            (args.before == .unassigned and args.after != .unassigned)
+        );
 
         const query_where = try self.search_query_where(allocator, args);
         defer allocator.free(query_where);
