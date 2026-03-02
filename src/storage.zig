@@ -1357,15 +1357,6 @@ pub const Storage = struct {
         return try one(&self.sql_db, i64, query, .{});
     }
 
-    pub fn most_recent_update_timestamp(self: *Self) !?i64 {
-        const query = 
-        \\select max(last_update)
-        \\from feed_update
-        \\where last_update <= strftime("%s", "now")
-        ;
-        return try one(&self.sql_db, i64, query, .{});
-    }
-
     // NOTE: null means that there have been to many failed feed requests in a row
     pub fn next_update_feed(self: *Self, feed_id: Feed.ID) !?i64 {
         assert(feed_id != .unassigned);

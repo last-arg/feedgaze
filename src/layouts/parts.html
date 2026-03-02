@@ -53,9 +53,9 @@
   <a href='/'>Close message</a>
 </div>
 .last_update_msg
-<p>Last update was <relative-time update="false"><time datetime="{s}">{s}</time></relative-time>.</p>
+<p>Last update was <time datetime="{s}">{s}</time>.</p>
 .next_update_msg
-<p>Next update <relative-time update=false><time datetime={s}>{s}</time></relative-time> ({s})</p>
+<p class="update-automatic">Next update <time datetime={s}>{s}</time> ({s})</p>
 .form_post_update
 <form method=POST action=/update>
   <p>

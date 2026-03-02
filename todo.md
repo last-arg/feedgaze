@@ -20,7 +20,6 @@
   - limit how many items rendered
     - Paginate if there are too many items?
     - Only paginate if items are new?
-  - Fix 'Next update ...' text when update hasn't happened (date in past)
 - add trigger when:
   - failed request is added
   - rate limit is added

@@ -3,6 +3,19 @@ document.addEventListener("DOMContentLoaded", startup);
 let has_partial_open = true;
 
 function startup() {
+
+    // NOTE: only for root (/) page
+    const heading_info = document.querySelector(".heading-info");
+    const time_elem = heading_info.querySelector("time");
+    const time_date = new Date(time_elem.dateTime);
+    const now = Date.now();
+
+    if (time_date < now) {
+        heading_info.querySelector(".update-automatic").setAttribute("hidden", "");
+        heading_info.querySelector(".update-manual").removeAttribute("hidden");
+    }
+    
+
     document.addEventListener("click", function(e) {
         const elem = e.target;
         let match_elem = elem.closest(".js-feed-item-toggle");

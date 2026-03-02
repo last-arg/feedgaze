@@ -1835,26 +1835,26 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.writeAll("<h2>Latest added</h2>");
 
     if (try db.next_update_timestamp()) |countdown_ts| {
-        const now_ts = std.time.timestamp();
         try w.writeAll("<div class=\"heading-info\">");
-        if (countdown_ts <= now_ts) {
-            if (countdown_ts != 0) if (try db.most_recent_update_timestamp()) |recent_timestamp| {
-                const date_readable_str = date_readable(recent_timestamp);
-                try w.print(parts_get("last_update_msg"), .{
-                    timestampToString(&date_buf, recent_timestamp),
-                    date_readable_str,
-                });
-            };
-
-            try w.writeAll(parts_get("form_post_update"));
-        } else if (countdown_ts > now_ts) {
             const date_readable_str = date_readable(countdown_ts);
+            const ts_str = timestampToString(&date_buf, countdown_ts);
+
+            try w.writeAll("<relative-time update=false>");
             try w.print(parts_get("next_update_msg"), .{
-                timestampToString(&date_buf, countdown_ts),
+                ts_str,
                 date_readable_str,
                 date_readable_str,
             });
-        }
+
+            try w.writeAll("<div class=\"update-manual\" hidden>");
+            try w.print(parts_get("last_update_msg"), .{
+                ts_str,
+                date_readable_str,
+            });
+            try w.writeAll(parts_get("form_post_update"));
+            try w.writeAll("</div>");
+            try w.writeAll("</relative-time>");
+            
         try w.writeAll("</div>");
     }
     try w.writeAll("</header>");
