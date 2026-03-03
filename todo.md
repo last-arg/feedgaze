@@ -1,5 +1,4 @@
 # Initial
-- handle updating better when pc comes out of suspend 
 - add special value to 'select_request_failed'?
 - replace zig-datetime with zeit?
 - website:

@@ -101,9 +101,9 @@ pub const Cli = struct {
             },
             .run => {
                 std.log.info("Running in foreground", .{});
-                const loop_limit = 5;
+                const loop_count_max = 5;
                 var loop_count: u16 = 0;
-                while (loop_count < loop_limit) {
+                while (loop_count < loop_count_max) {
                     if (try self.storage.next_update_timestamp()) |timestamp_next| {
                         const now_ts = std.time.timestamp();
                         if (timestamp_next > now_ts) {
@@ -123,7 +123,14 @@ pub const Cli = struct {
                             });
 
                             loop_count = 0;
-                            std.Thread.sleep(@intCast(countdown_ts * std.time.ns_per_s));
+                            const thread_sleep_sec = 10;
+                            const thread_loop_count_max: i64 = @divFloor(countdown_ts, thread_sleep_sec) + 1;
+                            var thread_loop_count: u64 = 0;
+                            while (std.time.timestamp() < timestamp_next) {
+                                std.debug.assert(thread_loop_count < thread_loop_count_max);
+                                std.Thread.sleep(thread_sleep_sec * std.time.ns_per_s);
+                                thread_loop_count += 1;
+                            }
                             continue;
                         }
                     }
@@ -133,7 +140,7 @@ pub const Cli = struct {
                         loop_count += 1;
                     }
                 }
-                if (loop_count >= loop_limit) {
+                if (loop_count >= loop_count_max) {
                     std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
                 }
             },
