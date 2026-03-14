@@ -12,8 +12,6 @@
     - colors from? https://design.homeoffice.gov.uk/design-system/components?name=Alert
     - should also add icon
 - if link and id are same only save link to save space
-- remove whitespace before doing html unescaping and removing html tags?
-  - &nbps; should be replaced with ' '
 - root page:
   - show failed feed request indicator?
   - limit how many items rendered

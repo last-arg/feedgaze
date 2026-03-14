@@ -290,15 +290,47 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         return input;
     }
     
+    const new_size =  mem.replacementSize(u8, input, "&nbsp;", " ");
     // TODO: can I reduce or avoid this allocation?
-    const buf = try allocator.alloc(u8, input.len * 2);
+    const buf = try allocator.alloc(u8, new_size * 2);
     errdefer allocator.free(buf);
 
-    var out = buf[0..input.len];
-    @memcpy(out, input);
-    const tmp = buf[input.len..];
+    var out = buf[0..new_size];
+    if (new_size != input.len) {
+        _ =  mem.replace(u8, input, "&nbsp;", " ", out);
+    } else {
+        @memcpy(out, input);
+    }
 
+    const tmp = buf[new_size..];
     var w: std.Io.Writer = .fixed(tmp);
+
+    const has_whitespace = mem.indexOfAnyPos(u8, out, 0, std.ascii.whitespace[1..]) != null
+       or mem.indexOfPos(u8, out, 0, "  ") != null;
+
+    if (has_whitespace) {
+        var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
+        if (iter.next()) |first| {
+            w.end = 0;
+            w.writeAll(first) catch unreachable;
+
+            while (iter.next()) |chunk| {
+                const new_len = w.end + chunk.len;
+                if (new_len > max_title_len) {
+                    break;
+                }
+
+                w.writeByte(' ') catch break;
+                w.writeAll(chunk) catch unreachable;
+            }
+
+            const value = w.buffered();
+            if (value.len != out.len) {
+                out = out[0..value.len];
+                @memcpy(out, value);
+            }
+        }
+    }
 
     if (do_html_unescape) {
         html_unescape_tags(&w, out);
@@ -333,33 +365,6 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
         if (value.len != out.len) {
             out = out[0..value.len];
             @memcpy(out, value);
-        }
-    }
-
-    const has_whitespace = mem.indexOfAnyPos(u8, out, 0, std.ascii.whitespace[1..]) != null
-       or mem.indexOfPos(u8, out, 0, "  ") != null;
-
-    if (has_whitespace) {
-        var iter = mem.tokenizeAny(u8, out, &std.ascii.whitespace);
-        if (iter.next()) |first| {
-            w.end = 0;
-            w.writeAll(first) catch unreachable;
-
-            while (iter.next()) |chunk| {
-                const new_len = w.end + chunk.len;
-                if (new_len > max_title_len) {
-                    break;
-                }
-
-                w.writeByte(' ') catch break;
-                w.writeAll(chunk) catch unreachable;
-            }
-
-            const value = w.buffered();
-            if (value.len != out.len) {
-                out = out[0..value.len];
-                @memcpy(out, value);
-            }
         }
     }
 
