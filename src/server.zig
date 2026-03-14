@@ -1029,7 +1029,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     if (query.get("success")) |id_raw| {
         if (std.fmt.parseUnsigned(usize, id_raw, 10)) |feed_id| {
             try w.print(
-                \\<p>Feed added.
+                \\<p class="callout success">Feed added.
                 \\<a href="/feed/{d}">Got to feed page</a>.
                 \\</p>
             , .{feed_id});
@@ -1442,7 +1442,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const query_kv = try req.query();
     if (query_kv.get("success")) |_| {
-        try w.writeAll("<p>Feed changes saved</p>");
+        try w.writeAll("<p class='callout success'>Feed changes saved</p>");
     }
 
     if (query_kv.get("error")) |error_value| {
@@ -1974,19 +1974,16 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     const db = global.storage;
     resp.status = 301;
     const tag = db.tag_with_id(req.arena, tag_id) catch {
-        // On failure redirect to feed page. Display error message
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
         resp.header("Location", redirect);
         return;
     } orelse {
-        // On failure redirect to feed page. Display error message
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
         resp.header("Location", redirect);
         return;
     };
 
     db.tags_remove_with_id(tag_id) catch {
-        // On failure redirect to feed page. Display error message
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
         resp.header("Location", redirect);
         return;
@@ -2080,7 +2077,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const query_kv = try req.query();
     if (query_kv.get("success")) |_| {
-        try w.writeAll(parts_get("tags_query_success"));
+        try w.writeAll(parts_get("tag_edit_success"));
     } else if (query_kv.get("error")) |val| {
         const err_enum = UrlQueryError.from_string(val);
 
