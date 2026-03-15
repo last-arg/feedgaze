@@ -61,7 +61,7 @@ pub const IconManage = struct {
     allocator: std.mem.Allocator,
 
     url_string_bytes: ArrayList(u8) = .empty,
-    data_string_bytes: ArrayList(u8) = .empty,
+    data_string_bytes: std.Io.Writer.Allocating,
     hash_string_bytes: ArrayList(u8) = .empty,
 
     const ArrayList = std.ArrayList;
@@ -84,6 +84,7 @@ pub const IconManage = struct {
         return .{
             .storage = .empty,
             .allocator = allocator,
+            .data_string_bytes = .init(allocator),
         };
     }
 
@@ -114,14 +115,23 @@ pub const IconManage = struct {
         try self.url_string_bytes.appendSlice(self.allocator, icon_url);
         const url_end = self.url_string_bytes.items.len; 
 
-        const data_start = self.data_string_bytes.items.len; 
-        try self.data_string_bytes.appendSlice(self.allocator, data);
-        const data_end = self.data_string_bytes.items.len; 
+        const data_start = self.data_string_bytes.written().len; 
+        if (file_type == .svg) {
+            var buf_data: [8 * std.compress.flate.max_window_len]u8 = undefined; 
+            var c = try std.compress.flate.Compress.init(&self.data_string_bytes.writer, &buf_data, .gzip, .default);
+            try c.writer.writeAll(data);
+            try c.writer.flush();
+        } else {
+            try self.data_string_bytes.writer.writeAll(data);
+            try self.data_string_bytes.writer.flush();
+        }
+
+        const data_end = self.data_string_bytes.written().len; 
 
         const hash_start = self.hash_string_bytes.items.len; 
         try self.hash_string_bytes.appendSlice(self.allocator, hash_val);
         const hash_end = self.hash_string_bytes.items.len; 
-
+        
         const index = self.storage.len;
         try self.storage.append(self.allocator, .{
             .icon_id = icon.icon_id,
@@ -232,9 +242,9 @@ pub const IconManage = struct {
         return self.hash_string_bytes.items[loc.start..loc.end];
     }
 
-    pub fn get_data_string_by_index(self: *const @This(), index: usize) []const u8 {
+    pub fn get_data_string_by_index(self: *@This(), index: usize) []const u8 {
         const icon_data = self.storage.items(.icon_data)[index];
-        return self.data_string_bytes.items[icon_data.start..icon_data.end];
+        return self.data_string_bytes.written()[icon_data.start..icon_data.end];
     }
 
     pub fn get_url_string_by_index(self: *const @This(), index: usize) []const u8 {
@@ -245,7 +255,7 @@ pub const IconManage = struct {
     pub fn deinit(self: *@This()) void {
         self.storage.deinit(self.allocator);
         self.url_string_bytes.deinit(self.allocator);
-        self.data_string_bytes.deinit(self.allocator);
+        self.data_string_bytes.deinit();
         self.hash_string_bytes.deinit(self.allocator);
     }
 };
@@ -284,7 +294,7 @@ pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
         .icon_manage = &icon_manage,
     };
     const server_config: httpz.Config = .{
-        .port = opts.port,  
+        .address = .localhost(opts.port),  
         .request = .{
             // NOTE: How many form values can be sent
             // If there are a lot of enabled tags all values might not be sent.
@@ -1734,6 +1744,10 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
         resp.header("Content-Type", file_type.?.to_content_type());
         resp.header("Cache-control", "public,max-age=31536000,immutable");
+        if (file_type == .svg) {
+            resp.header("Content-Encoding", "gzip");
+        }
+
         const body = body: {
             const data = global.icon_manage.get_data_string_by_index(index);
             if (util.is_data(data)) {

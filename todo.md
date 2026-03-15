@@ -31,19 +31,11 @@ warning: Failed to fetch 'https://news.ycombinator.com'. Error: error.TlsInitial
 warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut```
 
 
-- failed feed requests
-  - keep count how many times feed has failed to fetch?
-  - save date when it failed first time? Or last?
-  - https://jamesg.blog/2024/12/24/designing-the-artemis-feed-recovery-tool/
 - when two commands run at the same time there is possibility of getting
 sqlite busy error
 - cli: 
   - try https://github.com/n0s4/flags
 
-- icons 
-  - compress (gzip/br) svg?
-    - If I request gzip/br I should not have to compress myself
-    - If there is no compressed icon then need to compress myself
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
 - add transactions
