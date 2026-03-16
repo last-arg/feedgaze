@@ -324,8 +324,6 @@ pub fn fill_headers(bytes: []const u8, map: *HeaderMap, keys: []const []const u8
     }
 }
 
-
-
 const FetchIconOptions = struct {
     html_body: ?[]const u8 = null,
     etag_or_last_modified: ?[]const u8 = null,
@@ -343,7 +341,9 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
     if (opts.html_body) |html_body| {
         icon_url_opt = try util.get_icon_from_html(&fixed_writer, uri, html_body);
         if (icon_url_opt) |icon| if (util.is_data(icon)) {
-            return feed_types.Icon.init(uri, icon, opts.etag_or_last_modified);
+            const data_encoded = try util.content_from_data_uri(icon);
+            const data = std.Uri.percentDecodeInPlace(@constCast(data_encoded));
+            return feed_types.Icon.init(uri, data, opts.etag_or_last_modified);
         };
     }
 
@@ -387,9 +387,11 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
         if (icon_url_opt) |icon| {
             if (util.is_data(icon)) {
                 const url_final = try req.get_url_slice(&buf_url_slice);
-                try return_writer.ensureTotalCapacityPrecise(url_final.len + icon.len);
+                const data_encoded = try util.content_from_data_uri(icon);
+                const data = std.Uri.percentDecodeInPlace(@constCast(data_encoded));
+                try return_writer.ensureTotalCapacityPrecise(url_final.len + data.len);
                 return_writer.writer.writeAll(url_final) catch unreachable;
-                return_writer.writer.writeAll(icon) catch unreachable;
+                return_writer.writer.writeAll(data) catch unreachable;
                 const buf_url = return_writer.writer.buffered()[0..url_final.len];
                 const buf_data = return_writer.writer.buffered()[url_final.len..];
                 const etag_or_last_modified = feed_opts.?.feed_updates.etag_or_last_modified;

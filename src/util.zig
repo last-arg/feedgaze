@@ -73,3 +73,10 @@ pub fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []con
 
     return null;
 }
+
+pub fn content_from_data_uri(input: []const u8) ![]const u8 {
+    std.debug.assert(is_data(input));
+    const start_index = std.mem.indexOfScalarPos(u8, input, 5, ',')
+        orelse return error.InvalidDataUri;
+    return input[start_index + 1..];
+}

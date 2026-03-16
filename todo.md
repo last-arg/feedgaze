@@ -4,7 +4,6 @@
 - website:
   - print form errors near fields where the error took place
   - minify html
-  - server: limit inline icon size
   - a11y styling
     - https://github.com/Terryc21/XcodeResources/blob/main/Colorblind_Accessibility_Guide.md
     - change info, warning, error colors where necessary

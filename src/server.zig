@@ -75,9 +75,8 @@ pub const IconManage = struct {
     const Cache = std.MultiArrayList(struct{
         icon_id: types.IconRender.ID,
         icon_data: Location,
-        is_inline: bool = false,
         icon_url: Location,
-        file_type: ?IconFileType = null,
+        file_type: IconFileType,
         hash: Location,
     });
 
@@ -90,13 +89,8 @@ pub const IconManage = struct {
     }
 
     pub fn add(self: *@This(), icon: types.IconRender) !usize {
-        var is_icon_inline = false;
         const data, const file_type = blk: {
-            if (data_image(icon.icon_data)) |data_img| {
-                is_icon_inline = true;
-                const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(data_img.data));
-                break :blk .{page_url_decoded, data_img.file_type};
-            } else if (image.Type.from_data(icon.icon_data)
+            if (image.Type.from_data(icon.icon_data)
                 orelse file_type_from_uri(icon.icon_url)
             ) |file_type| {
                 break :blk .{icon.icon_data, file_type};
@@ -137,7 +131,6 @@ pub const IconManage = struct {
         try self.storage.append(self.allocator, .{
             .icon_id = icon.icon_id,
             .icon_data = .{ .start = @intCast(data_start), .end = @intCast(data_end) },
-            .is_inline = is_icon_inline,
             .icon_url = .{ .start = @intCast(url_start), .end = @intCast(url_end) },
             .file_type = file_type,
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
@@ -152,42 +145,8 @@ pub const IconManage = struct {
         return IconFileType.from_string(filetype_raw);
     }
 
-    pub const DataImage = struct {
-        file_type: IconFileType,
-        data: []const u8,
-    };
-
-    fn data_image(data: []const u8) ?DataImage {
-        if (!util.is_data(data)) {
-            return null;
-        }
-
-        const index_end = mem.indexOfScalarPos(u8, data, 5, ',') orelse return null;
-
-        var file_type_opt: ?IconFileType = null;
-        const info_raw = data[5..index_end];
-        var iter = mem.splitScalar(u8, info_raw, ';');
-        while (iter.next()) |kv| {
-            if (!mem.startsWith(u8, kv, "image/")) {
-                continue;
-            }
-            const value = kv[6..];
-            const end = mem.indexOfScalar(u8, value, '+') orelse value.len;
-            if (IconFileType.from_string(value[0..end])) |file_type| {
-                file_type_opt = file_type;
-                break;
-            }
-        }
-
-        const file_type = file_type_opt orelse return null; 
-
-        return .{
-            .file_type = file_type,
-            .data = data[index_end + 1..],
-        };
-    }
-
     pub fn index_by_id(self: *@This(), id: types.IconRender.ID, storage_opt: ?*Storage) ?usize {
+        std.debug.assert(id != .unassigned);
         for (self.storage.items(.icon_id), 0..) |icon_id, i| {
             if (id == icon_id) {
                 return i;
@@ -213,20 +172,13 @@ pub const IconManage = struct {
         return null;
     }
 
-    pub fn is_inline(self: *const @This(), index: usize) bool {
-        return self.storage.items(.is_inline)[index];
-    }
-
     pub fn icon_src_by_id(self: *@This(), buf: []u8, id: types.IconRender.ID, db: ?*Storage) ?[]const u8 {
         const index = self.index_by_id(id, db) orelse return null;
         const icon = self.storage.get(index);
-        if (icon.file_type) |ft| {
-            const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
-            return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{hash, ft.to_string()})
-                catch null;
-        }
-
-        return null;
+        const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
+        const ft = icon.file_type;
+        return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{hash, ft.to_string()})
+            catch null;
     }
 
     pub fn index_by_hash(self: *const @This(), filename_hash: []const u8) !?usize {
@@ -252,7 +204,7 @@ pub const IconManage = struct {
         const icon_url = self.storage.items(.icon_url)[index];
         return self.url_string_bytes.items[icon_url.start..icon_url.end];
     }
-    
+
     pub fn deinit(self: *@This()) void {
         self.storage.deinit(self.allocator);
         self.url_string_bytes.deinit(self.allocator);
@@ -1511,13 +1463,16 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const icon_url = blk: {
         if (feed.icon_id.is_valid()) {
             if (global.icon_manage.index_by_id(feed.icon_id, global.storage)) |index| {
-                if (global.icon_manage.is_inline(index)) {
+                const icon_url_raw = global.icon_manage.get_url_string_by_index(index);
+                const icon_url = try std.Uri.parse(icon_url_raw);
+                // NOTE: Is inline icon
+                if (std.meta.eql(icon_url, page_url)) {
                     const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
                     break :blk icon_encoded;
                 }
 
-                break :blk global.icon_manage.get_url_string_by_index(index);
+                break :blk icon_url_raw;
             }
         }
         break :blk "";
@@ -1754,7 +1709,7 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             }
         };
 
-        resp.header("Content-Type", file_type.?.to_content_type());
+        resp.header("Content-Type", file_type.to_content_type());
         resp.header("Cache-control", "public,max-age=31536000,immutable");
         if (file_type == .svg) {
             resp.header("Content-Encoding", "gzip");
