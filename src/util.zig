@@ -2,6 +2,7 @@ const std = @import("std");
 const datetime = @import("zig-datetime").datetime;
 const Datetime = datetime.Datetime;
 const html = @import("./html.zig");
+const image = @import("image.zig");
 
 pub fn is_url(url: []const u8) bool {
     return if (std.Uri.parse(url)) |_| true else |_| false;
@@ -74,9 +75,26 @@ pub fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []con
     return null;
 }
 
-pub fn content_from_data_uri(input: []const u8) ![]const u8 {
+pub fn image_raw_from_data_uri(input: []const u8) ?[]const u8 {
     std.debug.assert(is_data(input));
-    const start_index = std.mem.indexOfScalarPos(u8, input, 5, ',')
-        orelse return error.InvalidDataUri;
-    return input[start_index + 1..];
+    const meta_start_index = "data:".len;
+    const meta_end_index = std.mem.indexOfScalarPos(u8, input, meta_start_index, ',') orelse {
+        std.log.warn("Data URI image is invalid. Data: {s}", .{input});
+        return null;
+    };
+
+    const content_start_index = meta_end_index + 1;
+    const content = input[content_start_index..];
+
+    const file_type_end_index = std.mem.indexOfScalarPos(u8, input, meta_start_index, ';') orelse content_start_index;
+    const file_type_raw = input[meta_start_index..file_type_end_index];
+    const is_file_type_valid = image.Type.from_string(file_type_raw) != null
+        or image.Type.from_data(content) != null;
+
+    if (!is_file_type_valid) {
+        std.log.warn("Image file type not supported. Got: '{s}'. Valid image file types: image/png, image/jpeg, image/jpeg, image/webp, image/avif, image/svg+xml, image/x-icon, image/vnd.microsoft.icon", .{file_type_raw});
+        return null;
+    }
+
+    return content;
 }
