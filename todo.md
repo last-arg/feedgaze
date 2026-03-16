@@ -2,10 +2,9 @@
 - add special value to 'select_request_failed'?
 - replace zig-datetime with zeit?
 - website:
+  - print form errors near fields where the error took place
   - minify html
   - server: limit inline icon size
-    - zignal
-    - zstbi
   - a11y styling
     - https://github.com/Terryc21/XcodeResources/blob/main/Colorblind_Accessibility_Guide.md
     - change info, warning, error colors where necessary

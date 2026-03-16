@@ -23,6 +23,7 @@ const zts = @import("zts");
 const image = @import("./image.zig");
 const comptimePrint = std.fmt.comptimePrint;
 
+const icon_input_max_size = 8 * 1024;
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
@@ -1168,8 +1169,14 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const db = global.storage;
 
+    const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
+    if (icon_url_trimmed.len >= icon_input_max_size) {
+        const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error={f}", .{req.url.path, UrlQueryError.icon_too_large});
+        resp.header("Location", url_redirect);
+        return;
+    }
+
     const icon_id: types.IconRender.ID = blk: {
-        const icon_url_trimmed = mem.trim(u8, icon_url, &std.ascii.whitespace);
 
         if (icon_url_trimmed.len == 0) {
             break :blk .unassigned;
@@ -1199,8 +1206,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             break :blk try db.icon_upsert(icon);
         } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
-            const page_url_decoded = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
-            const data = try std.fmt.allocPrint(req.arena, "data:image/svg+xml,{s}", .{page_url_decoded});
+            const data = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
             if (try db.icon_get_id(data)) |icon_id| {
                 break :blk icon_id;
             } 
@@ -1464,6 +1470,12 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             .feed => try w.writeAll("Failed to update feed"),
             .html => try w.writeAll("Failed to update feed html fields"),
             .item_selector => try w.writeAll("Fill in 'Feed item selector' field"),
+            .icon_too_large => try w.writeAll(
+                std.fmt.comptimePrint(
+                    "'Icon url' size is too big. Allowed max size {d}",
+                    .{icon_input_max_size}
+                )
+            ),
             .unknown => {
                 try w.writeAll("Failed to save feed changes");
                 std.log.warn("Unknown error happened when trying to save feed. Error: {s}", .{error_value});
@@ -2805,6 +2817,7 @@ const UrlQueryError = enum(u8) {
     invalid_form,
     missing,
     unknown,
+    icon_too_large,
 
     pub fn to_string(val: UrlQueryError) []const u8 {
         return switch(val) {
@@ -2814,6 +2827,7 @@ const UrlQueryError = enum(u8) {
             .pick_url => "pick-url",
             .empty_selector => "empty-selector",
             .invalid_form => "invalid-form",
+            .icon_too_large => "icon-too-large",
             else => @tagName(val),
         };
     }
