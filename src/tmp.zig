@@ -22,10 +22,10 @@ pub fn main() !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
-    // try run_parse();
+    try run_parse();
     // try test_allocating();
     // try storage_item_interval();
-    try storage_test();
+    // try storage_test();
     // try find_dir();
     // try http_head();
     // try zig_http();
@@ -60,15 +60,18 @@ pub fn std_http_client() !void {
     // defer h.deinit();
      
     // const url = "https://lobste.rs/";
-    // const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
+    const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
     // const url = "http://google.com";
-    const url = "http://www.openmymind.net/atom.xml";
+    // const url = "http://www.openmymind.net/atom.xml";
+    //
+
+    const uri = try std.Uri.parse(url);
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
     
     var buf_header: [8 * 1024]u8 = undefined;
-    const res = try h.fetch(&buf_arr.writer, arena.allocator(), url, .{
+    const res = try h.fetch(&buf_arr.writer, arena.allocator(), uri, .{
         .buffer_header = &buf_header,
     });
     _ = res;
@@ -375,7 +378,7 @@ fn run_parse() !void {
     const fp = @import("feed_parse.zig");
     var parser: fp = .init(content);
     const feed = try parser.parse(alloc, null, .{
-        .feed_url = "https://mastodon.gamedev.place/@lritter.rss",
+        .feed_url = try std.Uri.parse("https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA"),
     });
     print("\nSTART {d}\n", .{feed.items.len});
     for (feed.items[0..1]) |item| {
@@ -416,10 +419,10 @@ pub fn run_add_new_feed() !void {
         .progress = progress_node,
     };
     // const input = "https://www.newelofknowledge.com/letters";
-    const input = "https://h4x0r.org/";
+    // const input = "https://h4x0r.org/";
     // const input = "https://lobste.rs/";
-    // const input = "https://www.youtube.com/channel/UC7M-Wz4zK8oikt6ATcoTwBA";
-    // const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
+    // const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
+    const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
     print("\ninput url: {s}\n", .{input});
 
     _ = try cli.add(input);

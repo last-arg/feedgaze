@@ -333,6 +333,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     }
 
     if (do_html_unescape) {
+        w.end = 0;
         html_unescape_tags(&w, out);
         const value = w.buffered();
         if (value.len != out.len) {
