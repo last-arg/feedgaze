@@ -112,7 +112,8 @@ pub const IconManage = struct {
 
         const data_start = self.data_string_bytes.written().len; 
         if (file_type == .svg) {
-            var buf_data: [8 * std.compress.flate.max_window_len]u8 = undefined; 
+            var buf_data: [std.compress.flate.max_window_len]u8 = undefined;
+            try self.data_string_bytes.writer.ensureUnusedCapacity(std.compress.flate.max_window_len);
             var c = try std.compress.flate.Compress.init(&self.data_string_bytes.writer, &buf_data, .gzip, .default);
             try c.writer.writeAll(data);
             try c.writer.flush();

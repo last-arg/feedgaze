@@ -73,7 +73,7 @@ pub fn build(b: *Build) !void {
     }
     
     const exe = b.addExecutable(opts_exe);
-    exe.is_linking_libc = true;
+    commonModules(b, exe, .{ .target = target, .optimize = optimize });
 
     b.installArtifact(exe);
 
@@ -89,8 +89,6 @@ pub fn build(b: *Build) !void {
     exe.root_module.addAnonymousImport(tmp_file.name, .{
         .root_source_file = b.path(tmp_file.path),
     });
-
-    commonModules(b, exe, .{ .target = target, .optimize = optimize });
 
     run_cmd.step.dependOn(b.getInstallStep());
 
@@ -161,6 +159,7 @@ pub fn build(b: *Build) !void {
 }
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
+    step.is_linking_libc = true;
     const root = step.root_module;
 
     const sqlite_dep = b.dependency("sqlite", dep_args);

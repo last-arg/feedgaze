@@ -10,6 +10,8 @@
     - colors from? https://design.homeoffice.gov.uk/design-system/components?name=Alert
     - should also add icon
 - if link and id are same only save link to save space
+- feed page:
+  - display message when failed to fetch icon
 - root page:
   - show failed feed request indicator?
   - limit how many items rendered
