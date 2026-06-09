@@ -1,7 +1,7 @@
 tmp/
 zig-out/
 .zig-cache/
-zig-cache/
+zig-pkg/
 *.wip
 *-shm
 *-wal
