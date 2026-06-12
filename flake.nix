@@ -11,8 +11,8 @@
     flake-utils.lib.eachDefaultSystem
       (system:
         let
-          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2025-10-29"; };
-          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."0.15.2"; };
+          # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2026-06-03"; };
+          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."0.16.0"; };
           # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
         in {
           devShell = pkgs.mkShell {

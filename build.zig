@@ -20,13 +20,7 @@ pub fn build(b: *Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    var source_file: []const u8 = "src/main.zig";
-    if (b.args) |args| {
-        const value = args[0];
-        if (std.mem.endsWith(u8, value, ".zig")) {
-            source_file = args[0];
-        }
-    }
+    const source_file: []const u8 = "src/main.zig";
 
     const opts_exe: Build.ExecutableOptions = .{
         .name = "feedgaze",
@@ -38,7 +32,7 @@ pub fn build(b: *Build) !void {
         // TODO: currently this will fail in debug build which uses zig's own
         // backend. Just fails no specific error message.
         // Have to enable 'use_llvm' to compile in debug mode
-        .use_llvm = true,
+        // .use_llvm = true,
         // .use_lld = true,
     };
 
@@ -92,12 +86,6 @@ pub fn build(b: *Build) !void {
 
     run_cmd.step.dependOn(b.getInstallStep());
 
-    // This allows the user to pass arguments to the application in the build
-    // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
-
     // This creates a build step. It will be visible in the `zig build --help` menu,
     // and can be selected like this: `zig build run`
     // This will evaluate the `run` step rather than the default, which is "install".
@@ -105,23 +93,14 @@ pub fn build(b: *Build) !void {
     run_step.dependOn(&run_cmd.step);
 
     // Creates a step for unit testing.
-    var test_source: []const u8 = source_file;
-    var cmds: []const ?[]const u8 = &.{};
-    var filter: ?[]const u8 = null;
-    if (b.args) |args| {
-        test_source = args[0];
-        if (args.len >= 2) {
-            filter = args[1];
-            cmds = @ptrCast(args[2..]);
-        }
-    }
+    const test_source: []const u8 = source_file;
     var test_cmd = b.addTest(.{
         .root_module = b.createModule(.{ // this line was added
             .root_source_file = b.path(test_source),
             .target = target,
             .optimize = optimize,
         }),
-        .filters = if (filter) |f| &.{f} else &.{},
+        // .filters = if (filter) |f| &.{f} else &.{},
         // .use_llvm = true,
         // .use_lld = false,
     });
@@ -160,19 +139,18 @@ pub fn build(b: *Build) !void {
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.is_linking_libc = true;
-    const root = step.root_module;
 
-    const sqlite_dep = b.dependency("sqlite", dep_args);
-    root.linkSystemLibrary("sqlite3", .{});
-    root.addImport("sqlite", sqlite_dep.module("sqlite"));
+    const sqlite_dep = b.dependency("fridge", .{ .bundle = true });
+    // root.linkSystemLibrary("sqlite3", .{});
+    step.root_module.addImport("fridge", sqlite_dep.module("fridge"));
 
     const args = b.dependency("args", dep_args);
     step.root_module.addImport("zig-args", args.module("args"));
 
-    const datetime = b.dependency("zig-datetime", dep_args);
-    step.root_module.addImport("zig-datetime", datetime.module("datetime"));
+    const datetime = b.dependency("datetime", dep_args);
+    step.root_module.addImport("datetime", datetime.module("datetime"));
 
-    const known_folders = b.dependency("known-folders", .{});
+    const known_folders = b.dependency("known_folders", .{});
     step.root_module.addImport("known-folders", known_folders.module("known-folders"));
 
     const httpz = b.dependency("httpz", .{});

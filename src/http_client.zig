@@ -449,8 +449,10 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
 
     // Fallback icon. See if there is and icon in '/favicon.ico'
     {
-        errdefer |err| {
-            std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{f}'. Error: {}", .{uri, err});
+        // TODO: fix due to zig changes
+        errdefer {
+            // std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{f}'. Error: {}", .{uri, err});
+            std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{f}'.", .{uri});
         }
 
         var req = init(allocator);

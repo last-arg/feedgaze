@@ -11,7 +11,7 @@ const FeedItemRender = types.FeedItemRender;
 const FeedUpdate = types.FeedUpdate;
 const FeedToUpdate = types.FeedToUpdate;
 const FeedOptions = types.FeedOptions;
-const sql = @import("sqlite");
+const sql = @import("fridge");
 const print = std.debug.print;
 const comptimePrint = std.fmt.comptimePrint;
 const ShowOptions = types.ShowOptions;
@@ -35,7 +35,7 @@ const seconds_in_30_days = seconds_in_1_day * 30;
 
 pub const Storage = struct {
     const Self = @This();
-    sql_db: sql.Db,
+    sql_db: sql.Session,
     options: Options = .{},
 
     var buffer: [4096]u8 = undefined;
@@ -52,12 +52,10 @@ pub const Storage = struct {
         FeedExists,
     };
 
-    pub fn init(path: ?[:0]const u8) !Self {
-        const mode = if (path) |p| sql.Db.Mode{ .File = p } else sql.Db.Mode{ .Memory = {} };
-        var db = try sql.Db.init(.{
-            .mode = mode,
-            .open_flags = .{ .write = true, .create = true },
-        });
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, path: ?[:0]const u8) !Self {
+        const filename = if (path) |p| p else ":memory:";
+        var db = try sql.Session.open(sql.SQLite3, allocator, io, .{ .filename = filename });
+        errdefer db.deinit();
 
         try setupDb(&db);
 
@@ -67,9 +65,8 @@ pub const Storage = struct {
     }
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
-    fn setupDb(db: *sql.Db) !void {
+    fn setupDb(db: *sql.Session) !void {
         errdefer std.log.err("Failed to create new database", .{});
-        const user_version = try db.pragma(usize, .{}, "user_version", null) orelse 0;
 
         // NOTE: permanent pragmas:
         // - application_id
@@ -77,94 +74,43 @@ pub const Storage = struct {
         // - schema_version
         // - user_version
         // - wal_checkpoint
-        _ = try db.pragma(void, .{}, "foreign_keys", "1");
-        _ = try db.pragma(void, .{}, "journal_mode", "WAL");
-        _ = try db.pragma(void, .{}, "synchronous", "normal");
-        _ = try db.pragma(void, .{}, "busy_timeout", "10000");
-        _ = try db.pragma(void, .{}, "temp_store", "2");
-        _ = try db.pragma(void, .{}, "mmap_size", "30000000000");
-        _ = try db.pragma(void, .{}, "cache_size", "-32000");
+        try db.conn.execAll("PRAGMA foreign_keys = 1");
+        try db.conn.execAll("PRAGMA journal_mode = WAL");
+        try db.conn.execAll("PRAGMA synchronous = normal");
+        try db.conn.execAll("PRAGMA temp_store = 2");
+        try db.conn.execAll("PRAGMA mmap_size = 30000000000");
+        try db.conn.execAll("PRAGMA cache_size = -32000");
 
+        // TODO: replace with sql.migrate()
         try setupTables(db);
-        try migrate(db, user_version);
-        const db_version_str = comptimePrint("{d}", .{app_config.db_version});
-        _ = try db.pragma(usize, .{}, "user_version", db_version_str);
         try initData(db);
     }
 
-    fn migrate(db: *sql.Db, version: usize) !void {
-        const config_version = app_config.db_version;
-        if (version == config_version or version == 0) {
-            return;
-        }
-
-        if (version < 3) {
-            const query1 =
-                \\ALTER TABLE feed_update RENAME COLUMN etag to etag_or_last_modified;
-            ;
-            db.exec(query1, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query1 });
-                return err;
-            };
-
-            const query2 =
-                \\ALTER TABLE feed_update DROP COLUMN last_modified_utc;
-            ;
-            db.exec(query2, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
-                return err;
-            };
-        }
-
-        if (version < 4) {
-            const query2 =
-                \\ALTER TABLE icon ADD COLUMN etag_or_last_modified_or_hash TEXT NOT NULL DEFAULT "default";
-            ;
-            db.exec(query2, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query2 });
-                return err;
-            };
-        }
-
-        if (version < 5) {
-            const query = 
-                \\DROP TRIGGER feed_delete_trigger;
-                \\CREATE TRIGGER IF NOT EXISTS feed_delete_trigger
-                \\   AFTER DELETE ON feed
-                \\BEGIN
-                \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
-                \\  where table_name = 'feed';
-                \\  delete from icon where OLD.icon_id == icon.icon_id and (select count(*) == 0 from feed where OLD.icon_id == feed.icon_id);
-                \\END;
-            ;
-            db.exec(query, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
-                return err;
-            };
-        }
-        
-    }
-
-    fn setupTables(db: *sql.Db) !void {
+    fn setupTables(db: *sql.Session) !void {
         errdefer std.log.err("Failed to create database tables", .{});
         inline for (tables) |query| {
-            db.exec(query, .{}, .{}) catch |err| {
-                std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+            db.conn.execAll(query) catch |err| {
+                print_sql_error(db, query);
                 return err;
             };
         }
     }
 
-    fn initData(db: *sql.Db) !void {
-        errdefer std.log.err("Failed to fill in database data", .{});
+    fn print_sql_error(db: *sql.Session, query: []const u8) void {
+        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.conn.lastError(), query });
+    }
+
+    fn initData(db: *sql.Session) !void {
+        // TODO: move this to where table_last_update table is created?
         const query =
         \\INSERT OR IGNORE INTO table_last_update (table_name) 
         \\VALUES 
         \\  ('tag'),
         \\  ('feed');
         ;
-        db.exec(query, .{}, .{}) catch |err| {
-            std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.getDetailedError().message, query });
+        db.conn.execAll(query) catch |err| {
+            std.log.err("Failed to fill in database initial data", .{});
+            print_sql_error(db, query);
             return err;
         };
     }
@@ -1963,13 +1909,14 @@ fn testAddFeed(storage: *Storage) !void {
 
 test "Storage.addFeed" {
     std.testing.log_level = .debug;
-    var storage = try Storage.init(null);
+    var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
     try testAddFeed(&storage);
 }
 
 test "Storage.deleteFeed" {
     std.testing.log_level = .debug;
-    var storage = try Storage.init(null);
+    var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
+
     try testAddFeed(&storage);
     try storage.deleteFeed(1);
 
@@ -1989,7 +1936,7 @@ test "Storage.updateFeedAndItems" {
     var arena = std.heap.ArenaAllocator.init(allocator);
     defer arena.deinit();
 
-    var storage = try Storage.init(null);
+    var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
     try testAddFeed(&storage);
 
     const content = @embedFile("rss2.xml");

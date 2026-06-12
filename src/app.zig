@@ -58,14 +58,14 @@ const CliGlobal = struct {
 pub const Cli = struct {
     allocator: Allocator,
     storage: Storage = undefined,
+    io: std.Io,
     out: *std.Io.Writer,
     in: *std.Io.Reader,
     progress: std.Progress.Node,
     const Self = @This();
 
-    // TODO: pass 'args' as parameter to function? Makes testing also easier.
-    pub fn run(self: *Self) !void {
-        var args = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, self.allocator, .print);
+    pub fn run(self: *Self, process_init: std.process.Init) !void {
+        var args = try args_parser.parseWithVerbForCurrentProcess(CliGlobal, CliVerb, process_init, .print);
         defer args.deinit();
 
         if (args.options.help) {
@@ -77,7 +77,7 @@ pub const Cli = struct {
             return;
         };
 
-        self.storage = try connectDatabase(args.options.database);
+        self.storage = try connectDatabase(process_init, args.options.database);
 
         switch (verb) {
             .remove => {
@@ -566,7 +566,7 @@ pub const Cli = struct {
             };
         }
 
-        _ = try self.out.write(output);
+        try self.out.writeAll(output);
         try self.out.flush();
     }
 
@@ -1140,7 +1140,7 @@ pub const Cli = struct {
     }
 };
 
-pub fn connectDatabase(path: ?[:0]const u8) !Storage {
+pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
     var buf: [8 * 1024]u8 = undefined;
     var fixed_alloc = std.heap.FixedBufferAllocator.init(&buf);
     const alloc = fixed_alloc.allocator();
@@ -1149,7 +1149,7 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
         const db_path = path orelse db_path: {
             const kf = @import("known-folders");
 
-            const data_dir = try kf.getPath(alloc, .data) orelse unreachable;
+            const data_dir = try kf.getPath(init.io, alloc, init.environ_map, .data) orelse unreachable;
             const file_path = try std.fs.path.joinZ(alloc, &.{data_dir, "feedgaze",  "feedgaze.sqlite"});
 
             break :db_path file_path;
@@ -1166,9 +1166,9 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
 
         if (fs.path.dirname(db_path)) |db_dir| {
             var path_buf: [fs.max_path_bytes]u8 = undefined;
-            _ = fs.cwd().realpath(db_dir, &path_buf) catch |err| switch (err) {
+            _ = std.Io.Dir.cwd().realPath(init.io, &path_buf) catch |err| switch (err) {
                 error.FileNotFound => {
-                    try fs.cwd().makePath(db_dir);
+                    try std.Io.Dir.cwd().createDir(init.io, db_dir, .default_dir);
                 },
                 else => return err,
             };
@@ -1176,7 +1176,7 @@ pub fn connectDatabase(path: ?[:0]const u8) !Storage {
         break :blk db_path;
     };
 
-    return try Storage.init(db_path);
+    return try Storage.init(init.io, init.arena.allocator(), db_path);
 }
 
 test "feedgaze.remove" {
@@ -1268,11 +1268,12 @@ pub const App = struct {
     };
 
     pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
-        errdefer |err| {
-            std.log.err("Failed to update feed. Error: {}", .{err});
-            self.storage.request_failed_add(f_update.feed_id, @errorName(err)) catch |err_db| {
-                std.log.err("Failed to store failed feed http request. Error: {s}", .{@errorName(err_db)});
-            };
+        errdefer {
+            // TODO: make fixes due to zig changes
+            std.log.err("Failed to update feed. Error: TODO FIX", .{});
+            // self.storage.request_failed_add(f_update.feed_id, @errorName(err)) catch |err_db| {
+            //     std.log.err("Failed to store failed feed http request. Error: {s}", .{@errorName(err_db)});
+            // };
         }
         var req = http_client.init(arena.allocator()); 
         defer req.deinit();

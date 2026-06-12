@@ -556,8 +556,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     const feed_id = feed.feed_id;
 
     if (tags_input) |raw| {
-        errdefer |err| {
-            std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+        errdefer {
+            // TODO: fix due to zig changes
+            // std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.err("Failed to add tags for new feed '{f}'.", .{add_opts.feed_opts.feed_url});
         }
 
         var iter = mem.splitScalar(u8, raw, ',');
@@ -941,8 +943,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const feed_id = feed.feed_id;
 
  if (tags_input) |raw| {
-        errdefer |err| {
-            std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+        // TODO: fix due to zig changes
+        errdefer {
+            // std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
+            std.log.err("Failed to add tags for new feed '{f}'.", .{add_opts.feed_opts.feed_url});
         }
 
         var iter = mem.splitScalar(u8, raw, ',');

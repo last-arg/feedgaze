@@ -1,4 +1,20 @@
-# Initial
+- changed package zts build.zig to make it work with latest zig versions.
+  Fork zts or include zts in project as third party library
+- Look over code where I used 'errdefer |err| {...}'
+- crash when adding 'https://susam.net/
+```
+thread 2377 panic: @memcpy arguments alias
+/nix/store/m26qygj7anp8sknmccph6fh5lsz2a6z2-zig-0.16.0-dev.923+06d9e3bc0/lib/std/Io/Writer.zig:522:34: 0x10de8f2 in write (feedgaze)
+/nix/store/m26qygj7anp8sknmccph6fh5lsz2a6z2-zig-0.16.0-dev.923+06d9e3bc0/lib/std/Uri.zig:310:32: 0x1198211 in writeToStream (feedgaze)
+/nix/store/m26qygj7anp8sknmccph6fh5lsz2a6z2-zig-0.16.0-dev.923+06d9e3bc0/lib/std/Uri.zig:280:25: 0x112d412 in format (feedgaze)
+/mnt/hdd/code/feedgaze/src/server.zig:528:57: 0x1149097 in feed_pick_post (feedgaze)
+        add_opts.feed_opts.icon = http_client.fetch_icon(req.arena, client.get_uri(), .{
+                                                        ^
+/home/ck/.cache/zig/p/httpz-0.0.0-PNVzrBtMBwAPcQx3mNEgat3Xbsynw-eIC9SmOX5M9XtP/src/httpz.zig:630:41: 0x1259bf4 in next (feedgaze)
+/home/ck/.cache/zig/p/httpz-0.0.0-PNVzrBtMBwAPcQx3mNEgat3Xbsynw-eIC9SmOX5M9XtP/src/worker.zig:813:38: 0x11b17aa in processHTTPData (feedgaze)
+???:?:?: 0x7025d309dd52 in start_thread (/nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6)
+???:?:?: 0x7025d312563b in __clone3 (/nix/store/l0l2ll1lmylczj1ihqn351af2kyp5x19-glibc-2.42-51/lib/libc.so.6)
+```
 - add special value to 'select_request_failed'?
 - replace zig-datetime with zeit?
 - website:

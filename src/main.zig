@@ -6,28 +6,26 @@ pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init) !void {
+    const gpa = init.gpa;
+    const io = init.io;
     {
-        var arena = std.heap.ArenaAllocator.init(gpa.allocator());
-        defer arena.deinit();
-
-        var stdout_buffer: [1024]u8 = undefined;
-        var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-        const writer = &stdout_writer.interface;
-        var stdin_buffer: [1024]u8 = undefined;
-        var stdin_reader = std.fs.File.stdin().reader(&stdin_buffer);
-        const reader = &stdin_reader.interface;
-        const progress_node = std.Progress.start(.{});
+        const progress_node = std.Progress.start(io, .{});
         defer progress_node.end();
 
+        var buf_writer: [4 * 1024]u8 = undefined;
+        var out = std.Io.File.stdout().writer(io, &buf_writer);
+        var buf_reader: [4 * 1024]u8 = undefined;
+        var in = std.Io.File.stdin().reader(io, &buf_reader);
+
         var app_cli = Cli{
-            .allocator = arena.allocator(),
-            .out = writer,
-            .in = reader,
+            .allocator = gpa,
+            .io = io,
+            .out = &out.interface,
+            .in = &in.interface,
             .progress = progress_node,
         };
-        try app_cli.run();
+        try app_cli.run(init);
     }
     const has_leaked = gpa.detectLeaks();
     std.log.debug("Has leaked: {}\n", .{has_leaked});
