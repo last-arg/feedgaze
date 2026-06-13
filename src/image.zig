@@ -126,8 +126,8 @@ pub fn minify_ico(writer: *std.Io.Writer, data: []const u8) ![]const u8 {
     if (count == 1) {
         return data;
     }
-    
-    const type_enum = try std.meta.intToEnum(IcoType, type_raw);
+
+    const type_enum: IcoType = @enumFromInt(type_raw);
     if (type_enum == .cur) {
         return error.CurImageUnsupported;
     }
@@ -210,7 +210,7 @@ pub fn minify_ico(writer: *std.Io.Writer, data: []const u8) ![]const u8 {
     return w.buffered()[start_ico..];
 }
 
-pub const Color = z.Rgba;
+pub const Color = z.Rgba(u8);
 pub const Image = z.Image(Color);
 const img_size = @import("./app_config.zig").icon_size;
 var img_buf: [img_size * img_size]Color = undefined;
@@ -226,7 +226,7 @@ pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !Image {
     new.rows = img_size;
     new.cols = img_size;
     new.stride = img_size;
-    try i.resize(allocator, new, .lanczos);
+    i.resize(allocator, new, .lanczos);
     return new;
 }
 
@@ -241,7 +241,7 @@ pub fn resize_jpeg(allocator: std.mem.Allocator, data: []const u8) !Image {
     new.rows = img_size;
     new.cols = img_size;
     new.stride = img_size;
-    try i.resize(allocator, new, .lanczos);
+    i.resize(allocator, new, .lanczos);
     return new;
 }
 

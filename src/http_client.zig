@@ -26,7 +26,7 @@ response: ?http.Client.Response = null,
 request: ?http.Client.Request = null,
 
 pub const Response = http.Client.Response;
-pub const HeaderMap = std.ArrayHashMap([]const u8, []const u8, StringContext, true);
+pub const HeaderMap = std.ArrayHashMapUnmanaged([]const u8, []const u8, StringContext, true);
 
 const StringContext = struct {
     pub fn hash(self: @This(), s: []const u8) u32 {
@@ -40,8 +40,9 @@ const StringContext = struct {
     }
 };
 
-pub fn init(allocator: Allocator) @This() {
+pub fn init(io: std.Io, allocator: Allocator) @This() {
     const client: http.Client = .{
+        .io = io,
         .allocator = allocator,
     };
 
@@ -59,9 +60,9 @@ pub fn deinit(self: *@This()) void {
     self.client.deinit();
 }
 
-pub fn fetch(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, uri: std.Uri, opts: FetchHeaderOptions) !?feed_types.FeedOptions {
+pub fn fetch(self: *@This(), allocator: Allocator, uri: std.Uri, opts: FetchHeaderOptions) !?feed_types.FeedOptions {
     var resp = try self.fetch_response(uri, opts);
-    const re = try handle_response(&resp, writer, allocator);
+    const re = try handle_response(&resp, self.client.io, allocator);
     return re;
 }
 
@@ -107,7 +108,7 @@ pub const CacheControl = struct {
     image_type: ?image.Type = null,
 };
 
-pub fn parse_headers(bytes: []const u8) !CacheControl {
+pub fn parse_headers(bytes: []const u8, now_seconds: i64) !CacheControl {
     var result: CacheControl = .{};
     var iter = mem.splitSequence(u8, bytes, "\r\n");
     _ = iter.first();
@@ -151,7 +152,7 @@ pub fn parse_headers(bytes: []const u8) !CacheControl {
         } else if (std.ascii.eqlIgnoreCase(header_name, "expires")) {
             const value = RssDateTime.parse(header_value) catch null;
             if (value) |v| {
-                const interval = v - std.time.timestamp();
+                const interval = v - now_seconds;
                 // Favour cache-control value over expires
                 if (interval > 0) {
                     result.update_interval = interval;
@@ -184,12 +185,15 @@ pub fn read_body(response: *http.Client.Response, writer: *std.Io.Writer, alloca
     return writer.buffered();
 }
 
-pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?feed_types.FeedOptions {
+pub fn handle_response(response: *http.Client.Response, io: std.Io, allocator: Allocator) !?feed_types.FeedOptions {
     if (response.head.status != .ok) {
         return null;
     }
 
-    const headers = try parse_headers(response.head.bytes);
+    const now_seconds = std.Io.Clock.real.now(io).toSeconds();
+
+    const headers = try parse_headers(response.head.bytes, now_seconds);
+
     var result: feed_types.FeedOptions = .{
         .feed_updates = .{
             .update_interval = headers.update_interval,
@@ -204,17 +208,20 @@ pub fn handle_response(response: *http.Client.Response, writer: *std.Io.Writer, 
         result.feed_updates.etag_or_last_modified = try allocator.dupe(u8, val);
     } 
 
-    _ = try read_body(response, writer, allocator);
+    var w = std.Io.Writer.Allocating.init(allocator);
+    _ = try read_body(response, &w.writer, allocator);
 
     return result;
 }
 
-pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Writer, allocator: Allocator) !?CacheControl {
+pub fn handle_image_response(self: *@This(), writer: *std.Io.Writer, allocator: Allocator) !?CacheControl {
+    const response = &self.response.?;
     if (response.head.status != .ok) {
         return null;
     }
 
-    const headers = try parse_headers(response.head.bytes);
+    const now_seconds = std.Io.Clock.real.now(self.client.io).toSeconds();
+    const headers = try parse_headers(response.head.bytes, now_seconds);
     var result: CacheControl = .{
         .update_interval = 0,
     };
@@ -235,12 +242,12 @@ pub fn handle_image_response(response: *http.Client.Response, writer: *std.Io.Wr
 }
 
 pub fn fetch_image(self: *@This(), writer: *std.Io.Writer, allocator: Allocator, uri: std.Uri, opts: FetchHeaderOptions) !?CacheControl {
-    var resp = try self.fetch_image_response(uri, opts);
-    const re = try handle_image_response(&resp, writer, allocator);
+    try self.fetch_image_response(uri, opts);
+    const re = try handle_image_response(self, writer, allocator);
     return re;
 }
 
-pub fn fetch_image_response(self: *@This(), uri: std.Uri, opts: FetchHeaderOptions) !http.Client.Response {
+pub fn fetch_image_response(self: *@This(), uri: std.Uri, opts: FetchHeaderOptions) !void {
     var buf_header: [3]std.http.Header = undefined;
     var extra_headers_arr: std.ArrayList(std.http.Header) = .initBuffer(&buf_header);
     extra_headers_arr.appendAssumeCapacity(.{ .name = "Accept", .value = "image/*" });
@@ -272,8 +279,6 @@ pub fn fetch_image_response(self: *@This(), uri: std.Uri, opts: FetchHeaderOptio
     try self.request.?.sendBodiless();
 
     self.response = try self.request.?.receiveHead(opts.buffer_header);
-    
-    return self.response.?;
 }
 
 pub fn resp_to_icon_body(body: []const u8, url: []const u8) ?[]const u8 {
@@ -330,7 +335,7 @@ const FetchIconOptions = struct {
 };
 // if return null -> missing icons
 // if return error -> failed icons
-pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptions) !?feed_types.Icon {
+pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptions) !?feed_types.Icon {
     var buf: [2 * 1024]u8 = undefined;
     var buffer_header: [1024]u8 = undefined;
     var fixed_writer: std.Io.Writer = .fixed(&buf);
@@ -365,11 +370,11 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
             .port = true,
         })});
 
-        var req = init(allocator);
+        var req = init(io, allocator);
         defer req.deinit();
 
         const feed_uri = try std.Uri.parse(req_url);
-        const feed_opts = req.fetch(&a_writer.writer, allocator, feed_uri, .{
+        const feed_opts = req.fetch(allocator, feed_uri, .{
             .buffer_header = &buffer_header,
         }) catch |err| {
             std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_url, err});
@@ -413,7 +418,7 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
             break :out fixed_writer.buffered()[start..];
         };
 
-        var req = init(allocator);
+        var req = init(io, allocator);
         defer { req.deinit(); }
 
         a_writer.writer.end = 0;
@@ -455,7 +460,7 @@ pub fn fetch_icon(allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptio
             std.log.warn("Failed to fetch fallback icon '/favicon.ico' for '{f}'.", .{uri});
         }
 
-        var req = init(allocator);
+        var req = init(io, allocator);
         defer { req.deinit(); }
 
         uri.path = .{ .raw = "/favicon.ico" };

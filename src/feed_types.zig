@@ -1,6 +1,6 @@
 const std = @import("std");
 const Uri = std.Uri;
-const dt = @import("zig-datetime").datetime;
+const dt = @import("datetime").datetime;
 const Response = @import("http_client.zig").Response;
 const mem = std.mem;
 const util = @import("util.zig");
@@ -22,8 +22,8 @@ pub const FetchHeaderOptions = struct {
 };
 
 pub const ShowOptions = struct {
-    limit: usize = 10,
-    @"item-limit": usize = 10,
+    limit: i32 = 10,
+    @"item-limit": i32 = 10,
 
     pub const shorthands = .{
         .l = "limit",
@@ -140,7 +140,7 @@ pub fn resolve_and_write_url(writer: *std.Io.Writer, input: []const u8, base_url
 // https://www.rfc-editor.org/rfc/rfc4287#section-3.3
 pub const AtomDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
-        const raw = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
+        const raw = std.mem.trimStart(u8, input, &std.ascii.whitespace);
         const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
         const month = std.fmt.parseUnsigned(u16, raw[5..7], 10) catch return error.InvalidFormat;
         const day = std.fmt.parseUnsigned(u16, raw[8..10], 10) catch return error.InvalidFormat;
@@ -247,7 +247,7 @@ pub const RssDateTime = struct {
     }
 
     pub fn parse(input: []const u8) !i64 {
-        const str = std.mem.trimLeft(u8, input, &std.ascii.whitespace);
+        const str = std.mem.trimStart(u8, input, &std.ascii.whitespace);
         var ctx = str;
         if (ctx.len > 3 and ctx[3] == ',') {
             // NOTE: Start day and comma (,) are optional

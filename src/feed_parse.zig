@@ -5,7 +5,7 @@ const print = std.debug.print;
 const assert = std.debug.assert;
 const Uri = std.Uri;
 
-const dt = @import("zig-datetime");
+const dt = @import("datetime");
 const datetime = dt.datetime;
 const super = @import("superhtml");
 
@@ -379,7 +379,9 @@ test "parseAtom" {
     defer arena.deinit();
 
     const content = @embedFile("atom.atom");
-    const result = try parse(arena.allocator(), content, null);
+    const result = try parse(arena.allocator(), content, .{
+        .now_seconds = std.Io.Clock.real.now(std.testing.io).toSeconds(),
+    });
     const expect_feed = Feed{
         .title = "Example Feed",
         .feed_url = "",
@@ -498,7 +500,9 @@ test "parseRss" {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const result = try parse(arena.allocator(), content, null);
+    const result = try parse(arena.allocator(), content, .{
+        .now_seconds = std.Io.Clock.real.now(std.testing.io).toSeconds(),
+    });
     const expect_feed = Feed{
         .title = "Liftoff News",
         .feed_url = "",
@@ -1248,7 +1252,7 @@ pub fn seconds_from_datetime(raw: []const u8) ?i64 {
         .zone = datetime.timezones.Zulu,
     };
 
-    const rest = mem.trimLeft(u8, raw[iso_len..], " T");
+    const rest = mem.trimStart(u8, raw[iso_len..], " T");
     const time_end = mem.indexOfAny(u8, rest, ".+-Z") orelse rest.len;
     const time_raw = rest[0..time_end];
 
@@ -1378,6 +1382,7 @@ const ParseOptions = struct {
     feed_url: std.Uri,
     feed_to_update: ?feed_types.FeedToUpdate = null,
     latest_updated_timestamp: ?i64 = null,
+    now_seconds: i64 = 0,
 };
 
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
@@ -1431,14 +1436,16 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         // make feed date newest item date
         result.feed.updated_timestamp = result.items[0].updated_timestamp;
     } else {
-        result.feed.updated_timestamp = std.time.timestamp();
+        result.feed.updated_timestamp = opts.now_seconds;
     }
     
     sortItems(parsed.items);
 
     if (parsed.items.len > 1) {
         const ts = if (opts.feed_to_update) |f| f.latest_updated_timestamp else null;
-        result.item_interval = get_item_interval(parsed.items, ts);
+        const first = parsed.items[0].updated_timestamp orelse 0;
+        const diff_seconds = first - opts.now_seconds;
+        result.item_interval = get_item_interval(parsed.items, diff_seconds, ts);
     }
 
     var feed_items: std.ArrayListUnmanaged(FeedItem) = try .initCapacity(allocator, parsed.items.len);
@@ -1504,7 +1511,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     return result;
 }
 
-pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
+pub fn get_item_interval(items: []FeedItem.Parsed, diff_seconds: i64,  timestamp_max: ?i64) i64 {
     const ft = feed_types;
     var result: i64 = ft.seconds_in_10_days;
     if (items.len == 0) {
@@ -1512,9 +1519,7 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
     }
     
     const first: i64 = items[0].updated_timestamp orelse return result;
-    const now = std.time.timestamp();
-    const diff = now - first;
-    if (diff > ft.seconds_in_30_days) {
+    if (diff_seconds > ft.seconds_in_30_days) {
         return result;
     }
     var second_opt: ?i64 = timestamp_max;
@@ -1532,9 +1537,8 @@ pub fn get_item_interval(items: []FeedItem.Parsed, timestamp_max: ?i64) i64 {
         second = ts_max;
     };
 
-    const diff_now = now - first;
     const diff_ab = first - second;
-    const diff_min = @min(diff_now, diff_ab);
+    const diff_min = @min(diff_seconds, diff_ab);
 
     if (diff_min >= 0) {
         if (diff_min < ft.seconds_in_6_hours) {

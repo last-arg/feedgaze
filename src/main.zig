@@ -7,7 +7,9 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main(init: std.process.Init) !void {
-    const gpa = init.gpa;
+    var gpa = std.heap.DebugAllocator(.{}){};
+    // const allocator = init.gpa;
+    const allocator = gpa.allocator();
     const io = init.io;
     {
         const progress_node = std.Progress.start(io, .{});
@@ -19,7 +21,7 @@ pub fn main(init: std.process.Init) !void {
         var in = std.Io.File.stdin().reader(io, &buf_reader);
 
         var app_cli = Cli{
-            .allocator = gpa,
+            .allocator = allocator,
             .io = io,
             .out = &out.interface,
             .in = &in.interface,

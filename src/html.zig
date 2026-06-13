@@ -238,7 +238,7 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
 }
 
 pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
-    var feed_arr: FeedLinkArray = .{};
+    var feed_arr: FeedLinkArray = .empty;
     defer feed_arr.deinit(allocator);
     var icon: ?LinkIcon = null;
     var result: HtmlParsed = .{};

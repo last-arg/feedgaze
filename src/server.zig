@@ -5,7 +5,7 @@ const Storage = s.Storage;
 const print = std.debug.print;
 const mem = std.mem;
 const types = @import("./feed_types.zig");
-const datetime = @import("zig-datetime").datetime;
+const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
@@ -49,6 +49,7 @@ pub fn main() !void {
 }
 
 const Global = struct {
+    io: std.Io,
     storage: *Storage, 
     layout: Layout,
     is_updating: bool = false,
@@ -155,7 +156,7 @@ pub const IconManage = struct {
         }
 
         if (storage_opt) |storage|  {
-            const icon_opt = storage.icon_by_id(self.allocator, id) catch |err| {
+            const icon_opt = storage.icon_by_id(id) catch |err| {
                 std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
                 return null;
             };
@@ -233,8 +234,8 @@ const static_files = if (builtin.mode != .Debug) .{
     .{ "reload.js", 4 },
 };
 
-pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !void {
+    var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
 
     const layout = Layout.init(allocator, storage); 
@@ -243,6 +244,7 @@ pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
     defer icon_manage.deinit();
 
     var global: Global = .{
+        .io = io,
         .storage = @constCast(&storage),
         .layout = layout,
         .icon_manage = &icon_manage,
@@ -255,7 +257,7 @@ pub fn start_server(storage: Storage, opts: types.ServeOptions) !void {
             .max_form_count = 100,
         },
     };
-    var server = try httpz.Server(*Global).init(allocator, server_config, &global);
+    var server = try httpz.Server(*Global).init(io, allocator, server_config, &global);
     defer {
         server.stop();
         server.deinit();
@@ -332,11 +334,14 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
     if (!global.is_updating) {
         global.is_updating = true;
-        var app: App = .{ .storage = global.storage.* };
+        var app: App = .{
+            .storage = global.storage.*,
+            .io = global.io,
+        };
         var item_arena = std.heap.ArenaAllocator.init(req.arena);
         defer item_arena.deinit();
 
-        const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
+        const feed_updates = try global.storage.getFeedsToUpdate(null, .{});
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
             _ = app.update_feed(&item_arena, f_update) catch {};
@@ -349,7 +354,6 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = global.storage;
-
     resp.status = 303;
 
     const form_data = try req.formData();
@@ -491,7 +495,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     const uri = try std.Uri.parse(feed_url);
     if (uri.host) |host| {
         const host_str = util.uri_component_val(host);
-        const rules = try db.get_rules_for_host(req.arena, host_str);
+        const rules = try db.get_rules_for_host(host_str);
         defer req.arena.free(rules);
         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -499,10 +503,10 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         }
     }
 
-    var client = http_client.init(req.arena);
+    var client = http_client.init(global.io, req.arena);
     defer client.deinit();
     const feed_uri = try std.Uri.parse(feed_url);
-    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_uri, .{
+    var feed_options = try client.fetch(req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
@@ -525,7 +529,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = http_client.fetch_icon(req.arena, client.get_uri(), .{
+        add_opts.feed_opts.icon = http_client.fetch_icon(global.io, req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
             std.log.warn("Failed to fetch icon with input url '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
@@ -606,7 +610,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try Layout.write_head(w, "Pick feed");
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -866,7 +870,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const uri = try std.Uri.parse(feed_url);
     if (uri.host) |host| {
         const host_str = util.uri_component_val(host);
-        const rules = try db.get_rules_for_host(req.arena, host_str);
+        const rules = try db.get_rules_for_host(host_str);
         defer req.arena.free(rules);
         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -874,10 +878,10 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
     }
     
-    var client = http_client.init(req.arena);
+    var client = http_client.init(global.io, req.arena);
     defer client.deinit();
     const feed_uri = try std.Uri.parse(feed_url);
-    var feed_options = try client.fetch(&a_writer.writer, req.arena, feed_uri, .{
+    var feed_options = try client.fetch(req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
@@ -912,7 +916,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     // TODO: fetch and add favicon in another thread?
     // probably need to copy (alloc) feed_url because request might clean (dealloc) up
     if (add_opts.feed_opts.icon == null) {
-        add_opts.feed_opts.icon = http_client.fetch_icon(req.arena, client.get_uri(), .{
+        add_opts.feed_opts.icon = http_client.fetch_icon(global.io, req.arena, client.get_uri(), .{
             .html_body = if (feed_options.content_type == .html) feed_options.body else null,
         }) catch |err| blk: {
             std.log.warn("Failed to fetch icon with input url '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
@@ -986,7 +990,8 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try Layout.write_head(w, "Add feed");
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
+    defer db.free(tags);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -1107,7 +1112,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     const page_url = form_data.get("page_url") orelse return error.MissingFormFieldPageUrl;
     const icon_url = form_data.get("icon_url") orelse return error.MissingFormFieldIconUrl;
 
-    var tags: std.ArrayList([]const u8) = .{};
+    var tags: std.ArrayList([]const u8) = .empty;
     defer tags.deinit(req.arena);
     for (form_data.keys[0..form_data.len], form_data.values[0..form_data.len]) |key, value| {
         if (mem.eql(u8, "tag", key)) {
@@ -1140,12 +1145,13 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
 
         if (util.is_url(icon_url_trimmed)) {
-            if (try db.icon_get_id(icon_url_trimmed)) |icon_id| {
+            const icon_id = try db.icon_get_id(icon_url_trimmed);
+            if (icon_id.is_valid()) {
                 break :blk icon_id;
-            } 
+            }
 
             // is url
-            var req_http = http_client.init(req.arena);
+            var req_http = http_client.init(global.io, req.arena);
             defer req_http.deinit();
 
             var buffer_header: [1024]u8 = undefined;
@@ -1164,9 +1170,10 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
             const data = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
-            if (try db.icon_get_id(data)) |icon_id| {
+            const icon_id = try db.icon_get_id(icon_url_trimmed);
+            if (icon_id.is_valid()) {
                 break :blk icon_id;
-            } 
+            }
 
             const page_uri = try std.Uri.parse(page_url);
             const icon = feed_types.Icon.init(page_uri, data, null);
@@ -1240,7 +1247,7 @@ const date_format_readable_len = std.fmt.count(date_format_readable, .{
 fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
     var result: [date_format_readable_len]u8 = undefined;
     var date_for_human = Datetime.fromSeconds(@floatFromInt(utc_sec));
-    date_for_human = date_for_human.shiftTimezone(@import("zig-datetime").timezones.Europe.Helsinki);
+    date_for_human = date_for_human.shiftTimezone(@import("datetime").timezones.Europe.Helsinki);
     _ = std.fmt.bufPrint(
         &result, date_format_readable,
         .{
@@ -1260,7 +1267,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id_u64 = std.fmt.parseUnsigned(u64, id_raw, 10) catch return error.InvalidIdParam;
     const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
-    const feed = db.feed_with_id(req.arena, feed_id) catch {
+    const feed = db.feed_with_id(feed_id) catch {
         return error.DatabaseFailure;
     } orelse {
         resp.status = 404;
@@ -1278,17 +1285,17 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    const tags_all = db.tags_all(req.arena) catch blk: {
+    const tags_all = db.tags_all() catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
         break :blk &.{};
     };
 
-    const feed_tags = db.feed_tags(req.arena, feed.feed_id) catch blk: {
+    const feed_tags = db.feed_tags(feed.feed_id) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get feed tags", .{feed.feed_id});
         break :blk &.{};
     };
 
-    const items = db.feed_items_with_feed_id(req.arena, feed.feed_id) catch blk: {
+    const items = db.feed_items_with_feed_id(feed.feed_id) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get feed items", .{feed.feed_id});
         break :blk &.{};
     };
@@ -1307,7 +1314,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try Layout.write_head(w, "Feed");
     }
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -1383,7 +1390,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     // Feed request(s) failed
-    const failed_requests = try db.get_failed_requests(req.arena, feed.feed_id);
+    const failed_requests = try db.get_failed_requests(feed.feed_id);
     if (failed_requests.len > 1) {
         try w.writeAll(
             \\<table class="table-striped">
@@ -1490,7 +1497,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     });
 
     if (std.meta.eql(page_url, feed.feed_url)) {
-        if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
+        if (try db.html_selector_get(feed.feed_id)) |html_opts| {
             const selector_template = 
                 \\<div>
                 \\<div><label for="html-{[name]s}-selector">{[label]s}</label></div>
@@ -1596,14 +1603,14 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.flush();
 }
 
-fn get_file(allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
+fn get_file(io: std.Io, allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
     if (builtin.mode == .Debug) {
         var buf: [256]u8 = undefined;
         const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
-        var file = try std.fs.cwd().openFile(p, .{});
-        defer file.close();
+        var file = try std.Io.Dir.cwd().openFile(io, p, .{});
+        defer file.close(io);
         var reader_buf: [4096]u8 = undefined;
-        var reader = file.reader(&reader_buf);
+        var reader = file.reader(io, &reader_buf);
         return try reader.interface.allocRemaining(allocator, .unlimited);
     } else {
         return @embedFile(path);
@@ -1626,33 +1633,32 @@ fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void
 }
 
 fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    _ = global; // autofix
     var src: ?[]const u8 = null;
     const prefix_dir = if (builtin.mode == .Debug) "server" else "server/dist";
 
     if (mem.endsWith(u8, req.url.path, "main.js")) {
-        src = try get_file(req.arena, prefix_dir ++ "/main.js");
+        src = try get_file(global.io, req.arena, prefix_dir ++ "/main.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
-        src = try get_file(req.arena, prefix_dir ++ "/relative-time.js");
+        src = try get_file(global.io, req.arena, prefix_dir ++ "/relative-time.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "main.css")) {
-        src = try get_file(req.arena, prefix_dir ++ "/main.css");
+        src = try get_file(global.io, req.arena, prefix_dir ++ "/main.css");
         resp.content_type = .CSS;
     }
 
     if (builtin.mode == .Debug) {
         if (mem.endsWith(u8, req.url.path, "style.css")) {
-            src = try get_file(req.arena, prefix_dir ++ "/style.css");
+            src = try get_file(global.io, req.arena, prefix_dir ++ "/style.css");
             resp.content_type = .CSS;
         } else if (mem.endsWith(u8, req.url.path, "kelp.css")) {
-            src = try get_file(req.arena, prefix_dir ++ "/kelp.css");
+            src = try get_file(global.io, req.arena, prefix_dir ++ "/kelp.css");
             resp.content_type = .CSS;
         } else if (mem.endsWith(u8, req.url.path, "main.css")) {
-            src = try get_file(req.arena, prefix_dir ++ "/main.css");
+            src = try get_file(global.io, req.arena, prefix_dir ++ "/main.css");
             resp.content_type = .CSS;
         } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
-            src = try get_file(req.arena, prefix_dir ++ "/reload.js");
+            src = try get_file(global.io, req.arena, prefix_dir ++ "/reload.js");
             resp.content_type = .JS;
         }
     }
@@ -1668,28 +1674,28 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
     }
 }
 
-fn get_file_last_modified(comptime path: []const u8) !i128 {
+fn get_file_last_modified(io: std.Io, comptime path: []const u8) !i64 {
     var buf: [256]u8 = undefined;
     const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
-    const file = try std.fs.cwd().openFile(p, .{});
-    defer file.close();
-    const stat = try file.stat();
-    return stat.mtime;
+    const file = try std.Io.Dir.cwd().openFile(io, p, .{});
+    defer file.close(io);
+    const stat = try file.stat(io);
+    return stat.mtime.toSeconds();
 }
 
-fn public_head(_: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    var last_modified: ?i128 = null;
+fn public_head(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+    var last_modified: ?i64 = null;
     if (mem.endsWith(u8, req.url.path, "main.js")) {
-        last_modified = try get_file_last_modified("server/main.js");
+        last_modified = try get_file_last_modified(global.io, "server/main.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "relative-time.js")) {
-        last_modified = try get_file_last_modified("server/relative-time.js");
+        last_modified = try get_file_last_modified(global.io, "server/relative-time.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "reload.js")) {
-        last_modified = try get_file_last_modified("server/reload.js");
+        last_modified = try get_file_last_modified(global.io, "server/reload.js");
         resp.content_type = .JS;
     } else if (mem.endsWith(u8, req.url.path, "style.css")) {
-        last_modified = try get_file_last_modified("server/style.css");
+        last_modified = try get_file_last_modified(global.io, "server/style.css");
         resp.content_type = .CSS;
     }
 
@@ -1805,7 +1811,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     try Layout.write_head(w, "Home - latest added feed items");
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='content-latest flow'>");
@@ -1845,7 +1851,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     }
     try w.writeAll("</header>");
 
-    const items = try db.get_items_latest_added(req.arena);
+    const items = try db.get_items_latest_added();
     if (items.len > 0) {
         const cookie_last_item_ts = get_cookie_value(req)
             orelse std.math.maxInt(i64);
@@ -1959,7 +1965,7 @@ fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
 
     const db = global.storage;
     resp.status = 301;
-    const tag = db.tag_with_id(req.arena, tag_id) catch {
+    const tag = db.tag_with_id(tag_id) catch {
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
         resp.header("Location", redirect);
         return;
@@ -2030,7 +2036,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const db = global.storage;
 
-    const tag = try db.tag_with_id(req.arena, tag_id) orelse {
+    const tag = try db.tag_with_id(tag_id) orelse {
         resp.status = 301;
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.missing });
         resp.header("Location", redirect);
@@ -2056,7 +2062,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try write_tag.print("Edit tag: {s}", .{tag.name});
     try Layout.write_head(w, write_tag.buffered());
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{});
     
     try w.print(parts_get("tag_edit_page"), .{tag.name});
@@ -2104,7 +2110,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_head(w, "Tags");
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll(parts_get("tags_page"));
@@ -2122,7 +2128,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     try w.writeAll(parts_get("tags_list"));
-    const tag_ids = try db.tags_all_with_ids(req.arena);
+    const tag_ids = try db.tags_all_with_ids();
     for (tag_ids) |tag| {
         try w.writeAll(parts_get("tag_item"));
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
@@ -2209,8 +2215,8 @@ const Layout = struct {
     pub fn cache_sidebar_form(self: *@This()) !bool {
         if (try self.storage.get_tags_change()) |last_modified| {
             if (last_modified != self.tags_last_modified) {
-                const tags = try self.storage.tags_all(self.allocator);
-                defer self.allocator.free(tags);
+                const tags = try self.storage.tags_all();
+                defer self.storage.free(tags);
                 self.sidebar_form_html.shrinkRetainingCapacity(0);
                 try write_sidebar_form_new(
                     &self.sidebar_form_html.writer, tags, .{}
@@ -2222,7 +2228,7 @@ const Layout = struct {
         return false;
     }
 
-    fn write_sidebar_form(self: *@This(), w: anytype, tags: [][]const u8, opts: HeadOptions) !void {
+    fn write_sidebar_form(self: *@This(), w: anytype, tags: []const []const u8, opts: HeadOptions) !void {
         const use_cached = opts.search.len == 0 and opts.tags_checked.len == 0 and !opts.has_untagged;
         if (use_cached) {
             if (try self.cache_sidebar_form()) {
@@ -2234,7 +2240,7 @@ const Layout = struct {
         try write_sidebar_form_new(w, tags, opts);
     }
 
-    fn write_sidebar_form_new(w: *std.Io.Writer, tags: [][]const u8, opts: HeadOptions) !void {
+    fn write_sidebar_form_new(w: *std.Io.Writer, tags: []const []const u8, opts: HeadOptions) !void {
         try w.writeAll(parts_get("filter_feeds"));
 
         try untagged_label_render(w, opts.has_untagged);
@@ -2245,7 +2251,7 @@ const Layout = struct {
         try w.print(parts_get("include_tags"), .{ .value = opts.search });
     }
 
-    pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: [][]const u8, opts: HeadOptions) !void {
+    pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: []const []const u8, opts: HeadOptions) !void {
         try w.print(parts_get("body_header"), .{
             .attrs = if (mem.eql(u8, request_url_path, "/")) "aria-current='page'" else "",
         });
@@ -2328,7 +2334,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const has_untagged = query.get("untagged") != null;
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try db.tags_all();
     try global.layout.body_head_render(w, req.url.path, tags, .{ 
         .search = search_value orelse "", 
         .tags_checked = tags_active.items, 
@@ -2360,7 +2366,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         break :trimmed null;
     };
 
-    const failed_requests = try db.feed_request_failed_ids(req.arena);
+    const failed_requests = try db.feed_request_failed_ids();
     
     const feeds = blk: {
         const after: types.Feed.ID = after: {
@@ -2467,7 +2473,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     try w.flush();
 }
 
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []types.Feed, global: *Global, failed_requests_ids: []u64) !void {
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []const types.Feed, global: *Global, failed_requests_ids: []const u64) !void {
     try w.writeAll("<div class='flow'>");
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
@@ -2492,7 +2498,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             );
         }
 
-        const tags = try db.feed_tags(allocator, feed.feed_id);
+        const tags = try db.feed_tags(feed.feed_id);
         if (tags.len > 0) {
             try w.writeAll("<div class='feed-tags'>");
             try w.writeAll("<ul class='list-unstyled' aria-label='Feed tags'>");
@@ -2506,7 +2512,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         }
         try w.writeAll("</header>");
         
-        const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
+        const items = try db.feed_items_with_feed_id(feed.feed_id);
         if (items.len == 0) {
             try w.writeAll("<p class='callout size-xs'>Feed has no items.</p>");
            try w.writeAll("</article>");
@@ -2723,44 +2729,49 @@ fn get_cookie_value(req: *httpz.Request) ?i64 {
     return null;
 }
 
-fn sse_stream(_: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
-    try resp.startEventStream(try StreamContext.init(), StreamContext.handle);
+fn sse_stream(global: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
+    try resp.startEventStream(try StreamContext.init(global.io), StreamContext.handle);
 }
 
 const StreamContext = struct {
-    var stats: [files.len]std.fs.File.Stat = undefined;
+    io: std.Io,
+
+    var stats: [files.len]std.Io.File.Stat = undefined;
     const files: [3][]const u8 = [_][]const u8{
         "./src/server/dist/main.css",
         "./src/server/dist/main.js",
         "./src/server/dist/relative-time.js",
     };
 
-    pub fn init() !StreamContext {
-        stats = try file_stats();
-        return .{};
+    pub fn init(io: std.Io) !StreamContext {
+        stats = try file_stats(io);
+        return .{ .io = io };
     }
 
-    fn file_stats() ![files.len]std.fs.File.Stat {
-        const cwd = std.fs.cwd(); 
-        var result: [files.len]std.fs.File.Stat = undefined;
+    fn file_stats(io: std.Io) ![files.len]std.Io.File.Stat {
+        const cwd = std.Io.Dir.cwd();
+        var result: [files.len]std.Io.File.Stat = undefined;
         for (files, 0..) |f, i| {
-            result[i] = try cwd.statFile(f);
+            result[i] = try cwd.statFile(io, f, .{});
         }
 
         return result;
     }
 
-    fn handle(_: StreamContext, stream: std.net.Stream) void {
+    fn handle(ctx: StreamContext, stream: std.Io.net.Stream) void {
         std.log.info("Start SSE stream", .{});
         while (true) {
-            const new_stats = file_stats() catch @panic("SSE stream crash");
+            const new_stats = file_stats(ctx.io) catch @panic("SSE stream crash");
             if (!std.meta.eql(stats, new_stats)) {
-                stream.writeAll("event: reload\n") catch return;
-                stream.writeAll("data: reload\n\n") catch return;
+                var buf: [32]u8 = undefined;
+                var w = stream.writer(ctx.io, &buf).interface;
+                w.writeAll("event: reload\n") catch return;
+                w.writeAll("data: reload\n\n") catch return;
+                w.flush() catch return;
                 std.log.info("reload browser", .{});
                 stats = new_stats;
             }
-            std.Thread.sleep(@intCast(std.time.ns_per_s));
+            ctx.io.sleep(.fromSeconds(std.time.ns_per_s), .boot) catch return;
         }
     }
 };

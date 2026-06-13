@@ -105,11 +105,11 @@ pub const Cli = struct {
                 var loop_count: u16 = 0;
                 while (loop_count < loop_count_max) {
                     if (try self.storage.next_update_timestamp()) |timestamp_next| {
-                        const now_ts = std.time.timestamp();
+                        const now_ts = std.Io.Clock.real.now(self.io).toSeconds();
                         if (timestamp_next > now_ts) {
-                            const Datetime = @import("zig-datetime").datetime.Datetime;
+                            const Datetime = @import("datetime").datetime.Datetime;
                             var date = Datetime.fromSeconds(@floatFromInt(timestamp_next));
-                            date = date.shiftTimezone(@import("zig-datetime").timezones.Europe.Helsinki);
+                            date = date.shiftTimezone(@import("datetime").timezones.Europe.Helsinki);
 
                             var buf: [32]u8 = undefined;
                             const countdown_ts = timestamp_next - now_ts;
@@ -123,17 +123,11 @@ pub const Cli = struct {
                             });
 
                             loop_count = 0;
-                            const thread_sleep_sec = 10;
-                            const thread_loop_count_max: i64 = @divFloor(countdown_ts, thread_sleep_sec) + 1;
-                            var thread_loop_count: u64 = 0;
-                            while (std.time.timestamp() < timestamp_next) {
-                                std.debug.assert(thread_loop_count < thread_loop_count_max);
-                                std.Thread.sleep(thread_sleep_sec * std.time.ns_per_s);
-                                thread_loop_count += 1;
-                            }
+                            try self.io.sleep(.fromSeconds(timestamp_next * std.time.ns_per_s), .boot);
                             continue;
                         }
                     }
+
                     if (try self.update(null, .{})) {
                         loop_count = 0;
                     } else {
@@ -237,10 +231,10 @@ pub const Cli = struct {
 
         switch (check_type) {
             .all => {
-                const icons_existing = try self.storage.icon_all(arena.allocator());
+                const icons_existing = try self.storage.icon_all();
                 progress_node.setEstimatedTotalItems(icons_existing.len);
                 for (icons_existing) |icon| {
-                    var req = http_client.init(arena.allocator());
+                    var req = http_client.init(self.io, arena.allocator());
                     defer {
                         progress_node.completeOne();
                         req.deinit();
@@ -320,7 +314,7 @@ pub const Cli = struct {
                     }
 
                     // Inlined icon in html
-                    const icon_opt = http_client.fetch_icon(arena.allocator(), icon.icon_url, .{}) catch {
+                    const icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.icon_url, .{}) catch {
                         const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
                             std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
                             continue;
@@ -349,7 +343,7 @@ pub const Cli = struct {
                 }
             },
             .missing => {
-                const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
+                const icons_missing = try self.storage.feed_icons_missing();
                 defer arena.allocator().free(icons_missing);
                 progress_node.setEstimatedTotalItems(icons_missing.len);
 
@@ -381,7 +375,7 @@ pub const Cli = struct {
                         }
                     }
 
-                    const new_icon_opt = http_client.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
+                    const new_icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -408,13 +402,13 @@ pub const Cli = struct {
                 }
             },
             .failed => {
-                const icons_failed = try self.storage.feed_icons_failed(arena.allocator());
+                const icons_failed = try self.storage.feed_icons_failed();
                 progress_node.setEstimatedTotalItems(icons_failed.len);
 
                 for (icons_failed) |icon| {
                     defer progress_node.completeOne();
 
-                    const new_icon_opt = http_client.fetch_icon(arena.allocator(), icon.page_url, .{}) catch {
+                    const new_icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -576,7 +570,7 @@ pub const Cli = struct {
         }
 
         if (opts.list) {
-            const rules = try self.storage.rules_all(self.allocator);
+            const rules = try self.storage.rules_all();
             defer self.allocator.free(rules);
             if (rules.len == 0) {
                 try self.out.writeAll("There are no feed add rules.");
@@ -640,7 +634,7 @@ pub const Cli = struct {
                 try self.out.writeAll("'--remove' requires input to filter rules.\n");
                 return;
             }
-            const rules = try self.storage.rules_filter(self.allocator, inputs[0]);
+            const rules = try self.storage.rules_filter(inputs[0]);
             const invalid_msg = "Enter valid input 'y' or 'n'.\n";
 
             for (rules) |r| {
@@ -648,7 +642,7 @@ pub const Cli = struct {
                     try self.out.print("Remove rule '{s}' -> '{s}'? (y/n) ", .{r.match_url, r.result_url});
 
                     const raw_value = try self.in.takeDelimiterExclusive('\n');
-                    const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
+                    const value = mem.trimStart(u8, raw_value, &std.ascii.whitespace);
 
                     switch (user_output_state(value)) {
                         .yes => {
@@ -699,7 +693,7 @@ pub const Cli = struct {
         }
 
         if (opts.list) {
-            const tags = try self.storage.tags_all(arena.allocator());
+            const tags = try self.storage.tags_all();
 
             if (tags.len == 0) {
                 try self.out.print("There are no tags.\n", .{});
@@ -761,7 +755,7 @@ pub const Cli = struct {
         while (true) {
             try self.out.print("{s} tags to {d} feeds? (y/n) ", .{flag_upper_str, feeds.len});
             const raw_value = try self.in.takeDelimiterExclusive('\n');
-            const value = mem.trimLeft(u8, raw_value, &std.ascii.whitespace);
+            const value = mem.trimStart(u8, raw_value, &std.ascii.whitespace);
 
             switch (user_output_state(value)) {
                 .yes => {},
@@ -805,7 +799,7 @@ pub const Cli = struct {
 
         if (uri.host) |host| {
             const host_str = util.uri_component_val(host);
-            const rules = try self.storage.get_rules_for_host(self.allocator, host_str);
+            const rules = try self.storage.get_rules_for_host(host_str);
             defer self.allocator.free(rules);
             if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
                 std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -817,18 +811,18 @@ pub const Cli = struct {
         defer arena.deinit();
 
         // TODO: reuse client if possible
-        var client_2 = http_client.init(arena.allocator());
+        var client_2 = http_client.init(self.io, arena.allocator());
         defer client_2.deinit();
 
         var a_writer: std.Io.Writer.Allocating = try .initCapacity(self.allocator, 32 * 1024);
         defer a_writer.deinit();
 
-        var client = http_client.init(arena.allocator());
+        var client = http_client.init(self.io, arena.allocator());
         defer client.deinit();
         var buffer_header: [1024]u8 = undefined;
         
         const feed_uri = try std.Uri.parse(url);
-        const feed_opts = try client.fetch(&a_writer.writer, arena.allocator(), feed_uri, .{
+        const feed_opts = try client.fetch(arena.allocator(), feed_uri, .{
             .buffer_header = &buffer_header,
         });
 
@@ -876,7 +870,7 @@ pub const Cli = struct {
 
                     if (uri.host) |host| {
                         const host_str = util.uri_component_val(host);
-                        const rules = try self.storage.get_rules_for_host(self.allocator, host_str);
+                        const rules = try self.storage.get_rules_for_host(host_str);
                         defer self.allocator.free(rules);
                         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
                             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -888,7 +882,7 @@ pub const Cli = struct {
                     const fetch_url_2 = try arena.allocator().dupe(u8, fetch_url);
                     const title = if (link.title) |t| try arena.allocator().dupe(u8, t) else null;
                     const feed_uri_2 = try std.Uri.parse(fetch_url_2);
-                    const feed_opts_2 = try client_2.fetch(&a_writer.writer, arena.allocator(), feed_uri_2, .{
+                    const feed_opts_2 = try client_2.fetch(arena.allocator(), feed_uri_2, .{
                         .buffer_header = &buffer_header,
                     });
 
@@ -909,14 +903,15 @@ pub const Cli = struct {
             // And not have 'add_opts.feed_opts.feed_url' as input
              
             const feed_uri_for_icon = add_opts.feed_opts.feed_url;
-            add_opts.feed_opts.icon = http_client.fetch_icon(arena.allocator(), feed_uri_for_icon, .{
+            add_opts.feed_opts.icon = http_client.fetch_icon(self.io, arena.allocator(), feed_uri_for_icon, .{
                 .html_body = if (add_opts.feed_opts.content_type == .html) add_opts.feed_opts.body else null,
             }) catch null;
         }
-        
+
         var parser: FeedParser = .init(add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
             .feed_url = add_opts.feed_opts.feed_url,
+            .now_seconds = std.Io.Clock.real.now(self.io).toSeconds(),
         });
 
         const feed = try self.storage.addFeed(parsed, add_opts);
@@ -1037,7 +1032,7 @@ pub const Cli = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
+        const feed_updates = try self.storage.getFeedsToUpdate(input, options);
         if (feed_updates.len == 0) {
             std.log.info("No feeds to update", .{});
             return false;
@@ -1053,7 +1048,7 @@ pub const Cli = struct {
             std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
         }
 
-        var app: App = .{ .storage = self.storage };
+        var app: App = .{ .storage = self.storage, .io = self.io };
 
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
@@ -1074,13 +1069,13 @@ pub const Cli = struct {
     }
 
     pub fn serve(self: *Self, opts: ServeOptions) !void {
-        try @import("server.zig").start_server(self.storage, opts);
+        try @import("server.zig").start_server(self.io, self.storage, opts);
     }
 
     pub fn remove(self: *Self, url: []const u8) !void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
-        const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url);
+        const feeds = try self.storage.getFeedsWithUrl(url);
         if (feeds.len == 0) {
             std.log.info("Found no feeds for <url> input '{s}'", .{url});
             return;
@@ -1114,13 +1109,13 @@ pub const Cli = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
+        const feeds = try self.storage.getLatestFeedsWithUrl(inputs, opts);
 
         for (feeds) |feed| {
             const title = feed.title orelse "<no title>";
             const url_out = feed.page_url orelse feed.feed_url;
             _ = try self.out.print("{s} - {f}\n", .{ title, url_out });
-            const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
+            const items = try self.storage.getLatestFeedItemsWithFeedId(feed.feed_id, opts);
             if (items.len == 0) {
                 _ = try self.out.write("  ");
                 _ = try self.out.write("Feed has no items.");
@@ -1259,6 +1254,7 @@ test "feedgaze.show" {
 }
 
 pub const App = struct {
+    io: std.Io,
     storage: Storage, 
 
     const UpdateResult = enum {
@@ -1275,7 +1271,7 @@ pub const App = struct {
             //     std.log.err("Failed to store failed feed http request. Error: {s}", .{@errorName(err_db)});
             // };
         }
-        var req = http_client.init(arena.allocator()); 
+        var req = http_client.init(self.io, arena.allocator());
         defer req.deinit();
 
         var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
@@ -1283,7 +1279,7 @@ pub const App = struct {
         
         var buffer_header: [1028]u8 = undefined;
         const feed_uri = f_update.feed_url;
-        const resp_opt = req.fetch(&a_writer.writer, arena.allocator(), feed_uri, .{
+        const resp_opt = req.fetch(arena.allocator(), feed_uri, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
             .buffer_header = &buffer_header,
         }) catch |err| {
@@ -1307,10 +1303,10 @@ pub const App = struct {
                 return .failed;
             } else if (status_code == .too_many_requests) {
                 std.log.warn("Rate limit hit with feed '{f}'", .{f_update.feed_url});
-                const now_utc_sec = std.time.timestamp();
+                const now_utc_sec = std.Io.Clock.real.now(self.io).toSeconds();
                 const retry_reset = blk: {
-                    var header_map: http_client.HeaderMap = .init(arena.allocator());
-                    try header_map.ensureTotalCapacity(4);
+                    var header_map: http_client.HeaderMap = .empty;
+                    try header_map.ensureTotalCapacity(arena.allocator(), 4);
                     try http_client.fill_headers(req.response.?.head.bytes, &header_map, &.{
                         "x-ratelimit-remaining",
                         "x-ratelimit-reset",
@@ -1360,7 +1356,7 @@ pub const App = struct {
         const resp = resp_opt orelse unreachable;
         const body = a_writer.writer.buffered();
 
-        const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
+        const html_options = try self.storage.html_selector_get(f_update.feed_id);
         var parsing: FeedParser = .init(body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{

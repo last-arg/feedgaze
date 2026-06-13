@@ -1,5 +1,5 @@
 const std = @import("std");
-const datetime = @import("zig-datetime").datetime;
+const datetime = @import("datetime").datetime;
 const Datetime = datetime.Datetime;
 const html = @import("./html.zig");
 const image = @import("image.zig");

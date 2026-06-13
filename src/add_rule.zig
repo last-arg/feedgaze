@@ -52,7 +52,7 @@ pub const RuleWithHost = struct {
     }
 };
 
-pub fn find_rule_match(uri: std.Uri, rules: []RuleWithHost) !?RuleWithHost {
+pub fn find_rule_match(uri: std.Uri, rules: []const RuleWithHost) !?RuleWithHost {
     var uri_path_iter = mem.splitScalar(u8, uri_component_val(uri.path), '/');
     outer: for (rules) |rule| {
         uri_path_iter.reset();

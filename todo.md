@@ -1,5 +1,7 @@
-- changed package zts build.zig to make it work with latest zig versions.
-  Fork zts or include zts in project as third party library
+- added 'pub const c = @import(...)' to fridge package main.zig to get access to
+  sqlite3_snprintf. Have to see if it is needed
+- need to change zig-datetime package
+    - use zeit package?
 - Look over code where I used 'errdefer |err| {...}'
 - crash when adding 'https://susam.net/
 ```

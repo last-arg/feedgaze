@@ -36,6 +36,7 @@ const seconds_in_30_days = seconds_in_1_day * 30;
 pub const Storage = struct {
     const Self = @This();
     sql_db: sql.Session,
+    allocator: Allocator,
     options: Options = .{},
 
     var buffer: [4096]u8 = undefined;
@@ -61,7 +62,12 @@ pub const Storage = struct {
 
         return .{
             .sql_db = db,
+            .allocator = allocator,
         };
+    }
+
+    pub inline fn free(self: *Self, memory: anytype) void {
+        self.allocator.free(memory);
     }
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
@@ -164,18 +170,18 @@ pub const Storage = struct {
 
     pub fn rate_limit_remove(self: *Self, feed_id: Feed.ID) !void {
         assert(feed_id != .unassigned);
-        try self.sql_db.exec("DELETE FROM rate_limit WHERE feed_id = ?", .{}, .{@intFromEnum(feed_id)});
+        try self.sql_db.raw("DELETE FROM rate_limit WHERE feed_id = ?", .{feed_id}).exec();
     }
 
     pub fn feed_request_remove(self: *Self, feed_id: Feed.ID) !void {
-        try self.sql_db.exec("DELETE FROM feed_request_failed WHERE feed_id = ?", .{}, .{@intFromEnum(feed_id)});
+        try self.sql_db.raw("DELETE FROM feed_request_failed WHERE feed_id = ?", .{feed_id}).exec();
     }
 
-    pub fn feed_request_failed_ids(self: *Self, allocator: Allocator) ![]u64 {
+    pub fn feed_request_failed_ids(self: *Self) ![]const u64 {
         const query =
         \\select distinct(feed_id) from feed_request_failed
         ;
-        return try selectAll(&self.sql_db, allocator, u64, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchAll(u64);
     }
 
     pub fn rate_limit_add(self: *Self, feed_id: Feed.ID, utc_sec: i64) !void {
@@ -189,17 +195,14 @@ pub const Storage = struct {
         \\  last_utc_sec = strftime('%s', 'now')
         ;
         
-        try self.sql_db.exec(query, .{}, .{.feed_id = @intFromEnum(feed_id), .next_utc_sec = utc_sec});
+        try self.sql_db.raw(query, .{.feed_id = feed_id, .next_utc_sec = utc_sec}).exec();
     }
 
     pub fn request_failed_add(self: *Self, feed_id: Feed.ID, reason: []const u8) !void {
         std.debug.assert(feed_id != .unassigned);
-        const query =
-        \\INSERT INTO feed_request_failed
-        \\  (feed_id, reason) VALUES (@feed_id, @reason)
-        ;
-        
-        try self.sql_db.exec(query, .{}, .{.feed_id = @intFromEnum(feed_id), .reason = reason});
+        const query = "INSERT INTO feed_request_failed (feed_id, reason) VALUES (?, ?)";
+
+        try self.sql_db.raw(query, .{feed_id, reason}).exec();
     }
 
     const FeedFailedRequest = struct {
@@ -207,7 +210,7 @@ pub const Storage = struct {
         reason: []const u8,
     };
 
-    pub fn get_failed_requests(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]FeedFailedRequest {
+    pub fn get_failed_requests(self: *Self, feed_id: Feed.ID) ![]const FeedFailedRequest {
         assert(feed_id != .unassigned);
         const query =
         \\SELECT utc_sec, reason FROM feed_request_failed
@@ -216,7 +219,7 @@ pub const Storage = struct {
         \\LIMIT 10
         ;
 
-        return try selectAll(&self.sql_db, allocator, FeedFailedRequest, query, .{ @intFromEnum(feed_id) });
+        return try self.sql_db.raw(query, .{ feed_id }).fetchAll(FeedFailedRequest) ;
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !Feed.ID {
@@ -243,86 +246,53 @@ pub const Storage = struct {
         var buf_feed_url: [1024]u8 = undefined;
         const feed_url = try std.fmt.bufPrint(&buf_feed_url, "{f}", .{feed.feed_url});
 
-        const feed_id = try one(&self.sql_db, u64, query, .{
+        const feed_id = try self.sql_db.raw(query, .{
             .title = feed.title orelse "",
             .feed_url = feed_url,
             .page_url = page_url,
             .icon_id = @intFromEnum(feed.icon_id),
             .updated_timestamp = feed.updated_timestamp,
-        }) orelse return Error.FeedExists;
+        }).fetchOne(u64)  orelse return Error.FeedExists;
 
         return @enumFromInt(feed_id);
     }
 
-    pub fn get_feed_id_with_url(self: *Self, url: []const u8) !?usize {
+    pub fn get_feed_id_with_url(self: *Self, url: []const u8) !?Feed.ID {
         const query =
             \\SELECT feed_id FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
-        return try one(&self.sql_db, usize, query, .{ url, url });
+        return try self.sql_db.raw(query, .{ url, url }).fetchOne(Feed.ID);
     }
     
-    pub fn get_feed_with_url(self: *Self, allocator: Allocator, url: []const u8) !?Feed {
+    pub fn get_feed_with_url(self: *Self, url: []const u8) !?Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
         
-        return try oneAlloc(&self.sql_db, allocator, Feed, query, .{ url, url });
+        return try self.sql_db.raw(query, .{url, url}).fetchOne(Feed);
     }
 
-    pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]Feed {
-        const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
-            \\FROM feed WHERE feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%';
-        ;
-
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
-
-        var iter = try stmt.iterator(Feed.Raw, .{url, url});
-
-        var rows: ArrayList(Feed) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try Feed.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+    pub fn getFeedsWithUrl(self: *Self, url: []const u8) ![]const Feed {
+        return try self.sql_db.query(Feed)
+            .whereRaw("feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'", .{url, url})
+            .findAll();
     }
 
-    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]Feed {
-        const query_start =
-            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
-            \\FROM feed 
-        ;
+    pub fn getLatestFeedsWithUrl(self: *Self, inputs: [][]const u8, opts: ShowOptions) ![]const Feed {
+        var q = self.sql_db.query(Feed);
 
-        const query_like = "feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'";
-        const query_order = "ORDER BY updated_timestamp DESC LIMIT {d};";
-
-        storage_arr.shrinkRetainingCapacity(0);
-        try storage_arr.appendSliceBounded(query_start);
-        var values = try ArrayList([]const u8).initCapacity(allocator, inputs.len * 2);
-        defer values.deinit(allocator);
         if (inputs.len > 0) {
-            try storage_arr.appendBounded(' ');
-            try storage_arr.appendSliceBounded("WHERE");
-            for (inputs, 0..) |term, i| {
-                if (i != 0) {
-                    try storage_arr.appendBounded(' ');
-                    try storage_arr.appendSliceBounded("AND");
-                }
-                try storage_arr.appendBounded(' ');
-                try storage_arr.appendSliceBounded(query_like);
-                values.appendAssumeCapacity(term);
-                values.appendAssumeCapacity(term);
+            const query_like = "feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'";
+            for (inputs) |term| {
+                q = q.whereRaw(query_like, .{term, term});
             }
         }
 
-        try storage_arr.appendBounded(' ');
-        try storage_arr.printBounded(query_order, .{opts.limit});
+        q = q.orderBy(.updated_timestamp, .desc);
+        q = q.limit(opts.limit);
 
-        var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
-        defer stmt.deinit();
-
-        return try feed_slice_from_statement(allocator, &stmt, values.items);
+        return try q.findAll();
     }
 
     fn iterator_to_slice(T: type, stmt: *sql.DynamicStatement, allocator: Allocator, values: anytype) ![]T {
@@ -346,10 +316,10 @@ pub const Storage = struct {
 
     pub fn hasFeedWithFeedUrl(self: *Self, url: []const u8) !bool {
         const query = "SELECT 1 from feed where feed_url = ? OR page_url = ?";
-        return (try one(&self.sql_db, bool, query, .{url, url})) orelse false;
+        return try self.sql_db.raw(query, .{url, url}).fetchOne(bool) orelse false;
     }
 
-    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]FeedToUpdate {
+    pub fn getFeedsToUpdate(self: *Self, search_term: ?[]const u8, options: UpdateOptions) ![]const FeedToUpdate {
         // TODO: rethink this query.
         // - Do I need the 'item' table stuff?
         // - Do subquery instead?
@@ -393,36 +363,28 @@ pub const Storage = struct {
             , .{rate_limit_iif_utc_sec, failed_request_query}));
         }
 
-        if (search_term) |term| {
-            if (term.len > 0) {
-                const cond_start = if (has_where) " AND " else " WHERE ";
-                storage_arr.appendSliceAssumeCapacity(cond_start);
-                storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%')");
-                storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
-                var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
-                defer stmt.deinit();
+        const query_opts = blk: {
+            if (search_term) |term| {
+                if (term.len > 0) {
+                    const cond_start = if (has_where) " AND " else " WHERE ";
+                    storage_arr.appendSliceAssumeCapacity(cond_start);
+                    storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%')");
 
-                var iter = try stmt.iterator(FeedToUpdate.Raw, .{ term, term, term });
-
-                var rows: ArrayList(FeedToUpdate) = .{};
-                while (try iter.nextAlloc(allocator, .{})) |row| {
-                    try rows.append(allocator, try FeedToUpdate.from_raw(row));
-                } 
-                return try rows.toOwnedSlice(allocator);
+                    break :blk .{term, term, term};
+                }
             }
-        }
+            break :blk null;
+        };
 
         storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
-        var stmt = try self.sql_db.prepareDynamic(storage_arr.items);
-        defer stmt.deinit();
 
-        var iter = try stmt.iterator(FeedToUpdate.Raw, .{});
+        if (query_opts) |opts| {
+            return try self.sql_db.raw(storage_arr.items, opts)
+                .fetchAll(FeedToUpdate);
+        }
 
-        var rows: ArrayList(FeedToUpdate) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try FeedToUpdate.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(storage_arr.items, .{})
+            .fetchAll(FeedToUpdate);
     }
 
     fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
@@ -436,7 +398,7 @@ pub const Storage = struct {
 
     pub fn deleteFeed(self: *Self, feed_id: Feed.ID) !void {
         assert(feed_id != .unassigned);
-        try self.sql_db.exec("DELETE FROM feed WHERE feed_id = ?", .{}, .{@intFromEnum(feed_id)});
+        try self.sql_db.query(Feed).where("feed_id", feed_id).delete().exec();
     }
 
     pub fn update_feed_timestamp(self: *Self, feed: Feed) !void {
@@ -444,7 +406,7 @@ pub const Storage = struct {
             \\UPDATE feed SET updated_timestamp = @updated_timestamp 
             \\WHERE feed_id = @feed_id;
         ;
-        try self.sql_db.exec(query, .{}, .{ .updated_timestamp = feed.updated_timestamp, .feed_id = @intFromEnum(feed.feed_id) });
+        try self.sql_db.raw(query, .{ .updated_timestamp = feed.updated_timestamp, .feed_id = feed.feed_id }).exec();
     }
 
     pub const FeedFields = struct {
@@ -456,15 +418,12 @@ pub const Storage = struct {
     };
 
     pub fn update_feed_fields(self: *Self, allocator: Allocator, fields: FeedFields) !void {
-        var savepoint = try self.sql_db.savepoint("update_feed");
-        defer savepoint.rollback();
-
         // Remove tags that aren't part of .tags 
         var buf: [1024]u8 = undefined;
         var buf_cstr: [256]u8 = undefined;
 
         if (fields.tags.len > 0) {
-            var tags_str: std.ArrayList(u8) = .{};
+            var tags_str: std.ArrayList(u8) = .empty;
             defer tags_str.deinit(allocator);
 
             {
@@ -483,10 +442,10 @@ pub const Storage = struct {
             }
 
             const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in (select tag_id from tag where name in (?))";
-            try self.sql_db.exec(query_fmt, .{}, .{ @intFromEnum(fields.feed_id), tags_str.items });
+            try self.sql_db.raw(query_fmt, .{ fields.feed_id, tags_str.items }).exec();
         } else {
             const query = "DELETE FROM feed_tag WHERE feed_id = ?";
-            try self.sql_db.exec(query, .{}, .{@intFromEnum(fields.feed_id)});
+            try self.sql_db.raw(query, .{fields.feed_id}).exec();
         }
 
         // Make sure all tags exist
@@ -496,10 +455,10 @@ pub const Storage = struct {
             \\insert into feed_tag (feed_id, tag_id) values 
             \\  (?, (select tag_id from tag where name = ? limit 1)) ON CONFLICT DO NOTHING
             ;
-            try self.sql_db.exec(query, .{}, .{
-                @intFromEnum(fields.feed_id),
+            try self.sql_db.raw(query, .{
+                fields.feed_id,
                 tag,
-            });
+            }).exec();
         }
 
         // Update feed_title and page_url
@@ -509,20 +468,18 @@ pub const Storage = struct {
         \\WHERE feed_id = ?
         ;
 
-        try self.sql_db.exec(query, .{}, .{
+        try self.sql_db.raw(query, .{
             fields.title,
             fields.page_url,
-            @intFromEnum(fields.icon_id),
-            @intFromEnum(fields.feed_id),
-        });
-
-        savepoint.commit();
+            fields.icon_id,
+            fields.feed_id,
+        }).exec();
     }
 
     pub fn hasFeedWithId(self: *Self, feed_id: Feed.ID) !bool {
         assert(feed_id != .unassigned);
-        const exists_query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
-        return (try one(&self.sql_db, bool, exists_query, .{@intFromEnum(feed_id)})).?;
+        const query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
+        return (try self.sql_db.raw(query, .{feed_id}).fetchOne(bool)).?;
     }
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
@@ -544,39 +501,26 @@ pub const Storage = struct {
         const len = @min(inserts.len, app_config.max_items);
         for (inserts[0..len], 0..) |*item, i| {
             const link = try std.fmt.bufPrint(&buf_link, "{f}", .{item.link.?});
-            const item_id = try one(&self.sql_db, usize, query, .{
+            const item_id = try self.sql_db.raw(query, .{
                 .feed_id = @intFromEnum(item.feed_id),
                 .title = item.title,
                 .link = link,
                 .id = item.id,
                 .updated_timestamp = item.updated_timestamp,
                 .position = i,
-            });
-            item.item_id = if (item_id) |id| @enumFromInt(id) else .unassigned;
+            }).fetchOne(FeedItem.ID) ;
+            item.item_id = item_id orelse .unassigned;
         }
         return inserts;
     }
 
-    pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: Feed.ID, opts: ShowOptions) ![]FeedItem {
+    pub fn getLatestFeedItemsWithFeedId(self: *Self, feed_id: Feed.ID, opts: ShowOptions) ![]const FeedItem {
         assert(feed_id != .unassigned);
-        const query =
-            \\SELECT feed_id, item_id, title, id, link, updated_timestamp
-            \\FROM item 
-            \\WHERE feed_id = ?
-            \\ORDER BY position ASC LIMIT ?;
-        ;
-
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
-
-        var iter = try stmt.iterator(FeedItem.Raw, .{ @intFromEnum(feed_id), opts.@"item-limit" });
-
-        var rows: ArrayList(FeedItem) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try FeedItem.from_raw(row));
-        } 
-
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.query(FeedItem)
+            .where("feed_id", feed_id)
+            .orderByRaw("position ASC")
+            .limit(opts.@"item-limit")
+            .findAll();
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
@@ -607,12 +551,12 @@ pub const Storage = struct {
             \\  last_update = strftime('%s', 'now')
             \\;
         ;
-        try self.sql_db.exec(query, .{}, .{
-            .feed_id = @intFromEnum(feed_id),
+        try self.sql_db.raw(query, .{
+            .feed_id = feed_id,
             .update_interval = feed_update.update_interval,
             .etag_or_last_modified = feed_update.etag_or_last_modified,
             .item_interval = item_interval,
-        });
+        }).exec();
     }
 
     pub fn icons_remove_unused(self: *Self) !void {
@@ -621,7 +565,7 @@ pub const Storage = struct {
             \\where icon_id not in
             \\  (select distinct(icon_id) from feed where icon_id not null);
         ;
-        try self.sql_db.exec(query, .{}, .{});
+        try self.sql_db.raw(query, .{}).exec();
     }
 
     pub fn icon_upsert(self: *Self, icon: types.Icon) !Icon.ID {
@@ -644,13 +588,13 @@ pub const Storage = struct {
         var buf: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.url});
 
-        const icon_id_opt = try self.sql_db.one(u64, query, .{}, .{
+        const icon_id_opt = try self.sql_db.raw(query, .{
             .icon_url = icon_url,
-            .icon_data = sql.Blob{ .data = icon.data },
+            .icon_data = icon.data,
             .cache_value = icon.etag_or_last_modified_or_hash,
-        }) orelse try self.sql_db.one(u64, "select icon_id from icon where icon_url = ?", .{}, .{
+        }).fetchOne(u64) orelse try self.sql_db.raw("select icon_id from icon where icon_url = ?", .{
             icon_url,
-        });
+        }).fetchOne(u64);
 
         if (icon_id_opt) |icon_id| {
             return @enumFromInt(icon_id);
@@ -661,8 +605,8 @@ pub const Storage = struct {
 
     pub fn updateLastUpdate(self: *Self, feed_id: Feed.ID) !void {
         assert(feed_id != .unassigned);
-        const query = "update feed_update set last_update = strftime('%s', 'now') where feed_id = @feed_id;";
-        try self.sql_db.exec(query, .{}, .{.feed_id = @intFromEnum(feed_id)});
+        const query = "update feed_update set last_update = strftime('%s', 'now') where feed_id = ?;";
+        try self.sql_db.raw(query, .{feed_id}).exec();
     }
 
     pub fn add_to_last_update(self: *Self, feed_id: Feed.ID, sec: u64) !void {
@@ -676,7 +620,7 @@ pub const Storage = struct {
         const feed_id = items[0].feed_id;
         {
             const query = "update item set position = position + ? where feed_id = ?;";
-            try self.sql_db.exec(query, .{}, .{ items.len, @intFromEnum(feed_id)});
+            try self.sql_db.raw(query, .{ items.len, feed_id }).exec();
         }
         try self.upsertFeedItems(items);
         try self.cleanFeedItems(feed_id);
@@ -725,21 +669,21 @@ pub const Storage = struct {
         for (inserts, 0..) |item, i| {
             if (item.id != null or item.link != null) {
                 const link = try std.fmt.bufPrint(&buf_link, "{f}", .{item.link.?});
-                try self.sql_db.exec(query_with_id, .{}, .{
-                    .feed_id = @intFromEnum(item.feed_id),
+                try self.sql_db.raw(query_with_id, .{
+                    .feed_id = item.feed_id,
                     .title = item.title,
                     .link = link,
                     .id = item.id,
                     .updated_timestamp = item.updated_timestamp,
                     .position = i,
-                });
+                }).exec();
             } else {
-                try self.sql_db.exec(query_without_id, .{}, .{
-                    .feed_id = @intFromEnum(item.feed_id),
+                try self.sql_db.raw(query_without_id, .{
+                    .feed_id = item.feed_id,
                     .title = item.title,
                     .timestamp = item.updated_timestamp,
                     .position = i,
-                });
+                }).exec();
             }
         }
     }
@@ -749,35 +693,26 @@ pub const Storage = struct {
         const del_query =
             \\DELETE FROM item WHERE feed_id = ? and position >= ?
         ;
-        try self.sql_db.exec(del_query, .{}, .{ @intFromEnum(feed_id), self.options.max_item_count });
+        try self.sql_db.raw(del_query, .{ feed_id, self.options.max_item_count }).exec();
     }
 
-    pub fn feed_items_with_feed_id(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]FeedItemRender {
+    pub fn feed_items_with_feed_id(self: *Self, feed_id: Feed.ID) ![]const FeedItemRender {
         const query =
             \\select feed_id, title, link, updated_timestamp, created_timestamp
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
         ;
 
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
-
-        var iter = try stmt.iterator(FeedItemRender.Raw, .{@intFromEnum(feed_id)});
-
-        var rows: ArrayList(FeedItemRender) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try FeedItemRender.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{feed_id}).fetchAll(FeedItemRender);
     }
 
-    pub fn tags_all(self: *Self, alloc: Allocator) ![][]const u8 {
+    pub fn tags_all(self: *Self) ![]const []const u8 {
         const query = "SELECT name FROM tag ORDER BY name ASC;";
-        return try selectAll(&self.sql_db, alloc, []const u8, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchAll([]const u8);
     }
 
-    pub fn tag_with_id(self: *Self, allocator: Allocator, tag_id: usize) !?TagResult {
+    pub fn tag_with_id(self: *Self, tag_id: usize) !?TagResult {
         const query = "SELECT tag_id, name FROM tag where tag_id = ?;";
-        return try oneAlloc(&self.sql_db, allocator, TagResult, query, .{tag_id});
+        return try self.sql_db.raw(query, .{tag_id}).fetchOne(TagResult);
     }
 
     pub fn tag_update(self: *Self, data: struct{tag_id: usize, name: []const u8}) !void {
@@ -786,20 +721,20 @@ pub const Storage = struct {
             \\  name = $name
             \\WHERE tag_id = $tag_id;
         ;
-        try self.sql_db.exec(query, .{}, data);
+        try self.sql_db.raw(query, data).exec();
     }
         
     const TagResult = struct{tag_id: usize, name: []const u8};
-    pub fn tags_all_with_ids(self: *Self, alloc: Allocator) ![]TagResult {
+    pub fn tags_all_with_ids(self: *Self) ![]const TagResult {
         const query = "select * from tag order by name ASC;";
-        return try selectAll(&self.sql_db, alloc, TagResult, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchAll(TagResult) ;
     }
 
     pub fn tags_remove_with_id(self: *Self, tag_id: usize) !void {
         const query =
         \\delete from tag where tag_id = ?
         ;
-        try self.sql_db.exec(query, .{}, .{tag_id});
+        try self.sql_db.raw(query, .{tag_id}).exec();
     }
 
     pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: Feed.ID, tag_ids: []usize) !void {
@@ -833,29 +768,29 @@ pub const Storage = struct {
         return try stmt.exec(.{}, .{@intFromEnum(feed_id)});
     }
 
-    pub fn feed_tags(self: *Self, alloc: Allocator, feed_id: Feed.ID) ![][]const u8 {
+    pub fn feed_tags(self: *Self, feed_id: Feed.ID) ![]const []const u8 {
         assert(feed_id != .unassigned);
         const query = 
         \\select name from tag where tag_id in (
         \\  select distinct(tag_id) from feed_tag where feed_id = ?
         \\)
         ;
-        return try selectAll(&self.sql_db, alloc, []const u8, query, .{@intFromEnum(feed_id)});
+        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchAll([]const u8);
     }
         
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
         const query = "INSERT INTO tag (name) VALUES(?) ON CONFLICT DO NOTHING;";
         for (tags) |tag| {
             assert(tags.len > 0);
-            try self.sql_db.exec(query, .{}, .{tag});
+            try self.sql_db.raw(query, .{tag}).exec();
         }
     }
 
-    pub fn tags_ids(self: *Self, tags: [][]const u8, buf: []usize) ![]usize {
+    pub fn tags_ids(self: *Self, tags: [][]const u8, buf: []u64) ![]u64 {
         const query = "select tag_id from tag where name = ?;"; 
         var i: usize = 0;
         for (tags) |tag| {
-            if (try one(&self.sql_db, usize, query, .{tag})) |value| {
+            if (try self.sql_db.raw(query, .{tag}).fetchOne(u64) ) |value| {
                 buf[i] = value;
                 i += 1;
             }
@@ -867,7 +802,7 @@ pub const Storage = struct {
         const query = "DELETE FROM tag WHERE name = ?";
         for (tags) |tag| {
             assert(tag.len > 0);
-            try self.sql_db.exec(query, .{}, .{tag});
+            try self.sql_db.raw(query, .{tag}).exec();
         }
     }
 
@@ -875,7 +810,7 @@ pub const Storage = struct {
         assert(feed_id != .unassigned);
         const query = "INSERT INTO feed_tag (feed_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING";
         for (tag_ids) |tag_id| {
-            try self.sql_db.exec(query, .{}, .{@intFromEnum(feed_id), tag_id});
+            try self.sql_db.raw(query, .{@intFromEnum(feed_id), tag_id}).exec();
         }
     }
 
@@ -883,7 +818,7 @@ pub const Storage = struct {
         assert(feed_id != .unassigned);
         const query = "DELETE FROM feed_tag WHERE feed_id = ? AND (select tag_id from tag where name = ?);";
         for (tags) |tag| {
-            try self.sql_db.exec(query, .{}, .{@intFromEnum(feed_id), tag});
+            try self.sql_db.raw(query, .{@intFromEnum(feed_id), tag}).exec();
         }
     }
 
@@ -940,25 +875,17 @@ pub const Storage = struct {
                 defer tags_str.deinit(allocator);
 
                 {
-                    const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{args.tags[0]});
-                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
-                    const tag_slice = mem.sliceTo(c_str, 0x0);
-                    try tags_str.appendSlice(allocator, tag_slice);
+                    try tags_str.appendSlice(allocator, args.tags[0]);
                 }
 
                 for (args.tags[1..]) |tag| {
-                    const tag_cstr = try std.fmt.bufPrintZ(&buf_cstr, "{s}", .{tag});
-                    const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", tag_cstr.ptr);
-                    const tag_slice = mem.sliceTo(c_str, 0x0);
                     try tags_str.appendSlice(allocator, ",");
-                    try tags_str.appendSlice(allocator, tag_slice);
+                    try tags_str.appendSlice(allocator, tag);
                 }
 
-                const query_fmt = "SELECT tag_id FROM tag where name in ({s})";
-                const query = try std.fmt.allocPrint(allocator, query_fmt, .{tags_str.items});
-                var stmt = try self.sql_db.prepareDynamic(query);
-                defer stmt.deinit();
-                break :blk try iterator_to_slice(usize, &stmt, allocator, .{});
+                const query = "SELECT tag_id FROM tag where name in (?)";
+
+                break :blk try self.sql_db.raw(query, .{tags_str.items}).fetchAll(u64);
             }
             break :blk &.{};
         };
@@ -1024,7 +951,7 @@ pub const Storage = struct {
         return aw.writer.buffered();
     }
 
-    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]Feed {
+    pub fn feeds_search_complex(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]const Feed {
         assert(
             (args.before == .unassigned and args.after == .unassigned) or
             (args.before != .unassigned and args.after == .unassigned) or
@@ -1039,20 +966,9 @@ pub const Storage = struct {
         ++ comptimePrint(" {d}", .{app_config.query_feed_limit})
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
+        defer allocator.free(query);
 
-        return try feed_slice_from_statement(allocator, &stmt, .{});
-    }
-
-    fn feed_slice_from_statement(allocator: Allocator, stmt: anytype, iter_args: anytype) ![]Feed {
-        var iter = try stmt.iterator(Feed.Raw, iter_args);
-
-        var rows: ArrayList(Feed) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try Feed.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{}).fetchAll(Feed) ;
     }
 
     pub fn feeds_search_has_previous(self: *Self, allocator: Allocator, args: FeedSearchArgs) !bool {
@@ -1066,9 +982,7 @@ pub const Storage = struct {
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         defer allocator.free(query);
-        var stmt = try self.sql_db.prepareDynamic(query);
-        defer stmt.deinit();
-        const result =  try stmt.one(bool, .{}, .{});
+        const result = try self.sql_db.raw(query, .{}).fetchOne(bool);
         return result orelse false;
     }
     
@@ -1077,14 +991,13 @@ pub const Storage = struct {
     \\      OR updated_timestamp < (select updated_timestamp from feed where feed_id = {[id]d})) 
     ;
 
-    pub fn feed_with_id(self: *Self, allocator: Allocator, feed_id: Feed.ID) !?Feed {
+    pub fn feed_with_id(self: *Self, feed_id: Feed.ID) !?Feed {
         const query = 
         \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
         \\WHERE feed_id = ?;
         ;
-        const raw = try oneAlloc(&self.sql_db, allocator, Feed.Raw, query, .{@intFromEnum(feed_id)}) orelse return null;
 
-        return try Feed.from_raw(raw);
+        return try self.sql_db.raw(query, .{feed_id}).fetchOne(Feed);
     }
 
     // const InsertRuleHost = struct {
@@ -1104,14 +1017,14 @@ pub const Storage = struct {
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const match_host_id = try one(&self.sql_db, usize, query_insert_host, .{rule.match_host}) 
-            orelse try one(&self.sql_db, usize, query_select_host, .{rule.match_host})
+        const match_host_id = try self.sql_db.raw(query_insert_host, .{rule.match_host}).fetchOne(u64)
+            orelse try self.sql_db.raw(query_select_host, .{rule.match_host}).fetchOne(u64)
             orelse return error.AddRuleNoMatchHostId;
 
         const result_host_id = blk: {
             if (!mem.eql(u8, rule.match_host, rule.result_host)) {
-                break :blk try one(&self.sql_db, usize, query_insert_host, .{rule.result_host}) 
-                    orelse try one(&self.sql_db, usize, query_select_host, .{rule.result_host})
+                break :blk try self.sql_db.raw(query_insert_host, .{rule.result_host}).fetchOne(u64)
+                    orelse try self.sql_db.raw(query_select_host, .{rule.result_host}).fetchOne(u64)
                     orelse return error.AddRuleNoResultHostId;
             }
             break :blk match_host_id;
@@ -1122,14 +1035,14 @@ pub const Storage = struct {
         \\  add_rule(match_host_id, match_path, result_host_id, result_path) 
         \\  values (?, ?, ?, ?);
         ;
-        try self.sql_db.exec(query_insert_rule, .{}, .{match_host_id, rule.match_path, result_host_id, rule.result_path});
+        try self.sql_db.raw(query_insert_rule, .{match_host_id, rule.match_path, result_host_id, rule.result_path}).exec();
     }
 
     const RuleMatchStr = struct {
         match_url: []const u8,
         result_url: []const u8,
     };
-    pub fn rules_all(self: *Self, allocator: mem.Allocator) ![]RuleMatchStr {
+    pub fn rules_all(self: *Self) ![]const RuleMatchStr {
         const query_fmt = 
         \\select 
         \\(select name from add_rule_host where host_id = add_rule.match_host_id 
@@ -1138,7 +1051,7 @@ pub const Storage = struct {
         \\) || result_path as result_url
         \\from add_rule
         ;
-        return try selectAll(&self.sql_db, allocator, RuleMatchStr, query_fmt, .{});
+        return try self.sql_db.raw(query_fmt, .{}).fetchAll(RuleMatchStr);
     }
 
     const RuleFilterMatch = struct {
@@ -1146,7 +1059,7 @@ pub const Storage = struct {
         match_url: []const u8,
         result_url: []const u8,
     };
-    pub fn rules_filter(self: *Self, allocator: mem.Allocator, filter: []const u8) ![]RuleFilterMatch {
+    pub fn rules_filter(self: *Self, filter: []const u8) ![]const RuleFilterMatch {
         const query_fmt = 
         \\select 
         \\add_rule_id,
@@ -1160,11 +1073,11 @@ pub const Storage = struct {
         \\  match_path like '%' || $filter || '%' or
         \\  result_path like '%' || $filter || '%'
         ;
-        return try selectAll(&self.sql_db, allocator, RuleFilterMatch, query_fmt, .{ .filter = filter });
+        return try self.sql_db.raw(query_fmt, .{ .filter = filter }).fetchAll(RuleFilterMatch) ;
     }
     
     pub fn rule_remove(self: *Self, add_rule_id: usize) !void {
-        try self.sql_db.exec("DELETE FROM add_rule WHERE add_rule_id = ?", .{}, .{add_rule_id});
+        try self.sql_db.raw("DELETE FROM add_rule WHERE add_rule_id = ?", .{add_rule_id}).exec();
     }
 
 
@@ -1175,13 +1088,13 @@ pub const Storage = struct {
             \\AND (select host_id from add_rule_host where name = $match_host)
             \\AND (select host_id from add_rule_host where name = $result_host)
         ;
-        return (try one(&self.sql_db, bool, query, rule)) orelse false;
+        return try self.sql_db.raw(query, rule).fetchOne(bool) orelse false;
     }
 
     const AddRule = @import("add_rule.zig");
-    pub fn get_rules_for_host(self: *Self, allocator: Allocator, host: []const u8) ![]AddRule.RuleWithHost {
+    pub fn get_rules_for_host(self: *Self, host: []const u8) ![]const AddRule.RuleWithHost {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const host_id = (try one(&self.sql_db, usize, query_select_host, .{host})) orelse return &.{};
+        const host_id = try self.sql_db.raw(query_select_host, .{host}).fetchOne(u64)  orelse return &.{};
         const query = 
         \\select 
         \\  match_path,
@@ -1191,12 +1104,12 @@ pub const Storage = struct {
         \\where match_host_id = ?;
         ;
 
-        return try selectAll(&self.sql_db, allocator, AddRule.RuleWithHost, query, .{host_id});
+        return try self.sql_db.raw(query, .{host_id}).fetchAll(AddRule.RuleWithHost);
     }
 
     pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const host_id = (try one(&self.sql_db, usize, query_select_host, .{uri.host})) orelse return null;
+        const host_id = try self.sql_db.raw(query_select_host, .{uri.host}).fetchOne(u64)  orelse return null;
 
         const query = 
         \\select 
@@ -1210,8 +1123,7 @@ pub const Storage = struct {
 
         const tmp_path = try allocator.dupe(u8, uri.path);
         mem.replaceScalar(u8, tmp_path, '*', '%');
-        print("path: {s}\n", .{tmp_path});
-        return try oneAlloc(&self.sql_db, allocator, Rule, query, .{. host_id = host_id, .tmp_path = tmp_path});
+        return try self.sql_db.raw(query, .{.host_id = host_id, .tmp_path = tmp_path}).fetchOne(Rule);
     }
 
     pub fn update_item_intervals(self: *Self) !void {
@@ -1300,7 +1212,7 @@ pub const Storage = struct {
         \\)
         , .{rate_limit_iif_utc_sec, failed_request_utc_sec})
         ;
-        return try one(&self.sql_db, i64, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchOne(i64);
     }
 
     // NOTE: null means that there have been to many failed feed requests in a row
@@ -1318,7 +1230,7 @@ pub const Storage = struct {
             \\left join rate_limit as rl on rl.feed_id = req.feed_id
             \\where req.feed_id = @feed_id
         ;
-        const result = try one(&self.sql_db, i64, query, .{.feed_id = @intFromEnum(feed_id)});
+        const result = try self.sql_db.raw(query, .{.feed_id = @intFromEnum(feed_id)}).fetchOne(i64) ;
         if (result) |val| if (val != 0) {
             return val;
         };
@@ -1327,26 +1239,17 @@ pub const Storage = struct {
 
     pub fn feed_last_update(self: *Self, feed_id: Feed.ID) !?i64 {
         assert(feed_id != .unassigned);
-        return try one(&self.sql_db, i64, "select last_update from feed_update where feed_id = ?", .{@intFromEnum(feed_id)});
+        return try self.sql_db.raw("select last_update from feed_update where feed_id = ?", .{@intFromEnum(feed_id)}).fetchOne(i64);
     }
 
-    pub fn get_items_latest_added(self: *Self, allocator: Allocator) ![]FeedItemRender {
+    pub fn get_items_latest_added(self: *Self) ![]const FeedItemRender {
         const query = 
         \\SELECT feed_id, title, link, updated_timestamp, created_timestamp
         \\FROM item WHERE created_timestamp > strftime("%s", "now", "-3 days") ORDER BY created_timestamp DESC
         \\LIMIT 100
         ;
 
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
-
-        var iter = try stmt.iterator(FeedItemRender.Raw, .{});
-
-        var rows: ArrayList(FeedItemRender) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try FeedItemRender.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{}).fetchAll(FeedItemRender);
     }
 
     pub fn get_latest_change(self: *Self) !?i64 {
@@ -1357,7 +1260,7 @@ pub const Storage = struct {
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
             \\);
         ;
-        return try one(&self.sql_db, i64, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchOne(i64);
     }
 
     pub fn get_latest_feed_change(self: *Self, feed_id: Feed.ID) !?i64 {
@@ -1369,19 +1272,20 @@ pub const Storage = struct {
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
             \\);
         ;
-        return try one(&self.sql_db, i64, query, .{@intFromEnum(feed_id)});
+        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchOne(i64) ;
     }
 
     pub fn get_tags_change(self: *Self) !?i64 {
         const query = 
             \\SELECT last_update_timestamp FROM table_last_update where table_name = 'tag';
         ;
-        return try one(&self.sql_db, i64, query, .{});
+        return try self.sql_db.raw(query, .{}).fetchOne(i64);
     }
 
-    pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const Feed.ID) ![]Feed {
+    pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const Feed.ID) ![]const Feed {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
+        defer query_al.deinit(allocator);
         query_al.appendSliceAssumeCapacity(
             \\select feed_id, title, feed_url, page_url, icon_id, updated_timestamp from feed where feed_id in (
         );
@@ -1395,34 +1299,23 @@ pub const Storage = struct {
         }
         try query_al.append(allocator, ')');
 
-        var stmt = try self.sql_db.prepareDynamic(query_al.items);
-        defer stmt.deinit();
-
-        return try feed_slice_from_statement(allocator, &stmt, .{});
+        return try self.sql_db.raw(query_al.items, .{}).fetchAll(Feed) ;
     }
 
-    pub fn icon_all(self: *Self, allocator: Allocator) ![]Icon {
+    pub fn icon_all(self: *Self) ![]const Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
 
-        var iter = try stmt.iterator(Icon.Raw, .{});
-
-        var rows: ArrayList(Icon) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try Icon.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{}).fetchAll(Icon) ;
     }
 
     pub fn feed_id_by_icon_id(self: *Self, icon_id: Icon.ID) !?Feed.ID {
         const query =
             \\SELECT feed_id FROM feed WHERE icon_id = ?
         ;
-        const feed_id = try self.sql_db.one(u64, query, .{}, .{@intFromEnum(icon_id)}) orelse return null;
+        const feed_id = try self.sql_db.raw(query, .{@intFromEnum(icon_id)}).fetchOne(u64)  orelse return null;
         return @enumFromInt(feed_id);
     }
 
@@ -1443,22 +1336,14 @@ pub const Storage = struct {
         }
     };
 
-    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]IconMissing {
+    pub fn feed_icons_missing(self: *Self) ![]const IconMissing {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
         \\AND feed.feed_id NOT IN (select feed_id from icon_failed);
         ;
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
 
-        var iter = try stmt.iterator(IconMissing.Raw, .{});
-
-        var rows: ArrayList(IconMissing) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try IconMissing.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{}).fetchAll(IconMissing);
     }
 
     pub const IconFailed = struct {
@@ -1484,7 +1369,7 @@ pub const Storage = struct {
     // Failed icon request might icon status in DB:
     // 1) Failed on first try. Which means there is no icon in DB.
     // 2) Failed on any other try expect first. Which means there is an icon in DB.
-    pub fn feed_icons_failed(self: *Self, allocator: Allocator) ![]IconFailed {
+    pub fn feed_icons_failed(self: *Self) ![]const IconFailed {
         const query =
         \\SELECT feed.feed_id, feed.page_url,
         \\  IIF(feed.icon_id, (SELECT icon.etag_or_last_modified_or_hash FROM icon WHERE icon.icon_id = feed.icon_id), NULL) AS etag_or_last_modified_or_hash
@@ -1492,16 +1377,7 @@ pub const Storage = struct {
         \\JOIN feed ON icon_failed.feed_id = feed.feed_id
         \\AND feed.page_url IS NOT NULL
         ;
-        var stmt = try self.sql_db.prepare(query);
-        defer stmt.deinit();
-
-        var iter = try stmt.iterator(IconFailed.Raw, .{});
-
-        var rows: ArrayList(IconFailed) = .{};
-        while (try iter.nextAlloc(allocator, .{})) |row| {
-            try rows.append(allocator, try IconFailed.from_raw(row));
-        } 
-        return try rows.toOwnedSlice(allocator);
+        return try self.sql_db.raw(query, .{}).fetchAll(IconFailed);
     }
     
     pub fn icon_update(self: *Self, curr_icon_uri: std.Uri, icon: types.Icon) !void {
@@ -1512,7 +1388,7 @@ pub const Storage = struct {
 
         var buf_icon: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf_icon, "{f}", .{icon.url});
-        const data = sql.Blob{ .data = icon.data };
+        const data = icon.data;
         if (mem.eql(u8, curr_icon_url, icon_url)) {
             const query = 
             \\UPDATE icon SET
@@ -1521,7 +1397,7 @@ pub const Storage = struct {
             \\WHERE icon_url = ?;
             ;
             const values = .{data, icon.etag_or_last_modified_or_hash, curr_icon_url};
-            try self.sql_db.exec(query, .{}, values);
+            try self.sql_db.raw(query, values).exec();
         } else {
             const query = 
             \\UPDATE icon SET
@@ -1532,16 +1408,16 @@ pub const Storage = struct {
             ;
 
             const values = .{icon_url, data, icon.etag_or_last_modified_or_hash, curr_icon_url};
-            try self.sql_db.exec(query, .{}, values);
+            try self.sql_db.raw(query, values).exec();
         }
     }
 
-    pub fn icon_by_id(self: *Self, allocator: Allocator, id: Icon.ID) !?Icon {
+    pub fn icon_by_id(self: *Self, id: Icon.ID) !?Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        const raw_opt = try self.sql_db.oneAlloc(Icon.Raw, allocator,  query, .{}, .{@intFromEnum(id)});
+        const raw_opt = try self.sql_db.raw(query, .{id}).fetchOne(Icon.Raw);
         if (raw_opt) |raw| {
             return try Icon.from_raw(raw);
         }
@@ -1556,15 +1432,15 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{}, .{icon_url});
     }
 
-    pub fn icon_get_id(self: *Self, icon_url: []const u8) !?Icon.ID {
+    pub fn icon_get_id(self: *Self, icon_url: []const u8) !Icon.ID {
         assert(is_url_or_data(icon_url));
         const query = 
         \\select icon_id FROM icon
         \\WHERE icon_url = ? or icon_data = ?
         \\LIMIT 1;
         ;
-        const raw = try self.sql_db.one(u64, query, .{}, .{icon_url, icon_url}) orelse return .unassigned;
-        return @enumFromInt(raw);
+        const icon_id = try self.sql_db.raw(query, .{icon_url, icon_url}).fetchOne(Icon.ID) orelse return .unassigned;
+        return icon_id;
     }
 
     pub fn feed_icon_update(self: *Self, feed_id: Feed.ID, icon_id: Icon.ID) !void {
@@ -1576,7 +1452,7 @@ pub const Storage = struct {
         \\WHERE feed_id = ?;
         ;
 
-        try self.sql_db.exec(query, .{}, .{@intFromEnum(icon_id), @intFromEnum(feed_id)});
+        try self.sql_db.raw(query, .{icon_id, feed_id}).exec();
     }
 
     pub const IconFailedInsert = struct {
@@ -1592,10 +1468,10 @@ pub const Storage = struct {
         \\  last_msg = @last_msg
 
         ;
-        try self.sql_db.exec(query, .{}, .{
-            .feed_id = @intFromEnum(icon_failed.feed_id),
+        try self.sql_db.raw(query, .{
+            .feed_id = icon_failed.feed_id,
             .last_msg = icon_failed.last_msg,
-        });
+        }).exec();
     }
 
     pub fn icon_failed_remove(self: *Self, feed_id: Feed.ID) !void {
@@ -1603,7 +1479,7 @@ pub const Storage = struct {
         const query =
             \\DELETE FROM icon_failed WHERE feed_id = ?;
         ;
-        try self.sql_db.exec(query, .{}, .{@intFromEnum(feed_id)});
+        try self.sql_db.raw(query, .{feed_id}).exec();
     }
 
     pub fn html_selector_add(self: *Self, feed_id: Feed.ID, options: parse.HtmlOptions) !void {
@@ -1626,14 +1502,14 @@ pub const Storage = struct {
             \\;
         ;
 
-        try self.sql_db.exec(query, .{}, .{
-            .feed_id = @intFromEnum(feed_id),
+        try self.sql_db.raw(query, .{
+            .feed_id = feed_id,
             .container = options.selector_container,
             .link = options.selector_link,
             .heading = options.selector_heading,
             .date = options.selector_date,
             .date_format = options.date_format,
-        });
+        }).exec();
     }
 
     pub fn html_selector_update(self: *Self, feed_id: Feed.ID, options: parse.HtmlOptions) !void {
@@ -1647,23 +1523,23 @@ pub const Storage = struct {
         \\ date_format = ?
         \\where feed_id = ?;
         ;
-        try self.sql_db.exec(query, .{}, .{
+        try self.sql_db.raw(query, .{
             options.selector_container,
             options.selector_link,
             options.selector_heading,
             options.selector_date,
             options.date_format,
-            @intFromEnum(feed_id)
-        });
+            feed_id,
+        }).exec();
     }
     
     pub fn html_selector_has(self: *Self, feed_id: Feed.ID) !bool {
         assert(feed_id != .unassigned);
         const query = "select 1 from html_selector where feed_id = ?";
-        return (try one(&self.sql_db, bool, query, .{@intFromEnum(feed_id)})) orelse false;
+        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchOne(bool) orelse false;
     }
 
-    pub fn html_selector_get(self: *Self, allocator: Allocator, feed_id: Feed.ID) !?parse.HtmlOptions {
+    pub fn html_selector_get(self: *Self, feed_id: Feed.ID) !?parse.HtmlOptions {
         assert(feed_id != .unassigned);
         const query = 
         \\select 
@@ -1675,7 +1551,7 @@ pub const Storage = struct {
         \\from html_selector
         \\where feed_id = ?;
         ;
-        return try oneAlloc(&self.sql_db, allocator, parse.HtmlOptions, query, .{@intFromEnum(feed_id)});
+        return try self.sql_db.raw(query, .{feed_id}).fetchOne(parse.HtmlOptions) ;
     }
 };
 
@@ -1785,7 +1661,7 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed_request_failed(
     \\  feed_id INTEGER NOT NULL,
     \\  utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    \\  reason TEXT DEFAULT NULL,
+    \\  reason TEXT DEFAULT NULL
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
@@ -1846,39 +1722,6 @@ const tables = &[_][]const u8{
     \\  where table_name = 'feed';
     \\END;
 };
-
-pub fn one(db: *sql.Db, comptime T: type, comptime query: []const u8, args: anytype) !?T {
-    return db.one(T, query, .{}, args) catch |err| {
-        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-pub fn oneAlloc(db: *sql.Db, allocator: Allocator, comptime T: type, comptime query: []const u8, opts: anytype) !?T {
-    return db.oneAlloc(T, allocator, query, .{}, opts) catch |err| {
-        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-}
-
-pub fn selectAll(
-    db: *sql.Db,
-    allocator: Allocator,
-    comptime T: type,
-    comptime query: []const u8,
-    opts: anytype,
-) ![]T {
-    var stmt = db.prepare(query) catch |err| {
-        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-    defer stmt.deinit();
-    const result = stmt.all(T, allocator, .{}, opts) catch |err| {
-        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}", .{ db.getDetailedError().message, query });
-        return err;
-    };
-    return result;
-}
 
 fn testAddFeed(storage: *Storage) !void {
     const allocator = std.testing.allocator;
