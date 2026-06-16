@@ -1160,15 +1160,6 @@ pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
             return error.DirectoryPath;
         }
 
-        if (fs.path.dirname(db_path)) |db_dir| {
-            var path_buf: [fs.max_path_bytes]u8 = undefined;
-            _ = std.Io.Dir.cwd().realPath(init.io, &path_buf) catch |err| switch (err) {
-                error.FileNotFound => {
-                    try std.Io.Dir.cwd().createDir(init.io, db_dir, .default_dir);
-                },
-                else => return err,
-            };
-        }
         break :blk db_path;
     };
 
