@@ -103,7 +103,7 @@ pub const Storage = struct {
     }
 
     fn print_sql_error(db: *sql.Session, query: []const u8) void {
-        std.log.debug("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.conn.lastError(), query });
+        std.log.err("SQL_ERROR: {s}\n Failed query:\n{s}\n", .{ db.conn.lastError(), query });
     }
 
     fn initData(db: *sql.Session) !void {
@@ -1661,7 +1661,7 @@ const tables = &[_][]const u8{
     \\CREATE TABLE IF NOT EXISTS feed_request_failed(
     \\  feed_id INTEGER NOT NULL,
     \\  utc_sec INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-    \\  reason TEXT DEFAULT NULL
+    \\  reason TEXT DEFAULT NULL,
     \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
     \\) STRICT;
     ,
