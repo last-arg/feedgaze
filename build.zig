@@ -133,8 +133,6 @@ pub fn build(b: *Build) !void {
 
     const ico_step = b.step("image", "run image");
     ico_step.dependOn(&ico_cmd.step);
-    
-    
 }
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
@@ -147,8 +145,11 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const args = b.dependency("args", dep_args);
     step.root_module.addImport("zig-args", args.module("args"));
 
-    const datetime = b.dependency("datetime", dep_args);
-    step.root_module.addImport("datetime", datetime.module("datetime"));
+    const tempora = b.dependency("tempora", .{});
+    step.root_module.addImport("tempora", tempora.module("tempora"));
+
+    const zdt = b.dependency("zdt", .{});
+    step.root_module.addImport("zdt", zdt.module("zdt"));
 
     const known_folders = b.dependency("known_folders", .{});
     step.root_module.addImport("known-folders", known_folders.module("known-folders"));

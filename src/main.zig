@@ -6,11 +6,28 @@ pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
+// pub fn main() !void {
+//     {
+//         const dt = @import("tempora");
+//         const i = "2011-11-12";
+//         const v = try dt.Date.from_string("YYYY-MM", i);
+//         print("V: {}\n", .{v});
+//     }
+
+//     {
+//         const dt = @import("zdt");
+//         const i = "2011-11-10";
+//         const v = try dt.Datetime.fromString(i, "%Y-%m-%d");
+//         print("V: {}\n", .{v});
+//     }
+// }
+
 pub fn main(init: std.process.Init) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     // const allocator = init.gpa;
     const allocator = gpa.allocator();
     const io = init.io;
+
     {
         const progress_node = std.Progress.start(io, .{});
         defer progress_node.end();
@@ -32,43 +49,3 @@ pub fn main(init: std.process.Init) !void {
     const has_leaked = gpa.detectLeaks();
     std.log.debug("Has leaked: {}\n", .{has_leaked});
 }
-
-// pub fn main() !void {
-//     try longCompileTime();
-//     std.debug.print("DONE\n", .{});
-// }
-
-// Cause of long compile times? https://github.com/ziglang/zig/issues/15266
-// fn longCompileTime() !void {
-
-//     // When I added std.http.Client.request function my compile times increased several fold from
-//     // ~1s to ~16s. After looking deeper found that is was caused by std.crypto.tls.Client.init
-//     // function. My guess is that is cause by some comptime stuff, probably arrays.
-//     {
-//         var gen = std.heap.GeneralPurposeAllocator(.{}){};
-//         var arena = std.heap.ArenaAllocator.init(gen.allocator());
-//         defer arena.deinit();
-//         var client = std.http.Client{ .allocator = arena.allocator() };
-//         const host = "github.com";
-//         const port = 80;
-//         const stream = try std.net.tcpConnectToHost(arena.allocator(), host, port);
-//         errdefer stream.close();
-
-//         const tls_client = try std.crypto.tls.Client.init(stream, client.ca_bundle, host);
-//         _ = tls_client;
-//     }
-
-//     // {
-//     //     const w: u32 = 1080;
-//     //     const h: u32 = 40;
-
-//     //     // time: 1.26 sec
-//     //     // var pixels: [w * h * 3]f32 = [1]f32{0.0} ** (w * h * 3);
-//     //     // time: 4.26 sec
-//     //     // var pixels = std.mem.zeroes([w * h * 3]f32);
-//     //     // time: 1.24 sec
-//     //     var pixels = comptime std.mem.zeroes([w * h * 3]f32);
-//     //     _ = pixels;
-//     //     // pixels[69] = 42;
-//     // }
-// }

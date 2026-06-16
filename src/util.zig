@@ -1,6 +1,6 @@
 const std = @import("std");
-const datetime = @import("datetime").datetime;
-const Datetime = datetime.Datetime;
+const zdt = @import("zdt");
+const Datetime = zdt.Datetime;
 const html = @import("./html.zig");
 const image = @import("image.zig");
 
@@ -27,32 +27,27 @@ pub fn is_inline_svg(data: []const u8) bool {
     return std.mem.startsWith(u8, data, "<svg");
 }
 
-// Date for machine "2011-11-18T14:54:39.929Z". For <time datetime="...">.
-pub const date_fmt = "{[year]d}-{[month]d:0>2}-{[day]d:0>2}T{[hour]d:0>2}:{[minute]d:0>2}:{[second]d:0>2}.000Z";
-pub const date_len_max = std.fmt.count(date_fmt, .{
-    .year = 2222,
-    .month = 3,
-    .day = 2,
-    .hour = 2,
-    .minute = 2,
-    .second = 2,
-});
+pub fn count_date_len(comptime fmt: []const u8, date: Datetime) usize {
+    var trash_buffer: [64]u8 = undefined;
+    var dw: std.Io.Writer.Discarding = .init(&trash_buffer);
+    date.toString(fmt, &dw.writer) catch unreachable;
+    return @intCast(dw.count + dw.writer.end);
+}
+
+// Date for machine "2011-11-18T14:54:39Z". For <time datetime="...">.
+pub const date_len_max = count_date_len(zdt.Formats.RFC3339, Datetime{ .utc_offset = zdt.UTCoffset.UTC, });
 
 pub fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
-    if (timestamp) |ts| {
-        const dt = Datetime.fromSeconds(@floatFromInt(ts));
-        const date_args = .{
-            .year = dt.date.year,
-            .month = dt.date.month,
-            .day = dt.date.day,
-            .hour = dt.time.hour,
-            .minute = dt.time.minute,
-            .second = dt.time.second,
-        };
-        return std.fmt.bufPrint(buf, date_fmt, date_args) catch unreachable; 
-    }
+    const ts = timestamp orelse return "";
 
-    return "";
+    var w: std.Io.Writer = .fixed(buf);
+    const dt = Datetime.fromUnix(ts, .second, null) catch return "";
+    dt.toString(zdt.Formats.RFC3339, &w) catch |err| {
+        std.log.warn("Failed to format date timestamp. Error: {}", .{err});
+        return "";
+    };
+
+    return w.buffered();
 }
 
 pub fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {

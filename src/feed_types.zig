@@ -1,6 +1,6 @@
 const std = @import("std");
 const Uri = std.Uri;
-const dt = @import("datetime").datetime;
+const dt = @import("zdt");
 const Response = @import("http_client.zig").Response;
 const mem = std.mem;
 const util = @import("util.zig");
@@ -141,33 +141,13 @@ pub fn resolve_and_write_url(writer: *std.Io.Writer, input: []const u8, base_url
 pub const AtomDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
         const raw = std.mem.trimStart(u8, input, &std.ascii.whitespace);
-        const year = std.fmt.parseUnsigned(u16, raw[0..4], 10) catch return error.InvalidFormat;
-        const month = std.fmt.parseUnsigned(u16, raw[5..7], 10) catch return error.InvalidFormat;
-        const day = std.fmt.parseUnsigned(u16, raw[8..10], 10) catch return error.InvalidFormat;
-        const hour = std.fmt.parseUnsigned(u16, raw[11..13], 10) catch return error.InvalidFormat;
-        const minute = std.fmt.parseUnsigned(u16, raw[14..16], 10) catch return error.InvalidFormat;
-        const second = std.fmt.parseUnsigned(u16, raw[17..19], 10) catch return error.InvalidFormat;
-        const tz = blk: {
-            const sign_index = raw.len - 6;
-            if (raw[raw.len - 1] == 'Z') {
-                break :blk dt.Timezone.create("Z", 0, .no_dst);
-            } else if (raw[sign_index] == '+' or raw[sign_index] == '-') {
-                const sign_raw = raw[sign_index];
-
-                const tz_hour = std.fmt.parseInt(i16, raw[sign_index + 1 .. sign_index + 3], 10) catch return error.InvalidFormat;
-                const tz_min = std.fmt.parseUnsigned(i16, raw[sign_index + 4 .. sign_index + 6], 10) catch return error.InvalidFormat;
-                // This is based on '+' and '-' ascii numeric values
-                const sign = -1 * (@as(i16, sign_raw) - 44);
-                break :blk dt.Timezone.create(raw[sign_index..], sign * ((tz_hour * 60) + tz_min), .no_dst);
-            } else {
-                // Out of spec, default to "Z" time zone
-                break :blk dt.Timezone.create("Z", 0, .no_dst);
-            }
-            return error.InvalidFormat;
+        const date = dt.Datetime.fromString(raw, dt.Formats.RFC3339) catch
+            dt.Datetime.fromString(input, dt.Formats.RFC3339nano) catch {
+            std.log.warn("Failed to parse atom date and time. Parsed value: '{s}'", .{raw});
+            return error.FailedToParseAtomDate;
         };
 
-        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, tz) catch return error.InvalidFormat;
-        return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
+        return @intCast(date.toUnix(.second));
     }
 };
 
@@ -202,9 +182,11 @@ pub const RssDateTime = struct {
         N,
         Y,
 
-        pub fn toMinutes(raw: []const u8) !i16 {
+        pub fn toSeconds(raw: []const u8) ?i16 {
             // Timezone is made of letters
-            if (std.meta.stringToEnum(@This(), raw)) |tz| {
+            var buf: [3]u8 = undefined;
+            const upper_raw = std.ascii.upperString(&buf, raw);
+            if (std.meta.stringToEnum(@This(), upper_raw)) |tz| {
                 const result: i16 = switch (tz) {
                     .UT, .GMT, .UTC => 0,
                     .EST => -5,
@@ -220,19 +202,10 @@ pub const RssDateTime = struct {
                     .N => 1,
                     .Y => 12,
                 };
-                return result * 60;
+                return result * 60 * 60;
             }
 
-            // Timezone is made of numbers
-            const first = raw[0];
-            if (raw.len == 5 and first != '+' and first != '-') {
-                return error.InvalidFormat;
-            }
-            const hour = std.fmt.parseInt(i16, raw[1..3], 10) catch return error.InvalidFormat;
-            const min = std.fmt.parseUnsigned(i16, raw[3..5], 10) catch return error.InvalidFormat;
-            // This is based on '+' and '-' ascii numeric values
-            const sign = -1 * (@as(i16, first) - 44);
-            return sign * ((hour * 60) + min);
+            return null;
         }
     };
 
@@ -253,36 +226,15 @@ pub const RssDateTime = struct {
             // NOTE: Start day and comma (,) are optional
             ctx = ctx[5..];
         }
-        var end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
-        const day = std.fmt.parseUnsigned(u8, ctx[0..end_index], 10) catch return error.InvalidFormat;
-        ctx = ctx[end_index + 1 ..];
-        const month = parseMonth(ctx[0..3]) catch return error.InvalidFormat;
-        end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
-        ctx = ctx[end_index + 1 ..];
-        end_index = std.mem.indexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
-        var year = std.fmt.parseUnsigned(u16, ctx[0..end_index], 10) catch return error.InvalidFormat;
-        if (year < 100) {
-            // NOTE: Assuming two letter length year is a year after 2000
-            year += 2000;
-        }
-        ctx = ctx[end_index + 1 ..];
-        end_index = std.mem.indexOfScalar(u8, ctx, ':') orelse return error.InvalidFormat;
-        const hour = std.fmt.parseUnsigned(u8, ctx[0..end_index], 10) catch return error.InvalidFormat;
-        ctx = ctx[end_index + 1 ..];
-        const minute = std.fmt.parseUnsigned(u8, ctx[0..2], 10) catch return error.InvalidFormat;
-        const second = blk: {
-            if (ctx[2] == ':') {
-                break :blk std.fmt.parseUnsigned(u8, ctx[3..5], 10) catch return error.InvalidFormat;
-            }
-            break :blk 0;
-        };
-        end_index = std.mem.lastIndexOfScalar(u8, ctx, ' ') orelse return error.InvalidFormat;
-        const tz_name = ctx[end_index + 1 ..];
-        const tz_min = Timezone.toMinutes(tz_name) catch return error.InvalidFormat;
-        const tz = dt.Timezone.create(tz_name, tz_min, .no_dst);
 
-        const datetime = dt.Datetime.create(year, month, day, hour, minute, second, 0, tz) catch return error.InvalidFormat;
-        return @as(i64, @intCast(@divTrunc(datetime.toTimestamp(), 1000)));
+        const date = dt.Datetime.fromString(ctx, dt.Formats.RFC822Z) catch
+            dt.Datetime.fromString(ctx, dt.Formats.RFC822)
+        catch {
+            std.log.warn("Failed to parse RSS date and time. Parsed value: '{s}'", .{ctx});
+            return error.FailedToParseAtomDate;
+        };
+
+        return @intCast(date.toUnix(.second));
     }
 };
 

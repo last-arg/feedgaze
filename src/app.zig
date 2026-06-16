@@ -107,19 +107,20 @@ pub const Cli = struct {
                     if (try self.storage.next_update_timestamp()) |timestamp_next| {
                         const now_ts = std.Io.Clock.real.now(self.io).toSeconds();
                         if (timestamp_next > now_ts) {
-                            const Datetime = @import("datetime").datetime.Datetime;
-                            var date = Datetime.fromSeconds(@floatFromInt(timestamp_next));
-                            date = date.shiftTimezone(@import("datetime").timezones.Europe.Helsinki);
+                            const zdt = @import("zdt");
+                            var date = try zdt.Datetime.fromUnix(timestamp_next, .second, null);
+                            const tz = try zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false);
+                            date = try date.tzConvert(.{ .utc_offset = tz });
 
                             var buf: [32]u8 = undefined;
                             const countdown_ts = timestamp_next - now_ts;
                             std.log.info("Next update in {s} [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
                                 try relative_time_from_seconds(&buf, countdown_ts),
-                                date.date.day,
-                                date.date.month,
-                                date.date.year,
-                                date.time.hour,
-                                date.time.minute,
+                                date.day,
+                                date.month,
+                                date.year,
+                                date.hour,
+                                date.minute,
                             });
 
                             loop_count = 0;
@@ -908,7 +909,7 @@ pub const Cli = struct {
             }) catch null;
         }
 
-        var parser: FeedParser = .init(add_opts.feed_opts.body);
+        var parser: FeedParser = .init(self.io, add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
             .feed_url = add_opts.feed_opts.feed_url,
             .now_seconds = std.Io.Clock.real.now(self.io).toSeconds(),
@@ -1357,7 +1358,7 @@ pub const App = struct {
         const body = a_writer.writer.buffered();
 
         const html_options = try self.storage.html_selector_get(f_update.feed_id);
-        var parsing: FeedParser = .init(body);
+        var parsing: FeedParser = .init(self.io, body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
             .feed_url = feed_uri,

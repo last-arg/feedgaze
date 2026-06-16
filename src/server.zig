@@ -5,8 +5,8 @@ const Storage = s.Storage;
 const print = std.debug.print;
 const mem = std.mem;
 const types = @import("./feed_types.zig");
-const datetime = @import("datetime").datetime;
-const Datetime = datetime.Datetime;
+const zdt = @import("zdt");
+const Datetime = zdt.Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
 const html = @import("./html.zig");
@@ -537,7 +537,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         };
     }
     
-    var parsing: parse = .init(add_opts.feed_opts.body);
+    var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, html_opts, .{
         .feed_url = add_opts.feed_opts.feed_url,
@@ -924,7 +924,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         };
     }
 
-    var parsing: parse = .init(add_opts.feed_opts.body);
+    var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, null, .{
         .feed_url = add_opts.feed_opts.feed_url,
@@ -1239,25 +1239,17 @@ fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]co
 }
 
 // Example output: "15:05 21.12.2024"
-const date_format_readable = "{d:0>2}:{d:0>2} {d:0>2}.{d:0>2}.{d:0>4}";
-const date_format_readable_len = std.fmt.count(date_format_readable, .{
-    13, 34, 22, 11, 2024
-});
+const date_format_readable = "%H:%M %d.%m.%Y";
+const date_format_readable_len = util.count_date_len(date_format_readable, .{});
 
 fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
     var result: [date_format_readable_len]u8 = undefined;
-    var date_for_human = Datetime.fromSeconds(@floatFromInt(utc_sec));
-    date_for_human = date_for_human.shiftTimezone(@import("datetime").timezones.Europe.Helsinki);
-    _ = std.fmt.bufPrint(
-        &result, date_format_readable,
-        .{
-            date_for_human.time.hour,
-            date_for_human.time.minute,
-            date_for_human.date.day,
-            date_for_human.date.month,
-            date_for_human.date.year,
-        }
-    ) catch unreachable;
+    var date_for_human = Datetime.fromUnix(utc_sec, .second, null) catch unreachable;
+    const offset = zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false) catch unreachable;
+    date_for_human = date_for_human.tzConvert(.{ .utc_offset = offset } ) catch unreachable;
+
+    var w: std.Io.Writer = .fixed(&result);
+    date_for_human.toString(date_format_readable, &w) catch unreachable;
 
     return result;
 }
@@ -1586,7 +1578,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try w.writeAll("<ul class='stack list-unstyled'>");
         for (items) |item| {
             try w.writeAll("<li class='feed-item'>");
-            try item_render(w, req.arena, item, .{});
+            try item_render(global.io, w, req.arena, item, .{});
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -1891,7 +1883,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             };
 
             const is_new_item = item.created_timestamp > cookie_last_item_ts;
-            try item_latest_render(w, req.arena, item, feed, global, is_new_item);
+            try item_latest_render(global.io, w, req.arena, item, feed, global, is_new_item);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -1909,8 +1901,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.flush();
 }
 
-fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
-    try item_render(w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
+fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
+    try item_render(io, w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
 
     const url = feed.page_url orelse feed.feed_url;
     const title = feed.title orelse "";
@@ -1941,14 +1933,15 @@ fn item_latest_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRe
     }) });
 }
 
-fn timestamp_render(w: anytype, timestamp: ?i64) !void {
+fn timestamp_render(io: std.Io, w: *std.Io.Writer, timestamp: ?i64) !void {
     if (timestamp) |ts| {
         var date_display_buf: [16]u8 = undefined;
         var date_buf: [date_len_max]u8 = undefined;
 
-        const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const now_date = Datetime.nowUTC(io);
+        const now_sec: i64 = @intCast(now_date.toUnix(.second));
         const date_display_value = try date_display(&date_display_buf, now_sec, ts);
-        const age_class = age_class_from_time(ts);
+        const age_class = age_class_from_time(io, ts);
         try w.print(parts_get("date"), .{
             .date = timestampToString(&date_buf, ts),
             .date_display = date_display_value,
@@ -2488,7 +2481,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
                 , .{path});
             }
         }
-        try feed_render(w, feed);
+        try feed_render(global.io, w, feed);
 
         try w.writeAll("</div>");
 
@@ -2519,7 +2512,8 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             continue;
         }
 
-        const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+        const now_date = Datetime.nowUTC(global.io);
+        const date_in_sec: i64 = @intCast(now_date.toUnix(.second));
 
         var hide_index_start = items.len;
         const age_1day_ago = date_in_sec - std.time.s_per_day;
@@ -2537,7 +2531,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
             const hidden = if (hide_index_start > 0 and hide_index_start == i) "hide-after" else "";
             try w.print("<li class='feed-item {s}'>", .{hidden});
 
-            try item_render(w, allocator, item, .{.class = "truncate-2"});
+            try item_render(global.io, w, allocator, item, .{.class = "truncate-2"});
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -2557,8 +2551,10 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
     try w.writeAll("</div>");
 }
 
-fn age_class_from_time(time: ?i64) []const u8 {
-    const date_in_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+fn age_class_from_time(io: std.Io, time: ?i64) []const u8 {
+    const now_date = Datetime.nowUTC(io);
+    const date_in_sec: i64 = @intCast(now_date.toUnix(.second));
+
     const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
     const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
             
@@ -2581,11 +2577,11 @@ const ItemRenderOptions = struct {
     is_new_item: bool = false,
 };
 
-fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
+fn item_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
     if (opts.is_new_item) {
         try w.writeAll("<div class='feed-time'>");
     }
-    try timestamp_render(w, item.updated_timestamp);
+    try timestamp_render(io, w, item.updated_timestamp);
     if (opts.is_new_item) {
         try w.writeAll("<span>new</span>");
         try w.writeAll("</div>");
@@ -2600,7 +2596,7 @@ fn item_render(w: anytype, allocator: std.mem.Allocator, item: FeedItemRender, o
     }
 }
 
-fn feed_render(w: anytype, feed: types.Feed) !void {
+fn feed_render(io: std.Io, w: *std.Io.Writer, feed: types.Feed) !void {
     const title = blk: {
         if (feed.title) |title| {
             if (title.len > 0) {
@@ -2616,11 +2612,12 @@ fn feed_render(w: anytype, feed: types.Feed) !void {
         try w.print(parts_get("feed_no_link"), .{ .title = title });
     }
 
-    const now_sec: i64 = @intFromFloat(Datetime.now().toSeconds());
+    const now_date = Datetime.nowUTC(io);
+    const now_sec: i64 = @intCast(now_date.toUnix(.second));
     var date_display_buf: [16]u8 = undefined;
     var date_buf: [date_len_max]u8 = undefined;
 
-    const age_class = age_class_from_time(feed.updated_timestamp);
+    const age_class = age_class_from_time(io, feed.updated_timestamp);
     const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
 
     try w.print(parts_get("date"), .{
@@ -2679,9 +2676,11 @@ fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !voi
 
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
     if (a < b) {
-        const dt = Datetime.fromSeconds(@floatFromInt(b));
+        const dt = try Datetime.fromUnix(b, .second, null);
+        var w: std.Io.Writer = .fixed(buf);
         // fallback date format: 01 Jan 2014
-        return try std.fmt.bufPrint(buf, "{d:0>2} {s} {d}", .{dt.date.day, dt.date.monthName()[0..3], dt.date.year});
+        try dt.toString("%d %:b %Y", &w);
+        return w.buffered();
     }
 
     const diff = a - b;

@@ -33,10 +33,6 @@
             .url = "git+https://github.com/cztomsik/fridge#7f4bb623af841305156d0e70a59bff2e1476bb74",
             .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
         },
-        .datetime = .{
-            .url = "https://github.com/frmdstryr/zig-datetime/archive/refs/heads/master.zip",
-            .hash = "datetime-0.8.0-cJNXzPbbAQCHDBI-QqciRLaUQ12kd3y_oCXiTbjyqDhT",
-        },
         .known_folders = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
             .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
@@ -44,6 +40,14 @@
         .cli = .{
             .url = "git+https://github.com/sam701/zig-cli#036341c48b32ef355274d66461551772fc1f202d",
             .hash = "cli-0.11.0-2eKe_6sIAQB1njsE9sfrNvd2HxmQej13ebo-D3kBuFX3",
+        },
+        .tempora = .{
+            .url = "https://codeberg.org/bcrist/tempora/archive/main.tar.gz",
+            .hash = "tempora-0.6.2-GTyeDYjJFgBs1HNw-Po6mg7n0n_-oipch9GwSX6MFXwr",
+        },
+        .zdt = .{
+            .url = "https://codeberg.org/FObersteiner/zdt/archive/main.tar.gz",
+            .hash = "zdt-0.9.4-xr0_vHvnEQBa2kexZk6j3CrdybDFd0BHa7DdL7hgDqfD",
         },
     },
 }
