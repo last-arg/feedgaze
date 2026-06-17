@@ -6,3 +6,4 @@ zig-pkg/
 *-shm
 *-wal
 *backup*
+src/server/dist/
