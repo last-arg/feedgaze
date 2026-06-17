@@ -254,7 +254,7 @@ pub const Storage = struct {
         const query =
             \\SELECT feed_id FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
-        return try self.sql_db.raw(query, .{ url, url }).fetchOne(Feed.ID);
+        return try self.sql_db.raw(query, .{ url, url }).get(Feed.ID);
     }
     
     pub fn get_feed_with_url(self: *Self, url: []const u8) !?Feed {
@@ -263,7 +263,7 @@ pub const Storage = struct {
             \\FROM feed WHERE feed_url = ? OR page_url = ?;
         ;
         
-        return try self.sql_db.raw(query, .{url, url}).fetchOne(Feed);
+        return try self.sql_db.raw(query, .{url, url}).get(Feed);
     }
 
     pub fn getFeedsWithUrl(self: *Self, url: []const u8) ![]const Feed {
@@ -465,7 +465,7 @@ pub const Storage = struct {
     pub fn hasFeedWithId(self: *Self, feed_id: Feed.ID) !bool {
         assert(feed_id != .unassigned);
         const query = "SELECT EXISTS(SELECT 1 FROM feed WHERE feed_id = ?)";
-        return (try self.sql_db.raw(query, .{feed_id}).fetchOne(bool)).?;
+        return (try self.sql_db.raw(query, .{feed_id}).get(bool)).?;
     }
 
     pub fn insertFeedItems(self: *Self, inserts: []FeedItem) ![]FeedItem {
@@ -583,9 +583,9 @@ pub const Storage = struct {
             .icon_url = icon_url,
             .icon_data = icon.data,
             .cache_value = icon.etag_or_last_modified_or_hash,
-        }).fetchOne(u64) orelse try self.sql_db.raw("select icon_id from icon where icon_url = ?", .{
+        }).get(u64) orelse try self.sql_db.raw("select icon_id from icon where icon_url = ?", .{
             icon_url,
-        }).fetchOne(u64);
+        }).get(u64);
 
         if (icon_id_opt) |icon_id| {
             return @enumFromInt(icon_id);
@@ -705,7 +705,7 @@ pub const Storage = struct {
 
     pub fn tag_with_id(self: *Self, tag_id: usize) !?TagResult {
         const query = "SELECT tag_id, name FROM tag where tag_id = ?;";
-        return try self.sql_db.raw(query, .{tag_id}).fetchOne(TagResult);
+        return try self.sql_db.raw(query, .{tag_id}).get(TagResult);
     }
 
     pub fn tag_update(self: *Self, data: struct{tag_id: usize, name: []const u8}) !void {
@@ -783,7 +783,7 @@ pub const Storage = struct {
         const query = "select tag_id from tag where name = ?;"; 
         var i: usize = 0;
         for (tags) |tag| {
-            if (try self.sql_db.raw(query, .{tag}).fetchOne(u64) ) |value| {
+            if (try self.sql_db.raw(query, .{tag}).get(u64) ) |value| {
                 buf[i] = value;
                 i += 1;
             }
@@ -975,7 +975,7 @@ pub const Storage = struct {
         ;
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         defer allocator.free(query);
-        const result = try self.sql_db.raw(query, .{}).fetchOne(bool);
+        const result = try self.sql_db.raw(query, .{}).get(bool);
         return result orelse false;
     }
     
@@ -990,7 +990,7 @@ pub const Storage = struct {
         \\WHERE feed_id = ?;
         ;
 
-        return try self.sql_db.raw(query, .{feed_id}).fetchOne(Feed);
+        return try self.sql_db.raw(query, .{feed_id}).get(Feed);
     }
 
     // const InsertRuleHost = struct {
@@ -1010,14 +1010,14 @@ pub const Storage = struct {
         \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
         ;
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const match_host_id = try self.sql_db.raw(query_insert_host, .{rule.match_host}).fetchOne(u64)
-            orelse try self.sql_db.raw(query_select_host, .{rule.match_host}).fetchOne(u64)
+        const match_host_id = try self.sql_db.raw(query_insert_host, .{rule.match_host}).get(u64)
+            orelse try self.sql_db.raw(query_select_host, .{rule.match_host}).get(u64)
             orelse return error.AddRuleNoMatchHostId;
 
         const result_host_id = blk: {
             if (!mem.eql(u8, rule.match_host, rule.result_host)) {
-                break :blk try self.sql_db.raw(query_insert_host, .{rule.result_host}).fetchOne(u64)
-                    orelse try self.sql_db.raw(query_select_host, .{rule.result_host}).fetchOne(u64)
+                break :blk try self.sql_db.raw(query_insert_host, .{rule.result_host}).get(u64)
+                    orelse try self.sql_db.raw(query_select_host, .{rule.result_host}).get(u64)
                     orelse return error.AddRuleNoResultHostId;
             }
             break :blk match_host_id;
@@ -1081,13 +1081,13 @@ pub const Storage = struct {
             \\AND (select host_id from add_rule_host where name = $match_host)
             \\AND (select host_id from add_rule_host where name = $result_host)
         ;
-        return try self.sql_db.raw(query, rule).fetchOne(bool) orelse false;
+        return try self.sql_db.raw(query, rule).get(bool) orelse false;
     }
 
     const AddRule = @import("add_rule.zig");
     pub fn get_rules_for_host(self: *Self, host: []const u8) ![]const AddRule.RuleWithHost {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const host_id = try self.sql_db.raw(query_select_host, .{host}).fetchOne(u64)  orelse return &.{};
+        const host_id = try self.sql_db.raw(query_select_host, .{host}).get(u64)  orelse return &.{};
         const query = 
         \\select 
         \\  match_path,
@@ -1102,7 +1102,7 @@ pub const Storage = struct {
 
     pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const host_id = try self.sql_db.raw(query_select_host, .{uri.host}).fetchOne(u64)  orelse return null;
+        const host_id = try self.sql_db.raw(query_select_host, .{uri.host}).get(u64)  orelse return null;
 
         const query = 
         \\select 
@@ -1116,7 +1116,7 @@ pub const Storage = struct {
 
         const tmp_path = try allocator.dupe(u8, uri.path);
         mem.replaceScalar(u8, tmp_path, '*', '%');
-        return try self.sql_db.raw(query, .{.host_id = host_id, .tmp_path = tmp_path}).fetchOne(Rule);
+        return try self.sql_db.raw(query, .{.host_id = host_id, .tmp_path = tmp_path}).get(Rule);
     }
 
     pub fn update_item_intervals(self: *Self) !void {
@@ -1205,7 +1205,7 @@ pub const Storage = struct {
         \\)
         , .{rate_limit_iif_utc_sec, failed_request_utc_sec})
         ;
-        return try self.sql_db.raw(query, .{}).fetchOne(i64);
+        return try self.sql_db.raw(query, .{}).get(i64);
     }
 
     // NOTE: null means that there have been to many failed feed requests in a row
@@ -1223,7 +1223,7 @@ pub const Storage = struct {
             \\left join rate_limit as rl on rl.feed_id = req.feed_id
             \\where req.feed_id = @feed_id
         ;
-        const result = try self.sql_db.raw(query, .{.feed_id = @intFromEnum(feed_id)}).fetchOne(i64) ;
+        const result = try self.sql_db.raw(query, .{.feed_id = @intFromEnum(feed_id)}).get(i64) ;
         if (result) |val| if (val != 0) {
             return val;
         };
@@ -1232,7 +1232,7 @@ pub const Storage = struct {
 
     pub fn feed_last_update(self: *Self, feed_id: Feed.ID) !?i64 {
         assert(feed_id != .unassigned);
-        return try self.sql_db.raw("select last_update from feed_update where feed_id = ?", .{@intFromEnum(feed_id)}).fetchOne(i64);
+        return try self.sql_db.raw("select last_update from feed_update where feed_id = ?", .{@intFromEnum(feed_id)}).get(i64);
     }
 
     pub fn get_items_latest_added(self: *Self) ![]const FeedItemRender {
@@ -1253,7 +1253,7 @@ pub const Storage = struct {
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
             \\);
         ;
-        return try self.sql_db.raw(query, .{}).fetchOne(i64);
+        return try self.sql_db.raw(query, .{}).get(i64);
     }
 
     pub fn get_latest_feed_change(self: *Self, feed_id: Feed.ID) !?i64 {
@@ -1265,14 +1265,14 @@ pub const Storage = struct {
             \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
             \\);
         ;
-        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchOne(i64) ;
+        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).get(i64) ;
     }
 
     pub fn get_tags_change(self: *Self) !?i64 {
         const query = 
             \\SELECT last_update_timestamp FROM table_last_update where table_name = 'tag';
         ;
-        return try self.sql_db.raw(query, .{}).fetchOne(i64);
+        return try self.sql_db.raw(query, .{}).get(i64);
     }
 
     pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const Feed.ID) ![]const Feed {
@@ -1308,7 +1308,7 @@ pub const Storage = struct {
         const query =
             \\SELECT feed_id FROM feed WHERE icon_id = ?
         ;
-        const feed_id = try self.sql_db.raw(query, .{@intFromEnum(icon_id)}).fetchOne(u64)  orelse return null;
+        const feed_id = try self.sql_db.raw(query, .{@intFromEnum(icon_id)}).get(u64)  orelse return null;
         return @enumFromInt(feed_id);
     }
 
@@ -1410,7 +1410,7 @@ pub const Storage = struct {
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        const raw_opt = try self.sql_db.raw(query, .{id}).fetchOne(Icon.Raw);
+        const raw_opt = try self.sql_db.raw(query, .{id}).get(Icon.Raw);
         if (raw_opt) |raw| {
             return try Icon.from_raw(raw);
         }
@@ -1432,7 +1432,7 @@ pub const Storage = struct {
         \\WHERE icon_url = ? or icon_data = ?
         \\LIMIT 1;
         ;
-        const icon_id = try self.sql_db.raw(query, .{icon_url, icon_url}).fetchOne(Icon.ID) orelse return .unassigned;
+        const icon_id = try self.sql_db.raw(query, .{icon_url, icon_url}).get(Icon.ID) orelse return .unassigned;
         return icon_id;
     }
 
@@ -1529,7 +1529,7 @@ pub const Storage = struct {
     pub fn html_selector_has(self: *Self, feed_id: Feed.ID) !bool {
         assert(feed_id != .unassigned);
         const query = "select 1 from html_selector where feed_id = ?";
-        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchOne(bool) orelse false;
+        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).get(bool) orelse false;
     }
 
     pub fn html_selector_get(self: *Self, feed_id: Feed.ID) !?parse.HtmlOptions {
@@ -1544,7 +1544,7 @@ pub const Storage = struct {
         \\from html_selector
         \\where feed_id = ?;
         ;
-        return try self.sql_db.raw(query, .{feed_id}).fetchOne(parse.HtmlOptions) ;
+        return try self.sql_db.raw(query, .{feed_id}).get(parse.HtmlOptions) ;
     }
 };
 
@@ -1734,12 +1734,12 @@ fn testAddFeed(storage: *Storage) !void {
     _ = try storage.addFeed(parsed, add_opts);
 
     {
-        const count = try storage.sql_db.raw("select count(*) from feed", .{}).fetchOne(usize) ;
+        const count = try storage.sql_db.raw("select count(*) from feed", .{}).get(usize) ;
         try std.testing.expectEqual(1, count.?);
     }
 
     {
-        const count = try storage.sql_db.raw("select count(*) from item", .{}).fetchOne(usize) ;
+        const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize) ;
         try std.testing.expectEqual(4, count.?);
     }
 }
