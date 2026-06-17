@@ -540,7 +540,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, html_opts, .{
-        .feed_url = add_opts.feed_opts.feed_url,
+        .feed_url = .init(add_opts.feed_opts.feed_url),
     });
   
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -927,7 +927,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, null, .{
-        .feed_url = add_opts.feed_opts.feed_url,
+        .feed_url = .init(add_opts.feed_opts.feed_url),
     });
 
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -1462,7 +1462,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\</div>
     ;
 
-    const page_url = feed.page_url orelse std.Uri{.scheme = ""};
+    const page_url: types.UriWrapper = feed.page_url orelse .init(std.Uri{.scheme = ""});
 
     const icon_url = blk: {
         if (feed.icon_id.is_valid()) {
@@ -1470,7 +1470,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 const icon_url_raw = global.icon_manage.get_url_string_by_index(index);
                 const icon_url = try std.Uri.parse(icon_url_raw);
                 // NOTE: Is inline icon
-                if (std.meta.eql(icon_url, page_url)) {
+                if (std.meta.eql(icon_url, page_url.value)) {
                     const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
                     break :blk icon_encoded;
@@ -1913,7 +1913,7 @@ fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocato
 
     try w.print(
         \\<a class="feed-external-url" href="{f}" rel="noreferrer noopener">
-    , .{ url.fmt(.all) });
+    , .{ url });
 
     var buf: [128]u8 = undefined;
     if (feed.icon_id.is_valid()) {
@@ -1927,7 +1927,7 @@ fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocato
     try w.print(
         \\<span>{f}</span></a>
         \\</div>
-    , .{ url.fmt(.{
+    , .{ url.value.fmt(.{
         .authority = true,
         .port = true,
     }) });

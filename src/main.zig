@@ -53,4 +53,6 @@ pub fn main(init: std.process.Init) !void {
 test {
     const types = @import("feed_types.zig");
     _ = types;
+    const storage = @import("storage.zig");
+    _ = storage.Storage;
 }

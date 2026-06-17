@@ -72,18 +72,43 @@ pub const Location = struct {
     len: u32,
 };
 
+// NOTE: std.Uri wrapper so can provide toValue() and fromValue() to library fridge
+pub const UriWrapper = struct {
+    value: std.Uri,
+
+    pub fn init(uri: std.Uri) @This() {
+        return .{ .value = uri };
+    }
+
+    pub fn from_string(str: []const u8) !@This() {
+        return .{ .value = try std.Uri.parse(str) };
+    }
+
+    pub fn format(uri: *const UriWrapper, writer: *std.Io.Writer) !void {
+        try std.Uri.format(&uri.value, writer);
+    }
+
+    pub fn toValue(uri_opt: UriWrapper, arena: std.mem.Allocator) !@import("fridge").Value {
+        const uri_str = try std.fmt.allocPrint(arena, "{f}", .{uri_opt});
+        return .{ .string = uri_str };
+    }
+
+    pub fn fromValue(val: @import("fridge").Value, _: std.mem.Allocator) !UriWrapper {
+        const result = try std.Uri.parse(val.string);
+
+        return UriWrapper{.value = result};
+    }
+};
+
 pub const Feed = struct {
     feed_id: ID = .unassigned,
     title: ?[]const u8 = null,
-    feed_url: std.Uri,
-    page_url: ?std.Uri = null,
+    feed_url: UriWrapper,
+    page_url: ?UriWrapper = null,
     icon_id: IconRender.ID = .unassigned,
     updated_timestamp: ?i64 = null,
 
-    pub const ID = enum(u64) {
-        unassigned = 0,
-        _
-    };
+    pub const ID = SqliteId;
 
     pub const Raw = struct {
         feed_id: usize = 0,
@@ -304,18 +329,28 @@ test "RssDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1701709200), d8);
 }
 
+const SqliteId = enum(u64) {
+    unassigned = 0,
+    _,
+
+    pub fn toValue(val: @This(), _: std.mem.Allocator) !@import("fridge").Value {
+        return .{ .int = @intCast(@intFromEnum(val)) };
+    }
+
+    pub fn fromValue(val: @import("fridge").Value, _: std.mem.Allocator) !@This() {
+        return @enumFromInt(val.int);
+    }
+};
+
 pub const FeedItem = struct {
     feed_id: Feed.ID = .unassigned,
     item_id: ID = .unassigned,
     title: []const u8,
     id: ?[]const u8 = null,
-    link: ?std.Uri = null,
+    link: ?UriWrapper = null,
     updated_timestamp: ?i64 = null,
 
-    pub const ID = enum(u64) {
-        unassigned = 0,
-        _
-    }; 
+    pub const ID = SqliteId;
 
     pub const Parsed = struct {
         title: ?Location = null,
@@ -522,6 +557,18 @@ pub const IconRender = struct {
 
         pub fn is_valid(id: @This()) bool {
             return id != .unassigned;
+        }
+
+        pub fn toValue(val: anytype, arena: std.mem.Allocator) !@import("fridge").Value {
+            _ = val; // autofix
+            _ = arena; // autofix
+            return .null;
+        }
+
+        pub fn fromValue(val: @import("fridge").Value, arena: std.mem.Allocator) !ID {
+            _ = val; // autofix
+            _ = arena; // autofix
+            return .unassigned;
         }
     };
 

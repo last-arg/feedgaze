@@ -911,7 +911,7 @@ pub const Cli = struct {
 
         var parser: FeedParser = .init(self.io, add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
-            .feed_url = add_opts.feed_opts.feed_url,
+            .feed_url = .init(add_opts.feed_opts.feed_url),
             .now_seconds = std.Io.Clock.real.now(self.io).toSeconds(),
         });
 
@@ -1352,7 +1352,7 @@ pub const App = struct {
         var parsing: FeedParser = .init(self.io, body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
-            .feed_url = feed_uri,
+            .feed_url = .init(feed_uri),
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,
         }) catch |err| {

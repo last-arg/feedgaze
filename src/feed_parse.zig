@@ -1304,7 +1304,7 @@ test "getContentType" {
 
 const ParseOptions = struct {
     feed_id: Feed.ID = .unassigned,
-    feed_url: std.Uri,
+    feed_url: feed_types.UriWrapper,
     feed_to_update: ?feed_types.FeedToUpdate = null,
     latest_updated_timestamp: ?i64 = null,
     now_seconds: i64 = 0,
@@ -1337,7 +1337,7 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         result.feed.page_url = result.feed.feed_url;
     }
 
-    const base = result.feed.feed_url;
+    const base = result.feed.feed_url.value;
 
     var buf_arr: [2 * 1024]u8 = undefined;
 
@@ -1351,9 +1351,9 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         if (is_relative_path(page_url)) {
             var buf: []u8 = &buf_arr;
             std.mem.copyForwards(u8, buf, page_url);
-            result.feed.page_url = try Uri.resolveInPlace(base, page_url.len, &buf);
+            result.feed.page_url = .{ .value = try Uri.resolveInPlace(base, page_url.len, &buf) };
         } else {
-            result.feed.page_url = try Uri.parse(page_url);
+            result.feed.page_url = .{ .value = try Uri.parse(page_url)};
         }
     }
 
@@ -1415,12 +1415,12 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
             const link_uri = try std.Uri.parse(link);
             // Don't add feed items with duplicate links
             for (feed_items.items) |feed_item| {
-                if (std.meta.eql(feed_item.link.?, link_uri)) {
+                if (std.meta.eql(feed_item.link.?.value, link_uri)) {
                     continue :outer;
                 }
             }
 
-            new_item.link = link_uri;
+            new_item.link = .init(link_uri);
         }
 
         if (item.title) |loc| {
