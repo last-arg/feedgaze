@@ -167,6 +167,7 @@ test "AtomDateTime.parse" {
 pub const RssDateTime = struct {
     pub const Timezone = enum {
         UT,
+        Z,
         UTC,
         GMT,
         EST,
@@ -185,10 +186,19 @@ pub const RssDateTime = struct {
         pub fn toSeconds(raw: []const u8) ?i16 {
             // Timezone is made of letters
             var buf: [3]u8 = undefined;
-            const upper_raw = std.ascii.upperString(&buf, raw);
-            if (std.meta.stringToEnum(@This(), upper_raw)) |tz| {
+            const upper_raw = std.ascii.upperString(&buf, raw[0..@min(3, raw.len)]);
+            if (raw[0] == '+' or raw[0] == '-') {
+                const offset_raw = raw[1..5];
+                const hour_raw = offset_raw[0..2];
+                const hour = std.fmt.parseInt(i16, hour_raw, 10) catch return null;
+                const minute_raw = offset_raw[2..];
+                const minute = std.fmt.parseInt(i16, minute_raw, 10) catch return null;
+                const sign: i8 = if (raw[0] == '+') 1 else -1;
+
+                return sign * (hour * 60 + minute) * 60;
+            } else if (std.meta.stringToEnum(@This(), upper_raw)) |tz| {
                 const result: i16 = switch (tz) {
-                    .UT, .GMT, .UTC => 0,
+                    .UT, .GMT, .UTC, .Z => 0,
                     .EST => -5,
                     .EDT => -4,
                     .CST => -6,
@@ -227,13 +237,43 @@ pub const RssDateTime = struct {
             ctx = ctx[5..];
         }
 
-        const date = dt.Datetime.fromString(ctx, dt.Formats.RFC822Z) catch
-            dt.Datetime.fromString(ctx, dt.Formats.RFC822)
-        catch {
-            std.log.warn("Failed to parse RSS date and time. Parsed value: '{s}'", .{ctx});
-            return error.FailedToParseAtomDate;
-        };
+        const ctx_err = ctx;
+        errdefer std.log.warn("Failed to parse RSS date and time. Parsed value: '{s}'", .{ctx_err});
 
+        var date_fields: dt.Datetime.Fields = .{};
+
+        var iter = mem.splitScalar(u8, ctx, ' ');
+        const day_raw = iter.next() orelse return error.FailedToParseRssDate;
+        date_fields.day = try std.fmt.parseInt(u8, day_raw, 10);
+
+        const month_raw = iter.next() orelse return error.FailedToParseRssDate;
+        date_fields.month = parseMonth(month_raw[0..@min(3, month_raw.len)]) catch return error.FailedToParseRssDate;
+
+        const year_raw = iter.next() orelse return error.FailedToParseRssDate;
+        const year = try std.fmt.parseInt(i16, year_raw, 10);
+        date_fields.year = year + 2000 * @as(i16, @intFromBool(year < 100));
+
+        blk: {
+            const time_raw = iter.next() orelse break :blk;
+            var time_iter = mem.splitScalar(u8, time_raw, ':');
+
+            const hour_raw = time_iter.next() orelse break :blk;
+            date_fields.hour = std.fmt.parseInt(u8, hour_raw, 10) catch break :blk;
+
+            const minute_raw = time_iter.next() orelse break :blk;
+            date_fields.minute = std.fmt.parseInt(u8, minute_raw, 10) catch break :blk;
+
+            const second_raw = time_iter.next() orelse break :blk;
+            date_fields.second = std.fmt.parseInt(u8, second_raw, 10) catch break :blk;
+        }
+
+        const tz_raw = iter.next() orelse "Z";
+        if (Timezone.toSeconds(tz_raw) ) |val| blk: {
+            const offset = dt.UTCoffset.fromSeconds(val, tz_raw, false) catch break :blk;
+            date_fields.tz_options = .{ .utc_offset = offset };
+        }
+
+        const date = dt.Datetime.fromFields(date_fields) catch return error.FailedToParseRssDate;
         return @intCast(date.toUnix(.second));
     }
 };
