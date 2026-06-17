@@ -78,6 +78,9 @@ pub fn build(b: *Build) !void {
     check.dependOn(&exe_check.step);
 
     const run_cmd = b.addRunArtifact(exe);
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 
     const tmp_file = anon_modules[0];
     exe.root_module.addAnonymousImport(tmp_file.name, .{
