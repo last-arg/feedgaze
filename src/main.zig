@@ -49,3 +49,8 @@ pub fn main(init: std.process.Init) !void {
     const has_leaked = gpa.detectLeaks();
     std.log.debug("Has leaked: {}\n", .{has_leaked});
 }
+
+test {
+    const types = @import("feed_types.zig");
+    _ = types;
+}

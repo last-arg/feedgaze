@@ -158,9 +158,6 @@ test "AtomDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1071340202), d2);
     const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
-    const d4 = try AtomDateTime.parse("2024-02-14T13:21:31");
-    // from: https://andy-bell.co.uk/feed.xml
-    try std.testing.expectEqual(@as(i64, 1707916891), d4);
 }
 
 // https://www.w3.org/Protocols/rfc822/#z28

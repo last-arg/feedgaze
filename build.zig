@@ -100,7 +100,7 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        // .filters = if (filter) |f| &.{f} else &.{},
+        .filters = b.args orelse &.{},
         // .use_llvm = true,
         // .use_lld = false,
     });
