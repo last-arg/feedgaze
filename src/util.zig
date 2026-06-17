@@ -41,7 +41,7 @@ pub fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
     const ts = timestamp orelse return "";
 
     var w: std.Io.Writer = .fixed(buf);
-    const dt = Datetime.fromUnix(ts, .second, null) catch return "";
+    const dt = Datetime.fromUnix(ts, .second, .{.tz = &zdt.Timezone.UTC }) catch return "";
     dt.toString(zdt.Formats.RFC3339, &w) catch |err| {
         std.log.warn("Failed to format date timestamp. Error: {}", .{err});
         return "";

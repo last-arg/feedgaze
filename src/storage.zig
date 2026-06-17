@@ -1815,3 +1815,10 @@ test "Storage.updateFeedAndItems" {
         try std.testing.expectEqual(parsed.items.len, count.?);
     }
 }
+
+test "Storage.get_items_latest_added" {
+    var storage = try Storage.init(std.testing.io, std.testing.allocator, "/home/ck/.local/share/feedgaze/feedgaze.sqlite");
+    defer storage.deinit();
+    const feeds = try storage.get_items_latest_added();
+    print("len:. {}\n", .{feeds.len});
+}

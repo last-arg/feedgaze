@@ -1239,14 +1239,12 @@ fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]co
 }
 
 // Example output: "15:05 21.12.2024"
-const date_format_readable = "%H:%M %d.%m.%Y";
+const date_format_readable = "%H:%M %d.%m.%Y UTC";
 const date_format_readable_len = util.count_date_len(date_format_readable, .{});
 
 fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
     var result: [date_format_readable_len]u8 = undefined;
-    var date_for_human = Datetime.fromUnix(utc_sec, .second, null) catch unreachable;
-    const offset = zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false) catch unreachable;
-    date_for_human = date_for_human.tzConvert(.{ .utc_offset = offset } ) catch unreachable;
+    const date_for_human = Datetime.fromUnix(utc_sec, .second, null ) catch unreachable;
 
     var w: std.Io.Writer = .fixed(&result);
     date_for_human.toString(date_format_readable, &w) catch unreachable;
@@ -1821,12 +1819,13 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     if (try db.next_update_timestamp()) |countdown_ts| {
         try w.writeAll("<div class=\"heading-info\">");
             const date_readable_str = date_readable(countdown_ts);
+            print("resad: '{s}'\n", .{date_readable_str});
             const ts_str = timestampToString(&date_buf, countdown_ts);
+            print("'{s}'\n", .{ts_str});
 
             try w.writeAll("<relative-time update=false>");
             try w.print(parts_get("next_update_msg"), .{
                 ts_str,
-                date_readable_str,
                 date_readable_str,
             });
 

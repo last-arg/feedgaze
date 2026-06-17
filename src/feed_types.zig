@@ -383,7 +383,7 @@ pub const FeedItem = struct {
 pub const FeedItemRender = struct {
     feed_id: Feed.ID,
     title: []const u8,
-    link: ?std.Uri,
+    link: ?UriWrapper,
     updated_timestamp: ?i64,
     created_timestamp: i64,
 

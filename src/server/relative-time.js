@@ -115,9 +115,15 @@ export default class RelativeTime extends HTMLElement {
 			if (!datetime) {
 				return;
 			}
+
+			const title = datetime.toLocaleString(undefined, {
+				timeZoneName: "short",
+			});
+
 			let output = "";
 			if (datetime > Date.now() || !element.closest(".feed-item")) {
 				output = this.getRelativeTime(datetime, this.division);
+				output += ` (${title})`;
 			} else {
 				let parts = this.getRelativeTimeParts(datetime, this.division);
 				output += parts[0].value;
@@ -131,9 +137,7 @@ export default class RelativeTime extends HTMLElement {
 			}
 
 			element.innerHTML = output;
-			const title = datetime.toLocaleString(undefined, {
-				timeZoneName: "short",
-			});
+
 			if (element.title !== title) {
 				element.title = title;
 			}
