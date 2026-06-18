@@ -88,15 +88,15 @@ pub const UriWrapper = struct {
         try std.Uri.format(&uri.value, writer);
     }
 
-    pub fn toValue(uri_opt: UriWrapper, arena: std.mem.Allocator) !@import("fridge").Value {
-        const uri_str = try std.fmt.allocPrint(arena, "{f}", .{uri_opt});
+    pub fn toValue(uri: UriWrapper, arena: std.mem.Allocator) !@import("fridge").Value {
+        const uri_str = try std.fmt.allocPrint(arena, "{f}", .{uri});
         return .{ .string = uri_str };
     }
 
-    pub fn fromValue(val: @import("fridge").Value, _: std.mem.Allocator) !UriWrapper {
-        const result = try std.Uri.parse(val.string);
-
-        return UriWrapper{.value = result};
+    pub fn fromValue(val: @import("fridge").Value, arena: std.mem.Allocator) !UriWrapper {
+        const buf: []u8 = try arena.alloc(u8, val.string.len);
+        std.mem.copyForwards(u8, buf, val.string);
+        return try from_string(buf);
     }
 };
 
@@ -333,11 +333,21 @@ const SqliteId = enum(u64) {
     unassigned = 0,
     _,
 
+    pub fn is_valid(id: @This()) bool {
+        return id != .unassigned;
+    }
+
     pub fn toValue(val: @This(), _: std.mem.Allocator) !@import("fridge").Value {
+        if (!val.is_valid()) {
+            return .null;
+        }
         return .{ .int = @intCast(@intFromEnum(val)) };
     }
 
     pub fn fromValue(val: @import("fridge").Value, _: std.mem.Allocator) !@This() {
+        if (val == .null) {
+            return .unassigned;
+        }
         return @enumFromInt(val.int);
     }
 };
@@ -475,13 +485,13 @@ pub const FeedToUpdate = struct {
 };
 
 pub const Icon = struct {
-    url: std.Uri,
+    url: UriWrapper,
     data: []const u8,
     etag_or_last_modified_or_hash: []const u8,
 
     pub fn init(uri: std.Uri, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
         return .{
-            .url = uri,
+            .url = .{ .value = uri},
             .data = data, 
             .etag_or_last_modified_or_hash = content_cache_value(data, etag_or_last_modified),
         };
@@ -551,39 +561,20 @@ pub const IconRender = struct {
     icon_data: []const u8,
     etag_or_last_modified_or_hash: []const u8,
 
-    pub const ID = enum(u64) {
-        unassigned = 0,
-        _,
+    pub const ID = SqliteId;
 
-        pub fn is_valid(id: @This()) bool {
-            return id != .unassigned;
-        }
-
-        pub fn toValue(val: anytype, arena: std.mem.Allocator) !@import("fridge").Value {
-            _ = val; // autofix
-            _ = arena; // autofix
-            return .null;
-        }
-
-        pub fn fromValue(val: @import("fridge").Value, arena: std.mem.Allocator) !ID {
-            _ = val; // autofix
-            _ = arena; // autofix
-            return .unassigned;
-        }
-    };
-
-    pub const Raw = struct {
-        icon_id: u64,
+    pub const DB = struct {
+        icon_id: ID,
         icon_url: []const u8,
-        icon_data: []const u8,
+        icon_data: @import("fridge").Blob,
         etag_or_last_modified_or_hash: []const u8,
     };
 
-    pub fn from_raw(raw: Raw) !@This() {
+    pub fn from_raw(raw: DB) !@This() {
         return .{
-            .icon_id = @enumFromInt(raw.icon_id),
+            .icon_id = raw.icon_id,
             .icon_url = try std.Uri.parse(raw.icon_url),
-            .icon_data = raw.icon_data,
+            .icon_data = .{ .bytes = raw.icon_data },
             .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
         };
     }

@@ -129,7 +129,12 @@ pub const Storage = struct {
         feed_opts: FeedOptions,
     };
 
-    pub fn addFeed(self: *Self, parsed_feed: parse.ValidFeed, opts: AddOptions) !struct{feed_id: Feed.ID, icon_id: Icon.ID} {
+    pub const AddFeed = struct {
+        feed_id: Feed.ID,
+        icon_id: Icon.ID,
+    };
+
+    pub fn addFeed(self: *Self, parsed_feed: parse.ValidFeed, opts: AddOptions) !AddFeed {
         var parsed = parsed_feed;
         const feed_opts = opts.feed_opts;
 
@@ -230,11 +235,11 @@ pub const Storage = struct {
         const query =
             \\INSERT INTO feed (title, feed_url, page_url, icon_id, updated_timestamp)
             \\VALUES (
-            \\  ?,
-            \\  ?,
-            \\  ?,
-            \\  ?,
-            \\  ?
+            \\  ?1,
+            \\  ?2,
+            \\  ?3,
+            \\  ?4,
+            \\  ?5
             \\) ON CONFLICT(feed_url) DO NOTHING
             \\RETURNING feed_id;
         ;
@@ -507,11 +512,11 @@ pub const Storage = struct {
 
     pub fn getLatestFeedItemsWithFeedId(self: *Self, feed_id: Feed.ID, opts: ShowOptions) ![]const FeedItem {
         assert(feed_id != .unassigned);
-        return try self.sql_db.query(FeedItem)
-            .where("feed_id", feed_id)
-            .orderByRaw("position ASC")
+        return try self.sql_db.raw("select feed_id, item_id, title, id, link, updated_timestamp from item", .{})
+            .where("feed_id = ?", feed_id)
+            .orderBy("position ASC")
             .limit(opts.@"item-limit")
-            .findAll();
+            .fetchAll(FeedItem);
     }
 
     fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
@@ -567,22 +572,23 @@ pub const Storage = struct {
             \\INSERT INTO icon 
             \\  (icon_url, icon_data, etag_or_last_modified_or_hash)
             \\VALUES 
-            \\  (@icon_url, @icon_data, @cache_value)
+            \\  (?1, ?2, ?3)
             \\ON CONFLICT DO UPDATE SET
-            \\  icon_data = @icon_data,
-            \\  etag_or_last_modified_or_hash = @cache_value
+            \\  icon_data = ?2,
+            \\  etag_or_last_modified_or_hash = ?3
             \\ WHERE
-            \\  etag_or_last_modified_or_hash != @cache_value
+            \\  etag_or_last_modified_or_hash != ?3
             \\RETURNING icon_id;
         ;
 
         var buf: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.url});
 
+        const data_blob: sql.Value = .{ .blob = icon.data };
         const icon_id_opt = try self.sql_db.raw(query, .{
-            .icon_url = icon_url,
-            .icon_data = icon.data,
-            .cache_value = icon.etag_or_last_modified_or_hash,
+            icon_url,
+            data_blob,
+            icon.etag_or_last_modified_or_hash,
         }).get(u64) orelse try self.sql_db.raw("select icon_id from icon where icon_url = ?", .{
             icon_url,
         }).get(u64);
@@ -600,13 +606,7 @@ pub const Storage = struct {
         try self.sql_db.raw(query, .{feed_id}).exec();
     }
 
-    pub fn add_to_last_update(self: *Self, feed_id: Feed.ID, sec: u64) !void {
-        assert(feed_id != .unassigned);
-        const query = "update feed_update set last_update = strftime('%s', 'now') + ? where feed_id = ?;";
-        try self.sql_db.exec(query, .{}, .{sec, @intFromEnum(feed_id)});
-    }
-
-    pub fn updateAndRemoveFeedItems(self: *Self, items: []FeedItem) !void {
+    pub fn updateAndRemoveFeedItems(self: *Self, items: []const FeedItem) !void {
         assert(items.len > 0);
         const feed_id = items[0].feed_id;
         {
@@ -624,7 +624,7 @@ pub const Storage = struct {
     // ...
     // 3 | Title 3 | 4
     // 4 | Title 4 | 3
-    pub fn upsertFeedItems(self: *Self, inserts: []FeedItem) !void {
+    pub fn upsertFeedItems(self: *Self, inserts: []const FeedItem) !void {
         assert(inserts.len > 0);
 
         const query_with_id =
@@ -692,7 +692,7 @@ pub const Storage = struct {
     pub fn feed_items_with_feed_id(self: *Self, feed_id: Feed.ID) ![]const FeedItemRender {
         const query =
             \\select feed_id, title, link, updated_timestamp, created_timestamp
-            \\from item where feed_id = ? order by updated_timestamp DESC, position ASC;
+            \\from item where feed_id = ? order by updated_timestamp DESC, position ASC
         ;
 
         return try self.sql_db.raw(query, .{feed_id}).fetchAll(FeedItemRender);
@@ -987,10 +987,10 @@ pub const Storage = struct {
     pub fn feed_with_id(self: *Self, feed_id: Feed.ID) !?Feed {
         const query = 
         \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
-        \\WHERE feed_id = ?;
+        \\WHERE feed_id = ?1
         ;
 
-        return try self.sql_db.raw(query, .{feed_id}).get(Feed);
+        return try self.sql_db.raw(query, .{feed_id}).fetchOne(Feed);
     }
 
     // const InsertRuleHost = struct {
@@ -1106,17 +1106,17 @@ pub const Storage = struct {
 
         const query = 
         \\select 
-        \\  (select name from add_rule_host where host_id = @host_id) as match_host, 
+        \\  (select name from add_rule_host where host_id = ?1) as match_host,
         \\  match_path, 
-        \\  (select name from add_rule_host where host_id = @host_id) as result_host, 
+        \\  (select name from add_rule_host where host_id = ?1) as result_host,
         \\  result_path 
         \\from add_rule 
-        \\where match_host_id = @host_id AND match_path like @tmp_path;
+        \\where match_host_id = ?1 AND match_path like ?2;
         ;
 
         const tmp_path = try allocator.dupe(u8, uri.path);
         mem.replaceScalar(u8, tmp_path, '*', '%');
-        return try self.sql_db.raw(query, .{.host_id = host_id, .tmp_path = tmp_path}).get(Rule);
+        return try self.sql_db.raw(query, .{host_id, .tmp_path }).get(Rule);
     }
 
     pub fn update_item_intervals(self: *Self) !void {
@@ -1213,7 +1213,7 @@ pub const Storage = struct {
         assert(feed_id != .unassigned);
         const query =
             \\select case
-            \\  when count(*) == 0 then (select last_update + item_interval from feed_update where feed_id = @feed_id)
+            \\  when count(*) == 0 then (select last_update + item_interval from feed_update where feed_id = ?1)
             \\  when count(*) >= 7 then null
             \\  when count(*) > 0 and req.feed_id is not null then max(req.utc_sec) + min(3600 * (count(*) * count(*)), 259200)
             \\  when rl.count >= 3 then max(rl.next_utc_sec, rl.last_utc_sec + min(3600 * (rl.count * rl.count), 259200))
@@ -1221,9 +1221,9 @@ pub const Storage = struct {
             \\end
             \\from feed_request_failed as req
             \\left join rate_limit as rl on rl.feed_id = req.feed_id
-            \\where req.feed_id = @feed_id
+            \\where req.feed_id = ?1
         ;
-        const result = try self.sql_db.raw(query, .{.feed_id = @intFromEnum(feed_id)}).get(i64) ;
+        const result = try self.sql_db.raw(query, .{feed_id}).get(i64);
         if (result) |val| if (val != 0) {
             return val;
         };
@@ -1295,13 +1295,44 @@ pub const Storage = struct {
         return try self.sql_db.raw(query_al.items, .{}).fetchAll(Feed) ;
     }
 
-    pub fn icon_all(self: *Self) ![]const Icon {
+    pub fn icon_all(self: *Self, allocator: Allocator) ![]const Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
         ;
 
-        return try self.sql_db.raw(query, .{}).fetchAll(Icon) ;
+        const raw_query = self.sql_db.raw(query, .{});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        var res = std.array_list.Managed(Icon).init(allocator);
+        errdefer res.deinit();
+
+        while (try stmt.next(Icon.DB, allocator)) |row| {
+            const etag_len = row.etag_or_last_modified_or_hash.len;
+            const len = row.icon_data.bytes.len + row.icon_url.len + etag_len;
+            var buf: []u8 = try allocator.alloc(u8, len);
+            errdefer allocator.free(buf);
+
+            const icon_url = buf[0..row.icon_url.len];
+            mem.copyForwards(u8, icon_url, row.icon_url);
+
+            buf = buf[row.icon_url.len..];
+            const icon_data = buf[0..row.icon_data.bytes.len];
+            mem.copyForwards(u8, icon_data, row.icon_data.bytes);
+
+            const icon_etag = buf[row.icon_data.bytes.len..];
+            mem.copyForwards(u8, icon_etag, row.etag_or_last_modified_or_hash);
+
+            try res.append(.{
+                .icon_id = row.icon_id,
+                .icon_url = try std.Uri.parse(icon_url),
+                .icon_data = icon_data,
+                .etag_or_last_modified_or_hash = icon_etag,
+            });
+        }
+
+        return res.toOwnedSlice();
     }
 
     pub fn feed_id_by_icon_id(self: *Self, icon_id: Icon.ID) !?Feed.ID {
@@ -1381,7 +1412,7 @@ pub const Storage = struct {
 
         var buf_icon: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf_icon, "{f}", .{icon.url});
-        const data = icon.data;
+        const data: sql.Blob = .{ .bytes = icon.data };
         if (mem.eql(u8, curr_icon_url, icon_url)) {
             const query = 
             \\UPDATE icon SET
@@ -1410,7 +1441,7 @@ pub const Storage = struct {
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        const raw_opt = try self.sql_db.raw(query, .{id}).get(Icon.Raw);
+        const raw_opt = try self.sql_db.raw(query, .{id}).get(Icon.DB);
         if (raw_opt) |raw| {
             return try Icon.from_raw(raw);
         }
@@ -1716,22 +1747,17 @@ const tables = &[_][]const u8{
     \\END;
 };
 
-fn testAddFeed(storage: *Storage) !void {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
-    defer arena.deinit();
-
-    const content = @embedFile("rss2.xml");
+fn testAddFeed(storage: *Storage, content: []const u8, allocator: Allocator) !Storage.AddFeed {
     const url = "http://localhost:8282/rss2.xml";
 
     var p = parse.init(std.testing.io, content);
-    const parsed = try p.parse(arena.allocator(), null, .{
+    const parsed = try p.parse(allocator, null, .{
         .feed_url = .{ .value = try std.Uri.parse(url) },
     });
 
     const add_opts: Storage.AddOptions = .{ .feed_opts = .{} };
 
-    _ = try storage.addFeed(parsed, add_opts);
+    const feed = try storage.addFeed(parsed, add_opts);
 
     {
         const count = try storage.sql_db.raw("select count(*) from feed", .{}).get(usize) ;
@@ -1742,83 +1768,111 @@ fn testAddFeed(storage: *Storage) !void {
         const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize) ;
         try std.testing.expectEqual(4, count.?);
     }
+
+    return feed;
 }
 
-test "Storage.addFeed" {
+test "Storage:all" {
     // std.testing.log_level = .debug;
-    var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
-    defer storage.deinit();
-    try testAddFeed(&storage);
-}
-
-test "Storage.deleteFeed" {
-    // std.testing.log_level = .debug;
-    var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
-    defer storage.deinit();
-
-    try testAddFeed(&storage);
-    try storage.deleteFeed(@enumFromInt(1));
-
-    {
-        const count = try storage.sql_db.raw("select count(*) from feed", .{}).get(usize);
-        try std.testing.expectEqual(0, count.?);
-    }
-
-    {
-        const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize);
-        try std.testing.expectEqual(0, count.?);
-    }
-}
-
-test "Storage.updateFeedAndItems" {
-    const allocator = std.testing.allocator;
-    var arena = std.heap.ArenaAllocator.init(allocator);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
 
+    const content = @embedFile("rss2.xml");
     var storage = try Storage.init(std.testing.io, std.testing.allocator, null);
     defer storage.deinit();
-    try testAddFeed(&storage);
-
-    const content = @embedFile("rss2.xml");
-    const url = "http://localhost:8282/rss2.xml";
-
-    const query = "DELETE FROM item WHERE feed_id = 1;";
-    try storage.sql_db.exec(query, .{});
+    const feed = try testAddFeed(&storage, content, arena.allocator());
 
     {
-        const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize);
-        try std.testing.expectEqual(0, count.?);
-    }
-
-    const feed_info: FeedToUpdate = .{
-        .feed_id = @enumFromInt(1),
-        .feed_url = try std.Uri.parse(url),
-    };
-
-    var p = parse.init(std.testing.io, content);
-    const parsed = try p.parse(arena.allocator(), null, .{
-        .feed_url = .{ .value = feed_info.feed_url },
-        .feed_id = feed_info.feed_id,
-        .feed_to_update = feed_info,
-    });
-
-    const feed_update: FeedUpdate = .{};
-    try storage.updateFeedAndItems(parsed, feed_update);
-
-    {
-        const count = try storage.sql_db.raw("select count(*) from feed", .{}).get(usize);
-        try std.testing.expectEqual(1, count.?);
+        const items = try storage.get_items_latest_added();
+        try std.testing.expectEqual(4, items.len);
     }
 
     {
-        const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize);
-        try std.testing.expectEqual(parsed.items.len, count.?);
+        const value = try storage.get_latest_change();
+        try std.testing.expect(value != null);
     }
-}
 
-test "Storage.get_items_latest_added" {
-    var storage = try Storage.init(std.testing.io, std.testing.allocator, "/home/ck/.local/share/feedgaze/feedgaze.sqlite");
-    defer storage.deinit();
-    const feeds = try storage.get_items_latest_added();
-    print("len:. {}\n", .{feeds.len});
+    {
+        const value = try storage.feed_last_update(feed.feed_id);
+        try std.testing.expect(value != null);
+    }
+
+    {
+        const value = try storage.next_update_feed(feed.feed_id);
+        try std.testing.expect(value != null);
+    }
+
+    {
+        const value = try storage.feed_with_id(feed.feed_id);
+        try std.testing.expect(value != null);
+    }
+
+    {
+        const value = try storage.feeds_search_has_previous(arena.allocator(), .{
+            .before = feed.feed_id,
+        });
+        try std.testing.expectEqual(false, value);
+    }
+
+    {
+        const value = try storage.feeds_search_complex(arena.allocator(), .{});
+        try std.testing.expectEqual(1, value.len);
+    }
+
+    {
+        const value = try storage.get_feeds_with_ids(arena.allocator(), &.{feed.feed_id});
+        try std.testing.expectEqual(1, value.len);
+    }
+
+
+    {
+        const value1 = try storage.getLatestFeedItemsWithFeedId(feed.feed_id, .{});
+        try std.testing.expectEqual(4, value1.len);
+
+        try storage.updateAndRemoveFeedItems(value1);
+
+        const value = try storage.feed_items_with_feed_id(feed.feed_id);
+        // NOTE: 5 because one item does't have any kind of identifier
+        try std.testing.expectEqual(5, value.len);
+    }
+
+    // Just run functions to see that they work
+    {
+        try storage.updateLastUpdate(feed.feed_id);
+    }
+
+    {
+        const icon_uri = try std.Uri.parse("http://localhost/icon.png");
+        var icon: types.Icon = .init(icon_uri, "<icon_content>", null);
+        const icon_id = try storage.icon_upsert(icon);
+        try std.testing.expect(icon_id != .unassigned);
+        _ = try storage.icon_upsert(icon);
+
+        icon.data = "<icon_content_updated>";
+        try storage.icon_update(icon_uri, icon);
+
+        const icons = try storage.icon_all(arena.allocator());
+        try std.testing.expectEqual(1, icons.len);
+        try std.testing.expectEqualSlices(u8, icon.data, icons[0].icon_data);
+    }
+
+
+    // print("val: {}\n", .{value});
+
+    // Modify database
+
+    { // delete feed
+        try storage.deleteFeed(feed.feed_id);
+
+        {
+            const count = try storage.sql_db.raw("select count(*) from feed", .{}).get(usize);
+            try std.testing.expectEqual(0, count.?);
+        }
+
+        {
+            const count = try storage.sql_db.raw("select count(*) from item", .{}).get(usize);
+            try std.testing.expectEqual(0, count.?);
+        }
+    }
+
 }
