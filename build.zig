@@ -148,9 +148,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const args = b.dependency("args", dep_args);
     step.root_module.addImport("zig-args", args.module("args"));
 
-    const tempora = b.dependency("tempora", .{});
-    step.root_module.addImport("tempora", tempora.module("tempora"));
-
     const zdt = b.dependency("zdt", .{});
     step.root_module.addImport("zdt", zdt.module("zdt"));
 

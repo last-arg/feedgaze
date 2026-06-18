@@ -41,10 +41,6 @@
             .url = "git+https://github.com/sam701/zig-cli#036341c48b32ef355274d66461551772fc1f202d",
             .hash = "cli-0.11.0-2eKe_6sIAQB1njsE9sfrNvd2HxmQej13ebo-D3kBuFX3",
         },
-        .tempora = .{
-            .url = "https://codeberg.org/bcrist/tempora/archive/main.tar.gz",
-            .hash = "tempora-0.6.2-GTyeDYjJFgBs1HNw-Po6mg7n0n_-oipch9GwSX6MFXwr",
-        },
         .zdt = .{
             .url = "https://codeberg.org/FObersteiner/zdt/archive/main.tar.gz",
             .hash = "zdt-0.9.4-xr0_vHvnEQBa2kexZk6j3CrdybDFd0BHa7DdL7hgDqfD",

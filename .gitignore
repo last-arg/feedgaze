@@ -2,8 +2,8 @@ tmp/
 zig-out/
 .zig-cache/
 zig-pkg/
+src/server/dist/
 *.wip
 *-shm
 *-wal
 *backup*
-src/server/dist/

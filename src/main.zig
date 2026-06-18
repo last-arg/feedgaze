@@ -6,22 +6,6 @@ pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
-// pub fn main() !void {
-//     {
-//         const dt = @import("tempora");
-//         const i = "2011-11-12";
-//         const v = try dt.Date.from_string("YYYY-MM", i);
-//         print("V: {}\n", .{v});
-//     }
-
-//     {
-//         const dt = @import("zdt");
-//         const i = "2011-11-10";
-//         const v = try dt.Datetime.fromString(i, "%Y-%m-%d");
-//         print("V: {}\n", .{v});
-//     }
-// }
-
 pub fn main(init: std.process.Init) !void {
     var gpa = std.heap.DebugAllocator(.{}){};
     // const allocator = init.gpa;
