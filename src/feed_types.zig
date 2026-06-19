@@ -103,20 +103,26 @@ pub const UriWrapper = struct {
 pub const Feed = struct {
     feed_id: ID = .unassigned,
     title: ?[]const u8 = null,
-    feed_url: UriWrapper,
-    page_url: ?UriWrapper = null,
+    feed_url: std.Uri,
+    page_url: ?std.Uri = null,
     icon_id: IconRender.ID = .unassigned,
     updated_timestamp: ?i64 = null,
 
     pub const ID = SqliteId;
 
-    pub const Raw = struct {
-        feed_id: usize = 0,
+    pub const DB = struct {
+        feed_id: ID = .unassigned,
         title: ?[]const u8 = null,
         feed_url: []const u8,
         page_url: ?[]const u8 = null,
-        icon_id: ?u64 = null,
+        icon_id: IconRender.ID = .unassigned,
         updated_timestamp: ?i64 = null,
+
+        pub fn strings_len(self: *const DB) u64 {
+            const title_len = if (self.title) |v| v.len else 0;
+            const page_url_len = if (self.page_url) |v| v.len else 0;
+            return self.feed_url.len + title_len + page_url_len;
+        }
     };
 
     pub const Parsed = struct {
@@ -126,13 +132,13 @@ pub const Feed = struct {
         icon_id: ?u64 = null,
     };
 
-    pub fn from_raw(raw: Raw) !Feed {
+    pub fn from_raw(raw: DB) !Feed {
         return .{
-            .feed_id = @enumFromInt(raw.feed_id),
+            .feed_id = raw.feed_id,
             .title = raw.title,
             .feed_url = try std.Uri.parse(raw.feed_url),
             .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
-            .icon_id = if (raw.icon_id) |id| @enumFromInt(id) else .unassigned,
+            .icon_id = raw.icon_id,
             .updated_timestamp = raw.updated_timestamp,
         };
     }
@@ -393,21 +399,21 @@ pub const FeedItem = struct {
 pub const FeedItemRender = struct {
     feed_id: Feed.ID,
     title: []const u8,
-    link: ?UriWrapper,
+    link: ?std.Uri,
     updated_timestamp: ?i64,
     created_timestamp: i64,
 
-    pub const Raw = struct {
-        feed_id: usize,
+    pub const DB = struct {
+        feed_id: Feed.ID,
         title: []const u8,
         link: ?[]const u8,
         updated_timestamp: ?i64,
         created_timestamp: i64,
     };
 
-    pub fn from_raw(raw: Raw) !FeedItemRender {
+    pub fn from_raw(raw: DB) !FeedItemRender {
         return .{
-            .feed_id = @enumFromInt(raw.feed_id),
+            .feed_id = raw.feed_id,
             .title = raw.title,
             .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
             .updated_timestamp = raw.updated_timestamp,
@@ -574,7 +580,7 @@ pub const IconRender = struct {
         return .{
             .icon_id = raw.icon_id,
             .icon_url = try std.Uri.parse(raw.icon_url),
-            .icon_data = .{ .bytes = raw.icon_data },
+            .icon_data = raw.icon_data.bytes,
             .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
         };
     }

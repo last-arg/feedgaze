@@ -1842,7 +1842,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     }
     try w.writeAll("</header>");
 
-    const items = try db.get_items_latest_added();
+    const items = try db.get_items_latest_added(req.arena);
     if (items.len > 0) {
         const cookie_last_item_ts = get_cookie_value(req)
             orelse std.math.maxInt(i64);
