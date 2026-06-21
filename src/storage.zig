@@ -1439,15 +1439,7 @@ pub const Storage = struct {
             const icon_data: []u8 = try allocator.alloc(u8, len);
             errdefer allocator.free(icon_data);
 
-            // Need to allocate Blob.bytes
-            mem.copyForwards(u8, icon_data, row.icon_data.bytes);
-
-            try res.append(.{
-                .icon_id = row.icon_id,
-                .icon_url = try std.Uri.parse(row.icon_url),
-                .icon_data = icon_data,
-                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
-            });
+            try res.append(try icon_from_icon_db(icon_data, row));
         }
 
         return res.toOwnedSlice();
@@ -1554,16 +1546,36 @@ pub const Storage = struct {
         }
     }
 
-    pub fn icon_by_id(self: *Self, id: Icon.ID) !?Icon {
+    fn icon_from_icon_db(buf: []u8, icon_db: Icon.DB) !Icon {
+        assert(buf.len >= icon_db.icon_data.bytes);
+        // Need to allocate Blob.bytes
+        mem.copyForwards(u8, buf, icon_db.icon_data.bytes);
+
+        return .{
+            .icon_id = icon_db.icon_id,
+            .icon_url = try std.Uri.parse(icon_db.icon_url),
+            .icon_data = buf,
+            .etag_or_last_modified_or_hash = icon_db.etag_or_last_modified_or_hash,
+        };
+    }
+
+
+    pub fn icon_by_id(self: *Self, allocator: Allocator, id: Icon.ID) !?Icon {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon WHERE icon_id = ?;
         ;
-        const raw_opt = try self.sql_db.raw(query, .{id}).get(Icon.DB);
-        if (raw_opt) |raw| {
-            return try Icon.from_raw(raw);
-        }
-        return null;
+
+        const raw_query = self.sql_db.raw(query, .{id});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        const icon_db = try stmt.next(Icon.DB, allocator) orelse return null;
+
+        const icon_data_buf: []u8 = try allocator.alloc(u8, icon_db.icon_data.bytes.len);
+        errdefer allocator.free(icon_data_buf);
+
+        return try icon_from_icon_db(icon_data_buf, icon_db);
     }
     
     pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
@@ -1973,8 +1985,8 @@ test "Storage:all" {
         try std.testing.expectEqual(1, icons.len);
         try std.testing.expectEqualStrings(icon.data, icons[0].icon_data);
 
-        // const value = try storage.icon_by_id(icon_id);
-        // try std.testing.expect(value != null);
+        const value = try storage.icon_by_id(arena.allocator(), icon_id);
+        try std.testing.expectEqualStrings(icon.data, value.?.icon_data);
     }
 
 
