@@ -1435,26 +1435,18 @@ pub const Storage = struct {
         errdefer res.deinit();
 
         while (try stmt.next(Icon.DB, allocator)) |row| {
-            const etag_len = row.etag_or_last_modified_or_hash.len;
-            const len = row.icon_data.bytes.len + row.icon_url.len + etag_len;
-            var buf: []u8 = try allocator.alloc(u8, len);
-            errdefer allocator.free(buf);
+            const len = row.icon_data.bytes.len;
+            const icon_data: []u8 = try allocator.alloc(u8, len);
+            errdefer allocator.free(icon_data);
 
-            const icon_url = buf[0..row.icon_url.len];
-            mem.copyForwards(u8, icon_url, row.icon_url);
-
-            buf = buf[row.icon_url.len..];
-            const icon_data = buf[0..row.icon_data.bytes.len];
+            // Need to allocate Blob.bytes
             mem.copyForwards(u8, icon_data, row.icon_data.bytes);
-
-            const icon_etag = buf[row.icon_data.bytes.len..];
-            mem.copyForwards(u8, icon_etag, row.etag_or_last_modified_or_hash);
 
             try res.append(.{
                 .icon_id = row.icon_id,
-                .icon_url = try std.Uri.parse(icon_url),
+                .icon_url = try std.Uri.parse(row.icon_url),
                 .icon_data = icon_data,
-                .etag_or_last_modified_or_hash = icon_etag,
+                .etag_or_last_modified_or_hash = row.etag_or_last_modified_or_hash,
             });
         }
 
@@ -1979,7 +1971,10 @@ test "Storage:all" {
 
         const icons = try storage.icon_all(arena.allocator());
         try std.testing.expectEqual(1, icons.len);
-        try std.testing.expectEqualSlices(u8, icon.data, icons[0].icon_data);
+        try std.testing.expectEqualStrings(icon.data, icons[0].icon_data);
+
+        // const value = try storage.icon_by_id(icon_id);
+        // try std.testing.expect(value != null);
     }
 
 
