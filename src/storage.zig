@@ -724,8 +724,7 @@ pub const Storage = struct {
         var stmt = try raw_query.prepare();
         defer stmt.deinit();
 
-        var res = std.array_list.Managed(FeedItemRender).init(allocator);
-        try res.ensureTotalCapacity(opts.capacity);
+        var res = try std.array_list.Managed(FeedItemRender).initCapacity(allocator, opts.capacity);
         errdefer res.deinit();
 
         while (try stmt.next(FeedItemRender.DB, allocator)) |row| {
@@ -1470,14 +1469,25 @@ pub const Storage = struct {
         }
     };
 
-    pub fn feed_icons_missing(self: *Self) ![]const IconMissing {
+    pub fn feed_icons_missing(self: *Self, allocator: Allocator) ![]const IconMissing {
         const query =
         \\SELECT feed_id, page_url 
         \\FROM feed WHERE icon_id IS NULL AND page_url IS NOT NULL
         \\AND feed.feed_id NOT IN (select feed_id from icon_failed);
         ;
 
-        return try self.sql_db.raw(query, .{}).fetchAll(IconMissing);
+        var res = try std.array_list.Managed(IconMissing).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        const raw_query = self.sql_db.raw(query, .{});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        while (try stmt.next(IconMissing.Raw, allocator)) |raw| {
+            try res.append(try .from_raw(raw));
+        }
+
+        return res.toOwnedSlice();
     }
 
     pub const IconFailed = struct {
@@ -1486,7 +1496,7 @@ pub const Storage = struct {
         etag_or_last_modified_or_hash: []const u8,
 
         pub const Raw = struct {
-            feed_id: usize,
+            feed_id: u64,
             page_url: []const u8,
             etag_or_last_modified_or_hash: []const u8,
         };
@@ -1503,15 +1513,29 @@ pub const Storage = struct {
     // Failed icon request might icon status in DB:
     // 1) Failed on first try. Which means there is no icon in DB.
     // 2) Failed on any other try expect first. Which means there is an icon in DB.
-    pub fn feed_icons_failed(self: *Self) ![]const IconFailed {
+    pub fn feed_icons_failed(self: *Self, allocator: Allocator) ![]const IconFailed {
         const query =
         \\SELECT feed.feed_id, feed.page_url,
-        \\  IIF(feed.icon_id, (SELECT icon.etag_or_last_modified_or_hash FROM icon WHERE icon.icon_id = feed.icon_id), NULL) AS etag_or_last_modified_or_hash
+        \\  (SELECT icon.etag_or_last_modified_or_hash FROM icon WHERE icon.icon_id = feed.icon_id) AS etag_or_last_modified_or_hash
         \\FROM icon_failed
         \\JOIN feed ON icon_failed.feed_id = feed.feed_id
         \\AND feed.page_url IS NOT NULL
         ;
-        return try self.sql_db.raw(query, .{}).fetchAll(IconFailed);
+
+        var res = try std.array_list.Managed(IconFailed).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        const raw_query = self.sql_db.raw(query, .{});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+
+        while (try stmt.next(IconFailed.Raw, allocator)) |raw| {
+            print("{}\n", .{raw});
+            try res.append(try .from_raw(raw));
+        }
+
+        return res.toOwnedSlice();
     }
     
     pub fn icon_update(self: *Self, curr_icon_uri: std.Uri, icon: types.Icon) !void {
@@ -1547,7 +1571,7 @@ pub const Storage = struct {
     }
 
     fn icon_from_icon_db(buf: []u8, icon_db: Icon.DB) !Icon {
-        assert(buf.len >= icon_db.icon_data.bytes);
+        assert(buf.len >= icon_db.icon_data.bytes.len);
         // Need to allocate Blob.bytes
         mem.copyForwards(u8, buf, icon_db.icon_data.bytes);
 
@@ -1617,14 +1641,14 @@ pub const Storage = struct {
     pub fn icon_failed_add(self: *Self, icon_failed: IconFailedInsert) !void {
         const query =
         \\insert into icon_failed (feed_id, last_msg)
-        \\values (@feed_id, @last_msg)
+        \\values (?1, ?2)
         \\ON CONFLICT(feed_id) DO UPDATE SET
-        \\  last_msg = @last_msg
+        \\  last_msg = ?2
 
         ;
         try self.sql_db.raw(query, .{
-            .feed_id = icon_failed.feed_id,
-            .last_msg = icon_failed.last_msg,
+            icon_failed.feed_id,
+            icon_failed.last_msg,
         }).exec();
     }
 
@@ -1972,11 +1996,16 @@ test "Storage:all" {
     }
 
     {
+        const missing = try storage.feed_icons_missing(arena.allocator());
+        try std.testing.expectEqual(1, missing.len);
+
         const icon_uri = try std.Uri.parse("http://localhost/icon.png");
         var icon: types.Icon = .init(icon_uri, "<icon_content>", null);
         const icon_id = try storage.icon_upsert(icon);
         try std.testing.expect(icon_id != .unassigned);
         _ = try storage.icon_upsert(icon);
+
+        try storage.feed_icon_update(feed.feed_id, icon_id);
 
         icon.data = "<icon_content_updated>";
         try storage.icon_update(icon_uri, icon);
@@ -1987,6 +2016,14 @@ test "Storage:all" {
 
         const value = try storage.icon_by_id(arena.allocator(), icon_id);
         try std.testing.expectEqualStrings(icon.data, value.?.icon_data);
+
+	try storage.icon_failed_add(.{
+            .feed_id = feed.feed_id,
+            .last_msg = "test failed",
+	});
+
+        const failed = try storage.feed_icons_failed(arena.allocator());
+        try std.testing.expectEqual(1, failed.len);
     }
 
 
