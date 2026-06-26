@@ -1448,8 +1448,8 @@ pub const Storage = struct {
         const query =
             \\SELECT feed_id FROM feed WHERE icon_id = ?
         ;
-        const feed_id = try self.sql_db.raw(query, .{@intFromEnum(icon_id)}).get(u64)  orelse return null;
-        return @enumFromInt(feed_id);
+        const feed_id = try self.sql_db.raw(query, .{icon_id}).get(Feed.ID);
+        return feed_id;
     }
 
     const IconMissing = struct {
@@ -1519,7 +1519,7 @@ pub const Storage = struct {
         \\  (SELECT icon.etag_or_last_modified_or_hash FROM icon WHERE icon.icon_id = feed.icon_id) AS etag_or_last_modified_or_hash
         \\FROM icon_failed
         \\JOIN feed ON icon_failed.feed_id = feed.feed_id
-        \\AND feed.page_url IS NOT NULL
+        \\AND feed.page_url IS NOT NULL AND feed.icon_id IS NOT NULL
         ;
 
         var res = try std.array_list.Managed(IconFailed).initCapacity(allocator, 10);
@@ -1531,7 +1531,6 @@ pub const Storage = struct {
 
 
         while (try stmt.next(IconFailed.Raw, allocator)) |raw| {
-            print("{}\n", .{raw});
             try res.append(try .from_raw(raw));
         }
 
@@ -1602,14 +1601,6 @@ pub const Storage = struct {
         return try icon_from_icon_db(icon_data_buf, icon_db);
     }
     
-    pub fn icon_remove(self: *Self, icon_url: []const u8) !void {
-        assert(is_url(icon_url));
-        const query = 
-        \\DELETE FROM icon WHERE icon_url = ?;
-        ;
-        try self.sql_db.exec(query, .{}, .{icon_url});
-    }
-
     pub fn icon_get_id(self: *Self, icon_url: []const u8) !Icon.ID {
         assert(is_url_or_data(icon_url));
         const query = 
@@ -1621,7 +1612,7 @@ pub const Storage = struct {
         return icon_id;
     }
 
-    pub fn feed_icon_update(self: *Self, feed_id: Feed.ID, icon_id: Icon.ID) !void {
+    pub fn feed_icon_update(self: *Self, feed_id: Feed.ID, icon_id: ?Icon.ID) !void {
         assert(feed_id != .unassigned);
         assert(icon_id != .unassigned);
         const query = 
@@ -1995,20 +1986,27 @@ test "Storage:all" {
         try storage.updateLastUpdate(feed.feed_id);
     }
 
-    {
+    { // Icon tests
         const missing = try storage.feed_icons_missing(arena.allocator());
         try std.testing.expectEqual(1, missing.len);
 
-        const icon_uri = try std.Uri.parse("http://localhost/icon.png");
+        const icon_url = "http://localhost/icon.png";
+        const icon_uri = try std.Uri.parse(icon_url);
         var icon: types.Icon = .init(icon_uri, "<icon_content>", null);
         const icon_id = try storage.icon_upsert(icon);
         try std.testing.expect(icon_id != .unassigned);
         _ = try storage.icon_upsert(icon);
 
+        const feed_id_null = try storage.feed_id_by_icon_id(icon_id);
+        try std.testing.expectEqual(null, feed_id_null);
+
         try storage.feed_icon_update(feed.feed_id, icon_id);
 
         icon.data = "<icon_content_updated>";
         try storage.icon_update(icon_uri, icon);
+
+        const icon_id_from_url = try storage.icon_get_id(icon_url);
+        try std.testing.expectEqual(icon_id, icon_id_from_url);
 
         const icons = try storage.icon_all(arena.allocator());
         try std.testing.expectEqual(1, icons.len);
@@ -2024,6 +2022,16 @@ test "Storage:all" {
 
         const failed = try storage.feed_icons_failed(arena.allocator());
         try std.testing.expectEqual(1, failed.len);
+
+        try storage.icon_failed_remove(feed.feed_id);
+        const failed_after = try storage.feed_icons_failed(arena.allocator());
+        try std.testing.expectEqual(0, failed_after.len);
+
+
+        try storage.feed_icon_update(feed.feed_id, null);
+        try storage.icons_remove_unused();
+        const icons_empty = try storage.icon_all(arena.allocator());
+        try std.testing.expectEqual(0, icons_empty.len);
     }
 
 
