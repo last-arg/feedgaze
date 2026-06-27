@@ -1286,7 +1286,7 @@ pub const App = struct {
             if (status_code == .not_modified) {
                 // Resource hasn't been modified
                 try self.storage.updateLastUpdate(f_update.feed_id);
-                try self.storage.feed_request_remove(f_update.feed_id);
+                try self.storage.request_failed_remove(f_update.feed_id);
                 try self.storage.rate_limit_remove(f_update.feed_id);
                 return .no_changes;
             } else if (status_code == .service_unavailable) {
@@ -1334,7 +1334,7 @@ pub const App = struct {
                     break :blk now_utc_sec + std.time.s_per_hour;
                 };
                 try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
-                try self.storage.feed_request_remove(f_update.feed_id);
+                try self.storage.request_failed_remove(f_update.feed_id);
                 return .failed;
             } else if (@intFromEnum(status_code) >= 400 and @intFromEnum(status_code) < 600) {
                 try self.storage.request_failed_add(f_update.feed_id, resp.head.reason);

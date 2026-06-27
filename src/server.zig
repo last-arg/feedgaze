@@ -1380,7 +1380,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     // Feed request(s) failed
-    const failed_requests = try db.get_failed_requests(feed.feed_id);
+    const failed_requests = try db.request_failed_slice(feed.feed_id);
     if (failed_requests.len > 1) {
         try w.writeAll(
             \\<table class="table-striped">
@@ -2358,7 +2358,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         break :trimmed null;
     };
 
-    const failed_requests = try db.feed_request_failed_ids();
+    const failed_requests = try db.request_failed_ids();
     
     const feeds = blk: {
         const after: types.Feed.ID = after: {

@@ -1,4 +1,4 @@
-const std = @import("std");
+    const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
 const Allocator = mem.Allocator;
@@ -21,17 +21,6 @@ const app_config = @import("app_config.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
 const is_url_or_data = util.is_url_or_data; 
-
-const seconds_in_1_day = std.time.s_per_day;
-const seconds_in_3_hours = std.time.s_per_hour * 3;
-const seconds_in_6_hours = std.time.s_per_hour * 6;
-const seconds_in_12_hours = std.time.s_per_hour * 12;
-const seconds_in_2_days = seconds_in_1_day * 2;
-const seconds_in_3_days = seconds_in_1_day * 3;
-const seconds_in_5_days = seconds_in_1_day * 5;
-const seconds_in_7_days = seconds_in_1_day * 7;
-const seconds_in_10_days = seconds_in_1_day * 10;
-const seconds_in_30_days = seconds_in_1_day * 30;
 
 pub const Storage = struct {
     const Self = @This();
@@ -167,7 +156,7 @@ pub const Storage = struct {
         const feed_id = parsed.feed.feed_id;
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
-        try self.feed_request_remove(feed_id);
+        try self.request_failed_remove(feed_id);
         try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
 
         if (parsed.items.len == 0) {
@@ -182,29 +171,18 @@ pub const Storage = struct {
         try self.sql_db.raw("DELETE FROM rate_limit WHERE feed_id = ?", .{feed_id}).exec();
     }
 
-    pub fn feed_request_remove(self: *Self, feed_id: Feed.ID) !void {
-        try self.sql_db.raw("DELETE FROM feed_request_failed WHERE feed_id = ?", .{feed_id}).exec();
-    }
-
-    pub fn feed_request_failed_ids(self: *Self) ![]const u64 {
-        const query =
-        \\select distinct(feed_id) from feed_request_failed
-        ;
-        return try self.sql_db.raw(query, .{}).fetchAll(u64);
-    }
-
     pub fn rate_limit_add(self: *Self, feed_id: Feed.ID, utc_sec: i64) !void {
         std.debug.assert(feed_id != .unassigned);
         const query =
         \\INSERT INTO rate_limit 
-        \\  (feed_id, next_utc_sec) VALUES (@feed_id, @next_utc_sec)
+        \\  (feed_id, next_utc_sec) VALUES (?1, ?2)
         \\ON CONFLICT(feed_id) DO UPDATE SET
-        \\  next_utc_sec = @next_utc_sec,
+        \\  next_utc_sec = ?2,
         \\  count = count + 1,
         \\  last_utc_sec = strftime('%s', 'now')
         ;
         
-        try self.sql_db.raw(query, .{.feed_id = feed_id, .next_utc_sec = utc_sec}).exec();
+        try self.sql_db.raw(query, .{ feed_id, utc_sec}).exec();
     }
 
     pub fn request_failed_add(self: *Self, feed_id: Feed.ID, reason: []const u8) !void {
@@ -214,21 +192,56 @@ pub const Storage = struct {
         try self.sql_db.raw(query, .{feed_id, reason}).exec();
     }
 
+    pub fn request_failed_remove(self: *Self, feed_id: Feed.ID) !void {
+        try self.sql_db.raw("DELETE FROM feed_request_failed WHERE feed_id = ?", .{feed_id}).exec();
+    }
+
+    pub fn request_failed_ids(self: *Self, allocator: Allocator) ![]const Feed.ID {
+        const query =
+        \\select distinct(feed_id) from feed_request_failed
+        ;
+
+        var res = try std.array_list.Managed(Feed.ID).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        const raw_query = self.sql_db.raw(query, .{});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        while (try stmt.next(Feed.ID, allocator)) |row| {
+            try res.append(row);
+        }
+
+        return res.toOwnedSlice();
+    }
+
     const FeedFailedRequest = struct {
         utc_sec: i64,
         reason: []const u8,
     };
 
-    pub fn get_failed_requests(self: *Self, feed_id: Feed.ID) ![]const FeedFailedRequest {
+    pub fn request_failed_slice(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const FeedFailedRequest {
         assert(feed_id != .unassigned);
-        const query =
+        const capacity = 10;
+        const query = std.fmt.comptimePrint(
         \\SELECT utc_sec, reason FROM feed_request_failed
         \\WHERE feed_id = ?
         \\ORDER BY utc_sec DESC
-        \\LIMIT 10
-        ;
+        \\LIMIT {d}
+        , .{capacity});
 
-        return try self.sql_db.raw(query, .{ feed_id }).fetchAll(FeedFailedRequest) ;
+        var res = try std.array_list.Managed(FeedFailedRequest).initCapacity(allocator, capacity);
+        errdefer res.deinit();
+
+        const raw_query = self.sql_db.raw(query, .{feed_id});
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        while (try stmt.next(FeedFailedRequest, allocator)) |row| {
+            res.appendAssumeCapacity(row);
+        }
+
+        return res.toOwnedSlice();
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !Feed.ID {
@@ -543,11 +556,6 @@ pub const Storage = struct {
             }
         }
         return null;
-    }
-
-    pub fn deleteFeedItemsWithFeedId(self: *Self, feed_id: Feed.ID) !void {
-        const query = "DELETE FROM item WHERE feed_id = ?;";
-        try self.sql_db.exec(query, .{}, .{feed_id});
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_id: Feed.ID, feed_update: FeedUpdate, item_interval: i64) !void {
@@ -1207,46 +1215,6 @@ pub const Storage = struct {
         return try self.sql_db.raw(query, .{host_id, .tmp_path }).get(Rule);
     }
 
-    pub fn update_item_intervals(self: *Self) !void {
-        // Maybe can change query using sqlite fn nth_value(), first_value(), lead(), lag()?
-        const query = comptimePrint(
-            \\with temp_table as (
-            \\  select feed.feed_id, coalesce(max(item.updated_timestamp) - 
-            \\    (select this.updated_timestamp from item as this where this.feed_id = feed.feed_id order by this.updated_timestamp DESC limit 1, 1), {d}
-            \\  ) item_interval
-            \\  from feed 
-            \\  left join item on feed.feed_id = item.feed_id and item.updated_timestamp is not null
-            \\  group by item.feed_id
-            \\)    
-            \\update feed_update set item_interval = (
-            \\CASE
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  when temp_table.item_interval < {d} then {d}
-            \\  else {d}
-            \\end
-            \\) from temp_table where feed_update.feed_id = temp_table.feed_id
-            \\AND feed_update.item_interval != temp_table.item_interval;
-        , .{
-            // In case item count is 0 or 1 make sure case expressions else branch
-            // is hit.
-            seconds_in_30_days, 
-
-            // else case with item_interval
-            seconds_in_6_hours, seconds_in_3_hours,
-            seconds_in_12_hours, seconds_in_6_hours,
-            seconds_in_1_day, seconds_in_12_hours,
-            seconds_in_2_days, seconds_in_1_day,
-            seconds_in_7_days, seconds_in_3_days,
-            seconds_in_30_days, seconds_in_5_days,
-            seconds_in_10_days,
-        });
-        try self.sql_db.exec(query, .{}, .{});
-    }
-
     // 259200 - 3 days in seconds
     const rate_limit_iif_utc_sec =
     \\cast(iif(count < 3, next_utc_sec, 
@@ -1301,15 +1269,18 @@ pub const Storage = struct {
         assert(feed_id != .unassigned);
         const query =
             \\select case
-            \\  when count(*) == 0 then (select last_update + item_interval from feed_update where feed_id = ?1)
             \\  when count(*) >= 7 then null
-            \\  when count(*) > 0 and req.feed_id is not null then max(req.utc_sec) + min(3600 * (count(*) * count(*)), 259200)
-            \\  when rl.count >= 3 then max(rl.next_utc_sec, rl.last_utc_sec + min(3600 * (rl.count * rl.count), 259200))
-            \\  when rl.count > 0 then rl.next_utc_sec
+            \\  when count(*) > 0 then max(utc_sec) + min(3600 * (count(*) * count(*)), 259200)
+            \\  else ifnull((select case
+            \\           when count >= 3 then max(next_utc_sec, last_utc_sec + min(3600 * (count * count), 259200))
+            \\           when count > 0 then next_utc_sec
+            \\         end
+            \\         from rate_limit where feed_id = ?1)
+            \\         , (select last_update + item_interval from feed_update where feed_id = ?1)
+            \\       )
             \\end
-            \\from feed_request_failed as req
-            \\left join rate_limit as rl on rl.feed_id = req.feed_id
-            \\where req.feed_id = ?1
+            \\from feed_request_failed
+            \\where feed_id = ?1
         ;
         const result = try self.sql_db.raw(query, .{feed_id}).get(i64);
         if (result) |val| if (val != 0) {
@@ -1767,7 +1738,7 @@ const tables = &[_][]const u8{
         \\  etag_or_last_modified TEXT DEFAULT NULL,
         \\  FOREIGN KEY(feed_id) REFERENCES feed(feed_id) ON DELETE CASCADE
         \\) STRICT;
-    , .{ app_config.update_interval, seconds_in_10_days }),
+    , .{ app_config.update_interval, types.seconds_in_10_days }),
     \\CREATE TABLE IF NOT EXISTS tag(
     \\  tag_id INTEGER PRIMARY KEY,
     \\  name TEXT UNIQUE NOT NULL
@@ -1917,6 +1888,7 @@ fn testAddFeed(storage: *Storage, content: []const u8, allocator: Allocator) !St
     return feed;
 }
 
+// Run all (most?) Storage function to see if queries are correct.
 test "Storage:all" {
     // std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -2034,6 +2006,39 @@ test "Storage:all" {
         try std.testing.expectEqual(0, icons_empty.len);
     }
 
+    { // Failed feed requests tests
+        try storage.request_failed_add(feed.feed_id, "test failed");
+        const failed_requests = try storage.request_failed_slice(arena.allocator(), feed.feed_id);
+        try std.testing.expectEqual(1, failed_requests.len);
+
+        try storage.request_failed_remove(feed.feed_id);
+
+        const failed_ids = try storage.request_failed_ids(arena.allocator());
+        try std.testing.expectEqual(0, failed_ids.len);
+    }
+
+    { // test rate limits
+        const next_ts = try storage.next_update_timestamp();
+        try std.testing.expect(next_ts.? > 0);
+
+	const rate_utc = 1;
+        try storage.rate_limit_add(feed.feed_id, rate_utc);
+        const count = try storage.sql_db.raw("select count(*) from rate_limit", .{}).fetchOne(u64);
+        try std.testing.expectEqual(1, count.?);
+
+        const next_rate_ts = try storage.next_update_timestamp();
+        try std.testing.expectEqual(rate_utc, next_rate_ts.?);
+
+        try storage.rate_limit_remove(feed.feed_id);
+        const count_empty = try storage.sql_db.raw("select count(*) from rate_limit", .{}).fetchOne(u64);
+        try std.testing.expectEqual(0, count_empty.?);
+
+        const next_feed_ts = try storage.next_update_feed(feed.feed_id);
+        try std.testing.expectEqual(next_ts.?, next_feed_ts.?);
+    }
+
+    { // test html selector
+    }
 
     // print("val: {}\n", .{value});
 
