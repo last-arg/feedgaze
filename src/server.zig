@@ -1218,7 +1218,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             .date_format = get_field(form_data, "html-date-format") catch return error.MissingFormFieldHtmlDateFormat,
         };
 
-        db.html_selector_update(feed_id, update_fields) catch {
+        db.html_selector_add(feed_id, update_fields) catch {
             const url_redirect = try std.fmt.allocPrint(req.arena, "{s}?error={f}", .{req.url.path, UrlQueryError.html});
             resp.header("Location", url_redirect);
             return;

@@ -1109,6 +1109,7 @@ pub const Storage = struct {
         const match_host_id = try self.sql_db.raw(query_insert_host, .{rule.match_host}).get(u64)
             orelse try self.sql_db.raw(query_select_host, .{rule.match_host}).get(u64)
             orelse return error.AddRuleNoMatchHostId;
+        // print("id: {}\n", .{match_host_id});
 
         const result_host_id = blk: {
             if (!mem.eql(u8, rule.match_host, rule.result_host)) {
@@ -1627,59 +1628,38 @@ pub const Storage = struct {
         const query =
             \\INSERT INTO html_selector (feed_id, container, link, heading, date, date_format)
             \\VALUES (
-            \\  @feed_id,
-            \\  @container,
-            \\  @link,
-            \\  @heading,
-            \\  @date,
-            \\  @date_format
+            \\  ?1,
+            \\  ?2,
+            \\  ?3,
+            \\  ?4,
+            \\  ?5,
+            \\  ?6
             \\) ON CONFLICT(feed_id) DO UPDATE SET
-            \\  container = @container,
-            \\  link = @link,
-            \\  heading = @heading,
-            \\  date = @date,
-            \\  date_format = @date_format
+            \\  container = ?2,
+            \\  link = ?3,
+            \\  heading = ?4,
+            \\  date = ?5,
+            \\  date_format = ?6
             \\;
         ;
 
         try self.sql_db.raw(query, .{
-            .feed_id = feed_id,
-            .container = options.selector_container,
-            .link = options.selector_link,
-            .heading = options.selector_heading,
-            .date = options.selector_date,
-            .date_format = options.date_format,
-        }).exec();
-    }
-
-    pub fn html_selector_update(self: *Self, feed_id: Feed.ID, options: parse.HtmlOptions) !void {
-        assert(feed_id != .unassigned);
-        const query = 
-        \\update html_selector set 
-        \\ container = ?,
-        \\ link = ?,
-        \\ heading = ?,
-        \\ date = ?,
-        \\ date_format = ?
-        \\where feed_id = ?;
-        ;
-        try self.sql_db.raw(query, .{
+            feed_id,
             options.selector_container,
             options.selector_link,
             options.selector_heading,
             options.selector_date,
             options.date_format,
-            feed_id,
         }).exec();
     }
-    
+
     pub fn html_selector_has(self: *Self, feed_id: Feed.ID) !bool {
         assert(feed_id != .unassigned);
         const query = "select 1 from html_selector where feed_id = ?";
         return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).get(bool) orelse false;
     }
 
-    pub fn html_selector_get(self: *Self, feed_id: Feed.ID) !?parse.HtmlOptions {
+    pub fn html_selector_get(self: *Self, allocator: Allocator, feed_id: Feed.ID) !?parse.HtmlOptions {
         assert(feed_id != .unassigned);
         const query = 
         \\select 
@@ -1691,7 +1671,17 @@ pub const Storage = struct {
         \\from html_selector
         \\where feed_id = ?;
         ;
-        return try self.sql_db.raw(query, .{feed_id}).get(parse.HtmlOptions) ;
+
+        const raw_query = self.sql_db.raw(query, .{feed_id});
+
+        return one(parse.HtmlOptions, allocator, raw_query);
+    }
+
+    fn one(comptime T: type, allocator: Allocator, raw_query: sql.RawQuery) !?T {
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        return stmt.next(T, allocator);
     }
 };
 
@@ -2038,7 +2028,38 @@ test "Storage:all" {
     }
 
     { // test html selector
+        const has_html_1 = try storage.html_selector_has(feed.feed_id);
+        try std.testing.expectEqual(false, has_html_1);
+
+        try storage.html_selector_add(feed.feed_id, .{
+            .selector_container = ".container",
+            .selector_link = ".link_first",
+            .date_format = null,
+        });
+
+        try storage.html_selector_add(feed.feed_id, .{
+            .selector_container = ".container",
+            .selector_link = ".link",
+        });
+
+        const has_html_2 = try storage.html_selector_has(feed.feed_id);
+        try std.testing.expectEqual(true, has_html_2);
+
+        const feed_html_info = try storage.html_selector_get(arena.allocator(), feed.feed_id);
+        try std.testing.expectEqualStrings(feed_html_info.?.selector_container, ".container");
+        try std.testing.expectEqualStrings(feed_html_info.?.selector_link.?, ".link");
+        try std.testing.expectEqual(feed_html_info.?.date_format, null);
     }
+
+    // { // test rules
+    //     try storage.rule_add();
+    //     try storage.rule_remove();
+    //     try storage.rules_all();
+    //     try storage.rules_filter();
+    //     try storage.has_rule();
+    //     try storage.get_add_rule();
+    //     try storage.get_rules_for_host();
+    // }
 
     // print("val: {}\n", .{value});
 
