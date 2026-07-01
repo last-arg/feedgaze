@@ -1103,18 +1103,17 @@ pub const Storage = struct {
     const Rule = @import("add_rule.zig").Rule;
     pub fn rule_add(self: *Self, rule: Rule) !void {
         const query_insert_host =
-        \\INSERT OR IGNORE INTO add_rule_host(name) VALUES (?) RETURNING host_id;
+        \\INSERT INTO add_rule_host(name) VALUES (?)
+        \\ON CONFLICT (name) DO UPDATE SET name = excluded.name
+        \\RETURNING host_id;
         ;
-        const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
+
         const match_host_id = try self.sql_db.raw(query_insert_host, .{rule.match_host}).get(u64)
-            orelse try self.sql_db.raw(query_select_host, .{rule.match_host}).get(u64)
             orelse return error.AddRuleNoMatchHostId;
-        // print("id: {}\n", .{match_host_id});
 
         const result_host_id = blk: {
             if (!mem.eql(u8, rule.match_host, rule.result_host)) {
                 break :blk try self.sql_db.raw(query_insert_host, .{rule.result_host}).get(u64)
-                    orelse try self.sql_db.raw(query_select_host, .{rule.result_host}).get(u64)
                     orelse return error.AddRuleNoResultHostId;
             }
             break :blk match_host_id;
@@ -1132,7 +1131,7 @@ pub const Storage = struct {
         match_url: []const u8,
         result_url: []const u8,
     };
-    pub fn rules_all(self: *Self) ![]const RuleMatchStr {
+    pub fn rules_all(self: *Self, allocator: Allocator) ![]const RuleMatchStr {
         const query_fmt = 
         \\select 
         \\(select name from add_rule_host where host_id = add_rule.match_host_id 
@@ -1141,7 +1140,8 @@ pub const Storage = struct {
         \\) || result_path as result_url
         \\from add_rule
         ;
-        return try self.sql_db.raw(query_fmt, .{}).fetchAll(RuleMatchStr);
+        const raw_query = self.sql_db.raw(query_fmt, .{});
+        return try fetch_all(RuleMatchStr, allocator, raw_query);
     }
 
     const RuleFilterMatch = struct {
@@ -1149,7 +1149,7 @@ pub const Storage = struct {
         match_url: []const u8,
         result_url: []const u8,
     };
-    pub fn rules_filter(self: *Self, filter: []const u8) ![]const RuleFilterMatch {
+    pub fn rules_filter(self: *Self, allocator: Allocator, filter: []const u8) ![]const RuleFilterMatch {
         const query_fmt = 
         \\select 
         \\add_rule_id,
@@ -1159,11 +1159,12 @@ pub const Storage = struct {
         \\) || result_path as result_url
         \\from add_rule 
         \\where 
-        \\  add_rule_id in (select add_rule_id from add_rule_host where name like '%' || $filter || '%') or
-        \\  match_path like '%' || $filter || '%' or
-        \\  result_path like '%' || $filter || '%'
+        \\  add_rule_id in (select add_rule_id from add_rule_host where name like '%' || ?1 || '%') or
+        \\  match_path like '%' || ?1 || '%' or
+        \\  result_path like '%' || ?1 || '%'
         ;
-        return try self.sql_db.raw(query_fmt, .{ .filter = filter }).fetchAll(RuleFilterMatch) ;
+        const raw_query = self.sql_db.raw(query_fmt, .{ filter });
+        return try fetch_all(RuleFilterMatch, allocator, raw_query);
     }
     
     pub fn rule_remove(self: *Self, add_rule_id: usize) !void {
@@ -1174,15 +1175,18 @@ pub const Storage = struct {
     pub fn has_rule(self: *Self, rule: Rule) !bool {
         const query =
             \\select 1 from add_rule where
-            \\match_path = $match_path AND result_path = $result_path
-            \\AND (select host_id from add_rule_host where name = $match_host)
-            \\AND (select host_id from add_rule_host where name = $result_host)
+            \\match_path = ?1 AND result_path = ?2
+            \\AND (select host_id from add_rule_host where name = ?3)
+            \\AND (select host_id from add_rule_host where name = ?4)
         ;
-        return try self.sql_db.raw(query, rule).get(bool) orelse false;
+        return try self.sql_db.raw(query, .{
+            rule.match_path, rule.result_path,
+            rule.match_host, rule.result_host,
+        }).get(bool) orelse false;
     }
 
     const AddRule = @import("add_rule.zig");
-    pub fn get_rules_for_host(self: *Self, host: []const u8) ![]const AddRule.RuleWithHost {
+    pub fn get_rules_for_host(self: *Self, allocator: Allocator, host: []const u8) ![]const AddRule.RuleWithHost {
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
         const host_id = try self.sql_db.raw(query_select_host, .{host}).get(u64)  orelse return &.{};
         const query = 
@@ -1194,12 +1198,31 @@ pub const Storage = struct {
         \\where match_host_id = ?;
         ;
 
-        return try self.sql_db.raw(query, .{host_id}).fetchAll(AddRule.RuleWithHost);
+        const raw_query = self.sql_db.raw(query, .{host_id});
+        return try fetch_all(AddRule.RuleWithHost, allocator, raw_query);
     }
 
+    fn fetch_all(comptime T: type, allocator: Allocator, raw_query: sql.RawQuery) ![]const T {
+        var res = try std.array_list.Managed(T).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        while (try stmt.next(T, allocator)) |row| {
+            res.appendAssumeCapacity(row);
+        }
+
+        return res.toOwnedSlice();
+    }
+
+
     pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
+        const uri_host = uri.host orelse return null;
+        var buf: [1024]u8 = undefined;
+        const uri_host_raw = try uri_host.toRaw(&buf);
         const query_select_host = "SELECT host_id FROM add_rule_host WHERE name = ?";
-        const host_id = try self.sql_db.raw(query_select_host, .{uri.host}).get(u64)  orelse return null;
+        const host_id = try self.sql_db.raw(query_select_host, .{uri_host_raw}).get(u64) orelse return null;
 
         const query = 
         \\select 
@@ -1211,9 +1234,10 @@ pub const Storage = struct {
         \\where match_host_id = ?1 AND match_path like ?2;
         ;
 
-        const tmp_path = try allocator.dupe(u8, uri.path);
-        mem.replaceScalar(u8, tmp_path, '*', '%');
-        return try self.sql_db.raw(query, .{host_id, .tmp_path }).get(Rule);
+        const uri_path_raw = try uri.path.toRaw(&buf) ;
+        mem.replaceScalar(u8, @constCast(uri_path_raw), '*', '%');
+        const raw_query = self.sql_db.raw(query, .{ host_id, uri_path_raw });
+        return try one(Rule, allocator, raw_query);
     }
 
     // 259200 - 3 days in seconds
@@ -2051,15 +2075,37 @@ test "Storage:all" {
         try std.testing.expectEqual(feed_html_info.?.date_format, null);
     }
 
-    // { // test rules
-    //     try storage.rule_add();
-    //     try storage.rule_remove();
-    //     try storage.rules_all();
-    //     try storage.rules_filter();
-    //     try storage.has_rule();
-    //     try storage.get_add_rule();
-    //     try storage.get_rules_for_host();
-    // }
+    { // test url rules
+    	const uri = try std.Uri.parse("http://match_host.dev/match_path");
+    	const rule_opts: Storage.Rule = .{
+            .match_host = uri.host.?.percent_encoded,
+            .match_path = uri.path.percent_encoded,
+            .result_host = "result_host",
+            .result_path = "/result_path",
+        };
+        try storage.rule_add(rule_opts);
+        try storage.rule_add(rule_opts);
+
+        const rule_exists = try storage.has_rule(rule_opts);
+        try std.testing.expect(rule_exists);
+
+        const r = try storage.get_add_rule(arena.allocator(), uri);
+        try std.testing.expect(r != null);
+
+        const rules_for_host = try storage.get_rules_for_host(arena.allocator(), rule_opts.match_host);
+        try std.testing.expectEqual(rules_for_host.len, 1);
+    
+        const rules_all = try storage.rules_all(arena.allocator());
+        try std.testing.expectEqual(rules_all.len, 1);
+
+        const rules_filtered = try storage.rules_filter(arena.allocator(), "match");
+        try std.testing.expectEqual(rules_filtered.len, 1);
+        const rule_id = rules_filtered[0].add_rule_id;
+    
+        try storage.rule_remove(rule_id);
+        const no_rule = try storage.has_rule(rule_opts);
+        try std.testing.expect(!no_rule);
+    }
 
     // print("val: {}\n", .{value});
 
