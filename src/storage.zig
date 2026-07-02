@@ -292,22 +292,17 @@ pub const Storage = struct {
         return try self.sql_db.raw(query, .{ url, url }).get(Feed.ID);
     }
     
-    pub fn get_feed_with_url(self: *Self, url: []const u8) !?Feed {
+    pub fn getFeedsWithUrl(self: *Self, allocator: Allocator, url: []const u8) ![]const Feed {
         const query =
-            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp 
-            \\FROM feed WHERE feed_url = ? OR page_url = ?;
+            \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
         ;
-        
-        return try self.sql_db.raw(query, .{url, url}).get(Feed);
+        const raw_query = self.sql_db.raw(query, .{})
+            .where("feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'", .{url, url});
+
+        return try fetch_all_feeds(allocator, raw_query, 10);
     }
 
-    pub fn getFeedsWithUrl(self: *Self, url: []const u8) ![]const Feed {
-        return try self.sql_db.query(Feed)
-            .whereRaw("feed_url LIKE '%' || ? || '%' OR page_url LIKE '%' || ? || '%'", .{url, url})
-            .findAll();
-    }
-
-    pub fn getLatestFeedsWithUrl(self: *Self, inputs: [][]const u8, opts: ShowOptions) ![]const Feed {
+    pub fn getLatestFeedsWithUrl(self: *Self, allocator: Allocator, inputs: [][]const u8, opts: ShowOptions) ![]const Feed {
         const query =
             \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed
         ;
@@ -323,7 +318,7 @@ pub const Storage = struct {
         q = q.orderBy("updated_timestamp DESC");
         q = q.limit(opts.limit);
 
-        return try q.fetchAll(Feed);
+        return try fetch_all_feeds(allocator, q, @intCast(opts.limit));
     }
 
     fn hasUrl(url: []const u8, feeds: []Feed) bool {
@@ -340,7 +335,7 @@ pub const Storage = struct {
         return try self.sql_db.raw(query, .{url, url}).get(bool) orelse false;
     }
 
-    pub fn getFeedsToUpdate(self: *Self, search_term: ?[]const u8, options: UpdateOptions) ![]const FeedToUpdate {
+    pub fn getFeedsToUpdate(self: *Self, allocator: Allocator, search_term: ?[]const u8, options: UpdateOptions) ![]const FeedToUpdate {
         // TODO: rethink this query.
         // - Do I need the 'item' table stuff?
         // - Do subquery instead?
@@ -390,31 +385,30 @@ pub const Storage = struct {
                     const cond_start = if (has_where) " AND " else " WHERE ";
                     storage_arr.appendSliceAssumeCapacity(cond_start);
                     storage_arr.appendSliceAssumeCapacity("(feed.feed_url LIKE '%' || ? || '%' OR feed.page_url LIKE '%' || ? || '%' OR feed.title LIKE '%' || ? || '%')");
-
                     break :blk .{term, term, term};
                 }
             }
             break :blk null;
         };
 
-        storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id;");
+        storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id");
 
-        if (query_opts) |opts| {
-            return try self.sql_db.raw(storage_arr.items, opts)
-                .fetchAll(FeedToUpdate);
+        const raw_query = if (query_opts) |opts| self.sql_db.raw(storage_arr.items, opts)
+            else self.sql_db.raw(storage_arr.items, .{});
+
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        var res = try std.array_list.Managed(FeedToUpdate).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        while (try stmt.next(FeedToUpdate.Raw, allocator)) |row| {
+            var new = row;
+            new.feed_url = try allocator.dupe(u8, row.feed_url);
+            try res.append(try FeedToUpdate.from_raw(new));
         }
 
-        return try self.sql_db.raw(storage_arr.items, .{})
-            .fetchAll(FeedToUpdate);
-    }
-
-    fn findFeedIndex(id: usize, feeds: []Feed) ?usize {
-        for (feeds, 0..) |f, i| {
-            if (id == f.feed_id) {
-                return i;
-            }
-        }
-        return null;
+        return try res.toOwnedSlice();
     }
 
     pub fn deleteFeed(self: *Self, feed_id: Feed.ID) !void {
@@ -424,10 +418,10 @@ pub const Storage = struct {
 
     pub fn update_feed_timestamp(self: *Self, feed: Feed) !void {
         const query =
-            \\UPDATE feed SET updated_timestamp = @updated_timestamp 
-            \\WHERE feed_id = @feed_id;
+            \\UPDATE feed SET updated_timestamp = ?1
+            \\WHERE feed_id = ?2;
         ;
-        try self.sql_db.raw(query, .{ .updated_timestamp = feed.updated_timestamp, .feed_id = feed.feed_id }).exec();
+        try self.sql_db.raw(query, .{ feed.updated_timestamp, feed.feed_id }).exec();
     }
 
     pub const FeedFields = struct {
@@ -547,15 +541,6 @@ pub const Storage = struct {
             .orderBy("position ASC")
             .limit(opts.@"item-limit")
             .fetchAll(FeedItem);
-    }
-
-    fn findFeedItemIndex(id: usize, items: []FeedItem) ?usize {
-        for (items, 0..) |item, i| {
-            if (id == item.feed_id) {
-                return i;
-            }
-        }
-        return null;
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_id: Feed.ID, feed_update: FeedUpdate, item_interval: i64) !void {
@@ -1001,7 +986,8 @@ pub const Storage = struct {
         const query = try std.fmt.allocPrint(allocator, query_fmt, .{query_where});
         defer allocator.free(query);
 
-        return try self.fetch_all_feeds(allocator, query, app_config.query_feed_limit);
+        const raw_query = self.sql_db.raw(query, .{});
+        return try fetch_all_feeds(allocator, raw_query, app_config.query_feed_limit);
     }
 
     pub fn feeds_search_has_previous(self: *Self, allocator: Allocator, args: FeedSearchArgs) !bool {
@@ -1340,12 +1326,11 @@ pub const Storage = struct {
         }
         try query_al.append(allocator, ')');
 
-        return try self.fetch_all_feeds(allocator, query_al.items, ids.len);
+        const raw_query = self.sql_db.raw(query_al.items, .{});
+        return try fetch_all_feeds(allocator, raw_query, ids.len);
     }
 
-    fn fetch_all_feeds(self: *@This(), allocator: Allocator, query: []const u8, capacity: usize) ![]const Feed {
-        const raw_query = self.sql_db.raw(query, .{});
-
+    fn fetch_all_feeds(allocator: Allocator, raw_query: sql.RawQuery, capacity: usize) ![]const Feed {
         var stmt = try raw_query.prepare();
         defer stmt.deinit();
 
@@ -1372,7 +1357,7 @@ pub const Storage = struct {
                 new.title = w.buffered()[start..];
             }
 
-            res.appendAssumeCapacity(try Feed.from_raw(new));
+            try res.append(try Feed.from_raw(new));
         }
 
         return try res.toOwnedSlice();
@@ -1878,7 +1863,7 @@ fn testAddFeed(storage: *Storage, content: []const u8, allocator: Allocator) !St
     return feed;
 }
 
-// Run all (most?) Storage function to see if queries are correct.
+// Run all (most?) Storage functions to see if queries are correct.
 test "Storage:all" {
     // std.testing.log_level = .debug;
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -1931,7 +1916,6 @@ test "Storage:all" {
         try std.testing.expectEqual(1, value.len);
     }
 
-
     {
         const value1 = try storage.getLatestFeedItemsWithFeedId(feed.feed_id, .{});
         try std.testing.expectEqual(4, value1.len);
@@ -1942,6 +1926,38 @@ test "Storage:all" {
         // NOTE: 5 because one item does't have any kind of identifier
         try std.testing.expectEqual(5, value.len);
     }
+
+    {
+        const feed_change = try storage.get_latest_feed_change(feed.feed_id);
+        try std.testing.expect(feed_change != null);
+
+        try storage.updateLastUpdate(feed.feed_id);
+        try storage.update_feed_timestamp(.{
+            .feed_id = feed.feed_id,
+            .feed_url = undefined,
+            .updated_timestamp = 0,
+        });
+        try storage.update_feed_fields(arena.allocator(), .{
+            .feed_id = feed.feed_id,
+            .title = "update_feed_fields_title",
+            .page_url = "http://valid.com",
+            .tags = &.{},
+        });
+
+        var inputs = [_][]const u8 {"localhost"};
+        const latest_feeds = try storage.getLatestFeedsWithUrl(arena.allocator(), &inputs, .{});
+        try std.testing.expectEqual(1, latest_feeds.len);
+
+        const feeds_with_url = try storage.getFeedsWithUrl(arena.allocator(), "localhost");
+        try std.testing.expectEqual(latest_feeds.len, feeds_with_url.len);
+        try std.testing.expectEqualDeep(latest_feeds[0], feeds_with_url[0]);
+
+        const feeds_to_update = try storage.getFeedsToUpdate(arena.allocator(), "localhost", .{
+            .force = true,
+        });
+        try std.testing.expectEqual(1, feeds_to_update.len);
+    }
+
 
     { // Icon tests
         const missing = try storage.feed_icons_missing(arena.allocator());
@@ -2080,7 +2096,7 @@ test "Storage:all" {
 
     { // tags tests
         const change_1 = try storage.get_tags_change();
-        try std.testing.expect(change_1.? > 0);
+        try std.testing.expect(change_1 != null);
 
         var add_tags = [_][]const u8{"t1", "t2", "t3"};
         try storage.tags_add(&add_tags);
@@ -2118,20 +2134,10 @@ test "Storage:all" {
         var buf: [1]types.SqliteId = undefined;
         const name_to_ids = try storage.tags_ids(&add_tags, &buf);
         try std.testing.expectEqual(name_to_ids.len, buf.len);
+
+        const change_2 = try storage.get_tags_change();
+        try std.testing.expect(change_2.? >= change_1.?);
     }
-
-    // Just run functions to see that they work
-    {
-        try storage.updateLastUpdate(feed.feed_id);
-        // storage.getLatestFeedsWithUrl();
-        // storage.update_feed_timestamp();
-        // storage.update_feed_fields();
-    }
-
-
-    // print("val: {}\n", .{value});
-
-    // Modify database
 
     { // delete feed
         try storage.deleteFeed(feed.feed_id);
