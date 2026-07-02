@@ -491,13 +491,13 @@ pub const FeedToUpdate = struct {
 };
 
 pub const Icon = struct {
-    url: UriWrapper,
+    url: std.Uri,
     data: []const u8,
     etag_or_last_modified_or_hash: []const u8,
 
     pub fn init(uri: std.Uri, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
         return .{
-            .url = .{ .value = uri},
+            .url = uri,
             .data = data, 
             .etag_or_last_modified_or_hash = content_cache_value(data, etag_or_last_modified),
         };

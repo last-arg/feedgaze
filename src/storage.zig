@@ -1663,7 +1663,7 @@ pub const Storage = struct {
         defer stmt.deinit();
 
         while (try stmt.next(T, allocator)) |row| {
-            res.appendAssumeCapacity(row);
+            try res.append(row);
         }
 
         return res.toOwnedSlice();

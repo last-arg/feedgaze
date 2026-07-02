@@ -154,7 +154,7 @@ pub const Cli = struct {
                 var arena = std.heap.ArenaAllocator.init(self.allocator);
                 defer arena.deinit();
                 
-                var tags_ids: []usize = &.{};
+                var tags_ids: []feed_types.SqliteId = &.{};
 
                 if (opts.tags) |tags_raw| {
                     var tags_iter = mem.splitScalar(u8, tags_raw, ',');
@@ -172,7 +172,7 @@ pub const Cli = struct {
                     try self.storage.tags_add(tags_arr.items);
 
                     // get tags' ids
-                    const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
+                    const tags_ids_buf = try arena.allocator().alloc(feed_types.SqliteId, tags_arr.items.len);
                     tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
                 }
 
@@ -232,7 +232,7 @@ pub const Cli = struct {
 
         switch (check_type) {
             .all => {
-                const icons_existing = try self.storage.icon_all();
+                const icons_existing = try self.storage.icon_all(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_existing.len);
                 for (icons_existing) |icon| {
                     var req = http_client.init(self.io, arena.allocator());
@@ -344,7 +344,7 @@ pub const Cli = struct {
                 }
             },
             .missing => {
-                const icons_missing = try self.storage.feed_icons_missing();
+                const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
                 defer arena.allocator().free(icons_missing);
                 progress_node.setEstimatedTotalItems(icons_missing.len);
 
@@ -403,7 +403,7 @@ pub const Cli = struct {
                 }
             },
             .failed => {
-                const icons_failed = try self.storage.feed_icons_failed();
+                const icons_failed = try self.storage.feed_icons_failed(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_failed.len);
 
                 for (icons_failed) |icon| {
@@ -571,7 +571,7 @@ pub const Cli = struct {
         }
 
         if (opts.list) {
-            const rules = try self.storage.rules_all();
+            const rules = try self.storage.rules_all(self.allocator);
             defer self.allocator.free(rules);
             if (rules.len == 0) {
                 try self.out.writeAll("There are no feed add rules.");
@@ -635,7 +635,7 @@ pub const Cli = struct {
                 try self.out.writeAll("'--remove' requires input to filter rules.\n");
                 return;
             }
-            const rules = try self.storage.rules_filter(inputs[0]);
+            const rules = try self.storage.rules_filter(self.allocator, inputs[0]);
             const invalid_msg = "Enter valid input 'y' or 'n'.\n";
 
             for (rules) |r| {
@@ -694,7 +694,7 @@ pub const Cli = struct {
         }
 
         if (opts.list) {
-            const tags = try self.storage.tags_all();
+            const tags = try self.storage.tags_all(arena.allocator());
 
             if (tags.len == 0) {
                 try self.out.print("There are no tags.\n", .{});
@@ -778,7 +778,7 @@ pub const Cli = struct {
             try self.out.writeAll("Removed tags from feed(s).\n");
         } else if (opts.add) {
             try self.storage.tags_add(tags_arr.items);
-            const tags_ids_buf = try arena.allocator().alloc(usize, tags_arr.items.len);
+            const tags_ids_buf = try arena.allocator().alloc(feed_types.SqliteId, tags_arr.items.len);
             const tags_ids = try self.storage.tags_ids(tags_arr.items, tags_ids_buf);
 
             for (feeds) |feed| {
@@ -798,18 +798,18 @@ pub const Cli = struct {
             return error.InvalidUrl;
         };
 
+        var arena = std.heap.ArenaAllocator.init(self.allocator);
+        defer arena.deinit();
+
         if (uri.host) |host| {
             const host_str = util.uri_component_val(host);
-            const rules = try self.storage.get_rules_for_host(host_str);
+            const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
             defer self.allocator.free(rules);
             if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
                 std.log.info("Found matching rule. Using rule to transform url.", .{});
                 url = try AddRule.transform_rule_match(self.allocator, uri, rule_match);
             }
         }
-
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
 
         // TODO: reuse client if possible
         var client_2 = http_client.init(self.io, arena.allocator());
@@ -871,7 +871,7 @@ pub const Cli = struct {
 
                     if (uri.host) |host| {
                         const host_str = util.uri_component_val(host);
-                        const rules = try self.storage.get_rules_for_host(host_str);
+                        const rules = try self.storage.get_rules_for_host(arena.allocator(), host_str);
                         defer self.allocator.free(rules);
                         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
                             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -911,7 +911,7 @@ pub const Cli = struct {
 
         var parser: FeedParser = .init(self.io, add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
-            .feed_url = .init(add_opts.feed_opts.feed_url),
+            .feed_url = add_opts.feed_opts.feed_url,
             .now_seconds = std.Io.Clock.real.now(self.io).toSeconds(),
         });
 
@@ -1033,7 +1033,7 @@ pub const Cli = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        const feed_updates = try self.storage.getFeedsToUpdate(input, options);
+        const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
         if (feed_updates.len == 0) {
             std.log.info("No feeds to update", .{});
             return false;
@@ -1076,7 +1076,7 @@ pub const Cli = struct {
     pub fn remove(self: *Self, url: []const u8) !void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
-        const feeds = try self.storage.getFeedsWithUrl(url);
+        const feeds = try self.storage.getFeedsWithUrl(arena.allocator(), url);
         if (feeds.len == 0) {
             std.log.info("Found no feeds for <url> input '{s}'", .{url});
             return;
@@ -1110,7 +1110,7 @@ pub const Cli = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        const feeds = try self.storage.getLatestFeedsWithUrl(inputs, opts);
+        const feeds = try self.storage.getLatestFeedsWithUrl(arena.allocator(), inputs, opts);
 
         for (feeds) |feed| {
             const title = feed.title orelse "<no title>";
@@ -1348,11 +1348,11 @@ pub const App = struct {
         const resp = resp_opt orelse unreachable;
         const body = a_writer.writer.buffered();
 
-        const html_options = try self.storage.html_selector_get(f_update.feed_id);
+        const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
         var parsing: FeedParser = .init(self.io, body);
 
         const parsed = parsing.parse(arena.allocator(), html_options, .{
-            .feed_url = .init(feed_uri),
+            .feed_url = feed_uri,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,
         }) catch |err| {

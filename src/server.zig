@@ -156,7 +156,7 @@ pub const IconManage = struct {
         }
 
         if (storage_opt) |storage|  {
-            const icon_opt = storage.icon_by_id(id) catch |err| {
+            const icon_opt = storage.icon_by_id(self.allocator, id) catch |err| {
                 std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
                 return null;
             };
@@ -341,7 +341,7 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
         var item_arena = std.heap.ArenaAllocator.init(req.arena);
         defer item_arena.deinit();
 
-        const feed_updates = try global.storage.getFeedsToUpdate(null, .{});
+        const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
             _ = app.update_feed(&item_arena, f_update) catch {};
@@ -495,7 +495,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     const uri = try std.Uri.parse(feed_url);
     if (uri.host) |host| {
         const host_str = util.uri_component_val(host);
-        const rules = try db.get_rules_for_host(host_str);
+        const rules = try db.get_rules_for_host(req.arena, host_str);
         defer req.arena.free(rules);
         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -540,7 +540,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, html_opts, .{
-        .feed_url = .init(add_opts.feed_opts.feed_url),
+        .feed_url = add_opts.feed_opts.feed_url,
     });
   
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -577,7 +577,7 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         }
 
         try db.tags_add(tags_arr.items);
-        const tags_ids_buf = try req.arena.alloc(usize, tags_arr.items.len);
+        const tags_ids_buf = try req.arena.alloc(types.SqliteId, tags_arr.items.len);
         const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
         try db.tags_feed_add(feed_id, tags_ids);
     }
@@ -610,7 +610,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try Layout.write_head(w, "Pick feed");
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -870,7 +870,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     const uri = try std.Uri.parse(feed_url);
     if (uri.host) |host| {
         const host_str = util.uri_component_val(host);
-        const rules = try db.get_rules_for_host(host_str);
+        const rules = try db.get_rules_for_host(req.arena, host_str);
         defer req.arena.free(rules);
         if (try AddRule.find_rule_match(uri, rules)) |rule_match| {
             std.log.info("Found matching rule. Using rule to transform url.", .{});
@@ -927,7 +927,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var parsing: parse = .init(global.io, add_opts.feed_opts.body);
 
     const parsed_feed = try parsing.parse(req.arena, null, .{
-        .feed_url = .init(add_opts.feed_opts.feed_url),
+        .feed_url = add_opts.feed_opts.feed_url,
     });
 
     const feed = try db.addFeed(parsed_feed, add_opts);
@@ -964,7 +964,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         }
 
         try db.tags_add(tags_arr.items);
-        const tags_ids_buf = try req.arena.alloc(usize, tags_arr.items.len);
+        const tags_ids_buf = try req.arena.alloc(types.SqliteId, tags_arr.items.len);
         const tags_ids = try db.tags_ids(tags_arr.items, tags_ids_buf);
         try db.tags_feed_add(feed_id, tags_ids);
     }
@@ -990,7 +990,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try Layout.write_head(w, "Add feed");
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     defer db.free(tags);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
@@ -1257,7 +1257,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id_u64 = std.fmt.parseUnsigned(u64, id_raw, 10) catch return error.InvalidIdParam;
     const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
-    const feed = db.feed_with_id(feed_id) catch {
+    const feed = db.feed_with_id(req.arena, feed_id) catch {
         return error.DatabaseFailure;
     } orelse {
         resp.status = 404;
@@ -1275,17 +1275,17 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    const tags_all = db.tags_all() catch blk: {
+    const tags_all = db.tags_all(req.arena) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
         break :blk &.{};
     };
 
-    const feed_tags = db.feed_tags(feed.feed_id) catch blk: {
+    const feed_tags = db.feed_tags(req.arena, feed.feed_id) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get feed tags", .{feed.feed_id});
         break :blk &.{};
     };
 
-    const items = db.feed_items_with_feed_id(feed.feed_id) catch blk: {
+    const items = db.feed_items_with_feed_id(req.arena, feed.feed_id) catch blk: {
         std.log.warn("Request '/feed/{d}' failed to get feed items", .{feed.feed_id});
         break :blk &.{};
     };
@@ -1304,7 +1304,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         try Layout.write_head(w, "Feed");
     }
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -1380,7 +1380,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     // Feed request(s) failed
-    const failed_requests = try db.request_failed_slice(feed.feed_id);
+    const failed_requests = try db.request_failed_slice(req.arena, feed.feed_id);
     if (failed_requests.len > 1) {
         try w.writeAll(
             \\<table class="table-striped">
@@ -1460,7 +1460,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     \\</div>
     ;
 
-    const page_url: types.UriWrapper = feed.page_url orelse .init(std.Uri{.scheme = ""});
+    const page_url = feed.page_url orelse std.Uri{.scheme = ""};
 
     const icon_url = blk: {
         if (feed.icon_id.is_valid()) {
@@ -1468,7 +1468,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
                 const icon_url_raw = global.icon_manage.get_url_string_by_index(index);
                 const icon_url = try std.Uri.parse(icon_url_raw);
                 // NOTE: Is inline icon
-                if (std.meta.eql(icon_url, page_url.value)) {
+                if (std.meta.eql(icon_url, page_url)) {
                     const icon_raw = global.icon_manage.get_data_string_by_index(index);
                     const icon_encoded = try html.encode(req.arena, icon_raw);
                     break :blk icon_encoded;
@@ -1487,7 +1487,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     });
 
     if (std.meta.eql(page_url, feed.feed_url)) {
-        if (try db.html_selector_get(feed.feed_id)) |html_opts| {
+        if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
             const selector_template = 
                 \\<div>
                 \\<div><label for="html-{[name]s}-selector">{[label]s}</label></div>
@@ -1801,7 +1801,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     try Layout.write_head(w, "Home - latest added feed items");
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='content-latest flow'>");
@@ -1926,7 +1926,7 @@ fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocato
     try w.print(
         \\<span>{f}</span></a>
         \\</div>
-    , .{ url.value.fmt(.{
+    , .{ url.fmt(.{
         .authority = true,
         .port = true,
     }) });
@@ -1953,11 +1953,12 @@ fn timestamp_render(io: std.Io, w: *std.Io.Writer, timestamp: ?i64) !void {
 
 fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
-    const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
+    const tag_id_u64 = std.fmt.parseUnsigned(u64, tag_id_raw, 10) catch return error.InvalidIdParam;
 
     const db = global.storage;
     resp.status = 301;
-    const tag = db.tag_with_id(tag_id) catch {
+    const tag_id: types.SqliteId = @enumFromInt(tag_id_u64);
+    const tag = db.tag_with_id(req.arena, tag_id) catch {
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.delete });
         resp.header("Location", redirect);
         return;
@@ -2014,7 +2015,8 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
         resp.header("Location", location_arr.writer.buffered());
         return;
     };
-    const tag_id_form = std.fmt.parseUnsigned(usize, tag_id_form_raw, 10) catch return error.InvalidIdParam;
+    const tag_id_form_u64 = std.fmt.parseUnsigned(u64, tag_id_form_raw, 10) catch return error.InvalidIdParam;
+    const tag_id_form: types.SqliteId = @enumFromInt(tag_id_form_u64);
 
     try db.tag_update(.{ .tag_id = tag_id_form, .name = tag_name_form });
 
@@ -2024,11 +2026,12 @@ fn tag_edit_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
 fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const tag_id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
-    const tag_id = std.fmt.parseUnsigned(usize, tag_id_raw, 10) catch return error.InvalidIdParam;
+    const tag_id_u64 = std.fmt.parseUnsigned(u64, tag_id_raw, 10) catch return error.InvalidIdParam;
+    const tag_id: types.SqliteId = @enumFromInt(tag_id_u64);
 
     const db = global.storage;
 
-    const tag = try db.tag_with_id(tag_id) orelse {
+    const tag = try db.tag_with_id(req.arena, tag_id) orelse {
         resp.status = 301;
         const redirect = comptimePrint("/tags?error={f}", .{ UrlQueryError.missing });
         resp.header("Location", redirect);
@@ -2054,7 +2057,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try write_tag.print("Edit tag: {s}", .{tag.name});
     try Layout.write_head(w, write_tag.buffered());
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
     
     try w.print(parts_get("tag_edit_page"), .{tag.name});
@@ -2102,7 +2105,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_head(w, "Tags");
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll(parts_get("tags_page"));
@@ -2120,7 +2123,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     }
 
     try w.writeAll(parts_get("tags_list"));
-    const tag_ids = try db.tags_all_with_ids();
+    const tag_ids = try db.tags_all_with_ids(req.arena);
     for (tag_ids) |tag| {
         try w.writeAll(parts_get("tag_item"));
         const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
@@ -2207,7 +2210,7 @@ const Layout = struct {
     pub fn cache_sidebar_form(self: *@This()) !bool {
         if (try self.storage.get_tags_change()) |last_modified| {
             if (last_modified != self.tags_last_modified) {
-                const tags = try self.storage.tags_all();
+                const tags = try self.storage.tags_all(self.allocator);
                 defer self.storage.free(tags);
                 self.sidebar_form_html.shrinkRetainingCapacity(0);
                 try write_sidebar_form_new(
@@ -2326,7 +2329,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const has_untagged = query.get("untagged") != null;
 
-    const tags = try db.tags_all();
+    const tags = try db.tags_all(req.arena);
     try global.layout.body_head_render(w, req.url.path, tags, .{ 
         .search = search_value orelse "", 
         .tags_checked = tags_active.items, 
@@ -2358,7 +2361,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         break :trimmed null;
     };
 
-    const failed_requests = try db.request_failed_ids();
+    const failed_requests = try db.request_failed_ids(req.arena);
     
     const feeds = blk: {
         const after: types.Feed.ID = after: {
@@ -2465,7 +2468,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     try w.flush();
 }
 
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []const types.Feed, global: *Global, failed_requests_ids: []const u64) !void {
+fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []const types.Feed, global: *Global, failed_requests_ids: []const types.SqliteId) !void {
     try w.writeAll("<div class='flow'>");
     var buf: [128]u8 = undefined;
     for (feeds) |feed| {
@@ -2484,13 +2487,13 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         try w.writeAll("</div>");
 
-        if (mem.indexOfScalar(u64, failed_requests_ids, @intFromEnum(feed.feed_id))) |_| {
+        if (mem.indexOfScalar(types.Feed.ID, failed_requests_ids, feed.feed_id)) |_| {
             try w.writeAll(
             \\<p class="feed-failed-msg">Last update failed</p>
             );
         }
 
-        const tags = try db.feed_tags(feed.feed_id);
+        const tags = try db.feed_tags(allocator, feed.feed_id);
         if (tags.len > 0) {
             try w.writeAll("<div class='feed-tags'>");
             try w.writeAll("<ul class='list-unstyled' aria-label='Feed tags'>");
@@ -2504,7 +2507,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
         }
         try w.writeAll("</header>");
         
-        const items = try db.feed_items_with_feed_id(feed.feed_id);
+        const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
         if (items.len == 0) {
             try w.writeAll("<p class='callout size-xs'>Feed has no items.</p>");
            try w.writeAll("</article>");
