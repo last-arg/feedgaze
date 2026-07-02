@@ -335,7 +335,7 @@ test "RssDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1701709200), d8);
 }
 
-const SqliteId = enum(u64) {
+pub const SqliteId = enum(u64) {
     unassigned = 0,
     _,
 

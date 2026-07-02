@@ -761,77 +761,53 @@ pub const Storage = struct {
         return res.toOwnedSlice();
     }
 
-    pub fn tags_all(self: *Self) ![]const []const u8 {
+    pub fn tags_all(self: *Self, allocator: Allocator) ![]const []const u8 {
         const query = "SELECT name FROM tag ORDER BY name ASC;";
-        return try self.sql_db.raw(query, .{}).fetchAll([]const u8);
+        const raw_query = self.sql_db.raw(query, .{});
+
+        return try all([]const u8, allocator, raw_query);
     }
 
-    pub fn tag_with_id(self: *Self, tag_id: usize) !?TagResult {
+    pub fn tag_with_id(self: *Self, allocator: Allocator, tag_id: types.SqliteId) !?TagResult {
         const query = "SELECT tag_id, name FROM tag where tag_id = ?;";
-        return try self.sql_db.raw(query, .{tag_id}).get(TagResult);
+        const raw_query = self.sql_db.raw(query, .{tag_id});
+
+        return try one(TagResult, allocator, raw_query);
     }
 
-    pub fn tag_update(self: *Self, data: struct{tag_id: usize, name: []const u8}) !void {
+    pub fn tag_update(self: *Self, data: TagResult) !void {
         const query =
             \\UPDATE tag SET
-            \\  name = $name
-            \\WHERE tag_id = $tag_id;
+            \\  name = ?1
+            \\WHERE tag_id = ?2
         ;
-        try self.sql_db.raw(query, data).exec();
+        try self.sql_db.raw(query, .{data.name, data.tag_id}).exec();
     }
         
-    const TagResult = struct{tag_id: usize, name: []const u8};
-    pub fn tags_all_with_ids(self: *Self) ![]const TagResult {
+    const TagResult = struct{tag_id: types.SqliteId, name: []const u8};
+    pub fn tags_all_with_ids(self: *Self, allocator: Allocator) ![]const TagResult {
         const query = "select * from tag order by name ASC;";
-        return try self.sql_db.raw(query, .{}).fetchAll(TagResult) ;
+        const raw_query = self.sql_db.raw(query, .{});
+
+        return all(TagResult, allocator, raw_query);
     }
 
-    pub fn tags_remove_with_id(self: *Self, tag_id: usize) !void {
+    pub fn tags_remove_with_id(self: *Self, tag_id: types.SqliteId) !void {
         const query =
         \\delete from tag where tag_id = ?
         ;
         try self.sql_db.raw(query, .{tag_id}).exec();
     }
 
-    pub fn tags_remove_keep(self: *Self, allocator_in: Allocator, feed_id: Feed.ID, tag_ids: []usize) !void {
-        assert(feed_id != .unassigned);
-        std.debug.assert(tag_ids.len >= 0);
-        var arena = std.heap.ArenaAllocator.init(allocator_in);
-        const allocator = arena.allocator();
-        defer arena.deinit();
-
-        const query_fmt = "DELETE FROM feed_tag WHERE feed_id = ? and tag_id not in ([tag_ids])";
-        var query_dyn = try std.ArrayList(u8).initCapacity(allocator, tag_ids.len * 10);
-        defer query_dyn.deinit();
-        var iter = std.mem.splitSequence(u8, query_fmt, "[tag_ids]");
-        const query_begin = iter.next() orelse unreachable;
-        const query_end = iter.next() orelse unreachable;
-        std.debug.assert(iter.next() == null);
-
-        try query_dyn.appendSlice(query_begin);
-        {
-            const str = try std.fmt.allocPrint(allocator, "{d}", .{tag_ids[0]});
-            try query_dyn.appendSlice(str);
-        }
-        for (tag_ids[1..]) |tag_id| {
-            const str = try std.fmt.allocPrint(allocator, ",{d}", .{tag_id});
-            try query_dyn.appendSlice(str);
-        }
-        try query_dyn.appendSlice(query_end);
-
-        var stmt = try self.sql_db.prepareDynamic(query_dyn.items);
-        defer stmt.deinit();
-        return try stmt.exec(.{}, .{@intFromEnum(feed_id)});
-    }
-
-    pub fn feed_tags(self: *Self, feed_id: Feed.ID) ![]const []const u8 {
+    pub fn feed_tags(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const []const u8 {
         assert(feed_id != .unassigned);
         const query = 
         \\select name from tag where tag_id in (
         \\  select distinct(tag_id) from feed_tag where feed_id = ?
         \\)
         ;
-        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).fetchAll([]const u8);
+        const raw_query = self.sql_db.raw(query, .{feed_id});
+        return try all([]const u8, allocator, raw_query);
     }
         
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
@@ -842,11 +818,12 @@ pub const Storage = struct {
         }
     }
 
-    pub fn tags_ids(self: *Self, tags: [][]const u8, buf: []u64) ![]u64 {
+    pub fn tags_ids(self: *Self, tags: [][]const u8, buf: []types.SqliteId) ![]types.SqliteId {
         const query = "select tag_id from tag where name = ?;"; 
         var i: usize = 0;
         for (tags) |tag| {
-            if (try self.sql_db.raw(query, .{tag}).get(u64) ) |value| {
+            const raw_query = self.sql_db.raw(query, .{tag});
+            if (try one(types.SqliteId, undefined, raw_query) ) |value| {
                 buf[i] = value;
                 i += 1;
             }
@@ -862,19 +839,19 @@ pub const Storage = struct {
         }
     }
 
-    pub fn tags_feed_add(self: *Self, feed_id: Feed.ID, tag_ids: []usize) !void {
+    pub fn tags_feed_add(self: *Self, feed_id: Feed.ID, tag_ids: []types.SqliteId) !void {
         assert(feed_id != .unassigned);
         const query = "INSERT INTO feed_tag (feed_id, tag_id) VALUES (?, ?) ON CONFLICT DO NOTHING";
         for (tag_ids) |tag_id| {
-            try self.sql_db.raw(query, .{@intFromEnum(feed_id), tag_id}).exec();
+            try self.sql_db.raw(query, .{feed_id, tag_id}).exec();
         }
     }
 
     pub fn tags_feed_remove(self: *Self, feed_id: Feed.ID, tags: [][]const u8) !void {
         assert(feed_id != .unassigned);
-        const query = "DELETE FROM feed_tag WHERE feed_id = ? AND (select tag_id from tag where name = ?);";
+        const query = "DELETE FROM feed_tag WHERE feed_id = ? AND tag_id = (select tag_id from tag where name = ?)";
         for (tags) |tag| {
-            try self.sql_db.raw(query, .{@intFromEnum(feed_id), tag}).exec();
+            try self.sql_db.raw(query, .{feed_id, tag}).exec();
         }
     }
 
@@ -1141,7 +1118,7 @@ pub const Storage = struct {
         \\from add_rule
         ;
         const raw_query = self.sql_db.raw(query_fmt, .{});
-        return try fetch_all(RuleMatchStr, allocator, raw_query);
+        return try all(RuleMatchStr, allocator, raw_query);
     }
 
     const RuleFilterMatch = struct {
@@ -1164,7 +1141,7 @@ pub const Storage = struct {
         \\  result_path like '%' || ?1 || '%'
         ;
         const raw_query = self.sql_db.raw(query_fmt, .{ filter });
-        return try fetch_all(RuleFilterMatch, allocator, raw_query);
+        return try all(RuleFilterMatch, allocator, raw_query);
     }
     
     pub fn rule_remove(self: *Self, add_rule_id: usize) !void {
@@ -1199,23 +1176,8 @@ pub const Storage = struct {
         ;
 
         const raw_query = self.sql_db.raw(query, .{host_id});
-        return try fetch_all(AddRule.RuleWithHost, allocator, raw_query);
+        return try all(AddRule.RuleWithHost, allocator, raw_query);
     }
-
-    fn fetch_all(comptime T: type, allocator: Allocator, raw_query: sql.RawQuery) ![]const T {
-        var res = try std.array_list.Managed(T).initCapacity(allocator, 10);
-        errdefer res.deinit();
-
-        var stmt = try raw_query.prepare();
-        defer stmt.deinit();
-
-        while (try stmt.next(T, allocator)) |row| {
-            res.appendAssumeCapacity(row);
-        }
-
-        return res.toOwnedSlice();
-    }
-
 
     pub fn get_add_rule(self: *Self, allocator: Allocator, uri: std.Uri) !?Rule {
         const uri_host = uri.host orelse return null;
@@ -1422,12 +1384,12 @@ pub const Storage = struct {
         \\FROM icon
         ;
 
+        var res = std.array_list.Managed(Icon).init(allocator);
+        errdefer res.deinit();
+
         const raw_query = self.sql_db.raw(query, .{});
         var stmt = try raw_query.prepare();
         defer stmt.deinit();
-
-        var res = std.array_list.Managed(Icon).init(allocator);
-        errdefer res.deinit();
 
         while (try stmt.next(Icon.DB, allocator)) |row| {
             const len = row.icon_data.bytes.len;
@@ -1707,6 +1669,20 @@ pub const Storage = struct {
 
         return stmt.next(T, allocator);
     }
+
+    fn all(comptime T: type, allocator: Allocator, raw_query: sql.RawQuery) ![]const T {
+        var res = try std.array_list.Managed(T).initCapacity(allocator, 10);
+        errdefer res.deinit();
+
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        while (try stmt.next(T, allocator)) |row| {
+            res.appendAssumeCapacity(row);
+        }
+
+        return res.toOwnedSlice();
+    }
 };
 
 // TODO: feed.title default value should be null. Or use empty string ("") as default value?
@@ -1967,11 +1943,6 @@ test "Storage:all" {
         try std.testing.expectEqual(5, value.len);
     }
 
-    // Just run functions to see that they work
-    {
-        try storage.updateLastUpdate(feed.feed_id);
-    }
-
     { // Icon tests
         const missing = try storage.feed_icons_missing(arena.allocator());
         try std.testing.expectEqual(1, missing.len);
@@ -2106,6 +2077,57 @@ test "Storage:all" {
         const no_rule = try storage.has_rule(rule_opts);
         try std.testing.expect(!no_rule);
     }
+
+    { // tags tests
+        const change_1 = try storage.get_tags_change();
+        try std.testing.expect(change_1.? > 0);
+
+        var add_tags = [_][]const u8{"t1", "t2", "t3"};
+        try storage.tags_add(&add_tags);
+
+
+        const ids = try storage.tags_all_with_ids(arena.allocator());
+        try std.testing.expectEqual(add_tags.len , ids.len);
+
+        const first_id = ids[0].tag_id;
+        const first_name = "t1_updated";
+        try storage.tag_update(.{ .tag_id = first_id, .name = first_name });
+
+        const first_tag = try storage.tag_with_id(arena.allocator(), first_id);
+        try std.testing.expectEqualStrings(first_name, first_tag.?.name);
+
+        { // feed tags tests
+            var feed_tag_ids = [_]types.SqliteId{first_id, ids[1].tag_id};
+            try storage.tags_feed_add(feed.feed_id, &feed_tag_ids);
+            const feed_tags = try storage.feed_tags(arena.allocator(), feed.feed_id);
+            try std.testing.expectEqual(2 , feed_tags.len);
+
+            var remove_ids = [_][]const u8 {"t2"};
+            try storage.tags_feed_remove(feed.feed_id, &remove_ids);
+
+            const feed_tags_1 = try storage.feed_tags(arena.allocator(), feed.feed_id);
+            try std.testing.expectEqual(1, feed_tags_1.len);
+        }
+
+        try storage.tags_remove_with_id(first_id);
+        const all = try storage.tags_all(arena.allocator());
+        try std.testing.expectEqual(add_tags.len - 1, all.len);
+
+        var list_of_tags = [_][]const u8{"t2"};
+        try storage.tags_remove(&list_of_tags);
+        var buf: [1]types.SqliteId = undefined;
+        const name_to_ids = try storage.tags_ids(&add_tags, &buf);
+        try std.testing.expectEqual(name_to_ids.len, buf.len);
+    }
+
+    // Just run functions to see that they work
+    {
+        try storage.updateLastUpdate(feed.feed_id);
+        // storage.getLatestFeedsWithUrl();
+        // storage.update_feed_timestamp();
+        // storage.update_feed_fields();
+    }
+
 
     // print("val: {}\n", .{value});
 
