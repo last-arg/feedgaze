@@ -108,9 +108,8 @@ pub const Cli = struct {
                         const now_ts = std.Io.Clock.real.now(self.io).toSeconds();
                         if (timestamp_next > now_ts) {
                             const zdt = @import("zdt");
-                            var date = try zdt.Datetime.fromUnix(timestamp_next, .second, null);
-                            const tz = try zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false);
-                            date = try date.tzConvert(.{ .utc_offset = tz });
+                            const utc_offset = try zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false);
+                            const date = try zdt.Datetime.fromUnix(timestamp_next, .second, .{ .utc_offset = utc_offset });
 
                             var buf: [32]u8 = undefined;
                             const countdown_ts = timestamp_next - now_ts;
