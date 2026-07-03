@@ -113,17 +113,17 @@ pub const Cli = struct {
 
                             var buf: [32]u8 = undefined;
                             const countdown_ts = timestamp_next - now_ts;
-                            std.log.info("Next update in {s} [{d:0>2}.{d:0>2}.{d:0>4} {d:0>2}:{d:0>2}]", .{
+                            std.log.info("Next update in {s} [{d:0>2}.{d:0>2}.{d:0>} {d:0>2}:{d:0>2}]", .{
                                 try relative_time_from_seconds(&buf, countdown_ts),
                                 date.day,
                                 date.month,
-                                date.year,
+                                @as(u32, @intCast(date.year)),
                                 date.hour,
                                 date.minute,
                             });
 
                             loop_count = 0;
-                            try self.io.sleep(.fromSeconds(timestamp_next * std.time.ns_per_s), .boot);
+                            try self.io.sleep(.fromSeconds(countdown_ts), .boot);
                             continue;
                         }
                     }
