@@ -815,9 +815,6 @@ pub const Cli = struct {
         var client_2 = http_client.init(self.io, arena.allocator());
         defer client_2.deinit();
 
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(self.allocator, 32 * 1024);
-        defer a_writer.deinit();
-
         var client = http_client.init(self.io, arena.allocator());
         defer client.deinit();
         var buffer_header: [1024]u8 = undefined;
@@ -828,7 +825,6 @@ pub const Cli = struct {
         });
 
         var add_opts: Storage.AddOptions = .{ .feed_opts = feed_opts.? };
-        add_opts.feed_opts.body = a_writer.writer.buffered();
         if (add_opts.feed_opts.content_type == .html) {
             add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
         }
@@ -879,7 +875,6 @@ pub const Cli = struct {
                         }
                     }
 
-                    a_writer.shrinkRetainingCapacity(0);
                     const fetch_url_2 = try arena.allocator().dupe(u8, fetch_url);
                     const title = if (link.title) |t| try arena.allocator().dupe(u8, t) else null;
                     const feed_uri_2 = try std.Uri.parse(fetch_url_2);
@@ -888,7 +883,6 @@ pub const Cli = struct {
                     });
 
                     add_opts.feed_opts = feed_opts_2.?;
-                    add_opts.feed_opts.body = a_writer.writer.buffered();
                     add_opts.feed_opts.feed_url = try std.Uri.parse(try client_2.get_url_slice(&buf_url));
                     add_opts.feed_opts.title = title;
                 }
@@ -1266,9 +1260,6 @@ pub const App = struct {
         var req = http_client.init(self.io, arena.allocator());
         defer req.deinit();
 
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
-        defer a_writer.deinit();
-        
         var buffer_header: [1028]u8 = undefined;
         const feed_uri = f_update.feed_url;
         const resp_opt = req.fetch(arena.allocator(), feed_uri, .{
@@ -1346,7 +1337,7 @@ pub const App = struct {
         }
 
         const resp = resp_opt orelse unreachable;
-        const body = a_writer.writer.buffered();
+        const body = resp.body;
 
         const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
         var parsing: FeedParser = .init(self.io, body);

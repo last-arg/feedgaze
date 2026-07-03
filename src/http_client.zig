@@ -209,7 +209,7 @@ pub fn handle_response(response: *http.Client.Response, io: std.Io, allocator: A
     } 
 
     var w = std.Io.Writer.Allocating.init(allocator);
-    _ = try read_body(response, &w.writer, allocator);
+    result.body = try read_body(response, &w.writer, allocator);
 
     return result;
 }

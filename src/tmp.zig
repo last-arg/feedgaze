@@ -16,13 +16,13 @@ pub const std_options: std.Options = .{
     .log_level = .info,
 };
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
     // try zignal();
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
-    try run_parse();
+    try run_parse(init.io);
     // try test_allocating();
     // try storage_item_interval();
     // try storage_test();
@@ -369,14 +369,14 @@ pub fn test_allocating() !void {
 
 }
 
-fn run_parse() !void {
+fn run_parse(io: std.Io) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const alloc = arena.allocator();
 
     const content = @embedFile("tmp_file"); 
     const fp = @import("feed_parse.zig");
-    var parser: fp = .init(content);
+    var parser: fp = .init(io, content);
     const feed = try parser.parse(alloc, null, .{
         .feed_url = try std.Uri.parse("https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA"),
     });

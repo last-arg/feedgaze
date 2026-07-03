@@ -7,7 +7,7 @@ pub const OptimizeMode = std.builtin.OptimizeMode;
 
 const anon_modules = .{
     // .{ .name = "tmp_file", .path = "./tmp/feed_urls.txt" },
-    .{ .name = "tmp_file", .path = "./tmp/@deech.rss" },
+    .{ .name = "tmp_file", .path = "./tmp/yt.xml" },
     // .{ .name = "tmp_file", .path = "./test/atom.atom" },
     .{ .name = "atom.atom", .path = "./test/atom.atom" },
     .{ .name = "atom.xml", .path = "./test/atom.xml" },
