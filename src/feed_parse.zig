@@ -1727,7 +1727,15 @@ fn parse_atom_current_state(
             .link => {},
             .updated => {
                 const date_raw = content[loc.offset..loc.offset + loc.len];
-                feed.updated_timestamp = AtomDateTime.parse(date_raw) catch null;
+                if (AtomDateTime.parse(date_raw)) |new_date| {
+                    feed.updated_timestamp = new_date;
+                } else |_| {
+                    if (feed.page_url) |page_urlloc| {
+                        const end = page_urlloc.offset + page_urlloc.len;
+                        const page_url = content[page_urlloc.offset..end];
+                        std.log.warn("Failed to parse atom date for {s}", .{page_url});
+                    }
+                }
             },
             .published, .id => {},
         },
@@ -1745,8 +1753,12 @@ fn parse_atom_current_state(
                 const date_raw = content[loc.offset..loc.offset + loc.len];
                 if (AtomDateTime.parse(date_raw)) |new_date| {
                     current_item.updated_timestamp = new_date;
-                } else |err| {
-                    std.log.warn("Failed to parse atom date: '{s}'. Error: {}", .{date_raw, err});
+                } else |_| {
+                    if (feed.page_url) |page_urlloc| {
+                        const end = page_urlloc.offset + page_urlloc.len;
+                        const page_url = content[page_urlloc.offset..end];
+                        std.log.warn("Failed to parse atom date for {s}", .{page_url});
+                    }
                 }
             },
         },

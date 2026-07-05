@@ -173,8 +173,8 @@ pub const AtomDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
         const raw = std.mem.trimStart(u8, input, &std.ascii.whitespace);
         const date = dt.Datetime.fromString(raw, dt.Formats.RFC3339) catch
-            dt.Datetime.fromString(input, dt.Formats.RFC3339nano) catch {
-            std.log.warn("Failed to parse atom date and time. Parsed value: '{s}'", .{raw});
+            dt.Datetime.fromString(input, dt.Formats.RFC3339nano) catch |err| {
+            std.log.warn("Failed to parse atom date and time '{s}'. Error: {}", .{raw, err});
             return error.FailedToParseAtomDate;
         };
 
