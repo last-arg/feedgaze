@@ -128,13 +128,15 @@ pub const Cli = struct {
                         }
                     }
 
-                    if (try self.update(null, .{})) {
+                    if (self.update(null, .{})) |_| {
                         loop_count = 0;
-                    } else {
+                    } else |err| {
+                        if (err == error.NameServerFailure) {
+                            try self.io.sleep(.fromSeconds(3 * loop_count), .boot);
+                        }
                         loop_count += 1;
                     }
-                }
-                if (loop_count >= loop_count_max) {
+                } else {
                     std.log.info("Stopped running foreground task. 'loop_count' exceeded 'loop_limit' - there is some logic mistake somewhere.", .{});
                 }
             },
@@ -1046,9 +1048,12 @@ pub const Cli = struct {
 
         for (feed_updates) |f_update| {
             _ = item_arena.reset(.retain_capacity);
-            const r = app.update_feed(&item_arena, f_update) catch |err| {
-                std.log.info("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
-                continue;
+            const r = app.update_feed(&item_arena, f_update) catch |err| switch (err) {
+                error.NameServerFailure, error.NetworkUnreachable => return err,
+                else => {
+                    std.log.info("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
+                    continue;
+                }
             };
 
             switch (r) {
@@ -1249,13 +1254,6 @@ pub const App = struct {
     };
 
     pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
-        errdefer {
-            // TODO: make fixes due to zig changes
-            std.log.err("Failed to update feed. Error: TODO FIX", .{});
-            // self.storage.request_failed_add(f_update.feed_id, @errorName(err)) catch |err_db| {
-            //     std.log.err("Failed to store failed feed http request. Error: {s}", .{@errorName(err_db)});
-            // };
-        }
         var req = http_client.init(self.io, arena.allocator());
         defer req.deinit();
 
@@ -1264,10 +1262,13 @@ pub const App = struct {
         const resp_opt = req.fetch(arena.allocator(), feed_uri, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
             .buffer_header = &buffer_header,
-        }) catch |err| {
-            try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to fetch feed '{f}'. Error: {}", .{f_update.feed_url, err});
-            return .failed;
+        }) catch |err| switch (err) {
+            error.NameServerFailure, error.NetworkUnreachable => return err,
+            else => {
+                try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
+                std.log.err("Failed to fetch feed '{f}'. Error: {}", .{f_update.feed_url, err});
+                return .failed;
+            }
         };
 
         if (resp_opt == null) {
