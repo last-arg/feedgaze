@@ -25,6 +25,7 @@ const AddRule = @import("add_rule.zig");
 const util = @import("util.zig"); 
 const is_url = util.is_url; 
 const image = @import("image.zig");
+const zdt = @import("zdt");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -103,13 +104,13 @@ pub const Cli = struct {
                 std.log.info("Running in foreground", .{});
                 const loop_count_max = 5;
                 var loop_count: u16 = 0;
+                const tz_system_local = try zdt.Timezone.tzLocal(self.io, null);
                 while (loop_count < loop_count_max) {
                     if (try self.storage.next_update_timestamp()) |timestamp_next| {
                         const now_ts = std.Io.Clock.real.now(self.io).toSeconds();
                         if (timestamp_next > now_ts) {
-                            const zdt = @import("zdt");
-                            const utc_offset = try zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false);
-                            const date = try zdt.Datetime.fromUnix(timestamp_next, .second, .{ .utc_offset = utc_offset });
+                            // const utc_offset = try zdt.UTCoffset.fromSeconds(2 * 60 * 60, "GMT+2", false);
+                            const date = try zdt.Datetime.fromUnix(timestamp_next, .second, .{ .tz = &tz_system_local });
 
                             var buf: [32]u8 = undefined;
                             const countdown_ts = timestamp_next - now_ts;
