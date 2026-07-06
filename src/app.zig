@@ -131,7 +131,7 @@ pub const Cli = struct {
                     if (self.update(null, .{})) |_| {
                         loop_count = 0;
                     } else |err| {
-                        if (err == error.NameServerFailure) {
+                        if (err == error.NameServerFailure or err == error.NetworkUnreachable) {
                             try self.io.sleep(.fromSeconds(3 * loop_count), .boot);
                         }
                         loop_count += 1;
