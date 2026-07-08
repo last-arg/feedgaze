@@ -1259,6 +1259,7 @@ pub const App = struct {
     pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
         var req = http_client.init(self.io, arena.allocator());
         defer req.deinit();
+        print("update: {f}\n", .{f_update.feed_url});
 
         var buffer_header: [1028]u8 = undefined;
         const feed_uri = f_update.feed_url;

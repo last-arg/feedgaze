@@ -700,12 +700,14 @@ pub const Storage = struct {
     }
 
     pub fn feed_items_with_feed_id(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const FeedItemRender {
-        const query =
+        const query = std.fmt.comptimePrint(
             \\select feed_id, title, link, updated_timestamp, created_timestamp
             \\from item where feed_id = ? order by updated_timestamp DESC, position ASC
-        ;
+            \\LIMIT {d}
+        , .{app_config.max_items});
 
-        return try self.fetch_feed_item_render(allocator, query, .{feed_id}, .{});
+        const items = try self.fetch_feed_item_render(allocator, query, .{feed_id}, .{});
+        return items;
     }
 
     const FeedItemRenderOptions = struct {
