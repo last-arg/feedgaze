@@ -133,7 +133,7 @@ pub const Cli = struct {
                         loop_count = 0;
                     } else |err| {
                         if (err == error.NameServerFailure or err == error.NetworkUnreachable) {
-                            const wait_sec = std.Io.Duration.fromSeconds(3 * loop_count);
+                            const wait_sec = std.Io.Duration.fromSeconds(3 * loop_count + 1);
                             std.log.info("Failed to update feeds because a network problem. Will try again in {d} seconds", .{wait_sec.toSeconds()});
                             try self.io.sleep(wait_sec, .boot);
                         }
