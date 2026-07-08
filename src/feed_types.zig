@@ -173,10 +173,7 @@ pub const AtomDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
         const raw = std.mem.trimStart(u8, input, &std.ascii.whitespace);
         const date = dt.Datetime.fromString(raw, dt.Formats.RFC3339) catch
-            dt.Datetime.fromString(input, dt.Formats.RFC3339nano) catch |err| {
-            std.log.warn("Failed to parse atom date and time '{s}'. Error: {}", .{raw, err});
-            return error.FailedToParseAtomDate;
-        };
+            try dt.Datetime.fromString(input, dt.Formats.RFC3339nano);
 
         return @intCast(date.toUnix(.second));
     }
@@ -264,9 +261,6 @@ pub const RssDateTime = struct {
             // NOTE: Start day and comma (,) are optional
             ctx = ctx[5..];
         }
-
-        const ctx_err = ctx;
-        errdefer std.log.warn("Failed to parse RSS date and time. Parsed value: '{s}'", .{ctx_err});
 
         var date_fields: dt.Datetime.Fields = .{};
 

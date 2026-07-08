@@ -1585,7 +1585,10 @@ fn parse_rss_current_state(
                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                 feed.updated_timestamp = RssDateTime.parse(date_str) catch 
                     AtomDateTime.parse(date_str) catch
-                    parse_wrong_rss_date(date_str) orelse null;
+                    parse_wrong_rss_date(date_str) orelse blk: {
+                        std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
+                        break :blk null;
+                    };
             },
             .guid, .description => {},
 
@@ -1604,7 +1607,10 @@ fn parse_rss_current_state(
                 const date_str = mem.trim(u8, date_raw, &std.ascii.whitespace);
                 current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
                     AtomDateTime.parse(date_str) catch
-                    parse_wrong_rss_date(date_str) orelse null;
+                    parse_wrong_rss_date(date_str) orelse  blk: {
+                        std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
+                        break :blk null;
+                    };
             },
         },
     }

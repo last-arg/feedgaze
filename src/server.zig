@@ -1819,9 +1819,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     if (try db.next_update_timestamp()) |countdown_ts| {
         try w.writeAll("<div class=\"heading-info\">");
             const date_readable_str = date_readable(countdown_ts);
-            print("resad: '{s}'\n", .{date_readable_str});
             const ts_str = timestampToString(&date_buf, countdown_ts);
-            print("'{s}'\n", .{ts_str});
 
             try w.writeAll("<relative-time update=false>");
             try w.print(parts_get("next_update_msg"), .{
