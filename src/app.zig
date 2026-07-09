@@ -910,7 +910,6 @@ pub const Cli = struct {
         var parser: FeedParser = .init(self.io, add_opts.feed_opts.body);
         const parsed = try parser.parse(arena.allocator(), html_opts, .{
             .feed_url = add_opts.feed_opts.feed_url,
-            .now_seconds = std.Io.Clock.real.now(self.io).toSeconds(),
         });
 
         const feed = try self.storage.addFeed(parsed, add_opts);

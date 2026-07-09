@@ -1,4 +1,4 @@
-    const std = @import("std");
+const std = @import("std");
 const mem = std.mem;
 const assert = std.debug.assert;
 const Allocator = mem.Allocator;
@@ -645,17 +645,11 @@ pub const Storage = struct {
             \\  link = excluded.link,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE 
-            \\  updated_timestamp != excluded.updated_timestamp 
-            \\  OR position != excluded.position
             \\ON CONFLICT(feed_id, link) DO UPDATE SET
             \\  title = excluded.title,
             \\  id = excluded.id,
             \\  updated_timestamp = excluded.updated_timestamp,
             \\  position = excluded.position
-            \\WHERE
-            \\  updated_timestamp != excluded.updated_timestamp 
-            \\  OR position != excluded.position
             \\;
         ;
 

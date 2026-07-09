@@ -378,15 +378,15 @@ fn run_parse(io: std.Io) !void {
     const fp = @import("feed_parse.zig");
     var parser: fp = .init(io, content);
     const feed = try parser.parse(alloc, null, .{
-        .feed_url = try std.Uri.parse("https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA"),
+        .feed_url = try std.Uri.parse("https://lobste.rs/"),
     });
     print("\nSTART {d}\n", .{feed.items.len});
-    for (feed.items[0..1]) |item| {
-        print("title: |{s}|\n", .{item.title});
+    for (feed.items[0..]) |item| {
+        print("ts: |{?d}|\n", .{item.updated_timestamp});
         // print("link: |{?s}|\n", .{item.link});
         // print("date: {?d}\n", .{item.updated_timestamp});
-        print("\n", .{});
     }
+    print("interval: {}\n", .{feed.item_interval});
 }
 
 

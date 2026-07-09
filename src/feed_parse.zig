@@ -1306,8 +1306,6 @@ const ParseOptions = struct {
     feed_id: Feed.ID = .unassigned,
     feed_url: std.Uri,
     feed_to_update: ?feed_types.FeedToUpdate = null,
-    latest_updated_timestamp: ?i64 = null,
-    now_seconds: i64 = 0,
 };
 
 pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, opts: ParseOptions) !ValidFeed {
@@ -1323,6 +1321,8 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         },
         .xml => return error.NotAtomOrRss,
     };
+
+    const now_seconds = std.Io.Clock.real.now(self.io).toSeconds();
     var result: ValidFeed = .{
         .feed = .{ .feed_url = opts.feed_url },
     };
@@ -1361,22 +1361,19 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         // make feed date newest item date
         result.feed.updated_timestamp = result.items[0].updated_timestamp;
     } else {
-        result.feed.updated_timestamp = opts.now_seconds;
+        result.feed.updated_timestamp = now_seconds;
     }
     
     sortItems(parsed.items);
 
     if (parsed.items.len > 1) {
-        const ts = if (opts.feed_to_update) |f| f.latest_updated_timestamp else null;
-        const first = parsed.items[0].updated_timestamp orelse 0;
-        const diff_seconds = first - opts.now_seconds;
-        result.item_interval = get_item_interval(parsed.items, diff_seconds, ts);
+        result.item_interval = get_item_interval(parsed.items, now_seconds);
     }
 
     var feed_items: std.ArrayListUnmanaged(FeedItem) = try .initCapacity(allocator, parsed.items.len);
     errdefer feed_items.deinit(allocator);
 
-    const timestamp_max = opts.latest_updated_timestamp orelse 0;
+    const timestamp_max = if (opts.feed_to_update) |f| f.latest_updated_timestamp orelse 0 else 0;
     outer: for (parsed.items) |item| {
         if (item.updated_timestamp) |ts| if (ts <= timestamp_max) {
             break :outer;
@@ -1436,34 +1433,38 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
     return result;
 }
 
-pub fn get_item_interval(items: []FeedItem.Parsed, diff_seconds: i64,  timestamp_max: ?i64) i64 {
+pub fn get_item_interval(items: []FeedItem.Parsed, now_seconds: i64) i64 {
     const ft = feed_types;
+
     var result: i64 = ft.seconds_in_10_days;
     if (items.len == 0) {
         return result;
     }
     
-    const first: i64 = items[0].updated_timestamp orelse return result;
-    if (diff_seconds > ft.seconds_in_30_days) {
-        return result;
-    }
-    var second_opt: ?i64 = timestamp_max;
-    for (items[1..]) |item| {
-        second_opt = item.updated_timestamp orelse continue;
-        if (first != second_opt) {
-            break;
+    var interval = [_]i64{0,0};
+    var i: usize = 0;
+    for (items[0..]) |item| {
+        if (item.updated_timestamp) |ts| {
+            interval[i] = ts;
+            i += 1;
+            if (i >= interval.len) {
+                break;
+            }
         }
     }
 
-    // Incase null use default value: seconds_in_10_days
-    var second = second_opt orelse return result;
+    if (i < interval.len) {
+        return result;
+    }
 
-    if (first == second) if (timestamp_max) |ts_max| {
-        second = ts_max;
-    };
+    var first, var second = interval;
 
-    const diff_ab = first - second;
-    const diff_min = @min(diff_seconds, diff_ab);
+    if (second == 0) {
+        second = first;
+        first = now_seconds;
+    }
+
+    const diff_min = first - second;
 
     if (diff_min >= 0) {
         if (diff_min < ft.seconds_in_6_hours) {
