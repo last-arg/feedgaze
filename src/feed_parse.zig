@@ -1587,7 +1587,14 @@ fn parse_rss_current_state(
                 feed.updated_timestamp = RssDateTime.parse(date_str) catch 
                     AtomDateTime.parse(date_str) catch
                     parse_wrong_rss_date(date_str) orelse blk: {
-                        std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
+                        if (feed.page_url) |page_url_loc| {
+                            const end = page_url_loc.offset + page_url_loc.len;
+                            const page_url = content[page_url_loc.offset..end];
+                            std.log.warn("Failed to parse RSS date {s} for {s}", .{date_str, page_url});
+                        } else {
+                            std.log.warn("Failed to parse RSS date {s}", .{date_str});
+                        }
+
                         break :blk null;
                     };
             },
@@ -1609,7 +1616,13 @@ fn parse_rss_current_state(
                 current_item.updated_timestamp = RssDateTime.parse(date_str) catch 
                     AtomDateTime.parse(date_str) catch
                     parse_wrong_rss_date(date_str) orelse  blk: {
-                        std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
+                        if (feed.page_url) |page_url_loc| {
+                            const end = page_url_loc.offset + page_url_loc.len;
+                            const page_url = content[page_url_loc.offset..end];
+                            std.log.warn("Failed to parse RSS date {s} for {s}", .{date_str, page_url});
+                        } else {
+                            std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
+                        }
                         break :blk null;
                     };
             },
@@ -1740,8 +1753,11 @@ fn parse_atom_current_state(
                     if (feed.page_url) |page_urlloc| {
                         const end = page_urlloc.offset + page_urlloc.len;
                         const page_url = content[page_urlloc.offset..end];
-                        std.log.warn("Failed to parse atom date for {s}", .{page_url});
+                        std.log.warn("Failed to parse atom date {s} for {s}", .{date_raw, page_url});
+                    } else {
+                        std.log.warn("Failed to parse atom date {s}", .{date_raw});
                     }
+
                 }
             },
             .published, .id => {},
@@ -1761,10 +1777,12 @@ fn parse_atom_current_state(
                 if (AtomDateTime.parse(date_raw)) |new_date| {
                     current_item.updated_timestamp = new_date;
                 } else |_| {
-                    if (feed.page_url) |page_urlloc| {
-                        const end = page_urlloc.offset + page_urlloc.len;
-                        const page_url = content[page_urlloc.offset..end];
-                        std.log.warn("Failed to parse atom date for {s}", .{page_url});
+                    if (feed.page_url) |page_url_loc| {
+                        const end = page_url_loc.offset + page_url_loc.len;
+                        const page_url = content[page_url_loc.offset..end];
+                        std.log.warn("Failed to parse atom date {s} for {s}", .{date_raw, page_url});
+                    } else {
+                        std.log.warn("Failed to parse atom date {s}", .{date_raw});
                     }
                 }
             },
