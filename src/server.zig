@@ -881,14 +881,12 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var client = http_client.init(global.io, req.arena);
     defer client.deinit();
     const feed_uri = try std.Uri.parse(feed_url);
-    var feed_options = try client.fetch(req.arena, feed_uri, .{
+    const feed_options = try client.fetch(req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
         return;
     };
-
-    feed_options.body = a_writer.writer.buffered();
 
     if (feed_options.content_type == .html) {
         const url_comp: std.Uri.Component = .{ .raw = feed_url };
