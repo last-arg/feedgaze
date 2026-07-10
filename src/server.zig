@@ -506,14 +506,12 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var client = http_client.init(global.io, req.arena);
     defer client.deinit();
     const feed_uri = try std.Uri.parse(feed_url);
-    var feed_options = try client.fetch(req.arena, feed_uri, .{
+    const feed_options = try client.fetch(req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
     }) orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
         return;
     };
-
-    feed_options.body = a_writer.writer.buffered();
 
     var add_opts: Storage.AddOptions = .{ .feed_opts = feed_options };
     add_opts.feed_opts.feed_url = try std.Uri.parse(try client.get_url_slice(&buffer_url));
