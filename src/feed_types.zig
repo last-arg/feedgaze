@@ -172,8 +172,43 @@ pub fn resolve_and_write_url(writer: *std.Io.Writer, input: []const u8, base_url
 pub const AtomDateTime = struct {
     pub fn parse(input: []const u8) !i64 {
         const raw = std.mem.trimStart(u8, input, &std.ascii.whitespace);
-        const date = dt.Datetime.fromString(raw, dt.Formats.RFC3339) catch
-            try dt.Datetime.fromString(input, dt.Formats.RFC3339nano);
+        var iter = mem.splitScalar(u8, raw, 'T');
+        const date_raw = iter.next() orelse return error.InvalidAtomDate;
+
+        var date = try dt.Datetime.fromString(date_raw, dt.Formats.DateOnly);
+
+        var time_raw_all = iter.next() orelse return error.InvalidAtomDate;
+        const time_raw = time_raw_all[0..8];
+        if (dt.Datetime.fromString(time_raw, dt.Formats.TimeOnly)) |time| {
+            if (date.replace(.{ .hour = time.hour, .minute = time.minute, .second = time.second, })) |d| {
+                date = d;
+            } else |err| {
+                std.log.warn("Failed to convert Atom date's time part '{s}'. Error: {}", .{time_raw, err});
+            }
+        } else |err| {
+            std.log.warn("Failed to parse Atom dates time part '{s}'. Error: {}", .{time_raw, err});
+        }
+
+        const tz_raw = blk: {
+            var start: u32 = 8;
+            if (time_raw_all[start] == '.') {
+                start += 3;
+            }
+            break :blk time_raw_all[start..];
+        };
+
+        if (dt.Datetime.fromString(tz_raw, "%z")) |tz_date| {
+            date.utc_offset = .{};
+            if (tz_date.utc_offset) |utc_offset| {
+                if (date.tzLocalize(.{.utc_offset = utc_offset})) |d| {
+                    date = d;
+                } else |err| {
+                    std.log.warn("Failed to convert Atom dates timezone '{s}'. Error: {}", .{tz_raw, err});
+                }
+            }
+        } else |err| {
+            std.log.warn("Failed to parse Atom dates timezone '{s}'. Error: {}", .{tz_raw, err});
+        }
 
         return @intCast(date.toUnix(.second));
     }
@@ -186,6 +221,10 @@ test "AtomDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1071340202), d2);
     const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
+    // Time part of the date will be ignore because time parsing fails due to
+    // seconds field having '69'
+    const d4 = try AtomDateTime.parse("2022-01-11T18:42:69Z");
+    try std.testing.expectEqual(@as(i64, 1641859200), d4);
 }
 
 // https://www.w3.org/Protocols/rfc822/#z28
