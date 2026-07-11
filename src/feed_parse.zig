@@ -771,6 +771,8 @@ pub fn is_selector_match(ast: super.html.Ast, code: []const u8, selector_iter: S
             } else if (std.ascii.eqlIgnoreCase(selector, current.open.getName(code, .html).slice(code))) {
                 break;
             }
+        } else {
+            return false;
         }
     }
     return true;
