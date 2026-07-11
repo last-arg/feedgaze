@@ -961,8 +961,11 @@ pub const Cli = struct {
         while (true) {
             try writer.writeAll("Enter feed item's selector (required): ");
             try writer.flush();
+            reader.tossBuffered();
             const value_raw = try reader.takeDelimiterExclusive('\n');
-            if (get_input_value(value_raw)) |val| {
+            // const value_raw = try reader.takeByte();
+            print("raw {s}\n", .{value_raw});
+            if (get_input_value("test")) |val| {
                 opts.selector_container = try allocator.dupe(u8, val);
                 break;
             }
@@ -973,6 +976,7 @@ pub const Cli = struct {
         try writer.writeAll("Enter feed item's link selector: ");
         try writer.flush();
 
+        reader.tossBuffered();
         const value_link_selector = try reader.takeDelimiterExclusive('\n');
         if (get_input_value(value_link_selector)) |val| {
             opts.selector_link = try allocator.dupe(u8, val);
@@ -981,6 +985,7 @@ pub const Cli = struct {
         try writer.writeAll("Enter feed item's title selector: ");
         try writer.flush();
 
+        reader.tossBuffered();
         const value_title_selector = try reader.takeDelimiterExclusive('\n');
         if (get_input_value(value_title_selector)) |val| {
             opts.selector_heading = try allocator.dupe(u8, val);
@@ -988,6 +993,7 @@ pub const Cli = struct {
 
         try writer.writeAll("Enter feed item's date selector: ");
         try writer.flush();
+        reader.tossBuffered();
         const value_date_selector = try reader.takeDelimiterExclusive('\n');
         if (get_input_value(value_date_selector)) |val| {
             opts.selector_date = try allocator.dupe(u8, val);
@@ -1009,6 +1015,7 @@ pub const Cli = struct {
         );
         try writer.writeAll("Enter feed date format: ");
         try writer.flush();
+        reader.tossBuffered();
         const value_date_fmt = try reader.takeDelimiterExclusive('\n');
         if (get_input_value(value_date_fmt)) |val| {
             opts.date_format = try allocator.dupe(u8, val);

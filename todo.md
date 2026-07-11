@@ -1,5 +1,4 @@
-- cli: adding html feed not working
-- feed_update.update_interval not used
+- feed_update.update_interval not used. remove it?
 - there might be a bug in adding feed items. When reading feed item's got more than
   10 items in one instance. Feed items can't contain more than 10 items.
 - list failed feed requests
