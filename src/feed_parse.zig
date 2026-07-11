@@ -1003,13 +1003,18 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
 
     var buf: [7]DateValue = undefined;
     var date_fmts = std.ArrayListUnmanaged(DateValue).initBuffer(&buf);
+    var has_year_fmt = false;
+    var has_month_fmt = false;
+    var has_day_fmt = false;
 
     if (mem.indexOf(u8, date_format, "YYYY")) |index| {
+        has_year_fmt = true;
         date_fmts.appendAssumeCapacity(.{
             .str = "YYYY",
             .index = index,
         });
     } else if (mem.indexOf(u8, date_format, "YY")) |index| {
+        has_year_fmt = true;
         date_fmts.appendAssumeCapacity(.{
             .str = "YY",
             .index = index,
@@ -1017,11 +1022,13 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
     }
 
     if (mem.indexOf(u8, date_format, "MMM")) |index| {
+        has_month_fmt = true;
         date_fmts.appendAssumeCapacity(.{
             .str = "MMM",
             .index = index,
         });
     } else if (mem.indexOf(u8, date_format, "MM")) |index| {
+        has_month_fmt = true;
         date_fmts.appendAssumeCapacity(.{
             .str = "MM",
             .index = index,
@@ -1029,6 +1036,7 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
     }
 
     if (mem.indexOf(u8, date_format, "DD")) |index| {
+        has_day_fmt = true;
         date_fmts.appendAssumeCapacity(.{
             .str = "DD",
             .index = index,
@@ -1068,10 +1076,7 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
         }
     }.less_than);
 
-    var result: dt.Datetime = dt.Datetime.now(io, null) catch |err| {
-        std.log.warn("Failed to initialize date object. Error: {}", .{err});
-        return null;
-    };
+    var datetime_fields: dt.Datetime.Fields = .{};
 
     // TODO: convert html date format to zdt date format
     for (date_fmts.items, 0..) |date_fmt, date_i| {
@@ -1112,19 +1117,19 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
             const raw_number = raw_value[0..end_number];
             if (std.fmt.parseUnsigned(i16, raw_number, 10)) |value| {
                 if (std.mem.eql(u8, "YY", date_fmt.str)) {
-                    result.year = 2000 + value;
+                    datetime_fields.year = 2000 + value;
                 } else if (std.mem.eql(u8, "YYYY", date_fmt.str)) {
-                    result.year = @intCast(value);
+                    datetime_fields.year = @intCast(value);
                 } else if (std.mem.eql(u8, "MM", date_fmt.str)) {
-                    result.month = @intCast(value);
+                    datetime_fields.month = @intCast(value);
                 } else if (std.mem.eql(u8, "DD", date_fmt.str)) {
-                    result.day = @intCast(value);
+                    datetime_fields.day = @intCast(value);
                 } else if (std.mem.eql(u8, "HH", date_fmt.str)) {
-                    result.hour = @intCast(value);
+                    datetime_fields.hour = @intCast(value);
                 } else if (std.mem.eql(u8, "mm", date_fmt.str)) {
-                    result.minute = @intCast(value);
+                    datetime_fields.minute = @intCast(value);
                 } else if (std.mem.eql(u8, "ss", date_fmt.str)) {
-                    result.second = @intCast(value);
+                    datetime_fields.second = @intCast(value);
                 }
             } else |_| {
                 // NOTE: This should not happen.
@@ -1132,7 +1137,7 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
             }
         } else if (std.mem.eql(u8, "MMM", date_fmt.str)) {
             if (dt.Datetime.fromString(raw_value, "%:b")) |val| {
-                result.month = val.month;
+                datetime_fields.month = val.month;
             } else |err| {
                 std.log.warn("Failed to parse months abbreviated value from '{s}'. Error: {}", .{raw_value, err});
             }
@@ -1140,8 +1145,11 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
             const index = date_fmt.index;
             const tz_raw = raw[index..];
             if (dt.Datetime.fromString("%z", tz_raw)) |val| {
-                result.tz = val.tz;
-                result.utc_offset = val.utc_offset;
+                if (val.tz) |tz| {
+                    datetime_fields.tz_options = .{ .tz = tz };
+                } else if (val.utc_offset) |utc_offset| {
+                    datetime_fields.tz_options = .{ .utc_offset = utc_offset };
+                }
             } else |err| {
                 std.log.warn("Failed to parse time zone value '{s}'. Error: {}", .{tz_raw, err});
             }
@@ -1150,7 +1158,25 @@ pub fn seconds_from_date_format(io: std.Io, raw: []const u8, date_format: []cons
         }
     }
 
-    return @intCast(result.toUnix(.second));
+    if (!has_year_fmt or !has_month_fmt or !has_day_fmt) {
+        const now: dt.Datetime = dt.Datetime.now(io, null) catch |err| {
+            std.log.warn("Failed to get current datetime. Error: {}", .{err});
+            return null;
+        };
+        if (!has_year_fmt) {
+            datetime_fields.year = now.year;
+        }
+        if (!has_month_fmt) {
+            datetime_fields.month = now.month;
+        }
+        if (!has_day_fmt) {
+            datetime_fields.day = now.day;
+        }
+    }
+
+    const r = dt.Datetime.fromFields(datetime_fields) catch return null;
+
+    return @intCast(r.toUnix(.second));
 }
 
 // NOTE: <time> valid set of date formats 

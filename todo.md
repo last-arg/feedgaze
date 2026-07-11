@@ -1,7 +1,4 @@
 - cli: adding html feed not working
-- html feed parsing: could not find date node with selector 'p'
-    - page: https://lamplightdev.com/blog/
-    - the selector exists in html
 - feed_update.update_interval not used
 - there might be a bug in adding feed items. When reading feed item's got more than
   10 items in one instance. Feed items can't contain more than 10 items.
