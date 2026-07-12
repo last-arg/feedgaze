@@ -207,6 +207,17 @@ pub const IconManage = struct {
         return self.url_string_bytes.items[icon_url.start..icon_url.end];
     }
 
+    pub fn get_id_from_url(self: *const @This(), url: []const u8) ?types.IconRender.ID {
+        for (self.storage.items(.icon_url), 0..) |icon_url_loc, i| {
+            const icon_url = self.url_string_bytes.items[icon_url_loc.start..icon_url_loc.end];
+            if (std.ascii.eqlIgnoreCase(url, icon_url)) {
+                return self.storage.items(.icon_id)[i];
+            }
+        }
+
+        return null;
+    }
+
     pub fn deinit(self: *@This()) void {
         self.storage.deinit(self.allocator);
         self.url_string_bytes.deinit(self.allocator);
@@ -1135,14 +1146,12 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
 
     const icon_id: types.IconRender.ID = blk: {
-
         if (icon_url_trimmed.len == 0) {
             break :blk .unassigned;
         }
 
         if (util.is_url(icon_url_trimmed)) {
-            const icon_id = try db.icon_get_id(icon_url_trimmed);
-            if (icon_id.is_valid()) {
+            if (global.icon_manage.get_id_from_url(icon_url_trimmed)) |icon_id| {
                 break :blk icon_id;
             }
 
@@ -1162,18 +1171,32 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
             const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
             const icon = feed_types.Icon.init(req_http.get_uri(), resp_body, cache_value);
-            break :blk try db.icon_upsert(icon);
+            const icon_id = try db.icon_upsert(icon);
+            _ = try global.icon_manage.add(.{
+                .icon_id = icon_id,
+                .icon_data = icon.data,
+                .icon_url = icon.url,
+                .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
+            });
+            break :blk icon_id;
         } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
             const data = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
-            const icon_id = try db.icon_get_id(icon_url_trimmed);
-            if (icon_id.is_valid()) {
+            if (global.icon_manage.get_id_from_url(icon_url_trimmed)) |icon_id| {
                 break :blk icon_id;
             }
 
             const page_uri = try std.Uri.parse(page_url);
             const icon = feed_types.Icon.init(page_uri, data, null);
-            break :blk try db.icon_upsert(icon);
+            const icon_id = try db.icon_upsert(icon);
+            _ = try global.icon_manage.add(.{
+                .icon_id = icon_id,
+                .icon_data = icon.data,
+                .icon_url = icon.url,
+                .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
+            });
+
+            break :blk icon_id;
         } else {
             std.log.info("User entered invalid icon input: '{s}'", .{icon_url_trimmed});
             // TODO: cancel updating feed?
