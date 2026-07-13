@@ -72,34 +72,6 @@ pub const Location = struct {
     len: u32,
 };
 
-// NOTE: std.Uri wrapper so can provide toValue() and fromValue() to library fridge
-pub const UriWrapper = struct {
-    value: std.Uri,
-
-    pub fn init(uri: std.Uri) @This() {
-        return .{ .value = uri };
-    }
-
-    pub fn from_string(str: []const u8) !@This() {
-        return .{ .value = try std.Uri.parse(str) };
-    }
-
-    pub fn format(uri: *const UriWrapper, writer: *std.Io.Writer) !void {
-        try std.Uri.format(&uri.value, writer);
-    }
-
-    pub fn toValue(uri: UriWrapper, arena: std.mem.Allocator) !@import("fridge").Value {
-        const uri_str = try std.fmt.allocPrint(arena, "{f}", .{uri});
-        return .{ .string = uri_str };
-    }
-
-    pub fn fromValue(val: @import("fridge").Value, arena: std.mem.Allocator) !UriWrapper {
-        const buf: []u8 = try arena.alloc(u8, val.string.len);
-        std.mem.copyForwards(u8, buf, val.string);
-        return try from_string(buf);
-    }
-};
-
 pub const Feed = struct {
     feed_id: ID = .unassigned,
     title: ?[]const u8 = null,
@@ -396,7 +368,7 @@ pub const FeedItem = struct {
     item_id: ID = .unassigned,
     title: []const u8,
     id: ?[]const u8 = null,
-    link: ?UriWrapper = null,
+    link: ?std.Uri = null,
     updated_timestamp: ?i64 = null,
 
     pub const ID = SqliteId;

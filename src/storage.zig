@@ -234,14 +234,7 @@ pub const Storage = struct {
         errdefer res.deinit();
 
         const raw_query = self.sql_db.raw(query, .{feed_id});
-        var stmt = try raw_query.prepare();
-        defer stmt.deinit();
-
-        while (try stmt.next(FeedFailedRequest, allocator)) |row| {
-            res.appendAssumeCapacity(row);
-        }
-
-        return res.toOwnedSlice();
+        return try all(FeedFailedRequest, allocator, raw_query);
     }
 
     pub fn insertFeed(self: *Self, feed: Feed) !Feed.ID {
@@ -534,13 +527,25 @@ pub const Storage = struct {
         return inserts;
     }
 
-    pub fn getLatestFeedItemsWithFeedId(self: *Self, feed_id: Feed.ID, opts: ShowOptions) ![]const FeedItem {
+    pub fn getLatestFeedItemsWithFeedId(self: *Self, allocator: Allocator, feed_id: Feed.ID, opts: ShowOptions) ![]const FeedItem {
         assert(feed_id != .unassigned);
-        return try self.sql_db.raw("select feed_id, item_id, title, id, link, updated_timestamp from item", .{})
+
+        const raw_query = self.sql_db.raw("select feed_id, item_id, title, id, link, updated_timestamp from item", .{})
             .where("feed_id = ?", feed_id)
             .orderBy("position ASC")
-            .limit(opts.@"item-limit")
-            .fetchAll(FeedItem);
+            .limit(opts.@"item-limit");
+
+        var stmt = try raw_query.prepare();
+        defer stmt.deinit();
+
+        var res = try std.array_list.Managed(FeedItem).initCapacity(allocator, @intCast(opts.@"item-limit"));
+        errdefer res.deinit();
+
+        while (try stmt.next(FeedItem.Raw, allocator)) |row| {
+            res.appendAssumeCapacity(try .from_raw(row));
+        }
+
+        return res.toOwnedSlice();
     }
 
     pub fn updateFeedUpdate(self: *Self, feed_id: Feed.ID, feed_update: FeedUpdate, item_interval: i64) !void {
@@ -1913,7 +1918,7 @@ test "Storage:all" {
     }
 
     {
-        const value1 = try storage.getLatestFeedItemsWithFeedId(feed.feed_id, .{});
+        const value1 = try storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, .{});
         try std.testing.expectEqual(4, value1.len);
 
         try storage.updateAndRemoveFeedItems(value1);
