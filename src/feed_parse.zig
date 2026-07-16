@@ -284,14 +284,14 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     const remove_html_tags = mem.indexOfScalar(u8, input, '<') != null or
         mem.indexOfPos(u8, input, 0, "lt;") != null;
 
-    if (!do_html_unescape and !remove_html_tags) {
-        // NOTE: not removing whitespace because I think it will be ok.
-        // If notice something off about titles check here. And if needed
-        // add whitespace removal
+    var has_whitespace = mem.indexOfAnyPos(u8, input, 0, std.ascii.whitespace[1..]) != null
+       or mem.indexOfPos(u8, input, 0, "  ") != null;
+
+    if (!do_html_unescape and !remove_html_tags and !has_whitespace) {
         return input;
     }
     
-    const new_size =  mem.replacementSize(u8, input, "&nbsp;", " ");
+    const new_size = mem.replacementSize(u8, input, "&nbsp;", " ");
     // TODO: can I reduce or avoid this allocation?
     const buf = try allocator.alloc(u8, new_size * 2);
     errdefer allocator.free(buf);
@@ -306,7 +306,8 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     const tmp = buf[new_size..];
     var w: std.Io.Writer = .fixed(tmp);
 
-    const has_whitespace = mem.indexOfAnyPos(u8, out, 0, std.ascii.whitespace[1..]) != null
+    // Check again because replaced "&nbsp;" with " "
+    has_whitespace = mem.indexOfAnyPos(u8, out, 0, std.ascii.whitespace[1..]) != null
        or mem.indexOfPos(u8, out, 0, "  ") != null;
 
     if (has_whitespace) {
@@ -371,7 +372,7 @@ pub fn text_truncate_alloc(allocator: Allocator, text: []const u8) ![]const u8 {
     }
 
     out = out[0..@min(max_title_len, out.len)];
-        
+
     return out;
 }
 
@@ -380,33 +381,31 @@ test "parseAtom" {
     defer arena.deinit();
 
     const content = @embedFile("atom.atom");
-    const result = try parse(arena.allocator(), content, .{
-        .now_seconds = std.Io.Clock.real.now(std.testing.io).toSeconds(),
+    var p: @This() = .init(std.testing.io, content);
+    const f_uri = try std.Uri.parse("http://example.org/feed/");
+    const p_uri = try std.Uri.parse("http://example.org/");
+    const result = try p.parse(arena.allocator(), null, .{
+        .feed_url = f_uri,
     });
     const expect_feed = Feed{
         .title = "Example Feed",
-        .feed_url = "",
-        .page_url = "http://example.org/",
+        .feed_url = f_uri,
+        .page_url = p_uri,
         .updated_timestamp = try AtomDateTime.parse("2012-12-13T18:30:02Z"),
     };
     try std.testing.expectEqualDeep(expect_feed, result.feed);
-    var expect_items = [_]FeedItem{ .{
+    const expect_items = [_]FeedItem{ .{
         .title = "Atom-Powered Robots Run Amok Next line",
-        .link = "http://example.org/2003/12/13/atom03",
+        .link = try std.Uri.parse("http://example.org/2003/12/13/atom03"),
         .id = "urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a",
         .updated_timestamp = try AtomDateTime.parse("2008-11-13T18:30:02Z"),
     }, .{
         .title = "Entry one's 1",
-        .link = "http://example.org/2008/12/13/entry-1",
+        .link = try std.Uri.parse("http://example.org/2008/12/13/entry-1"),
         .id = "urn:uuid:2225c695-dfb8-5ebb-baaa-90da344efa6a",
         .updated_timestamp = try AtomDateTime.parse("2005-12-13T18:30:02Z"),
     } };
-    // 'start' is a runtime value. Need value to be runtime to coerce array
-    // into a slice.
-    var start: usize = 0;
-    start = 0;
-    const slice = expect_items[start..expect_items.len];
-    try std.testing.expectEqualDeep(slice, result.items);
+    try std.testing.expectEqualDeep(expect_items[0..], result.items);
 }
 
 const RssParseState = enum {
@@ -501,20 +500,24 @@ test "parseRss" {
     defer arena.deinit();
 
     const content = @embedFile("rss2.xml");
-    const result = try parse(arena.allocator(), content, .{
-        .now_seconds = std.Io.Clock.real.now(std.testing.io).toSeconds(),
+
+    var p: @This() = .init(std.testing.io, content);
+    const f_uri = try std.Uri.parse("http://liftoff.msfc.nasa.gov/");
+    const result = try p.parse(arena.allocator(), null, .{
+        .feed_url = f_uri,
     });
+
     const expect_feed = Feed{
         .title = "Liftoff News",
-        .feed_url = "",
-        .page_url = "http://liftoff.msfc.nasa.gov/",
+        .feed_url = f_uri,
+        .page_url = f_uri,
         .updated_timestamp = try RssDateTime.parse("Tue, 10 Jun 2003 04:00:00 +0100"),
     };
 
     try std.testing.expectEqualDeep(expect_feed, result.feed);
     const expect_items = [_]FeedItem{ .{
         .title = "Star City's Test",
-        .link = "http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp",
+        .link = try std.Uri.parse("http://liftoff.msfc.nasa.gov/news/2003/news-starcity.asp"),
         .updated_timestamp = try RssDateTime.parse("Tue, 03 Jun 2003 09:39:21 GMT"),
         .id = "http://liftoff.msfc.nasa.gov/2003/06/03.html#item573",
     }, .{
@@ -1350,7 +1353,6 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         .xml => return error.NotAtomOrRss,
     };
 
-    const now_seconds = std.Io.Clock.real.now(self.io).toSeconds();
     var result: ValidFeed = .{
         .feed = .{ .feed_url = opts.feed_url },
     };
@@ -1385,14 +1387,17 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
         }
     }
 
-    if (result.items.len > 0 and result.items[0].updated_timestamp != null) {
-        // make feed date newest item date
-        result.feed.updated_timestamp = result.items[0].updated_timestamp;
-    } else {
-        result.feed.updated_timestamp = now_seconds;
-    }
-    
     sortItems(parsed.items);
+
+    const now_seconds = std.Io.Clock.real.now(self.io).toSeconds();
+    result.feed.updated_timestamp = parsed.feed.updated_timestamp orelse blk: {
+        if (result.items.len > 0 and result.items[0].updated_timestamp != null) {
+            // make feed date newest item date
+            break :blk result.items[0].updated_timestamp;
+        }
+
+        break :blk now_seconds;
+    };
 
     if (parsed.items.len > 1) {
         result.item_interval = get_item_interval(parsed.items, now_seconds);
@@ -1440,12 +1445,12 @@ pub fn parse(self: *@This(), allocator: Allocator, html_options: ?HtmlOptions, o
             const link_uri = try std.Uri.parse(link);
             // Don't add feed items with duplicate links
             for (feed_items.items) |feed_item| {
-                if (std.meta.eql(feed_item.link.?.value, link_uri)) {
+                if (std.meta.eql(feed_item.link.?, link_uri)) {
                     continue :outer;
                 }
             }
 
-            new_item.link = .init(link_uri);
+            new_item.link = link_uri;
         }
 
         if (item.title) |loc| {

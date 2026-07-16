@@ -39,4 +39,6 @@ test {
     _ = types;
     const storage = @import("storage.zig");
     _ = storage.Storage;
+    const parse = @import("feed_parse.zig");
+    _ = parse;
 }
