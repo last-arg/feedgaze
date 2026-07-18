@@ -22,10 +22,10 @@ pub fn main(init: std.process.Init) !void {
     // try run_storage_rule_add();
     // try run_rule_transform();
     // try run_add_new_feed();
-    try run_parse(init.io);
+    // try run_parse(init.io);
     // try test_allocating();
     // try storage_item_interval();
-    // try storage_test();
+    try storage_test(init.io);
     // try find_dir();
     // try http_head();
     // try zig_http();
@@ -331,13 +331,16 @@ pub fn find_dir() !void {
     print("{s}\n", .{file_path});
 }
 
-pub fn storage_test() !void {
+pub fn storage_test(io: std.Io) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
 
-    var storage = try Storage.init("./tmp/feeds.db");
-    const icons = try storage.icon_all(arena.allocator());
-    print("len: {d}\n", .{icons.len});
+    var storage = try Storage.init(io, arena.allocator(), "./tmp/feeds.db");
+    const result = try storage.request_failed_all(arena.allocator());
+    print("len: {d}\n", .{result.len});
+    for (result) |r| {
+        print("{} {} {s}\n", .{r.utc_sec, r.feed_id, r.reason});
+    }
 }
 
 pub fn storage_item_interval() !void {

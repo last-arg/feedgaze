@@ -146,3 +146,17 @@
     .include_buttons
   </form>
 </main>
+.failed_table_start
+<table class="table-striped">
+<caption>Failed request(s)</caption>
+<tr>
+<th>Date</th>
+<th>Error</th>
+</tr>
+.failed_table_row
+  <tr>
+  <td><time datetime="{[datetime]s}">{[time]s}</time></td>
+  <td>{[reason]s}</td>
+  </tr>
+.failed_table_end
+</table>

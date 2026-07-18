@@ -292,6 +292,8 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     router.get("/feed/pick", feed_pick_get, .{});
     router.post("/feed/pick", feed_pick_post, .{});
 
+    router.get("/failed-requests", failed_requests_get, .{});
+
     router.get("/feed/:id", feed_get, .{});
     router.post("/feed/:id", feed_post, .{});
     router.post("/feed/:id/delete", feed_delete, .{});
@@ -361,6 +363,95 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
     }
 
     resp.header("Location", "/");
+}
+
+fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
+
+    // TODO: add caching
+
+    resp.content_type = .HTML;
+
+    var buf: [std.compress.flate.max_window_len]u8 = undefined;
+    var compress_opt = try compress_init(req, resp, &buf);
+    var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
+
+    try Layout.write_head(w, "Failed feed requests");
+
+    const tags = try global.storage.tags_all(req.arena);
+    try global.layout.body_head_render(w, req.url.path, tags, .{});
+
+    try w.writeAll("<h2>Failed feed requests</h2>");
+
+    const failed_requests = try global.storage.request_failed_all(req.arena);
+    if (failed_requests.len > 0) {
+        var date_buf: [date_len_max]u8 = undefined;
+        var current_id = failed_requests[0].feed_id;
+
+        const failed_feeds = try global.storage.request_failed_feeds(req.arena);
+        var current_feed: types.Feed = feed_from_id(failed_feeds, current_id);
+
+        try render_failed_feed_start(w, &failed_requests[0], current_feed);
+
+        for (failed_requests) |failed_request| {
+            if (current_id != failed_request.feed_id) {
+                try render_failed_feed_end(w);
+
+                current_id = failed_request.feed_id;
+                current_feed = feed_from_id(failed_feeds, current_id);
+                try render_failed_feed_start(w, &failed_request, current_feed);
+            }
+
+            try w.print(parts_get("failed_table_row")
+            , .{
+                .reason = failed_request.reason,
+                .datetime = timestampToString(&date_buf, failed_request.utc_sec),
+                .time = date_readable(failed_request.utc_sec),
+            });
+        }
+
+        try render_failed_feed_end(w);
+    } else {
+        try w.writeAll("<p>No failed feed requests</p>");
+    }
+
+    try Layout.write_foot(w);
+
+    try w.flush();
+}
+
+fn feed_from_id(feeds: []const types.Feed, feed_id: types.Feed.ID) types.Feed {
+    for (feeds) |f| {
+        if (f.feed_id == feed_id) {
+            return f;
+        }
+    }
+
+    std.log.err("In request '/failed-request/': Failed find feed id {d} from failed request feed ids", .{feed_id});
+
+    unreachable;
+}
+
+fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailedRequestWithID, feed: types.Feed) !void {
+    try w.writeAll("<div>");
+    if (feed.page_url) |page_url| {
+        const title = feed.title orelse title_placeholder;
+        try w.print("<h3><a href='{f}' title='{s}'>{s}</a></h3>", .{page_url, title, title});
+    } else {
+        try w.print("<h3>{s}</h3>", .{feed.title orelse title_placeholder});
+    }
+    try w.print("<a href='{f}'>Feed link</a>", .{feed.feed_url});
+    try w.print("<a href='/feed/{d}'>Edit</a>", .{failed.feed_id});
+    const date_utc = date_readable(failed.utc_sec);
+    try w.print("<p>Latest error ({s}): {s}</p>", .{date_utc, failed.reason});
+    try w.writeAll("<details>");
+    try w.writeAll("<summary>Failed requests</summary>");
+    try w.writeAll(parts_get("failed_table_start"));
+}
+
+fn render_failed_feed_end(w: *std.Io.Writer) !void {
+    try w.writeAll(parts_get("failed_table_end"));
+    try w.writeAll("</details>");
+    try w.writeAll("<div>");
 }
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1400,22 +1491,11 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     // Feed request(s) failed
     const failed_requests = try db.request_failed_slice(req.arena, feed.feed_id);
-    if (failed_requests.len > 1) {
-        try w.writeAll(
-            \\<table class="table-striped">
-            \\<caption>Failed request(s)</caption>
-            \\<tr>
-            \\<th>Date</th>
-            \\<th>Error</th>
-            \\</tr>
-        );
+    if (failed_requests.len >= 1) {
+        try w.writeAll(parts_get("failed_table_start"));
 
         for (failed_requests) |failed_request| {
-            try w.print(
-                \\<tr>
-                \\<td><time datetime="{[datetime]s}">{[time]s}</time></td>
-                \\<td>{[reason]s}</td>
-                \\</tr>
+            try w.print(parts_get("failed_table_row")
             , .{
                 .reason = failed_request.reason,
                 .datetime = timestampToString(&date_buf, failed_request.utc_sec),
@@ -1423,9 +1503,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
             });
         }
 
-        try w.writeAll(
-            \\</table>
-        );
+        try w.writeAll(parts_get("failed_table_end"));
     }
 
 
@@ -1606,8 +1684,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try w.writeAll("</main>");
     try Layout.write_foot(w);
-
-    try w.flush();
 
     try w.flush();
 }
@@ -2272,6 +2348,7 @@ const Layout = struct {
             .{.path = "/feeds", .name = "Feeds"},
             .{.path = "/tags", .name = "Tags"},
             .{.path = "/feed/add", .name = "Add feed"},
+            .{.path = "/failed-requests", .name = "Failed feed requests"},
         };
 
         for (menu_items) |item| {

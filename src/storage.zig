@@ -237,6 +237,41 @@ pub const Storage = struct {
         return try all(FeedFailedRequest, allocator, raw_query);
     }
 
+    pub const FeedFailedRequestWithID = struct {
+        feed_id: Feed.ID,
+        utc_sec: i64,
+        reason: []const u8,
+    };
+
+    pub fn request_failed_all(self: *Self, allocator: Allocator) ![]const FeedFailedRequestWithID {
+        const capacity = 10;
+        const query =
+            \\select fr1.feed_id, fr2.utc_sec, fr2.reason
+            \\from (select feed_id, max(utc_sec) max_utc_sec from feed_request_failed group by feed_id order by utc_sec DESC) fr1
+            \\left join feed_request_failed fr2 
+            \\on fr1.feed_id = fr2.feed_id
+            \\order by fr1.max_utc_sec DESC, fr2.utc_sec DESC
+        ;
+
+        var res = try std.array_list.Managed(FeedFailedRequestWithID).initCapacity(allocator, capacity);
+        errdefer res.deinit();
+
+        const raw_query = self.sql_db.raw(query, .{});
+        return try all(FeedFailedRequestWithID, allocator, raw_query);
+    }
+
+    pub fn request_failed_feeds(self: *Self, allocator: Allocator) ![]const Feed {
+        const capacity = 10;
+        const query =
+        \\select feed_id, title, feed_url, page_url, icon_id, updated_timestamp
+        \\from feed
+        \\where feed_id in (select distinct(feed_id) from feed_request_failed)
+        ;
+
+        const raw_query = self.sql_db.raw(query, .{});
+        return try fetch_all_feeds(allocator, raw_query, capacity);
+    }
+
     pub fn insertFeed(self: *Self, feed: Feed) !Feed.ID {
         const query =
             \\INSERT INTO feed (title, feed_url, page_url, icon_id, updated_timestamp)
@@ -1023,34 +1058,7 @@ pub const Storage = struct {
 
         const feed_db = try stmt.next(Feed.DB, allocator) orelse return null;
 
-        const page_url_len = if (feed_db.page_url) |v| v.len else 0;
-        const title_len = if (feed_db.title) |v| v.len else 0;
-        const len = feed_db.feed_url.len + page_url_len + title_len;
-
-        var strings = try std.array_list.Managed(u8).initCapacity(allocator, len);
-        errdefer strings.deinit();
-
-        var new = feed_db;
-
-        {
-            const start = strings.items.len;
-            strings.appendSliceAssumeCapacity(feed_db.feed_url);
-            new.feed_url = strings.items[start..];
-        }
-
-        if (feed_db.page_url) |page_url| {
-            const start = strings.items.len;
-            strings.appendSliceAssumeCapacity(page_url);
-            new.page_url = strings.items[start..];
-        }
-
-        if (feed_db.title) |title| {
-            const start = strings.items.len;
-            strings.appendSliceAssumeCapacity(title);
-            new.title = strings.items[start..];
-        }
-
-        return try .from_raw(new);
+        return try .from_raw(feed_db);
     }
 
     // const InsertRuleHost = struct {
@@ -2009,9 +2017,16 @@ test "Storage:all" {
     }
 
     { // Failed feed requests tests
-        try storage.request_failed_add(feed.feed_id, "test failed");
+        try storage.request_failed_add(feed.feed_id, "test failed 1");
+        try storage.request_failed_add(feed.feed_id, "test failed 2");
         const failed_requests = try storage.request_failed_slice(arena.allocator(), feed.feed_id);
-        try std.testing.expectEqual(1, failed_requests.len);
+        try std.testing.expectEqual(2, failed_requests.len);
+
+        const failed_requests_all = try storage.request_failed_all(arena.allocator());
+        try std.testing.expectEqual(2, failed_requests_all.len);
+
+        const request_failed_feeds = try storage.request_failed_feeds(arena.allocator());
+        try std.testing.expectEqual(1, request_failed_feeds.len);
 
         try storage.request_failed_remove(feed.feed_id);
 
