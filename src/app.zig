@@ -1123,7 +1123,7 @@ pub const Cli = struct {
             const title = feed.title orelse "<no title>";
             const url_out = feed.page_url orelse feed.feed_url;
             _ = try self.out.print("{s} - {f}\n", .{ title, url_out });
-            const items = try self.storage.getLatestFeedItemsWithFeedId(feed.feed_id, opts);
+            const items = try self.storage.getLatestFeedItemsWithFeedId(arena.allocator(), feed.feed_id, opts);
             if (items.len == 0) {
                 _ = try self.out.write("  ");
                 _ = try self.out.write("Feed has no items.");
