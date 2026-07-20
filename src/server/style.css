@@ -52,16 +52,16 @@ hr {
 }
 
 body > div {
-  --min-width: 50ch;
-  --max-width: 75ch;
-  --diff: calc((var(--min-width) - var(--max-width)));
-  margin-inline-start: calc(max(0px,
-      (0.65 * max(0px, 100% - var(--min-width)))
-      + (.35 * min(var(--diff), var(--max-width) - 100%))
-    )
-  );
   padding-inline: var(--size-m);
   padding-block: var(--size-4xs) var(--size-m);
+
+  --max-width: 70ch;
+  max-width: var(--max-width);
+  margin-inline: auto;
+}
+
+.content-latest {
+  margin-inline-end: min(0px, calc((100vw - var(--max-width)) * -.5));
 }
 
 .nav span {
@@ -213,8 +213,10 @@ main h2 {
 .item-link {
   margin-inline-start: var(--size-xs);
   margin-inline-end: var(--size-xl);
-  max-width: 40ch;
-  /* make sure .item-extra column is aligned */
+  max-width: 45ch;
+  /* Make sure .item-extra column is aligned.
+   * Seems to be important on smaller viewports
+   */
   width: 1000%;
 }
 
