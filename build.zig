@@ -36,7 +36,7 @@ pub fn build(b: *Build) !void {
         // .use_lld = true,
     };
 
-    if (@import("builtin").mode != .Debug) {
+    if (optimize != .Debug) {
         const esbuild = b.findProgram(&.{"esbuild"}, &.{}) catch
             @panic("Could not find command 'esbuild'");
         const command_minify = b.addSystemCommand(&.{
@@ -59,11 +59,10 @@ pub fn build(b: *Build) !void {
                 "./purgecss-cli.config.js"
             });
             command_purgecss.step.dependOn(&command_minify.step);
-            b.getInstallStep().dependOn(&command_purgecss.step);
+            // b.getInstallStep().dependOn(&command_purgecss.step);
         } else |_| {
-            std.log.err("Missing command 'purgecss'. Can't remove unused CSS", .{});
+            std.log.warn("Missing command 'purgecss'. Can't remove unused CSS", .{});
         }
-        
     }
     
     const exe = b.addExecutable(opts_exe);
