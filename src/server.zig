@@ -2831,11 +2831,14 @@ fn sse_stream(global: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
 const StreamContext = struct {
     io: std.Io,
 
+    var buf: [32]u8 = undefined;
+
     var stats: [files.len]std.Io.File.Stat = undefined;
-    const files: [3][]const u8 = [_][]const u8{
-        "./src/server/dist/main.css",
-        "./src/server/dist/main.js",
-        "./src/server/dist/relative-time.js",
+    const files = [_][]const u8{
+        "./src/server/main.css",
+        "./src/server/style.css",
+        "./src/server/main.js",
+        "./src/server/relative-time.js",
     };
 
     pub fn init(io: std.Io) !StreamContext {
@@ -2855,18 +2858,21 @@ const StreamContext = struct {
 
     fn handle(ctx: StreamContext, stream: std.Io.net.Stream) void {
         std.log.info("Start SSE stream", .{});
+        var writer = stream.writer(ctx.io, &buf);
+        const w = &writer.interface;
         while (true) {
-            const new_stats = file_stats(ctx.io) catch @panic("SSE stream crash");
+            const new_stats = file_stats(ctx.io) catch return;
             if (!std.meta.eql(stats, new_stats)) {
-                var buf: [32]u8 = undefined;
-                var w = stream.writer(ctx.io, &buf).interface;
                 w.writeAll("event: reload\n") catch return;
-                w.writeAll("data: reload\n\n") catch return;
+                w.writeAll("data: reload\n") catch return;
+                w.writeByte('\n') catch return;
                 w.flush() catch return;
-                std.log.info("reload browser", .{});
                 stats = new_stats;
+                stream.close(ctx.io);
+                std.log.info("reload browser page", .{});
+                return;
             }
-            ctx.io.sleep(.fromSeconds(std.time.ns_per_s), .boot) catch return;
+            ctx.io.sleep(.fromSeconds(1), .boot) catch @panic("Io.sleep was cancelled");
         }
     }
 };

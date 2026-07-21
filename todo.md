@@ -1,7 +1,7 @@
+- style failed-requests page
 - feed_update.update_interval not used. remove it?
 - there might be a bug in adding feed items. When reading feed item's got more than
   10 items in one instance. Feed items can't contain more than 10 items.
-- list failed feed requests
 - added 'pub const c = @import(...)' to fridge package main.zig to get access to
   sqlite3_snprintf. Have to see if it is needed
 
@@ -14,7 +14,7 @@
     - change info, warning, error colors where necessary
     - colors from? https://design.homeoffice.gov.uk/design-system/components?name=Alert
     - should also add icon
-- if link and id are same only save link to save space
+- if link and id are same only save link to save space?
 - feed page:
   - display message when failed to fetch icon
 - root page:

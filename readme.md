@@ -60,6 +60,15 @@ zig build install --prefix ~/.local -Doptimize=ReleaseSafe
     - 'xxx' is text I don't care about
 
 
+## Development
+Run server after rebuild with watchexec
+```
+# In first shell
+$ zig build --watch
+# In second shell
+$ watchexec -r -F zig-out/bin/feedgaze zig build run -- -d <database_path> serve -p 3888
+```
+
 ## Inspiration
 [fraidycat](https://fraidyc.at/) - [github](https://github.com/kickscondor/fraidycat)
 
