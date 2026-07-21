@@ -148,7 +148,8 @@ pub const IconManage = struct {
     }
 
     pub fn index_by_id(self: *@This(), id: types.IconRender.ID, storage_opt: ?*Storage) ?usize {
-        std.debug.assert(id != .unassigned);
+        if (id == .unassigned) return null;
+
         for (self.storage.items(.icon_id), 0..) |icon_id, i| {
             if (id == icon_id) {
                 return i;
@@ -385,12 +386,15 @@ fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Respon
     const failed_requests = try global.storage.request_failed_all(req.arena);
     if (failed_requests.len > 0) {
         var date_buf: [date_len_max]u8 = undefined;
+        var buf_icon: [1024]u8 = undefined;
         var current_id = failed_requests[0].feed_id;
 
         const failed_feeds = try global.storage.request_failed_feeds(req.arena);
         var current_feed: types.Feed = feed_from_id(failed_feeds, current_id);
 
-        try render_failed_feed_start(w, &failed_requests[0], current_feed);
+        var icon_path = global.icon_manage.icon_src_by_id(&buf_icon, current_feed.icon_id, global.storage);
+
+        try render_failed_feed_start(w, &failed_requests[0], current_feed, icon_path);
 
         for (failed_requests) |failed_request| {
             if (current_id != failed_request.feed_id) {
@@ -398,7 +402,8 @@ fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Respon
 
                 current_id = failed_request.feed_id;
                 current_feed = feed_from_id(failed_feeds, current_id);
-                try render_failed_feed_start(w, &failed_request, current_feed);
+                icon_path = global.icon_manage.icon_src_by_id(&buf_icon, current_feed.icon_id, global.storage);
+                try render_failed_feed_start(w, &failed_request, current_feed, icon_path);
             }
 
             try w.print(parts_get("failed_table_row")
@@ -431,14 +436,23 @@ fn feed_from_id(feeds: []const types.Feed, feed_id: types.Feed.ID) types.Feed {
     unreachable;
 }
 
-fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailedRequestWithID, feed: types.Feed) !void {
+fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailedRequestWithID, feed: types.Feed, icon_path_opt: ?[]const u8) !void {
     try w.writeAll("<div>");
+
+    if (icon_path_opt) |icon_path| {
+        try w.print(
+            \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
+        , .{icon_path});
+    }
+
     if (feed.page_url) |page_url| {
+
         const title = feed.title orelse title_placeholder;
         try w.print("<h3><a href='{f}' title='{s}'>{s}</a></h3>", .{page_url, title, title});
     } else {
         try w.print("<h3>{s}</h3>", .{feed.title orelse title_placeholder});
     }
+
     try w.print("<a href='{f}'>Feed link</a>", .{feed.feed_url});
     try w.print("<a href='/feed/{d}'>Edit</a>", .{failed.feed_id});
     const date_utc = date_readable(failed.utc_sec);
@@ -1485,7 +1499,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         // TODO: if too many failed requests automatic updating will be disabled 
         // TODO: add link/button to run update right now
         try w.writeAll(
-            \\<p>Updating for this feed is disabled. Failed to fetch feed too many times.</p>
+            \\<p class='callout warning'>This feed's updating is disabled. Failed to fetch feed too many times.</p>
         );
     }
 
