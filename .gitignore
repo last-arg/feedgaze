@@ -2,7 +2,7 @@ tmp/
 zig-out/
 .zig-cache/
 zig-pkg/
-src/server/dist/relative-time.js
+src/server/dist/
 *.wip
 *-shm
 *-wal
