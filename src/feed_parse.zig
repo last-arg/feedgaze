@@ -839,7 +839,7 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
         feed.title = try text_location_from_node(ast, content, n);
     }
 
-    var container_iter = NodeIterator.init(ast, content, ast.nodes[0], html_options.selector_container);
+    var container_iter = NodeIterator.init(ast, content, root_node, html_options.selector_container);
 
     while (container_iter.next()) |node_container| {
         var item_link: ?feed_types.Location = null;
@@ -877,8 +877,6 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
                     }
                 }
             }
-
-            item_title = try text_location_from_node(ast, content, n);
         }
 
         if (html_options.selector_heading) |heading| {
