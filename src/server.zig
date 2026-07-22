@@ -437,7 +437,8 @@ fn feed_from_id(feeds: []const types.Feed, feed_id: types.Feed.ID) types.Feed {
 }
 
 fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailedRequestWithID, feed: types.Feed, icon_path_opt: ?[]const u8) !void {
-    try w.writeAll("<div>");
+    try w.writeAll("<section class='failed-feed'>");
+    try w.writeAll("<header>");
 
     if (icon_path_opt) |icon_path| {
         try w.print(
@@ -445,18 +446,25 @@ fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailed
         , .{icon_path});
     }
 
+    try w.writeAll("<h3 class='truncate-1'>");
     if (feed.page_url) |page_url| {
-
         const title = feed.title orelse title_placeholder;
-        try w.print("<h3><a href='{f}' title='{s}'>{s}</a></h3>", .{page_url, title, title});
+        try w.print("<a href='{f}' title='{s}'>{s}</a>", .{page_url, title, title});
     } else {
-        try w.print("<h3>{s}</h3>", .{feed.title orelse title_placeholder});
+        try w.writeAll(feed.title orelse title_placeholder);
     }
+    try w.writeAll("</h3>");
 
-    try w.print("<a href='{f}'>Feed link</a>", .{feed.feed_url});
+    try w.print("<a class='one-line' href='{f}'>Feed link</a>", .{feed.feed_url});
     try w.print("<a href='/feed/{d}'>Edit</a>", .{failed.feed_id});
+    try w.writeAll("</header>");
+
+    try w.writeAll("<p>Latest error ");
     const date_utc = date_readable(failed.utc_sec);
-    try w.print("<p>Latest error ({s}): {s}</p>", .{date_utc, failed.reason});
+    var date_buf: [date_len_max]u8 = undefined;
+    const datetime_value = timestampToString(&date_buf, failed.utc_sec);
+    try w.print("<time datetime='{s}'>({s})</time>: ", .{datetime_value, date_utc});
+    try w.print("{s}</p>", .{failed.reason});
     try w.writeAll("<details>");
     try w.writeAll("<summary>Failed requests</summary>");
     try w.writeAll(parts_get("failed_table_start"));
@@ -465,7 +473,7 @@ fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailed
 fn render_failed_feed_end(w: *std.Io.Writer) !void {
     try w.writeAll(parts_get("failed_table_end"));
     try w.writeAll("</details>");
-    try w.writeAll("<div>");
+    try w.writeAll("</section>");
 }
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {

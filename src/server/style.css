@@ -510,3 +510,57 @@ time.age-more-month {
 .tag-actions form {
   line-height: 1;
 }
+
+.failed-feed {
+    margin-block-end: var(--size-4xl);
+}
+
+.failed-feed > * + * {
+    margin-block-start: var(--size-6xs);
+}
+
+.failed-feed header {
+    display: flex;
+    align-items: baseline;
+}
+
+.failed-feed img {
+    margin-inline-end: var(--size-4xs);
+    align-self: center;
+}
+
+.failed-feed h3 {
+    margin-block-end: 0;
+    margin-inline-end: var(--size-l);
+    line-height: var(--line-height-m);
+}
+
+.failed-feed .one-line {
+    margin-inline-end: var(--size-xs);
+}
+
+.failed-feed p {
+    margin-block-end: 0;
+}
+
+.failed-feed p time {
+    color: var(--color-text-muted);
+    font-style: italic;
+}
+
+.failed-feed caption {
+    /* .visually-hidden */
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+}
+
+.one-line {
+  white-space: nowrap;
+}
