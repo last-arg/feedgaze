@@ -931,7 +931,7 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
             var value_raw: ?[]const u8 = null;
             var is_time_datetime = false;
 
-            if (std.ascii.eqlIgnoreCase("time", n.open.slice(content))) {
+            if (is_single_selector_match(content, n, "time")) {
                 var attr_iter = n.startTagIterator(content, .html);
                 while (attr_iter.next(content)) |attr| {
                     if (attr.value) |value| {
