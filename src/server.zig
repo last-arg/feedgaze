@@ -1362,8 +1362,8 @@ fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]co
     return null;
 }
 
-// Example output: "15:05 21.12.2024"
-const date_format_readable = "%H:%M %d.%m.%Y UTC";
+// Example output: "15:05:12 21.12.2024 UTC"
+const date_format_readable = "%H:%M:%S %d.%m.%Y UTC";
 const date_format_readable_len = util.count_date_len(date_format_readable, .{});
 
 fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
