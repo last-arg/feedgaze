@@ -465,12 +465,14 @@ fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailed
     try w.print("<a href='/feed/{d}'>Edit</a>", .{failed.feed_id});
     try w.writeAll("</header>");
 
-    try w.writeAll("<p>Latest error ");
-    const date_utc = date_readable(failed.utc_sec);
+    const date_value = date_readable(failed.utc_sec);
     var date_buf: [date_len_max]u8 = undefined;
     const datetime_value = timestampToString(&date_buf, failed.utc_sec);
-    try w.print("<time datetime='{s}'>({s})</time>: ", .{datetime_value, date_utc});
-    try w.print("{s}</p>", .{failed.reason});
+    try w.print(parts_get("latest_error"), .{
+        .datetime = datetime_value,
+        .date_value = date_value,
+        .reason = failed.reason,
+    });
     try w.writeAll("<details>");
     try w.writeAll("<summary>Failed requests</summary>");
     try w.writeAll(parts_get("failed_table_start"));
