@@ -1,10 +1,10 @@
+- html parsing: get date from url?
 - feed_update.update_interval not used. remove it?
 - there might be a bug in adding feed items. When reading feed item's got more than
   10 items in one instance. Feed items can't contain more than 10 items.
 - added 'pub const c = @import(...)' to fridge package main.zig to get access to
   sqlite3_snprintf. Have to see if it is needed
 
-- add special value to 'select_request_failed'?
 - website:
   - print form errors near fields where the error took place
   - minify html

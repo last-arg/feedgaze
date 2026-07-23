@@ -1207,18 +1207,13 @@ pub const Storage = struct {
     \\) as INTEGER)
     ;
 
-    // TODO: add special value for else branch that show that count exceeds or is 7
-    // Or return also count(*) and let code handle it?
-    // This was caused by problem when datetime library could not handle
-    // max_int value.
-    const select_request_failed =
+    const select_request_failed = std.fmt.comptimePrint(
     \\select iif(count(*) < 7
     \\    , max(utc_sec) + min(3600 * (count(*) * count(*)), 259200)
-    \\    , 9223372036854775807
+    \\    , {d}
     \\  ) as result
     \\  from feed_request_failed
-    \\
-    ;
+    , .{@import("zdt").Datetime.unix_s_max});
 
     const failed_request_utc_sec = comptimePrint(
     \\select min(result) from (
