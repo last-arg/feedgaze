@@ -105,7 +105,8 @@ pub const Storage = struct {
         \\INSERT OR IGNORE INTO table_last_update (table_name) 
         \\VALUES 
         \\  ('tag'),
-        \\  ('feed');
+        \\  ('feed'),
+        \\  ('feed_request_failed')
         ;
         db.conn.execAll(query) catch |err| {
             std.log.err("Failed to fill in database initial data", .{});
@@ -1318,6 +1319,13 @@ pub const Storage = struct {
         return try self.sql_db.raw(query, .{}).get(i64);
     }
 
+    pub fn get_feed_request_failed_change(self: *Self) !?i64 {
+        const query = 
+            \\SELECT last_update_timestamp FROM table_last_update where table_name = 'feed_request_failed';
+        ;
+        return try self.sql_db.raw(query, .{}).get(i64);
+    }
+
     pub fn get_feeds_with_ids(self: *Self, allocator: Allocator, ids: []const Feed.ID) ![]const Feed {
         std.debug.assert(ids.len > 0);
         var query_al = try std.ArrayList(u8).initCapacity(allocator, 256);
@@ -1844,6 +1852,20 @@ const tables = &[_][]const u8{
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
     \\  where table_name = 'feed';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_request_failed_insert_trigger
+    \\   AFTER INSERT ON feed_request_failed
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed_request_failed';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS feed_request_failed_delete_trigger
+    \\   AFTER DELETE ON feed_request_failed
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'feed_request_failed';
     \\END;
 };
 

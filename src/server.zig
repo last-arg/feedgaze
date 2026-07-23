@@ -368,7 +368,13 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
 fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
-    // TODO: add caching
+    if (try global.storage.get_feed_request_failed_change()) |latest_created| {
+        const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}\"", .{latest_created, static_files_hash});
+        if (resp_cache(req, resp, etag_out, .{})) {
+            resp.status = 304;
+            return;
+        }
+    }
 
     resp.content_type = .HTML;
 
