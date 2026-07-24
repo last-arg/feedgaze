@@ -411,7 +411,7 @@ main h3 {
   color: var(--color-orange-30);
 }
 
-.feed-failed-msg::before {
+.feed-failed-icon::before {
   font-style: normal;
   content: "!";
   background: var(--color-orange-50);
@@ -563,4 +563,8 @@ time.age-more-month {
 
 .one-line {
   white-space: nowrap;
+}
+
+.mi-start-5xs {
+    margin-inline-start: var(--size-5xs);
 }

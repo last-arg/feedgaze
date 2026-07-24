@@ -1989,6 +1989,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
                 ids_al.appendAssumeCapacity(item.feed_id);
             }
         }
+
+        const failed_requests = try db.request_failed_ids(req.arena);
         const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
         try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
 
@@ -2005,7 +2007,8 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             };
 
             const is_new_item = item.created_timestamp > cookie_last_item_ts;
-            try item_latest_render(global.io, w, req.arena, item, feed, global, is_new_item);
+            const has_failed = if (mem.indexOfScalar(types.Feed.ID, failed_requests, item.feed_id)) |_| true else false;
+            try item_latest_render(global.io, w, req.arena, item, feed, global, is_new_item, has_failed);
             try w.writeAll("</li>");
         }
         try w.writeAll("</ul>");
@@ -2023,15 +2026,26 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     try w.flush();
 }
 
-fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool) !void {
+fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool, has_failed: bool) !void {
     try item_render(io, w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
 
     const url = feed.page_url orelse feed.feed_url;
     const title = feed.title orelse "";
+    const failed_msg = "Latest update to this feed failed";
     try w.print(
         \\<div class="item-extra">
-        \\<div><a href="/feed/{d}" title="{s}">{s}</a></div>
-    , .{ feed.feed_id, title, title });
+        \\<div>
+        \\<a href="/feed/{[feed_id]d}" title="{[link_title]s}">{[link_title]s}</a>
+    , .{ .feed_id = feed.feed_id, .link_title = title });
+
+    if (has_failed) {
+        try w.print(
+            \\<span class='mi-start-5xs feed-failed-icon' title="{[failed_msg]s}"></span>
+            \\<span class='visually-hidden'>{[failed_msg]s}</span>
+        , .{ .failed_msg = failed_msg });
+    }
+
+    try w.writeAll("</div>");
 
     try w.print(
         \\<a class="feed-external-url" href="{f}" rel="noreferrer noopener">
@@ -2613,7 +2627,7 @@ fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage
 
         if (mem.indexOfScalar(types.Feed.ID, failed_requests_ids, feed.feed_id)) |_| {
             try w.writeAll(
-            \\<p class="feed-failed-msg">Last update failed</p>
+            \\<p class="feed-failed-msg feed-failed-icon">Last update failed</p>
             );
         }
 

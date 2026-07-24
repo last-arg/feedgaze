@@ -17,7 +17,6 @@
 - feed page:
   - display message when failed to fetch icon
 - root page:
-  - show failed feed request indicator?
   - limit how many items rendered
     - Paginate if there are too many items?
     - Only paginate if items are new?
