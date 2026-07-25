@@ -508,7 +508,7 @@ pub const Storage = struct {
         // Update feed_title and page_url
         const query = 
         \\UPDATE feed 
-        \\SET title = ?, page_url = ?, icon_id = ?
+        \\SET title = ?, page_url = ?, icon_id = ?, updated_timestamp = strftime('%s', 'now')
         \\WHERE feed_id = ?
         ;
 
@@ -1297,14 +1297,21 @@ pub const Storage = struct {
 
     pub fn get_latest_feed_change(self: *Self, feed_id: Feed.ID) !?i64 {
         assert(feed_id != .unassigned);
+        // NOTE: When to break cache:
+        // 1. feed items changed
+        // 2. feed fields changed
+        // 3. feed update values change
+        // 4. tags changed
         const query = 
             \\select max(
             \\  (SELECT max(created_timestamp) FROM item WHERE feed_id = ?),
-            \\  (SELECT max(last_update) FROM feed_update),
-            \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag')
+            \\  (SELECT max(last_update) FROM feed_update WHERE feed_id = ?),
+            \\  (SELECT max(updated_timestamp) FROM feed WHERE feed_id = ?),
+            \\  (SELECT last_update_timestamp FROM table_last_update where table_name = 'tag')
             \\);
         ;
-        return try self.sql_db.raw(query, .{@intFromEnum(feed_id)}).get(i64) ;
+        const id = @intFromEnum(feed_id);
+        return try self.sql_db.raw(query, .{id, id, id}).get(i64) ;
     }
 
     pub fn get_tags_change(self: *Self) !?i64 {

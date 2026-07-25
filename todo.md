@@ -13,7 +13,6 @@
     - change info, warning, error colors where necessary
     - colors from? https://design.homeoffice.gov.uk/design-system/components?name=Alert
     - should also add icon
-- if link and id are same only save link to save space?
 - feed page:
   - display message when failed to fetch icon
 - root page:
@@ -21,22 +20,11 @@
     - Paginate if there are too many items?
     - Only paginate if items are new?
 - add trigger when:
-  - failed request is added
   - rate limit is added
-- feedgaze batch --check-failed-icons logs:
-```
-warning: Icon body is empty. Request url: https://faultlore.com
-warning: Icon body is empty. From: https://statmodeling.stat.columbia.edu/favicon.ico
-warning: Icon body is empty. From: https://www.forgottenconqueror.com/favicon.ico
-warning: Failed to fetch icon 'https://www.divergent-desktop.org/favicon.png'. Status code: .not_found
-warning: Failed to fetch 'http://ruoyusun.com'. Error: error.TlsInitializationFailed
-warning: Failed to fetch 'https://www.openmymind.net'. Error: error.ConnectionTimedOut```
 
 
 - when two commands run at the same time there is possibility of getting
 sqlite busy error
-- cli: 
-  - try https://github.com/n0s4/flags
 
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts
