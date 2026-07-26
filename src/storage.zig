@@ -79,6 +79,10 @@ pub const Storage = struct {
         try db.conn.execAll("PRAGMA temp_store = 2");
         try db.conn.execAll("PRAGMA mmap_size = 30000000000");
         try db.conn.execAll("PRAGMA cache_size = -32000");
+        try db.conn.execAll("PRAGMA cache_size = -32000");
+        if (@import("builtin").mode != .Debug) {
+            try db.conn.execAll("PRAGMA busy_timeout = 1000");
+        }
 
         // TODO: replace with sql.migrate()
         try setupTables(db);

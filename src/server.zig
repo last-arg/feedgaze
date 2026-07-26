@@ -2020,9 +2020,6 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     try Layout.write_foot(w);
 
-    // if (do_compression) {
-    //     try compress_response(resp);
-    // }
     try w.flush();
 }
 
