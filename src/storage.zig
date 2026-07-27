@@ -132,6 +132,7 @@ pub const Storage = struct {
         var parsed = parsed_feed;
         const feed_opts = opts.feed_opts;
 
+        try self.sql_db.conn.execAll("BEGIN DEFERRED");
         if (feed_opts.icon) |icon| {
             parsed.feed.icon_id = try self.icon_upsert(icon);
         }
@@ -149,6 +150,8 @@ pub const Storage = struct {
          
         _ = try self.insertFeedItems(parsed.items);
         try self.updateFeedUpdate(feed_id, feed_opts.feed_updates, parsed.item_interval);
+        try self.sql_db.conn.execAll("COMMIT");
+
         return .{.feed_id = feed_id, .icon_id = parsed.feed.icon_id};
     }
 
@@ -159,16 +162,19 @@ pub const Storage = struct {
         feed_update_input: FeedUpdate,
     ) !void {
         const feed_id = parsed.feed.feed_id;
+        try self.sql_db.conn.execAll("BEGIN DEFERRED");
         try self.update_feed_timestamp(parsed.feed);
         try self.rate_limit_remove(feed_id);
         try self.request_failed_remove(feed_id);
         try self.updateFeedUpdate(feed_id, feed_update_input, parsed.item_interval);
 
         if (parsed.items.len == 0) {
+            try self.sql_db.conn.execAll("COMMIT");
             return;
         }
 
         try self.updateAndRemoveFeedItems(parsed.items);
+        try self.sql_db.conn.execAll("COMMIT");
     }
 
     pub fn rate_limit_remove(self: *Self, feed_id: Feed.ID) !void {

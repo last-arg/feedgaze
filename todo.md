@@ -1,4 +1,3 @@
-- add transactions
 - Can disable updating for feeds?
 - html parsing: get date from url?
 - feed_update.update_interval not used. remove it?
