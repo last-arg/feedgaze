@@ -18,8 +18,7 @@
   - limit how many items rendered
     - Paginate if there are too many items?
     - Only paginate if items are new?
-- add trigger when:
-  - rate limit is added
+
 
 - twitch and youtube integration for live streams
   - and for twitch get latest broadcasts

@@ -1299,7 +1299,9 @@ pub const Storage = struct {
             \\select max(
             \\  (SELECT max(created_timestamp) FROM item),
             \\  (SELECT max(last_update) FROM feed_update),
-            \\  (SELECT max(last_update_timestamp) FROM table_last_update where table_name = 'feed' or table_name = 'tag' or table_name = 'feed_request_failed')
+            \\  (SELECT max(last_update_timestamp) FROM table_last_update
+            \\    where table_name in ('feed', 'tag', 'feed_request_failed', 'rate_limit')
+            \\  )
             \\);
         ;
         return try self.sql_db.raw(query, .{}).get(i64);
@@ -1317,11 +1319,12 @@ pub const Storage = struct {
             \\  (SELECT max(created_timestamp) FROM item WHERE feed_id = ?),
             \\  (SELECT max(last_update) FROM feed_update WHERE feed_id = ?),
             \\  (SELECT max(updated_timestamp) FROM feed WHERE feed_id = ?),
-            \\  (SELECT last_update_timestamp FROM table_last_update where table_name = 'tag')
+            \\  (SELECT last_update_timestamp FROM table_last_update where table_name = 'tag'),
+            \\  ifnull((SELECT last_utc_sec FROM rate_limit WHERE feed_id = ?), 0)
             \\);
         ;
         const id = @intFromEnum(feed_id);
-        return try self.sql_db.raw(query, .{id, id, id}).get(i64) ;
+        return try self.sql_db.raw(query, .{id, id, id, id}).get(i64) ;
     }
 
     pub fn get_tags_change(self: *Self) !?i64 {
@@ -1878,6 +1881,27 @@ const tables = &[_][]const u8{
     \\BEGIN
     \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
     \\  where table_name = 'feed_request_failed';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS rate_limit_insert_trigger
+    \\   AFTER INSERT ON rate_limit
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'rate_limit';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS rate_limit_insert_trigger
+    \\   AFTER UPDATE ON rate_limit
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'rate_limit';
+    \\END;
+    ,
+    \\CREATE TRIGGER IF NOT EXISTS rate_limit_delete_trigger
+    \\   AFTER DELETE ON rate_limit
+    \\BEGIN
+    \\  update table_last_update set last_update_timestamp = strftime('%s', 'now')
+    \\  where table_name = 'rate_limit';
     \\END;
 };
 
