@@ -1,6 +1,4 @@
-- Can disable updating for feeds?
-- html parsing: get date from url?
-- feed_update.update_interval not used. remove it?
+- html parsing: get date from url path?
 - added 'pub const c = @import(...)' to fridge package main.zig to get access to
   sqlite3_snprintf. Have to see if it is needed
 
@@ -43,3 +41,5 @@
 [ ] UI
   [ ] TUI - NotCurses
     * Example: https://github.com/dundalek/notcurses-zig-example
+[ ] Can disable updating for feeds?
+  Currently have no need for this.

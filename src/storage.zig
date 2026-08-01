@@ -413,9 +413,9 @@ pub const Storage = struct {
                 \\     {s} 
                 \\    )
                 \\  ),
-                \\  (unixepoch() >= last_update + item_interval)
+                \\  (unixepoch() >= last_update + {s})
                 \\)
-            , .{rate_limit_iif_utc_sec, failed_request_query}));
+            , .{rate_limit_iif_utc_sec, failed_request_query, iif_update_interval}));
         }
 
         const query_opts = blk: {
@@ -1223,6 +1223,7 @@ pub const Storage = struct {
     \\    , {d}
     \\  ) as result
     \\  from feed_request_failed
+    \\
     , .{@import("zdt").Datetime.unix_s_max});
 
     const failed_request_utc_sec = comptimePrint(
@@ -1233,10 +1234,14 @@ pub const Storage = struct {
     , .{select_request_failed})
     ;
 
+    const iif_update_interval = comptimePrint(
+        \\iif(update_interval > item_interval, min(update_interval, {d}), item_interval)
+    , .{types.seconds_in_10_days});
+
     pub fn next_update_timestamp(self: *Self) !?i64 {
         const query = comptimePrint(
         \\select min(val) from (
-        \\  select last_update + item_interval as val from feed_update
+        \\  select last_update + {s} as val from feed_update
         \\    where feed_id not in (
         \\      select feed_id from rate_limit 
         \\      UNION
@@ -1247,7 +1252,7 @@ pub const Storage = struct {
         \\  UNION
         \\  {s}
         \\)
-        , .{rate_limit_iif_utc_sec, failed_request_utc_sec})
+        , .{iif_update_interval, rate_limit_iif_utc_sec, failed_request_utc_sec})
         ;
         return try self.sql_db.raw(query, .{}).get(i64);
     }
@@ -1255,7 +1260,7 @@ pub const Storage = struct {
     // NOTE: null means that there have been to many failed feed requests in a row
     pub fn next_update_feed(self: *Self, feed_id: Feed.ID) !?i64 {
         assert(feed_id != .unassigned);
-        const query =
+        const query = comptimePrint(
             \\select case
             \\  when count(*) >= 7 then null
             \\  when count(*) > 0 then max(utc_sec) + min(3600 * (count(*) * count(*)), 259200)
@@ -1264,12 +1269,12 @@ pub const Storage = struct {
             \\           when count > 0 then next_utc_sec
             \\         end
             \\         from rate_limit where feed_id = ?1)
-            \\         , (select last_update + item_interval from feed_update where feed_id = ?1)
+            \\         , (select last_update + {s} from feed_update where feed_id = ?1)
             \\       )
             \\end
             \\from feed_request_failed
             \\where feed_id = ?1
-        ;
+        , .{iif_update_interval});
         const result = try self.sql_db.raw(query, .{feed_id}).get(i64);
         if (result) |val| if (val != 0) {
             return val;
