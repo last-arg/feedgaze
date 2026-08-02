@@ -28,6 +28,7 @@ General options:
 
 
 ## Install
+Requires zig version 0.16.0
 This will install feedgaze into $HOME/.local/bin/feedgaze
 ```
 zig build install --prefix ~/.local -Doptimize=ReleaseSafe
