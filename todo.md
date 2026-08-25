@@ -1,6 +1,7 @@
 - html parsing: get date from url path?
 - added 'pub const c = @import(...)' to fridge package main.zig to get access to
   sqlite3_snprintf. Have to see if it is needed
+- make feed updating non-blocking
 
 - website:
   - print form errors near fields where the error took place

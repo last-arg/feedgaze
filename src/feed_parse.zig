@@ -963,6 +963,8 @@ pub fn parse_html(self: *@This(), allocator: Allocator, html_options: HtmlOption
                     item_updated_ts = seconds_from_datetime(self.io, trimmed);
                 }
             }
+        } else {
+            // TODO: parse date from item_link url path (href)
         }
 
         self.items.appendAssumeCapacity(.{

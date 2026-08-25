@@ -219,21 +219,21 @@ pub const RssDateTime = struct {
         N,
         Y,
 
-        pub fn toSeconds(raw: []const u8) ?i16 {
+        pub fn toSeconds(raw: []const u8) ?i32 {
             // Timezone is made of letters
             var buf: [3]u8 = undefined;
             const upper_raw = std.ascii.upperString(&buf, raw[0..@min(3, raw.len)]);
             if (raw[0] == '+' or raw[0] == '-') {
                 const offset_raw = raw[1..5];
                 const hour_raw = offset_raw[0..2];
-                const hour = std.fmt.parseInt(i16, hour_raw, 10) catch return null;
+                const hour = std.fmt.parseInt(i32, hour_raw, 10) catch return null;
                 const minute_raw = offset_raw[2..];
-                const minute = std.fmt.parseInt(i16, minute_raw, 10) catch return null;
+                const minute = std.fmt.parseInt(i32, minute_raw, 10) catch return null;
                 const sign: i8 = if (raw[0] == '+') 1 else -1;
 
                 return sign * (hour * 60 + minute) * 60;
             } else if (std.meta.stringToEnum(@This(), upper_raw)) |tz| {
-                const result: i16 = switch (tz) {
+                const result: i32 = switch (tz) {
                     .UT, .GMT, .UTC, .Z => 0,
                     .EST => -5,
                     .EDT => -4,
