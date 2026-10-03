@@ -1517,36 +1517,22 @@ pub const Storage = struct {
         return res.toOwnedSlice();
     }
     
-    pub fn icon_update(self: *Self, curr_icon_uri: std.Uri, icon: types.Icon) !void {
+    pub fn icon_update(self: *Self, curr_icon_id: Icon.ID, icon: types.Icon) !void {
         assert(icon.data.len > 0);
-
-        var buf_curr: [1024]u8 = undefined;
-        const curr_icon_url = try std.fmt.bufPrint(&buf_curr, "{f}", .{curr_icon_uri});
 
         var buf_icon: [1024]u8 = undefined;
         const icon_url = try std.fmt.bufPrint(&buf_icon, "{f}", .{icon.url});
         const data: sql.Blob = .{ .bytes = icon.data };
-        if (mem.eql(u8, curr_icon_url, icon_url)) {
-            const query = 
-            \\UPDATE icon SET
-            \\  icon_data = ?,
-            \\  etag_or_last_modified_or_hash = ?
-            \\WHERE icon_url = ?;
-            ;
-            const values = .{data, icon.etag_or_last_modified_or_hash, curr_icon_url};
-            try self.sql_db.raw(query, values).exec();
-        } else {
-            const query = 
-            \\UPDATE icon SET
-            \\  icon_url = ?,
-            \\  icon_data = ?,
-            \\  etag_or_last_modified_or_hash = ?
-            \\WHERE icon_url = ?;
-            ;
+        const query = 
+        \\UPDATE icon SET
+        \\  icon_url = ?,
+        \\  icon_data = ?,
+        \\  etag_or_last_modified_or_hash = ?
+        \\WHERE icon_id = ?;
+        ;
 
-            const values = .{icon_url, data, icon.etag_or_last_modified_or_hash, curr_icon_url};
-            try self.sql_db.raw(query, values).exec();
-        }
+        const values = .{icon_url, data, icon.etag_or_last_modified_or_hash, curr_icon_id};
+        try self.sql_db.raw(query, values).exec();
     }
 
     fn icon_from_icon_db(buf: []u8, icon_db: Icon.DB) !Icon {
@@ -2048,7 +2034,7 @@ test "Storage:all" {
         try storage.feed_icon_update(feed.feed_id, icon_id);
 
         icon.data = "<icon_content_updated>";
-        try storage.icon_update(icon_uri, icon);
+        try storage.icon_update(icon_id, icon);
 
         const icon_id_from_url = try storage.icon_get_id(icon_url);
         try std.testing.expectEqual(icon_id, icon_id_from_url);

@@ -7,9 +7,7 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main(init: std.process.Init) !void {
-    var gpa = std.heap.DebugAllocator(.{}){};
-    // const allocator = init.gpa;
-    const allocator = gpa.allocator();
+    const allocator = init.gpa;
     const io = init.io;
 
     {
@@ -27,11 +25,10 @@ pub fn main(init: std.process.Init) !void {
             .out = &out.interface,
             .in = &in.interface,
             .progress = progress_node,
+            .core_count = try std.Thread.getCpuCount(),
         };
         try app_cli.run(init);
     }
-    const has_leaked = gpa.detectLeaks();
-    std.log.debug("Has leaked: {}\n", .{has_leaked});
 }
 
 test {

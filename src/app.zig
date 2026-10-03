@@ -63,6 +63,7 @@ pub const Cli = struct {
     out: *std.Io.Writer,
     in: *std.Io.Reader,
     progress: std.Progress.Node,
+    core_count: usize,
     const Self = @This();
 
     pub fn run(self: *Self, process_init: std.process.Init) !void {
@@ -223,6 +224,93 @@ pub const Cli = struct {
         failed,
     };
 
+    const IconExistsUnion = union {
+        const Return = union(enum) {
+            success: struct {
+                icon: feed_types.Icon,
+                curr_icon_id: feed_types.IconRender.ID,
+                arena_index: usize,
+            },
+            err: struct {
+                err_type: error{EmptyBody,FailedRequest,FailedRequestForHtml,InvalidImage},
+                icon_id: feed_types.IconRender.ID,
+                status_code: http_client.Status = .teapot,
+                arena_index: usize,
+            },
+            skip: struct {arena_index: usize},
+        };
+
+        result: Return,
+    };
+    const Result = IconExistsUnion;
+    const SelectResult = std.Io.Select(Result);
+
+    fn await_img_queue(queue: *SelectResult, storage: *Storage) !usize {
+        const result = try queue.await();
+        switch (result.result) {
+            .success => |val| {
+                try storage.icon_update(val.curr_icon_id, val.icon);
+                return val.arena_index;
+            },
+            .err => |err| {
+                switch(err.err_type) {
+                    error.EmptyBody => {
+                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
+                            try storage.icon_failed_add(.{
+                                .feed_id = feed_id,
+                                .last_msg = "Image HTTP request returned empty body",
+                            });
+                        } else {
+                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
+                        }
+                    },
+                    error.FailedRequest => {
+                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
+                            var buf_img: [128]u8 = undefined;
+                            var w: std.Io.Writer = .fixed(&buf_img);
+                            w.writeAll("Image HTTP request failed") catch unreachable;
+                            w.print(". Status code {d}", .{err.status_code}) catch |err_type| {
+                                std.log.warn("Failed to print .last_msg. Error: {}", .{err_type});
+                            };
+
+                            try storage.icon_failed_add(.{
+                                .feed_id = feed_id,
+                                .last_msg = w.buffered(),
+                            });
+                        } else {
+                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
+                        }
+                    },
+                    error.FailedRequestForHtml => {
+                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
+                            try storage.icon_failed_add(.{
+                                .feed_id = feed_id,
+                                .last_msg = "Image HTTP request failed",
+                            });
+                        } else {
+                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
+                        }
+                    },
+                    error.InvalidImage => {
+                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
+                            try storage.icon_failed_add(.{
+                                .feed_id = feed_id,
+                                .last_msg = "Invalid image",
+                            });
+                        } else {
+                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
+                        }
+                    },
+                }
+                return err.arena_index;
+            },
+            .skip => |val| {
+                return val.arena_index;
+            },
+        }
+        return std.math.maxInt(usize) ;
+    }
+
     fn check_icons(self: *Self, check_type: IconCheckType) !void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -230,121 +318,53 @@ pub const Cli = struct {
         const progress_node = self.progress.start("Checking icons", 0);
         defer { progress_node.end(); }
 
-        var buffer_header: [1024]u8 = undefined;
-        var a_writer: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 8 * 1024);
-        defer a_writer.deinit();
+        const core_count_max: usize = 15;
+        const select_count: usize = @min(@max(1, self.core_count - 1), core_count_max);
+        // const select_count = 2;
+
+        var buf: [core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
+        var fixed = std.heap.FixedBufferAllocator.init(&buf);
+
+        const arenas = fixed.allocator().alloc(std.heap.ArenaAllocator, select_count) catch unreachable;
+        for (arenas[0..select_count]) |*arena_fixed| {
+            arena_fixed.* = std.heap.ArenaAllocator.init(self.allocator);
+        }
+        defer {
+            for (arenas) |arena_fixed| {
+                arena_fixed.deinit();
+            }
+            fixed.allocator().free(arenas);
+        }
+
+        const request_buffer = try self.allocator.alloc(Result, select_count);
+        defer self.allocator.free(request_buffer);
+        var queue_io: SelectResult = .init(self.io, request_buffer);
+        defer {
+            while (queue_io.cancel()) |_| {}
+        }
 
         switch (check_type) {
             .all => {
                 const icons_existing = try self.storage.icon_all(arena.allocator());
+                const end = @min(icons_existing.len, select_count);
                 progress_node.setEstimatedTotalItems(icons_existing.len);
-                for (icons_existing) |icon| {
-                    var req = http_client.init(self.io, arena.allocator());
-                    defer {
-                        progress_node.completeOne();
-                        req.deinit();
-                    }
 
-                    _ = a_writer.writer.consumeAll();
+                for (icons_existing[0..end], 0..) |icon, i| {
+                    queue_io.async(.result, fetch_icon_exists, .{self.io, &arenas[i], i, icon});
+                }
 
-                    if (!icon.is_data()) blk: {
-                        var date_buf: [util.date_len_max]u8 = undefined;
-                        const icon_cache_value = cache_value: {
-                            if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
-                                break :cache_value null;
-                            } else if (mem.startsWith(u8, feed_types.Icon.last_modified_start, icon.etag_or_last_modified_or_hash)) {
-                                const end = mem.indexOfScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
-                                    std.log.warn("Image hash is invalid. Hash: '{s}'", .{icon.etag_or_last_modified_or_hash});
-                                    break :cache_value null;
-                                };
-                                const hex_str = icon.etag_or_last_modified_or_hash[feed_types.Icon.last_modified_start.len..end];
-                                const utc_timestamp = std.fmt.parseInt(i64, hex_str, 10) catch |err| {
-                                    std.log.warn("Image hash contains invalid hexidecimal value. Hash: '{s}'. Error: {}", .{icon.etag_or_last_modified_or_hash, err});
-                                    break :cache_value null;
-                                };
-                                break :cache_value util.timestampToString(&date_buf, utc_timestamp);
-                            }
+                for (icons_existing[end..]) |icon| {
+                    const next_arena_index = try await_img_queue(&queue_io, &self.storage);
+                    progress_node.completeOne();
 
-                            break :cache_value icon.etag_or_last_modified_or_hash;
-                        };
+                    std.debug.assert(next_arena_index != std.math.maxInt(usize));
 
-                        const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
-                            .etag_or_last_modified = icon_cache_value,
-                            .buffer_header = &buffer_header,
-                        }) catch {
-                            const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
-                                std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
-                                break :blk;
-                            };
-                            try self.storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = "Failed to fetch existing image"
-                            });
-                            break :blk;
-                        };
+                    queue_io.async(.result, fetch_icon_exists, .{self.io, &arenas[next_arena_index], next_arena_index, icon});
+                }
 
-                        const status_code = req.response.?.head.status;
-                        if (status_code == .not_modified) {
-                            continue;
-                        }
-
-                        const resp_body = a_writer.writer.buffered();
-                        if (resp_body.len == 0) {
-                            std.log.warn("Failed to get icon '{f}'. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
-
-                            const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
-                                std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
-                                break :blk;
-                            };
-
-                            var buf: [128]u8 = undefined;
-                            var w: std.Io.Writer = .fixed(&buf);
-                            try w.print("HTTP status code {d}", .{status_code});
-
-                            try self.storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = w.buffered(),
-                            });
-
-                            break :blk;
-                        }
-
-                        const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-                        const img_data = try image.process(arena.allocator(), resp_body, cache_control.?.image_type);
-                        const icon_new = feed_types.Icon.init(req.get_uri(), img_data, cache_value);
-                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            try self.storage.icon_update(icon.icon_url, icon_new);
-                        }
-                        continue;
-                    }
-
-                    // Inlined icon in html
-                    const icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.icon_url, .{}) catch {
-                        const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
-                            std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
-                            continue;
-                        };
-                        try self.storage.icon_failed_add(.{
-                            .feed_id = feed_id,
-                            .last_msg = "Failed to fetch icon's html page to find inline icon",
-                        });
-                        continue;
-                    };
-
-                    if (icon_opt) |icon_new| {
-                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            try self.storage.icon_update(icon.icon_url, icon_new);
-                        }
-                    } else {
-                        const feed_id = try self.storage.feed_id_by_icon_id(icon.icon_id) orelse {
-                            std.log.warn("Did not find feed with icon id {d}", .{icon.icon_id});
-                            continue;
-                        };
-                        try self.storage.icon_failed_add(.{
-                            .feed_id = feed_id,
-                            .last_msg = "Didn't find inline icon in html page",
-                        });
-                    }
+                for (0..end) |_| {
+                    _ = try await_img_queue(&queue_io, &self.storage);
+                    progress_node.completeOne();
                 }
             },
             .missing => {
@@ -437,6 +457,86 @@ pub const Cli = struct {
         }
 
         try self.storage.icons_remove_unused();
+    }
+
+    fn fetch_icon_exists(io: std.Io, arena: *std.heap.ArenaAllocator, arena_index: usize, icon: feed_types.IconRender) Result.Return {
+        _ = arena.reset(.retain_capacity);
+        const buffer_header: []u8 = arena.allocator().alloc(u8, 1024) catch @panic("Failed to allocate buffer memory");
+
+        var req = http_client.init(io, arena.allocator());
+        defer req.deinit();
+
+        var a_writer = std.Io.Writer.Allocating.initCapacity(arena.allocator(), 8 * 1024) catch @panic("Failed to allocate writer memory");
+        defer a_writer.deinit();
+
+        if (!icon.is_data()) {
+            var date_buf: [util.date_len_max]u8 = undefined;
+            const icon_cache_value = cache_value: {
+                if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
+                    break :cache_value null;
+                } else if (mem.startsWith(u8, feed_types.Icon.last_modified_start, icon.etag_or_last_modified_or_hash)) {
+                    const end = mem.indexOfScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
+                        std.log.warn("Image hash is invalid. Hash: '{s}'", .{icon.etag_or_last_modified_or_hash});
+                        break :cache_value null;
+                    };
+                    const hex_str = icon.etag_or_last_modified_or_hash[feed_types.Icon.last_modified_start.len..end];
+                    const utc_timestamp = std.fmt.parseInt(i64, hex_str, 10) catch |err| {
+                        std.log.warn("Image hash contains invalid hexidecimal value. Hash: '{s}'. Error: {}", .{icon.etag_or_last_modified_or_hash, err});
+                        break :cache_value null;
+                    };
+                    break :cache_value util.timestampToString(&date_buf, utc_timestamp);
+                }
+
+                break :cache_value icon.etag_or_last_modified_or_hash;
+            };
+
+            const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
+                .etag_or_last_modified = icon_cache_value,
+                .buffer_header = buffer_header,
+            }) catch {
+                return .{.err = .{ .err_type = error.FailedRequest, .icon_id = icon.icon_id, .arena_index = arena_index} };
+            };
+
+            const status_code = req.response.?.head.status;
+            if (status_code == .not_modified) {
+                return .{.skip = .{.arena_index = arena_index}};
+            }
+
+            const resp_body = a_writer.writer.buffered();
+            if (resp_body.len == 0) {
+                std.log.warn("Failed to get icon '{f}'. Response body is empty. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
+                return .{.err = .{ .err_type = error.EmptyBody, .icon_id = icon.icon_id, .status_code = status_code, .arena_index = arena_index}};
+            }
+
+            const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
+            const img_data = image.process(arena.allocator(), resp_body, cache_control.?.image_type) catch {
+                std.log.warn("Failed to process image '{f}'", .{req.get_uri()});
+                return .{.err = .{ .err_type = error.InvalidImage, .icon_id = icon.icon_id, .status_code = status_code, .arena_index = arena_index}};
+            };
+            const icon_new = feed_types.Icon.init(req.get_uri(), img_data, cache_value);
+
+            return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
+        }
+
+        // Inlined icon in html
+        // TODO: get status code when request fails?
+        // TODO: should try improve this function
+        // Does not mean that request for html failed. Might have failed to
+        // image request
+        const icon_opt = http_client.fetch_icon(io, arena.allocator(), icon.icon_url, .{}) catch {
+            return .{.err = .{ .err_type = error.FailedRequestForHtml, .icon_id = icon.icon_id, .arena_index = arena_index}};
+        };
+
+        if (icon_opt) |icon_new| {
+            if (mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+                return .{.skip = .{.arena_index = arena_index}};
+            }
+
+            return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
+        }
+
+        // TODO: need status code
+        return .{.err = .{ .err_type = error.FailedRequest, .icon_id = icon.icon_id, .arena_index = arena_index} };
     }
 
     fn printHelp(self: Self, verb: ?CliVerb) !void {

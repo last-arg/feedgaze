@@ -8,10 +8,10 @@ const kf = @import("known-folders");
 pub const std_options: std.Options = .{
     // This sets log level based on scope.
     // This overrides global log_level
-    // .log_scope_levels = &.{ 
-    //     .{.level = .info, .scope = .@"html/tokenizer"},
-    //     .{.level = .info, .scope = .@"html/ast"} 
-    // },
+    // .log_scope_levels = &.{
+    //     .{.level = .info, .scope = .@"html/hhhhhhhhhhhhhhtokenizer"},
+    //     .{.level = .info, .scope = .@"html/ast"}
+    // }hhhhh,
     // This set global log level
     .log_level = .info,
 };
@@ -44,7 +44,7 @@ pub fn zignal() !void {
 
     const image = @import("image.zig");
     const img = try image.process(a.allocator(), data, .png);
-    print("|{d} -> {d}|\n", .{data.len, img.len});
+    print("|{d} -> {d}|\n", .{ data.len, img.len });
     // print("|{d}|\n", .{s.len});
     // try z.png.save(z.Rgba, a.allocator(), img, "./out.png");
 }
@@ -58,9 +58,9 @@ pub fn std_http_client() !void {
 
     var h = c.init(arena.allocator());
     // defer h.deinit();
-     
+
     // const url = "https://lobste.rs/";
-    const url= "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
+    const url = "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
     // const url = "http://google.com";
     // const url = "http://www.openmymind.net/atom.xml";
     //
@@ -69,7 +69,7 @@ pub fn std_http_client() !void {
 
     var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
     defer buf_arr.deinit();
-    
+
     var buf_header: [8 * 1024]u8 = undefined;
     const res = try h.fetch(&buf_arr.writer, arena.allocator(), uri, .{
         .buffer_header = &buf_header,
@@ -83,17 +83,16 @@ pub fn std_http_client() !void {
     print("header : |{f}|\n", .{h.request.?.uri});
 }
 
-
 pub fn tmp_iter_attrs() !void {
     const input =
-    // \\value="hello" more=values and='also this' ><span>more</span>
-    \\  rel="icon"
-    \\  href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩‍💻</text></svg>"
-    \\/><span>REST </span>
+        // \\value="hello" more=values and='also this' ><span>more</span>
+        \\  rel="icon"
+        \\  href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👩‍💻</text></svg>"
+        \\/><span>REST </span>
     ;
 
     const html = @import("html.zig");
-    html.iter_attributes(input); 
+    html.iter_attributes(input);
 }
 
 pub fn tmp_parse_html() !void {
@@ -110,14 +109,11 @@ pub fn tmp_parse_html() !void {
         .selector_heading = "h2",
         .selector_date = ".collection-item_date",
         .date_format = "DD/MM/YYYY",
-
-    }, .{
-        .feed_url = "https://www.newelofknowledge.com/letters"
-    }); 
+    }, .{ .feed_url = "https://www.newelofknowledge.com/letters" });
 
     print("title: {?s}\n", .{r.feed.title});
     if (r.items.len > 0) {
-    print("link: {?s}\n", .{r.items[0].link});
+        print("link: {?s}\n", .{r.items[0].link});
     }
 }
 
@@ -129,7 +125,7 @@ pub fn tmp_parse_icon() !void {
     const input = @embedFile("tmp_file");
 
     const html = @import("html.zig");
-    const icon = html.parse_icon(input); 
+    const icon = html.parse_icon(input);
     print("tmp.zig icon_url: |{?s}|\n", .{icon});
 }
 
@@ -143,7 +139,7 @@ pub fn tmp_icon() !void {
     const feed_url = "https://jamesg.blog/";
 
     const icon_url = App.fetch_icon(arena.allocator(), feed_url, .{}) catch |err| blk: {
-        std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{feed_url, err});
+        std.log.warn("Failed to fetch favicon for feed '{s}'. Error: {}", .{ feed_url, err });
         break :blk null;
     };
 
@@ -183,18 +179,16 @@ pub fn fetch_image() !void {
     print("body: {s}\n", .{resp_body[0..30]});
 }
 
-
-
 pub fn tmp_progress() !void {
     const progress_node = std.Progress.start(.{
         .estimated_total_items = 9,
         .root_name = "Updating feeds",
     });
     defer {
-        const total_opt = progress_node.index.unwrap();  
+        const total_opt = progress_node.index.unwrap();
         progress_node.end();
         if (total_opt) |total| {
-            std.log.info("Feed update [{}/{}]", .{total, 9});
+            std.log.info("Feed update [{}/{}]", .{ total, 9 });
         }
         std.io.getStdOut().writer().writeAll("Update done\n") catch {};
     }
@@ -211,13 +205,12 @@ pub fn tmp_progress() !void {
     }
 }
 
-
 // pub const std_options: std.Options = .{
 //     // This sets log level based on scope.
 //     // This overrides global log_level
-//     .log_scope_levels = &.{ 
+//     .log_scope_levels = &.{
 //         .{.level = .err, .scope = .@"html/tokenizer"},
-//         .{.level = .err, .scope = .@"html/ast"} 
+//         .{.level = .err, .scope = .@"html/ast"}
 //     },
 //     // This set global log level
 //     .log_level = .debug,
@@ -227,7 +220,6 @@ pub fn tmp_progress() !void {
 // title - ?optional. Can be title (hX) or description/text.
 // link - required. If no title selector provided take text from link as
 // title.
-
 
 // pub const std_options: std.Options = .{
 //     .http_disable_tls = true,
@@ -244,10 +236,11 @@ pub fn zig_http() !void {
     var s = std.ArrayList(u8).init(arena.allocator());
     var buf: [5 * 1024]u8 = undefined;
 
-    const opts: std.http.Client.FetchOptions = .{ 
+    const opts: std.http.Client.FetchOptions = .{
         .server_header_buffer = &buf,
-        .method = .GET, .location = .{ .uri = url },
-        .response_storage = .{ .dynamic = &s},
+        .method = .GET,
+        .location = .{ .uri = url },
+        .response_storage = .{ .dynamic = &s },
     };
     const resp = try client.fetch(opts);
     print("headers: |{?s}|\n", .{opts.server_header_buffer});
@@ -261,9 +254,7 @@ pub fn http_head() !void {
     defer arena.deinit();
     // var storage = try Storage.init("./tmp/feeds.db");
     // const icons = try storage.feed_icons_all(arena.allocator());
-    const icons = [_]Storage.FeedIcon{
-        .{.feed_id = 99999, .page_url = "http://www.foundmyfitness.com/"}
-    };
+    const icons = [_]Storage.FeedIcon{.{ .feed_id = 99999, .page_url = "http://www.foundmyfitness.com/" }};
 
     // '/favicon.ico'
     // debug: total: 277
@@ -280,8 +271,8 @@ pub fn http_head() !void {
     // debug: total: 277
     // debug: found: 63
     // debug: duplicate: 135
-    // debug: skipped (no page_url): 1    
-    
+    // debug: skipped (no page_url): 1
+
     var map = std.StringArrayHashMap([]const u8).init(arena.allocator());
     defer map.deinit();
     var found: usize = 0;
@@ -326,7 +317,7 @@ pub fn find_dir() !void {
     const alloc = fixed_alloc.allocator();
 
     const data_dir = try kf.getPath(alloc, .data) orelse unreachable;
-    const file_path = try std.fs.path.join(alloc, &.{data_dir, "feedgaze",  "feedgaze.sqlite"});
+    const file_path = try std.fs.path.join(alloc, &.{ data_dir, "feedgaze", "feedgaze.sqlite" });
 
     print("{s}\n", .{file_path});
 }
@@ -339,7 +330,7 @@ pub fn storage_test(io: std.Io) !void {
     const result = try storage.request_failed_all(arena.allocator());
     print("len: {d}\n", .{result.len});
     for (result) |r| {
-        print("{} {} {s}\n", .{r.utc_sec, r.feed_id, r.reason});
+        print("{} {} {s}\n", .{ r.utc_sec, r.feed_id, r.reason });
     }
 }
 
@@ -348,7 +339,7 @@ pub fn storage_item_interval() !void {
     try storage.update_item_interval(1);
 }
 
-// Trying to see how freeing slice works. Want to know if I can free part 
+// Trying to see how freeing slice works. Want to know if I can free part
 // of allocated slice. Doesn't seem to be possible.
 pub fn test_allocating() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -361,7 +352,7 @@ pub fn test_allocating() !void {
     var arr = try alloc.alloc(u8, 2);
     arr[0] = 0;
     arr[1] = 1;
-    
+
     // const n = arr[1..];
     print("arr[0]: {d}\n", .{arr[0]});
     print("arr[1]: {d}\n", .{arr[1]});
@@ -377,7 +368,7 @@ fn run_parse(io: std.Io) !void {
     defer arena.deinit();
     const alloc = arena.allocator();
 
-    const content = @embedFile("tmp_file"); 
+    const content = @embedFile("tmp_file");
     const fp = @import("feed_parse.zig");
     var parser: fp = .init(io, content);
     const feed = try parser.parse(alloc, null, .{
@@ -392,16 +383,15 @@ fn run_parse(io: std.Io) !void {
     print("interval: {}\n", .{feed.item_interval});
 }
 
-
 // check if new feed url hits any add_rules
-// - if it does transform feed url 
+// - if it does transform feed url
 // - if not use url as is
 pub fn run_add_new_feed() !void {
     const Cli = @import("app.zig").Cli;
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator(); 
+    const allocator = arena.allocator();
 
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
@@ -434,7 +424,7 @@ pub fn run_add_new_feed() !void {
         _ = f; // autofix
         // const items = try storage.feed_items_with_feed_id(arena.allocator(), f.feed_id);
         // for (items) |item| {
-          // print("item.url: {?s}\n", .{item.link});
+        // print("item.url: {?s}\n", .{item.link});
         // }
 
         // for (try storage.icon_all(allocator)) |icon| {
@@ -448,7 +438,7 @@ pub fn run_add_new_feed() !void {
 pub fn run_rule_transform() !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    const allocator = arena.allocator(); 
+    const allocator = arena.allocator();
 
     const url_1 = "https://github.com/letoram/arcan/commits/master";
     const url_2 = "https://github.com/11ty/webc/commits";

@@ -18,6 +18,8 @@ const image = @import("./image.zig");
 const util = @import("./util.zig");
 const html = @import("./html.zig");
 
+pub const Status = http.Status;
+
 const build_zon = @import("build_zig_zon");
 const user_agent = "feedgaze/" ++ build_zon.version;
 
@@ -427,7 +429,7 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
             .buffer_header = &buffer_header,
         }) catch |err| {
             std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_icon_url, err});
-            return null;
+            return err;
         } orelse {
             std.log.warn("Failed to fetch icon '{s}'. Status code: {}", .{req_icon_url, req.response.?.head.status});
             break :blk;
