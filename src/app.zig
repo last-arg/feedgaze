@@ -320,7 +320,6 @@ pub const Cli = struct {
 
         const core_count_max: usize = 15;
         const select_count: usize = @min(@max(1, self.core_count - 1), core_count_max);
-        // const select_count = 2;
 
         var buf: [core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
         var fixed = std.heap.FixedBufferAllocator.init(&buf);
@@ -509,7 +508,7 @@ pub const Cli = struct {
             }
 
             const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-            const img_data = image.process(arena.allocator(), resp_body, cache_control.?.image_type) catch {
+            const img_data = image.process(io, arena.allocator(), resp_body, cache_control.?.image_type) catch {
                 std.log.warn("Failed to process image '{f}'", .{req.get_uri()});
                 return .{.err = .{ .err_type = error.InvalidImage, .icon_id = icon.icon_id, .status_code = status_code, .arena_index = arena_index}};
             };
@@ -1248,7 +1247,7 @@ pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
     var fixed_alloc = std.heap.FixedBufferAllocator.init(&buf);
     const alloc = fixed_alloc.allocator();
 
-    const db_path = blk: {
+    const db_path: ?[*:0]const u8 = blk: {
         const db_path = path orelse db_path: {
             const kf = @import("known-folders");
 
@@ -1270,7 +1269,7 @@ pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
         break :blk db_path;
     };
 
-    return try Storage.init(init.io, init.arena.allocator(), db_path);
+    return try Storage.init(db_path);
 }
 
 test "feedgaze.remove" {

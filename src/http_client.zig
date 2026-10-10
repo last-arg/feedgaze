@@ -441,7 +441,7 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
             break :blk;
         }
 
-        const img_data = try image.process(allocator, body, cache_control.image_type);
+        const img_data = try image.process(io, allocator, body, cache_control.image_type);
 
         try return_writer.ensureTotalCapacityPrecise(req_icon_url.len + img_data.len);
         return_writer.writer.writeAll(req_icon_url) catch unreachable;
@@ -488,7 +488,7 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
             return null;
         }
 
-        const img_data = try image.process(allocator, body, cache_control.image_type);
+        const img_data = try image.process(io, allocator, body, cache_control.image_type);
 
         const url_favicon = try req.get_url_slice(&buf_url_slice);
 

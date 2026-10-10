@@ -36,8 +36,8 @@ pub fn build(b: *Build) !void {
         // .use_lld = true,
     };
 
-    if (optimize != .Debug) {
-        const esbuild = b.findProgram(&.{"esbuild"}, &.{}) catch
+    if (optimize != .debug) {
+        const esbuild = b.findProgram(.{.names = &.{"esbuild"}}) orelse
             @panic("Could not find command 'esbuild'");
         const command_minify = b.addSystemCommand(&.{
             esbuild,
@@ -52,7 +52,7 @@ pub fn build(b: *Build) !void {
         });
         b.getInstallStep().dependOn(&command_minify.step);
 
-        if (b.findProgram(&.{"purgecss"}, &.{})) |purgecss| {
+        if (b.findProgram(.{.names = &.{"purgecss"}})) |purgecss| {
             const command_purgecss = b.addSystemCommand(&.{
                 purgecss,
                 "--config",
@@ -60,7 +60,7 @@ pub fn build(b: *Build) !void {
             });
             command_purgecss.step.dependOn(&command_minify.step);
             // b.getInstallStep().dependOn(&command_purgecss.step);
-        } else |_| {
+        } else {
             std.log.warn("Missing command 'purgecss'. Can't remove unused CSS", .{});
         }
     }
@@ -77,9 +77,8 @@ pub fn build(b: *Build) !void {
     check.dependOn(&exe_check.step);
 
     const run_cmd = b.addRunArtifact(exe);
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    // TODO: Need to see if this works the way I think
+    run_cmd.addPassthruArgs();
 
     const tmp_file = anon_modules[0];
     exe.root_module.addAnonymousImport(tmp_file.name, .{
@@ -102,7 +101,6 @@ pub fn build(b: *Build) !void {
             .target = target,
             .optimize = optimize,
         }),
-        .filters = b.args orelse &.{},
         // .use_llvm = true,
         // .use_lld = false,
     });
@@ -138,11 +136,8 @@ pub fn build(b: *Build) !void {
 }
 
 fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
-    step.is_linking_libc = true;
-
-    const sqlite_dep = b.dependency("fridge", .{ .bundle = true });
-    // root.linkSystemLibrary("sqlite3", .{});
-    step.root_module.addImport("fridge", sqlite_dep.module("fridge"));
+    const sqlite_dep = b.dependency("sqlite", .{});
+    step.root_module.addImport("sqlite", sqlite_dep.module("sqlite"));
 
     const args = b.dependency("args", dep_args);
     step.root_module.addImport("zig-args", args.module("args"));

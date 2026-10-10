@@ -4,6 +4,7 @@ const dt = @import("zdt");
 const Response = @import("http_client.zig").Response;
 const mem = std.mem;
 const util = @import("util.zig");
+const sql = @import("sqlite");
 
 pub const seconds_in_3_hours = std.time.s_per_hour * 3;
 pub const seconds_in_6_hours = std.time.s_per_hour * 6;
@@ -82,18 +83,18 @@ pub const Feed = struct {
 
     pub const ID = SqliteId;
 
-    pub const DB = struct {
-        feed_id: ID = .unassigned,
-        title: ?[]const u8 = null,
-        feed_url: []const u8,
-        page_url: ?[]const u8 = null,
-        icon_id: IconRender.ID = .unassigned,
+    pub const Raw = struct {
+        feed_id: u64,
+        title: ?sql.Text = null,
+        feed_url: sql.Text,
+        page_url: ?sql.Text = null,
+        icon_id: ?u64,
         updated_timestamp: ?i64 = null,
 
-        pub fn strings_len(self: *const DB) u64 {
-            const title_len = if (self.title) |v| v.len else 0;
-            const page_url_len = if (self.page_url) |v| v.len else 0;
-            return self.feed_url.len + title_len + page_url_len;
+        pub fn strings_len(self: Raw) u64 {
+            const title_len = if (self.title) |v| v.data.len else 0;
+            const page_url_len = if (self.page_url) |v| v.data.len else 0;
+            return self.feed_url.data.len + title_len + page_url_len;
         }
     };
 
@@ -104,15 +105,34 @@ pub const Feed = struct {
         icon_id: ?u64 = null,
     };
 
-    pub fn from_raw(raw: DB) !Feed {
-        return .{
-            .feed_id = raw.feed_id,
-            .title = raw.title,
-            .feed_url = try std.Uri.parse(raw.feed_url),
-            .page_url = if (raw.page_url) |link| try std.Uri.parse(link) else null,
-            .icon_id = raw.icon_id,
+    pub fn from_raw(buf: []u8, raw: Raw) !Feed {
+        var result: Feed = .{
+            .feed_id = @fromBackingInt(raw.feed_id),
+            .title = null,
+            .feed_url = undefined,
+            .page_url = null,
+            .icon_id = if (raw.icon_id) |id| @fromBackingInt(id) else .unassigned,
             .updated_timestamp = raw.updated_timestamp,
         };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.feed_url.data) catch unreachable;
+        result.feed_url = try std.Uri.parse(w.buffered());
+
+        if (raw.page_url) |page_url| {
+            const start = w.buffered().len;
+            w.writeAll(page_url.data) catch unreachable;
+            result.page_url = try std.Uri.parse(w.buffered()[start..]);
+        }
+
+        if (raw.title) |title| {
+            const start = w.buffered().len;
+            w.writeAll(title.data) catch unreachable;
+            result.title = w.buffered()[start..];
+        }
+
+        return result;
     }
 };
 
@@ -347,20 +367,6 @@ pub const SqliteId = enum(u64) {
     pub fn is_valid(id: @This()) bool {
         return id != .unassigned;
     }
-
-    pub fn toValue(val: @This(), _: std.mem.Allocator) !@import("fridge").Value {
-        if (!val.is_valid()) {
-            return .null;
-        }
-        return .{ .int = @intCast(@intFromEnum(val)) };
-    }
-
-    pub fn fromValue(val: @import("fridge").Value, _: std.mem.Allocator) !@This() {
-        if (val == .null) {
-            return .unassigned;
-        }
-        return @enumFromInt(val.int);
-    }
 };
 
 pub const FeedItem = struct {
@@ -383,21 +389,46 @@ pub const FeedItem = struct {
     pub const Raw = struct {
         feed_id: u64 = 0,
         item_id: ?u64 = null,
-        title: []const u8,
-        id: ?[]const u8 = null,
-        link: ?[]const u8 = null,
+        title: sql.Text,
+        id: ?sql.Text = null,
+        link: ?sql.Text = null,
         updated_timestamp: ?i64 = null,
+
+        pub fn strings_len(self: *const Raw) u64 {
+            const id_len = if (self.id) |v| v.data.len else 0;
+            const link_len = if (self.link) |v| v.data.len else 0;
+            return self.title.data.len + id_len + link_len;
+        }
     };
 
-    pub fn from_raw(raw: Raw) !FeedItem {
-        return .{
-            .feed_id = @enumFromInt(raw.feed_id),
-            .item_id = if (raw.item_id) |id| @enumFromInt(id) else .unassigned,
-            .title = raw.title,
-            .id = raw.id,
-            .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
+    pub fn from_raw(buf: []u8, raw: Raw) !FeedItem {
+        var result: FeedItem = .{
+            .feed_id = @fromBackingInt(raw.feed_id),
+            .item_id = if (raw.item_id) |id| @fromBackingInt(id) else .unassigned,
+            .title = undefined,
+            .id = null,
+            .link = null,
             .updated_timestamp = raw.updated_timestamp,
         };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.title.data) catch unreachable;
+        result.title = w.buffered();
+
+        if (raw.id) |id| {
+            const start = w.buffered().len;
+            w.writeAll(id.data) catch unreachable;
+            result.id = w.buffered()[start..];
+        }
+
+        if (raw.link) |link| {
+            const start = w.buffered().len;
+            w.writeAll(link.data) catch unreachable;
+            result.link = try std.Uri.parse(w.buffered()[start..]);
+        }
+
+        return result;
     }
 };
 
@@ -408,22 +439,40 @@ pub const FeedItemRender = struct {
     updated_timestamp: ?i64,
     created_timestamp: i64,
 
-    pub const DB = struct {
-        feed_id: Feed.ID,
-        title: []const u8,
-        link: ?[]const u8,
+    pub const Raw = struct {
+        feed_id: u64,
+        title: sql.Text,
+        link: ?sql.Text,
         updated_timestamp: ?i64,
         created_timestamp: i64,
+
+        pub fn strings_len(self: *const Raw) u64 {
+            const link_len = if (self.link) |v| v.data.len else 0;
+            return self.title.data.len + link_len;
+        }
     };
 
-    pub fn from_raw(raw: DB) !FeedItemRender {
-        return .{
-            .feed_id = raw.feed_id,
-            .title = raw.title,
-            .link = if (raw.link) |link| try std.Uri.parse(link) else null, 
+    pub fn from_raw(buf: []u8, raw: Raw) !FeedItemRender {
+        var result: FeedItemRender = .{
+            .feed_id = @fromBackingInt(raw.feed_id),
+            .title = undefined,
+            .link = null,
             .updated_timestamp = raw.updated_timestamp,
             .created_timestamp = raw.created_timestamp,
         };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.title.data) catch unreachable;
+        result.title = w.buffered();
+
+        if (raw.link) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.link = try std.Uri.parse(w.buffered()[start..]);
+        }
+
+        return result;
     }
 };
 
@@ -476,22 +525,54 @@ pub const FeedToUpdate = struct {
 
     pub const Raw = struct { 
         feed_id: u64,
-        feed_url: []const u8,
-        etag_or_last_modified: ?[]const u8 = null,
-        latest_item_id: ?[]const u8 = null,
-        latest_item_link: ?[]const u8 = null,
+        feed_url: sql.Text,
+        etag_or_last_modified: ?sql.Text = null,
+        latest_item_id: ?sql.Text = null,
+        latest_item_link: ?sql.Text = null,
         latest_updated_timestamp: ?i64 = null,
+
+        pub fn strings_len(self: Raw) u64 {
+            const etag_len = if (self.etag_or_last_modified) |v| v.data.len else 0;
+            const item_id_len = if (self.latest_item_id) |v| v.data.len else 0;
+            const item_link_len = if (self.latest_item_link) |v| v.data.len else 0;
+            return self.feed_url.data.len + etag_len + item_id_len + item_link_len;
+        }
     };
 
-    pub fn from_raw(raw: Raw) !FeedToUpdate {
-        return .{
-            .feed_id = @enumFromInt(raw.feed_id),
-            .feed_url = try std.Uri.parse(raw.feed_url),
-            .etag_or_last_modified = raw.etag_or_last_modified,
-            .latest_item_id = raw.latest_item_id,
-            .latest_item_link = raw.latest_item_link,
+    pub fn from_raw(buf: []u8, raw: Raw) !FeedToUpdate {
+        var result: FeedToUpdate = .{
+            .feed_id = @fromBackingInt(raw.feed_id),
+            .feed_url = undefined,
+            .etag_or_last_modified = null,
+            .latest_item_id = null,
+            .latest_item_link = null,
             .latest_updated_timestamp = raw.latest_updated_timestamp,
         };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.feed_url.data) catch unreachable;
+        result.feed_url = try std.Uri.parse(w.buffered());
+
+        if (raw.etag_or_last_modified) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.etag_or_last_modified = w.buffered()[start..];
+        }
+
+        if (raw.latest_item_id) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.latest_item_id = w.buffered()[start..];
+        }
+
+        if (raw.latest_item_link) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.latest_item_link = w.buffered()[start..];
+        }
+
+        return result;
     }
 };
 
@@ -499,6 +580,42 @@ pub const Icon = struct {
     url: std.Uri,
     data: []const u8,
     etag_or_last_modified_or_hash: []const u8,
+
+    pub const Raw = struct {
+        icon_url: sql.Text,
+        icon_data: sql.Blob,
+        etag_or_last_modified_or_hash: sql.Text,
+
+        pub fn strings_len(self: Raw) u64 {
+            return self.icon_url.data.len + self.icon_data.data.len + self.etag_or_last_modified_or_hash.data.len;
+        }
+    };
+
+    pub fn from_raw(buf: []u8, raw: Raw) !@This() {
+        var result: Icon = .{
+            .icon_url = undefined,
+            .icon_data = undefined,
+            .etag_or_last_modified_or_hash = undefined,
+        };
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.icon_url.data) catch unreachable;
+        result.icon_url = try std.Uri.parse(w.buffered());
+
+        {
+            const start = w.buffered().len;
+            w.writeAll(raw.icon_data.data) catch unreachable;
+            result.icon_data = w.buffered()[start..];
+        }
+
+        {
+            const start = w.buffered().len;
+            w.writeAll(raw.etag_or_last_modified_or_hash.data) catch unreachable;
+            result.etag_or_last_modified_or_hash = w.buffered()[start..];
+        }
+
+        return result;
+    }
 
     pub fn init(uri: std.Uri, data: []const u8, etag_or_last_modified: ?[]const u8) @This() {
         return .{
@@ -515,7 +632,6 @@ pub const Icon = struct {
 
         return init(uri, data, etag_or_last_modified);
     }
-
 
     // Hashed values start with 'hash'
     pub const hash_start = "hash";
@@ -574,20 +690,42 @@ pub const IconRender = struct {
 
     pub const ID = SqliteId;
 
-    pub const DB = struct {
-        icon_id: ID,
-        icon_url: []const u8,
-        icon_data: @import("fridge").Blob,
-        etag_or_last_modified_or_hash: []const u8,
+    pub const Raw = struct {
+        icon_id: u64,
+        icon_url: sql.Text,
+        icon_data: sql.Blob,
+        etag_or_last_modified_or_hash: sql.Text,
+
+        pub fn strings_len(self: *const Raw) u64 {
+            return self.icon_url.data.len + self.icon_data.data.len + self.etag_or_last_modified_or_hash.data.len;
+        }
     };
 
-    pub fn from_raw(raw: DB) !@This() {
-        return .{
-            .icon_id = raw.icon_id,
-            .icon_url = try std.Uri.parse(raw.icon_url),
-            .icon_data = raw.icon_data.bytes,
-            .etag_or_last_modified_or_hash = raw.etag_or_last_modified_or_hash,
+    pub fn from_raw(buf: []u8, raw: Raw) !@This() {
+        var result: IconRender = .{
+            .icon_id = @fromBackingInt(raw.icon_id),
+            .icon_url = undefined,
+            .icon_data = undefined,
+            .etag_or_last_modified_or_hash = undefined,
         };
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.icon_url.data) catch unreachable;
+        result.icon_url = try std.Uri.parse(w.buffered());
+
+        {
+            const start = w.buffered().len;
+            w.writeAll(raw.icon_data.data) catch unreachable;
+            result.icon_data = w.buffered()[start..];
+        }
+
+        {
+            const start = w.buffered().len;
+            w.writeAll(raw.etag_or_last_modified_or_hash.data) catch unreachable;
+            result.etag_or_last_modified_or_hash = w.buffered()[start..];
+        }
+
+        return result;
     }
 
     pub fn is_data(self: *const @This()) bool {

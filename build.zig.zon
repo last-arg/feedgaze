@@ -11,39 +11,35 @@
     .dependencies = .{
         .args = .{
             .url = "https://github.com/MasterQ32/zig-args/archive/refs/heads/master.tar.gz",
-            .hash = "args-0.0.0-CiLiqrjgAAAJ1dlySoNHUhYpX1btAdDU2Rr4Ls61VTbO",
+            .hash = "args-0.0.0-CiLiqmHiAABlN6icC9sZHdp8HVplOXDxuUNz2VUY_K2X",
         },
         .httpz = .{
-            .url = "git+https://github.com/karlseguin/http.zig?ref=master#5f60277d3b3beffef86321869b13c57f7acc3c5b",
-            .hash = "httpz-0.0.0-PNVzrJrbCACyokt2AARAG7Ul7h7xlZxL7BYAdpsAs1_-",
+            .url = "git+https://github.com/karlseguin/http.zig#8aeb4e522b122fd2d9ba6731480b5d3878d2845f",
+            .hash = "httpz-0.0.0-PNVzrPoWCQDh-mpVLlE6Ryjobya3u-oDwOTq0aoQHdms",
         },
         .superhtml = .{
-            .url = "git+https://github.com/kristoff-it/superhtml#39dc8b3681f14f28fe29ceeadae1fbea54715689",
-            .hash = "superhtml-0.6.2-Y7MdPPxxJADIaKZNpvhc_ks3HIaienrTtii-AYCibeAb",
+            .url = "git+https://github.com/kristoff-it/superhtml#f0deee80ae422938d5cdc43a5598c417670db38b",
+            .hash = "superhtml-0.7.0-Y7MdPGykJgDenn3V9JQFolYt1ZQF8QPlHTdjD4wFS6yq",
         },
         .zts = .{
             .url = "https://github.com/zigster64/zts/archive/refs/heads/main.tar.gz",
-            .hash = "zts-0.14.1-_M80Of22AgBwArz6uCXR49IoEjlzNt5yhu7KV8cWl5jr",
+            .hash = "zts-0.14.1-_M80OQ2-AgAXH9hbZpc1fkAHtI2fnRxKJudZt1Dpb8gY",
         },
         .zignal = .{
-            .url = "git+https://github.com/arrufat/zignal?ref=0.10.0#f08a959b99ec068d800d51270ca54679b2f4a543",
-            .hash = "zignal-0.10.0-OrZ3syf3JwDM3rBtoTFDXQT4iUJeoPqVaAJDHAjtM7jN",
-        },
-        .fridge = .{
-            .url = "git+https://github.com/cztomsik/fridge#7f4bb623af841305156d0e70a59bff2e1476bb74",
-            .hash = "fridge-0.9.5-3GyIimrGAQCY404B3oeRFFxV20lwVY_hWiWlTMhMsXR8",
+            .url = "git+https://github.com/arrufat/zignal#24fd0b6bf25b30c1cf0ffc5d9e2706e4d031dfc5",
+            .hash = "zignal-0.11.0-dev-OrZ3s10cOADutdAItIcGJni6X1gdXtxNH9YacgHl20Pw",
         },
         .known_folders = .{
             .url = "https://github.com/ziglibs/known-folders/archive/refs/heads/master.tar.gz",
-            .hash = "known_folders-0.0.0-Fy-PJsbKAACbDh9bBxR0MMThxZSS6A9RH4apWphNHY70",
-        },
-        .cli = .{
-            .url = "git+https://github.com/sam701/zig-cli#036341c48b32ef355274d66461551772fc1f202d",
-            .hash = "cli-0.11.0-2eKe_6sIAQB1njsE9sfrNvd2HxmQej13ebo-D3kBuFX3",
+            .hash = "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO",
         },
         .zdt = .{
             .url = "https://codeberg.org/FObersteiner/zdt/archive/main.tar.gz",
-            .hash = "zdt-0.9.4-xr0_vHvnEQBa2kexZk6j3CrdybDFd0BHa7DdL7hgDqfD",
+            .hash = "zdt-0.10.5-xr0_vLTdEQAhd_L_T4WlU1cU2IFDBJhkS4s0lJNVLqfb",
+        },
+        .sqlite = .{
+            .url = "git+https://github.com/nDimensional/zig-sqlite#0c79b81d7f93c696261f6949e207c4497551b229",
+            .hash = "sqlite-0.5.0-3530400-djiKTsSWAACNHCdrLkfWz3lizwThl8rpAWJIKP90TIeI",
         },
     },
 }

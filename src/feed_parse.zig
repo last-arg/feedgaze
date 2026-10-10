@@ -4,6 +4,7 @@ const Allocator = mem.Allocator;
 const print = std.debug.print;
 const assert = std.debug.assert;
 const Uri = std.Uri;
+const sql = @import("sqlite");
 
 const dt = @import("zdt");
 const super = @import("superhtml");
@@ -787,6 +788,59 @@ pub const HtmlOptions = struct {
     selector_heading: ?[]const u8 = null,
     selector_date: ?[]const u8 = null,
     date_format: ?[]const u8 = null,
+
+    pub const Raw = struct {
+        selector_container: sql.Text,
+        selector_link: ?sql.Text = null,
+        selector_heading: ?sql.Text = null,
+        selector_date: ?sql.Text = null,
+        date_format: ?sql.Text = null,
+
+        pub fn strings_len(self: Raw) u64 {
+            const link_len = if (self.selector_link) |v| v.data.len else 0;
+            const heading_len = if (self.selector_heading) |v| v.data.len else 0;
+            const date_len = if (self.selector_date) |v| v.data.len else 0;
+            const date_fmt_len = if (self.date_format) |v| v.data.len else 0;
+            return self.selector_container.data.len + link_len + heading_len + date_len + date_fmt_len;
+        }
+    };
+
+    pub fn from_raw(buf: []u8, raw: Raw) !HtmlOptions {
+        var result: HtmlOptions = .{
+            .selector_container = undefined,
+        };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.selector_container.data) catch unreachable;
+        result.selector_container = w.buffered();
+
+        if (raw.selector_link) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.selector_link = w.buffered()[start..];
+        }
+
+        if (raw.selector_heading) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.selector_heading = w.buffered()[start..];
+        }
+
+        if (raw.selector_date) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.selector_date = w.buffered()[start..];
+        }
+
+        if (raw.date_format) |val| {
+            const start = w.buffered().len;
+            w.writeAll(val.data) catch unreachable;
+            result.date_format = w.buffered()[start..];
+        }
+
+        return result;
+    }
 };
 
 const Selector = struct {

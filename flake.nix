@@ -12,7 +12,7 @@
       (system:
         let
           # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."master-2026-06-03"; };
-          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."0.16.0"; };
+          pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}."0.17.0"; };
           # pkgs = nixpkgs.legacyPackages.${system} // { zig = zig.packages.${system}.master; };
         in {
           devShell = pkgs.mkShell {

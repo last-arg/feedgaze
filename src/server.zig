@@ -235,7 +235,7 @@ fn hash_static_file(comptime path: []const u8) u64 {
     return hasher.final();
 }
 
-const static_files = if (builtin.mode != .Debug) .{
+const static_files = if (builtin.mode != .debug) .{
     .{ "main.css", hash_static_file("server/dist/main.css") },
     .{ "main.js", hash_static_file("server/dist/main.js") },
     .{ "relative-time.js", hash_static_file("server/dist/relative-time.js") },
@@ -304,7 +304,7 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     router.get("/icons/:filename", icons_get, .{});
     router.get("/favicon.ico", favicon_get, .{});
 
-    if (@import("builtin").mode == .Debug) {
+    if (@import("builtin").mode == .debug) {
         router.get("/sse", sse_stream, .{});
     }
 
@@ -1119,7 +1119,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     try Layout.write_head(w, "Add feed");
 
     const tags = try db.tags_all(req.arena);
-    defer db.free(tags);
+    defer req.arena.free(tags);
     try global.layout.body_head_render(w, req.url.path, tags, .{});
 
     try w.writeAll("<main class='flow'>");
@@ -1719,7 +1719,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 }
 
 fn get_file(io: std.Io, allocator: std.mem.Allocator, comptime path: []const u8) ![]const u8 {
-    if (builtin.mode == .Debug) {
+    if (builtin.mode == .debug) {
         var buf: [256]u8 = undefined;
         const p = try std.fmt.bufPrint(&buf, "src/{s}", .{path});
         var file = try std.Io.Dir.cwd().openFile(io, p, .{});
@@ -1749,7 +1749,7 @@ fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void
 
 fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
-    const prefix_dir = if (builtin.mode == .Debug) "server" else "server/dist";
+    const prefix_dir = if (builtin.mode == .debug) "server" else "server/dist";
 
     if (mem.endsWith(u8, req.url.path, "main.js")) {
         src = try get_file(global.io, req.arena, prefix_dir ++ "/main.js");
@@ -1762,7 +1762,7 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
         resp.content_type = .CSS;
     }
 
-    if (builtin.mode == .Debug) {
+    if (builtin.mode == .debug) {
         if (mem.endsWith(u8, req.url.path, "style.css")) {
             src = try get_file(global.io, req.arena, prefix_dir ++ "/style.css");
             resp.content_type = .CSS;
@@ -1985,7 +1985,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         var ids_al = try std.ArrayList(types.Feed.ID).initCapacity(req.arena, items.len);
         defer ids_al.deinit(req.arena);
         for (items) |item| {
-            if (!mem.containsAtLeastScalar(types.Feed.ID, ids_al.items, 1, item.feed_id)) {
+            if (!mem.containsAtLeastScalar(types.Feed.ID, ids_al.items, item.feed_id, 1)) {
                 ids_al.appendAssumeCapacity(item.feed_id);
             }
         }
@@ -2345,7 +2345,7 @@ const Layout = struct {
         if (try self.storage.get_tags_change()) |last_modified| {
             if (last_modified != self.tags_last_modified) {
                 const tags = try self.storage.tags_all(self.allocator);
-                defer self.storage.free(tags);
+                defer self.allocator.free(tags);
                 self.sidebar_form_html.shrinkRetainingCapacity(0);
                 try write_sidebar_form_new(
                     &self.sidebar_form_html.writer, tags, .{}

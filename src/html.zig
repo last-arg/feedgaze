@@ -62,7 +62,7 @@ pub const IconSize = struct {
         var result: IconSize = .{};
         const end_index = mem.indexOfAny(u8, raw, &std.ascii.whitespace) orelse raw.len;
         const v = raw[0..end_index];
-        if (std.ascii.indexOfIgnoreCase(v, "x")) |sep_index| {
+        if (std.ascii.findIgnoreCase(v, "x")) |sep_index| {
             const width = std.fmt.parseUnsigned(u32, v[0..sep_index], 10) catch {
                 std.log.warn("Failed to parse attribute sizes width value from '{s}'", .{v});
                 return result;
@@ -190,7 +190,7 @@ pub fn parse_icon(input: []const u8) ?[]const u8 {
     var current_icon: ?LinkIcon = null;
 
     const tag_link = "<link";
-    var index_link_opt: ?usize = std.ascii.indexOfIgnoreCase(input, tag_link) orelse return null;
+    var index_link_opt: ?usize = std.ascii.findIgnoreCase(input, tag_link) orelse return null;
 
     var comment_range = comment_range_pos(input, 0);
     var index_curr = index_link_opt.?;
@@ -243,7 +243,7 @@ pub fn parse_html(allocator: Allocator, input: []const u8) !HtmlParsed {
     var icon: ?LinkIcon = null;
     var result: HtmlParsed = .{};
 
-    var index_link_opt: ?usize = std.ascii.indexOfIgnoreCase(input, "<link") orelse return result;
+    var index_link_opt: ?usize = std.ascii.findIgnoreCase(input, "<link") orelse return result;
     const index_end = index_link_opt.? + 5;
     const tag_link = input[index_link_opt.?..index_end];
 

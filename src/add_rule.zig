@@ -40,6 +40,44 @@ pub const RuleWithHost = struct {
     result_host: []const u8 = "",
     result_path: []const u8,
 
+    pub const Raw = struct {
+        const sql = @import("sqlite");
+
+        match_path: sql.Text,
+        result_host: sql.Text = .{ .data = "" },
+        result_path: sql.Text,
+
+        pub fn strings_len(self: *const Raw) u64 {
+            return self.match_path.data.len + self.result_host.data.len + self.result_path.data.len;
+        }
+    };
+
+    pub fn from_raw(buf: []u8, raw: Raw) !RuleWithHost {
+        var result: RuleWithHost = .{
+            .match_path = undefined,
+            .result_path = undefined,
+        };
+
+        var w: std.Io.Writer = .fixed(buf);
+
+        w.writeAll(raw.match_path.data) catch unreachable;
+        result.match_path = w.buffered();
+
+        {
+            const start = w.buffered().len;
+            w.writeAll(raw.result_path.data) catch unreachable;
+            result.result_path = w.buffered()[start..];
+        }
+
+        if (raw.result_host.data.len > 0) {
+            const start = w.buffered().len;
+            w.writeAll(raw.result_host.data) catch unreachable;
+            result.result_host = w.buffered()[start..];
+        }
+
+        return result;
+    }
+
     pub fn format(value: @This(), comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
         _ = fmt;
         _ = options;

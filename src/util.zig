@@ -35,7 +35,7 @@ pub fn count_date_len(comptime fmt: []const u8, date: Datetime) usize {
 }
 
 // Date for machine "2011-11-18T14:54:39Z". For <time datetime="...">.
-pub const date_len_max = count_date_len(zdt.Formats.RFC3339, Datetime{ .utc_offset = zdt.UTCoffset.UTC, });
+pub const date_len_max = count_date_len(zdt.Formats.RFC3339, Datetime{ .utc_offset = zdt.UTCoffset._UTC, });
 
 pub fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
     const ts = timestamp orelse return "";

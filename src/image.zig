@@ -215,8 +215,8 @@ pub const Image = z.Image(Color);
 const img_size = @import("./app_config.zig").icon_size;
 var img_buf: [img_size * img_size]Color = undefined;
 
-pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !Image {
-    const i = try z.png.loadFromBytes(Color, allocator, data, .{});
+pub fn resize_png(io: std.Io, allocator: std.mem.Allocator, data: []const u8) !Image {
+    const i = try z.png.loadFromBytes(Color, io, allocator, data, .{});
     if (i.rows <= img_size or i.cols <= img_size) {
         return i;
     }
@@ -226,12 +226,12 @@ pub fn resize_png(allocator: std.mem.Allocator, data: []const u8) !Image {
     new.rows = img_size;
     new.cols = img_size;
     new.stride = img_size;
-    i.resize(allocator, new, .lanczos);
+    i.resize(io, allocator, new, .lanczos);
     return new;
 }
 
-pub fn resize_jpeg(allocator: std.mem.Allocator, data: []const u8) !Image {
-    const i = try z.jpeg.loadFromBytes(Color, allocator, data, .{});
+pub fn resize_jpeg(io: std.Io, allocator: std.mem.Allocator, data: []const u8) !Image {
+    const i = try z.jpeg.loadFromBytes(Color, io, allocator, data, .{});
     if (i.rows <= img_size or i.cols <= img_size) {
         return i;
     }
@@ -241,11 +241,11 @@ pub fn resize_jpeg(allocator: std.mem.Allocator, data: []const u8) !Image {
     new.rows = img_size;
     new.cols = img_size;
     new.stride = img_size;
-    i.resize(allocator, new, .lanczos);
+    i.resize(io, allocator, new, .lanczos);
     return new;
 }
 
-pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ![]const u8 {
+pub fn process(io: std.Io, allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ![]const u8 {
     const img_type_from_data = Type.from_data(data) orelse blk: {
         std.log.warn("Could not figure out image file type based on file content", .{});
         if (img_type_opt) |img_type| {
@@ -265,20 +265,20 @@ pub fn process(allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Ty
     
     switch(img_type) {
         .png => {
-            var img = try resize_png(allocator, data);
+            var img = try resize_png(io, allocator, data);
             errdefer img.deinit(allocator);
             if (img.rows <= img_size or img.cols <= img_size) {
                 return data;
             }
-            return try z.png.encode(Color, allocator, img, .{});
+            return try z.png.encode(Color, io, allocator, img, .{});
         },
         .jpeg, .jpg => {
-            var img = try resize_jpeg(allocator, data);
+            var img = try resize_jpeg(io, allocator, data);
             errdefer img.deinit(allocator);
             if (img.rows <= img_size or img.cols <= img_size) {
                 return data;
             }
-            return try z.jpeg.encode(Color, allocator, img, .{});
+            return try z.jpeg.encode(Color, io, allocator, img, .{});
         },
         .ico => {
             var io_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 20 * 1024);
