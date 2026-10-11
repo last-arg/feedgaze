@@ -1793,7 +1793,9 @@ fn all(db: *const sql.Database, comptime T: type, allocator: Allocator, raw_quer
                 }
                 break :blk row;
             }
-            if (is_slice_u8) break :blk row.val.data;
+            if (is_slice_u8) {
+                break :blk try allocator.dupe(u8, row.val.data);
+            }
             break :blk row.val;
         };
         try res.append(val);
