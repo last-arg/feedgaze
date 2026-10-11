@@ -448,7 +448,7 @@ pub const Storage = struct {
         }
 
         const Params = struct {term: sql.Text};
-        const query_opts: Params= blk: {
+        const query_opts: ?Params= blk: {
             if (search_term) |term| {
                 if (term.len > 0) {
                     const cond_start = if (has_where) " AND " else " WHERE ";
@@ -457,7 +457,7 @@ pub const Storage = struct {
                     break :blk .{.term = sql.text(term)};
                 }
             }
-            break :blk .{.term = sql.text("")};
+            break :blk null;
         };
 
         storage_arr.appendSliceAssumeCapacity(" GROUP BY item.feed_id");
@@ -465,8 +465,10 @@ pub const Storage = struct {
         const stmt = try self.sql_db.prepare(Params, FeedToUpdate.Raw, storage_arr.items);
         defer stmt.finalize();
 
-        try stmt.bind(query_opts);
-        defer stmt.reset();
+        if (query_opts) |opts| {
+            try stmt.bind(opts);
+        }
+        defer if (query_opts) |_| stmt.reset();
 
         var res = try std.array_list.Managed(FeedToUpdate).initCapacity(allocator, 10);
         errdefer res.deinit();
