@@ -171,14 +171,30 @@ pub const AtomDateTime = struct {
 
         var time_raw_all = iter.next() orelse return error.InvalidAtomDate;
         const time_raw = time_raw_all[0..8];
-        if (dt.Datetime.fromString(time_raw, dt.Formats.TimeOnly)) |time| {
+        const time_opt = blk: {
+            var result = dt.Datetime.fromString(time_raw, dt.Formats.TimeOnly);
+            if (result == error.SecondOutOfRange) {
+                result = dt.Datetime.fromString(time_raw[0..5], "%H:%M");
+            }
+
+            if (result == error.MinuteOutOfRange) {
+                result = dt.Datetime.fromString(time_raw[0..2], "%H");
+            }
+
+            if (result) |time| {
+                break :blk time;
+            } else |err| {
+                std.log.warn("Failed to parse Atom dates time part '{s}'. Error: {}", .{time_raw, err});
+            }
+            break :blk null;
+        };
+
+        if (time_opt) |time| {
             if (date.replace(.{ .hour = time.hour, .minute = time.minute, .second = time.second, })) |d| {
                 date = d;
             } else |err| {
                 std.log.warn("Failed to convert Atom date's time part '{s}'. Error: {}", .{time_raw, err});
             }
-        } else |err| {
-            std.log.warn("Failed to parse Atom dates time part '{s}'. Error: {}", .{time_raw, err});
         }
 
         const tz_raw = blk: {
@@ -213,10 +229,9 @@ test "AtomDateTime.parse" {
     try std.testing.expectEqual(@as(i64, 1071340202), d2);
     const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
-    // Time part of the date will be ignore because time parsing fails due to
-    // seconds field having '69'
+    // Seconds part '69' will be ignored because invalid value
     const d4 = try AtomDateTime.parse("2022-01-11T18:42:69Z");
-    try std.testing.expectEqual(@as(i64, 1641859200), d4);
+    try std.testing.expectEqual(@as(i64, 1641926520), d4);
 }
 
 // https://www.w3.org/Protocols/rfc822/#z28
