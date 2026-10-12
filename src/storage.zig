@@ -1346,14 +1346,14 @@ pub const Storage = struct {
             \\           when count >= 3 then max(next_utc_sec, last_utc_sec + min(3600 * (count * count), 259200))
             \\           when count > 0 then next_utc_sec
             \\         end
-            \\         from rate_limit where feed_id = ?1)
-            \\         , (select last_update + {s} from feed_update where feed_id = ?1)
+            \\         from rate_limit where feed_id = :feed_id)
+            \\         , (select last_update + {s} from feed_update where feed_id = :feed_id)
             \\       )
             \\end as val
             \\from feed_request_failed
-            \\where feed_id = ?1
+            \\where feed_id = :feed_id
         , .{iif_update_interval});
-        const result = try one(i64, &self.sql_db, undefined, query, .{@backingInt(feed_id)});
+        const result = try one(i64, &self.sql_db, undefined, query, .{ .feed_id = @backingInt(feed_id) });
         if (result) |val| if (val != 0) {
             return val;
         };
