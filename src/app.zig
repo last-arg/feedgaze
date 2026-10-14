@@ -79,7 +79,19 @@ pub const Cli = struct {
             return;
         };
 
-        self.storage = try connectDatabase(process_init, args.options.database);
+        var buf_path: [8 * 1024]u8 = undefined;
+        const db_path = try get_path_db(&buf_path, process_init, args.options.database);
+        var storage_init_count: u32 = 0;
+        while (storage_init_count < 3) : (storage_init_count += 1) {
+            self.storage = Storage.init(db_path) catch |err| {
+                if (err == @import("sqlite").Error.SQLITE_BUSY) {
+                    std.log.info("Sqlite database seems busy. Trying again", .{});
+                    continue;
+                }
+                return err;
+            };
+            break;
+        }
 
         switch (verb) {
             .remove => {
@@ -1242,9 +1254,8 @@ pub const Cli = struct {
     }
 };
 
-pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
-    var buf: [8 * 1024]u8 = undefined;
-    var fixed_alloc = std.heap.FixedBufferAllocator.init(&buf);
+pub fn get_path_db(buf: []u8, init: std.process.Init, path: ?[:0]const u8) !?[*:0]const u8 {
+    var fixed_alloc = std.heap.FixedBufferAllocator.init(buf);
     const alloc = fixed_alloc.allocator();
 
     const db_path: ?[*:0]const u8 = blk: {
@@ -1269,7 +1280,7 @@ pub fn connectDatabase(init: std.process.Init, path: ?[:0]const u8) !Storage {
         break :blk db_path;
     };
 
-    return try Storage.init(db_path);
+    return db_path;
 }
 
 test "feedgaze.remove" {

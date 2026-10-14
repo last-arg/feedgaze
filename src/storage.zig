@@ -59,7 +59,6 @@ pub const Storage = struct {
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
     fn setupDb(db: *const sql.Database) !void {
-        errdefer std.log.err("Failed to create new database", .{});
 
         // NOTE: permanent pragmas:
         // - application_id
@@ -67,15 +66,16 @@ pub const Storage = struct {
         // - schema_version
         // - user_version
         // - wal_checkpoint
-        try db.exec("PRAGMA foreign_keys = 1", .{});
-        try db.exec("PRAGMA journal_mode = WAL", .{});
-        try db.exec("PRAGMA synchronous = normal", .{});
-        try db.exec("PRAGMA temp_store = 2", .{});
-        try db.exec("PRAGMA mmap_size = 30000000000", .{});
-        try db.exec("PRAGMA cache_size = -32000", .{});
-        try db.exec("PRAGMA cache_size = -32000", .{});
-        if (@import("builtin").mode != .debug) {
-            try db.exec("PRAGMA busy_timeout = 1000", .{});
+        {
+            errdefer std.log.err("Failed to set database options (pragmas)", .{});
+            try db.exec("PRAGMA journal_mode = WAL", .{});
+            try db.exec("PRAGMA busy_timeout = 5000", .{});
+            try db.exec("PRAGMA foreign_keys = 1", .{});
+            try db.exec("PRAGMA synchronous = normal", .{});
+            try db.exec("PRAGMA temp_store = 2", .{});
+            try db.exec("PRAGMA mmap_size = 30000000000", .{});
+            try db.exec("PRAGMA cache_size = -32000", .{});
+            try db.exec("PRAGMA cache_size = -32000", .{});
         }
 
         try setupTables(db);
