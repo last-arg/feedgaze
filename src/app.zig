@@ -82,10 +82,12 @@ pub const Cli = struct {
         var buf_path: [8 * 1024]u8 = undefined;
         const db_path = try get_path_db(&buf_path, process_init, args.options.database);
         var storage_init_count: u32 = 0;
+        const wait_time_sec = 5;
         while (storage_init_count < 3) : (storage_init_count += 1) {
             self.storage = Storage.init(db_path) catch |err| {
                 if (err == @import("sqlite").Error.SQLITE_BUSY) {
-                    std.log.info("Sqlite database seems busy. Trying again", .{});
+                    std.log.info("Sqlite database seems busy. Trying again in {} seconds", .{wait_time_sec});
+                    try self.io.sleep(.fromSeconds(wait_time_sec), .boot);
                     continue;
                 }
                 return err;
