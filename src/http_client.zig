@@ -335,9 +335,8 @@ const FetchIconOptions = struct {
     html_body: ?[]const u8 = null,
     etag_or_last_modified: ?[]const u8 = null,
 };
-// if return null -> missing icons
-// if return error -> failed icons
-pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptions) !?feed_types.Icon {
+
+pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: FetchIconOptions) !feed_types.Icon {
     var buf: [2 * 1024]u8 = undefined;
     var buffer_header: [1024]u8 = undefined;
     var fixed_writer: std.Io.Writer = .fixed(&buf);
@@ -376,12 +375,9 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
         defer req.deinit();
 
         const feed_uri = try std.Uri.parse(req_url);
-        const feed_opts = req.fetch(allocator, feed_uri, .{
+        const feed_opts = try req.fetch(allocator, feed_uri, .{
             .buffer_header = &buffer_header,
-        }) catch |err| {
-            std.log.warn("Failed to fetch icon '{s}'. Error: {}", .{req_url, err});
-            return null;
-        };
+        });
 
         const body = a_writer.writer.buffered();
         if (body.len == 0) {
@@ -480,12 +476,11 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
         const icon_uri = try std.Uri.parse(url_request);
         const cache_control = try req.fetch_image(&a_writer.writer, allocator, icon_uri, .{
             .buffer_header = &buffer_header,
-        }) orelse return null;
+        }) orelse return error.StatusNot200;
 
         const body = a_writer.writer.buffered();
         if (body.len == 0) {
-            std.log.warn("Icon body is empty. From: {s}", .{url_request});
-            return null;
+            return error.FallbackIconEmptyBody;
         }
 
         const img_data = try image.process(io, allocator, body, cache_control.image_type);
@@ -503,5 +498,5 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
         return feed_types.Icon.init(buf_uri, buf_data, etag_or_last_modified);
     }
 
-    return null;
+    return error.FoundNoIcon;
 }

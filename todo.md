@@ -5,6 +5,10 @@
 - old reddit feed gets error NoHtmlOptions
 - 'https://implaustin.hashnode.dev/' returns Forbidden
   Probably because cloudflare protection?
+- replace http.zig with dusty?
+- explore zt for html templating
+- Failed to parse RSS date Fri, Oct 7 2022 10:15:00 -0400 for https://verdagon.dev/
+- failed feed request page show duplicates
 - check image warnings
 ```
 warning: Failed to get icon 'https://insidegovuk.blog.gov.uk/wp-content/themes/gds-blogs/build/node_modules/govuk-frontend/dist/govuk/assets/rebrand/images/favicon.ico'. Response body is empty. Got HTTP status code 404

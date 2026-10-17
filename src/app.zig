@@ -325,6 +325,9 @@ pub const Cli = struct {
         return std.math.maxInt(usize) ;
     }
 
+    const QueueData = struct{index_icon: usize, index_future: usize};
+    const QueueMissing = std.Io.Queue(QueueData);
+
     fn check_icons(self: *Self, check_type: IconCheckType) !void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -332,8 +335,8 @@ pub const Cli = struct {
         const progress_node = self.progress.start("Checking icons", 0);
         defer { progress_node.end(); }
 
-        const core_count_max: usize = 15;
-        const select_count: usize = @min(@max(1, self.core_count - 1), core_count_max);
+        const core_count_max: usize = 16;
+        const select_count: usize = @min(self.core_count, core_count_max);
 
         var buf: [core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
         var fixed = std.heap.FixedBufferAllocator.init(&buf);
@@ -385,59 +388,82 @@ pub const Cli = struct {
                 defer arena.allocator().free(icons_missing);
                 progress_node.setEstimatedTotalItems(icons_missing.len);
 
-                var downloaded: std.MultiArrayList(struct{
-                    page_url: std.Uri,
-                    icon_id: feed_types.IconRender.ID,
-                    count: usize,
-                }) = .empty;
-                defer downloaded.deinit(arena.allocator());
-                try downloaded.setCapacity(arena.allocator(), icons_missing.len);
+                var buf_result: [core_count_max]QueueData = undefined;
+                var queue = QueueMissing.init(&buf_result);
+                defer queue.close(self.io);
 
-                for (icons_missing) |icon| {
+                const FnReturn = @typeInfo(@TypeOf(fetch_icon_missing)).@"fn".return_type.?;
+                var futures: [core_count_max]std.Io.Future(FnReturn) = undefined;
+
+                const end = @min(icons_missing.len, select_count);
+                for (icons_missing[0..end], 0..) |icon, i| {
+                    futures[i] = self.io.async(
+                        fetch_icon_missing,
+                        .{
+                            self.io,
+                            &arenas[i],
+                            &queue,
+                            icon.page_url,
+                            .{.index_icon = i, .index_future = i},
+                        }
+                    );
+                }
+                // Make sure futures resources are cleaned up
+                defer for (futures[0..end]) |*fut| {
+                    _ = fut.cancel(self.io) catch {};
+                };
+
+                for (icons_missing[end..], 0..) |icon, i| {
                     defer progress_node.completeOne();
 
-                    var index_opt: ?usize = null;
-                    for (downloaded.items(.page_url), 0..) |p_url, i| {
-                        if (mem.eql(u8, icon.page_url.host.?.percent_encoded, p_url.host.?.percent_encoded)) {
-                            index_opt = i;
-                            break;
+                    const result = try queue.getOne(self.io);
+                    const icon_result = icons_missing[result.index_icon];
+                    const icon_new_err = futures[result.index_future].await(self.io);
+                    if (icon_new_err) |icon_new| {
+                        const icon_id = try self.storage.icon_upsert(icon_new);
+                        if (icon_id.is_valid()) {
+                            try self.storage.feed_icon_update(icon_result.feed_id, icon_id);
                         }
-                    }
-
-                    if (index_opt) |index| {
-                        const count = downloaded.items(.count)[index];
-                        if (count >= 2) {
-                            const icon_id = downloaded.items(.icon_id)[index];
-                            try self.storage.feed_icon_update(icon.feed_id, icon_id);
-                            continue;
-                        }
-                    }
-
-                    const new_icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.page_url, .{}) catch {
+                    } else |err| {
+                        std.log.err("Failed to fetch missing icon '{f}'. Error: {}", .{icon_result.page_url, err});
                         try self.storage.icon_failed_add(.{
-                            .feed_id = icon.feed_id,
+                            .feed_id = icon_result.feed_id,
                             .last_msg = "Failed to fetch missing icon",
                         });
-                        continue;
-                    };
+                    }
 
-                    if (new_icon_opt) |new_icon| {
-                        const icon_id = try self.storage.icon_upsert(new_icon);
-                        if (icon_id.is_valid()) {
-                            if (index_opt) |index| {
-                                downloaded.items(.count)[index] = 2;
-                            } else {
-                                downloaded.appendAssumeCapacity(.{
-                                    .page_url = icon.page_url,
-                                    .icon_id = icon_id,
-                                    .count = 1,
-                                });
-                            }
-
-                            try self.storage.feed_icon_update(icon.feed_id, icon_id);
+                    futures[result.index_future] = self.io.async(
+                        fetch_icon_missing,
+                        .{
+                            self.io,
+                            &arenas[result.index_future],
+                            &queue,
+                            icon.page_url,
+                            .{.index_icon = i + end, .index_future = result.index_future},
                         }
+                    );
+                }
+
+                for (0..end) |_| {
+                    defer progress_node.completeOne();
+
+                    const result = try queue.getOne(self.io);
+                    const icon_result = icons_missing[result.index_icon];
+                    const icon_new_err = futures[result.index_future].await(self.io);
+                    if (icon_new_err) |icon_new| {
+                        const icon_id = try self.storage.icon_upsert(icon_new);
+                        if (icon_id.is_valid()) {
+                            try self.storage.feed_icon_update(icon_result.feed_id, icon_id);
+                        }
+                    } else |err| {
+                        std.log.err("Failed to fetch missing icon '{f}'. Error: {}", .{icon_result.page_url, err});
+                        try self.storage.icon_failed_add(.{
+                            .feed_id = icon_result.feed_id,
+                            .last_msg = "Failed to fetch missing icon",
+                        });
                     }
                 }
+
             },
             .failed => {
                 const icons_failed = try self.storage.feed_icons_failed(arena.allocator());
@@ -446,7 +472,7 @@ pub const Cli = struct {
                 for (icons_failed) |icon| {
                     defer progress_node.completeOne();
 
-                    const new_icon_opt = http_client.fetch_icon(self.io, arena.allocator(), icon.page_url, .{}) catch {
+                    const icon_new = http_client.fetch_icon(self.io, arena.allocator(), icon.page_url, .{}) catch {
                         try self.storage.icon_failed_add(.{
                             .feed_id = icon.feed_id,
                             .last_msg = "Failed to fetch missing icon",
@@ -454,22 +480,26 @@ pub const Cli = struct {
                         continue;
                     };
 
-                    if (new_icon_opt) |icon_new| {
-                        if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                            const icon_id = try self.storage.icon_upsert(icon_new);
-                            if (icon_id.is_valid()) {
-                                try self.storage.feed_icon_update(icon.feed_id, icon_id);
-                            }
+                    if (!mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+                        const icon_id = try self.storage.icon_upsert(icon_new);
+                        if (icon_id.is_valid()) {
+                            try self.storage.feed_icon_update(icon.feed_id, icon_id);
                         }
-                        self.storage.icon_failed_remove(icon.feed_id) catch |err| {
-                            std.log.warn("Failed to remove feed from icon_failed table. Error: {}", .{err});
-                        };
                     }
+                    self.storage.icon_failed_remove(icon.feed_id) catch |err| {
+                        std.log.warn("Failed to remove feed from icon_failed table. Error: {}", .{err});
+                    };
                 }
             },
         }
 
         try self.storage.icons_remove_unused();
+    }
+
+    fn fetch_icon_missing(io: std.Io, arena: *std.heap.ArenaAllocator, queue: *QueueMissing, icon_page_url: std.Uri, future_index: QueueData) !feed_types.Icon {
+        const result = http_client.fetch_icon(io, arena.allocator(), icon_page_url, .{});
+        try queue.putOne(io, future_index);
+        return result;
     }
 
     fn fetch_icon_exists(io: std.Io, arena: *std.heap.ArenaAllocator, arena_index: usize, icon: feed_types.IconRender) Result.Return {
@@ -536,20 +566,15 @@ pub const Cli = struct {
         // TODO: should try improve this function
         // Does not mean that request for html failed. Might have failed to
         // image request
-        const icon_opt = http_client.fetch_icon(io, arena.allocator(), icon.icon_url, .{}) catch {
+        const icon_new = http_client.fetch_icon(io, arena.allocator(), icon.icon_url, .{}) catch {
             return .{.err = .{ .err_type = error.FailedRequestForHtml, .icon_id = icon.icon_id, .arena_index = arena_index}};
         };
 
-        if (icon_opt) |icon_new| {
-            if (mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-                return .{.skip = .{.arena_index = arena_index}};
-            }
-
-            return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
+        if (mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
+            return .{.skip = .{.arena_index = arena_index}};
         }
 
-        // TODO: need status code
-        return .{.err = .{ .err_type = error.FailedRequest, .icon_id = icon.icon_id, .arena_index = arena_index} };
+        return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
     }
 
     fn printHelp(self: Self, verb: ?CliVerb) !void {
