@@ -221,8 +221,8 @@ pub const Cli = struct {
                 try self.rule(inputs, opts);
             },
             .batch => |opts| {
-                if (opts.@"check-all-icons") {
-                    try self.check_icons(.all);
+                if (opts.@"check-existing-icons") {
+                    try self.check_icons(.existing);
                 } else if (opts.@"check-missing-icons") {
                     try self.check_icons(.missing);
                 } else if (opts.@"check-failed-icons") {
@@ -233,7 +233,7 @@ pub const Cli = struct {
     }
 
     const IconCheckType = enum {
-        all,
+        existing,
         missing,
         failed,
     };
@@ -360,7 +360,7 @@ pub const Cli = struct {
         }
 
         switch (check_type) {
-            .all => {
+            .existing => {
                 const icons_existing = try self.storage.icon_all(arena.allocator());
                 const end = @min(icons_existing.len, select_count);
                 progress_node.setEstimatedTotalItems(icons_existing.len);
@@ -687,7 +687,7 @@ pub const Cli = struct {
                 \\  Run batch actions
                 \\
                 \\Options:
-                \\  --check-all-icons        Will fetch and check all existing icons
+                \\  --check-existing-icons   Will fetch and check existing icons
                 \\  --check-missing-icons    Try to fetch icons for feeds that don't have an icon
                 \\  --check-failed-icons     Try to fetch icons that have previously failed for some reason 
                 \\  -d, --database           Database location 
