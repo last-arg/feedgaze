@@ -1486,7 +1486,7 @@ pub const Storage = struct {
         return null;
     }
 
-    const IconMissing = struct {
+    pub const IconMissing = struct {
         feed_id: Feed.ID,
         page_url: std.Uri,
 

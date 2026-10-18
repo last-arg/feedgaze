@@ -419,18 +419,7 @@ pub const Cli = struct {
                     const result = try queue.getOne(self.io);
                     const icon_result = icons_missing[result.index_icon];
                     const icon_new_err = futures[result.index_future].await(self.io);
-                    if (icon_new_err) |icon_new| {
-                        const icon_id = try self.storage.icon_upsert(icon_new);
-                        if (icon_id.is_valid()) {
-                            try self.storage.feed_icon_update(icon_result.feed_id, icon_id);
-                        }
-                    } else |err| {
-                        std.log.err("Failed to fetch missing icon '{f}'. Error: {}", .{icon_result.page_url, err});
-                        try self.storage.icon_failed_add(.{
-                            .feed_id = icon_result.feed_id,
-                            .last_msg = "Failed to fetch missing icon",
-                        });
-                    }
+                    try add_icon_missing(&self.storage, icon_new_err, icon_result);
 
                     futures[result.index_future] = self.io.async(
                         fetch_icon_missing,
@@ -450,18 +439,7 @@ pub const Cli = struct {
                     const result = try queue.getOne(self.io);
                     const icon_result = icons_missing[result.index_icon];
                     const icon_new_err = futures[result.index_future].await(self.io);
-                    if (icon_new_err) |icon_new| {
-                        const icon_id = try self.storage.icon_upsert(icon_new);
-                        if (icon_id.is_valid()) {
-                            try self.storage.feed_icon_update(icon_result.feed_id, icon_id);
-                        }
-                    } else |err| {
-                        std.log.err("Failed to fetch missing icon '{f}'. Error: {}", .{icon_result.page_url, err});
-                        try self.storage.icon_failed_add(.{
-                            .feed_id = icon_result.feed_id,
-                            .last_msg = "Failed to fetch missing icon",
-                        });
-                    }
+                    try add_icon_missing(&self.storage, icon_new_err, icon_result);
                 }
 
             },
@@ -500,6 +478,21 @@ pub const Cli = struct {
         const result = http_client.fetch_icon(io, arena.allocator(), icon_page_url, .{});
         try queue.putOne(io, future_index);
         return result;
+    }
+
+    fn add_icon_missing(storage: *Storage, icon_new_err: anyerror!feed_types.Icon, icon_result: Storage.IconMissing) !void {
+        if (icon_new_err) |icon_new| {
+            const icon_id = try storage.icon_upsert(icon_new);
+            if (icon_id.is_valid()) {
+                try storage.feed_icon_update(icon_result.feed_id, icon_id);
+            }
+        } else |err| {
+            std.log.err("Failed to fetch missing icon '{f}'. Error: {}", .{icon_result.page_url, err});
+            try storage.icon_failed_add(.{
+                .feed_id = icon_result.feed_id,
+                .last_msg = "Failed to fetch missing icon",
+            });
+        }
     }
 
     fn fetch_icon_exists(io: std.Io, arena: *std.heap.ArenaAllocator, arena_index: usize, icon: feed_types.IconRender) Result.Return {
