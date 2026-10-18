@@ -221,9 +221,7 @@ pub const Cli = struct {
                 try self.rule(inputs, opts);
             },
             .batch => |opts| {
-                if (opts.@"check-existing-icons") {
-                    try self.check_icons(.existing);
-                } else if (opts.@"check-missing-icons") {
+                if (opts.@"check-missing-icons") {
                     try self.check_icons(.missing);
                 } else if (opts.@"check-failed-icons") {
                     try self.check_icons(.failed);
@@ -233,7 +231,6 @@ pub const Cli = struct {
     }
 
     const IconCheckType = enum {
-        existing,
         missing,
         failed,
     };
@@ -364,29 +361,6 @@ pub const Cli = struct {
         defer queue.close(self.io);
 
         switch (check_type) {
-            .existing => {
-                const icons_existing = try self.storage.icon_all(arena.allocator());
-                const end = @min(icons_existing.len, select_count);
-                progress_node.setEstimatedTotalItems(icons_existing.len);
-
-                for (icons_existing[0..end], 0..) |icon, i| {
-                    queue_io.async(.result, fetch_icon_exists, .{self.io, &arenas[i], i, icon});
-                }
-
-                for (icons_existing[end..]) |icon| {
-                    const next_arena_index = try await_img_queue(&queue_io, &self.storage);
-                    progress_node.completeOne();
-
-                    std.debug.assert(next_arena_index != std.math.maxInt(usize));
-
-                    queue_io.async(.result, fetch_icon_exists, .{self.io, &arenas[next_arena_index], next_arena_index, icon});
-                }
-
-                for (0..end) |_| {
-                    _ = try await_img_queue(&queue_io, &self.storage);
-                    progress_node.completeOne();
-                }
-            },
             .missing => {
                 const icons_missing = try self.storage.feed_icons_missing(arena.allocator());
                 defer arena.allocator().free(icons_missing);
@@ -543,81 +517,6 @@ pub const Cli = struct {
         }
     }
 
-    fn fetch_icon_exists(io: std.Io, arena: *std.heap.ArenaAllocator, arena_index: usize, icon: feed_types.IconRender) Result.Return {
-        _ = arena.reset(.retain_capacity);
-        const buffer_header: []u8 = arena.allocator().alloc(u8, 1024) catch @panic("Failed to allocate buffer memory");
-
-        var req = http_client.init(io, arena.allocator());
-        defer req.deinit();
-
-        var a_writer = std.Io.Writer.Allocating.initCapacity(arena.allocator(), 8 * 1024) catch @panic("Failed to allocate writer memory");
-        defer a_writer.deinit();
-
-        if (!icon.is_data()) {
-            var date_buf: [util.date_len_max]u8 = undefined;
-            const icon_cache_value = cache_value: {
-                if (mem.startsWith(u8, feed_types.Icon.hash_start, icon.etag_or_last_modified_or_hash)) {
-                    break :cache_value null;
-                } else if (mem.startsWith(u8, feed_types.Icon.last_modified_start, icon.etag_or_last_modified_or_hash)) {
-                    const end = mem.indexOfScalar(u8, icon.etag_or_last_modified_or_hash, '-') orelse {
-                        std.log.warn("Image hash is invalid. Hash: '{s}'", .{icon.etag_or_last_modified_or_hash});
-                        break :cache_value null;
-                    };
-                    const hex_str = icon.etag_or_last_modified_or_hash[feed_types.Icon.last_modified_start.len..end];
-                    const utc_timestamp = std.fmt.parseInt(i64, hex_str, 10) catch |err| {
-                        std.log.warn("Image hash contains invalid hexidecimal value. Hash: '{s}'. Error: {}", .{icon.etag_or_last_modified_or_hash, err});
-                        break :cache_value null;
-                    };
-                    break :cache_value util.timestampToString(&date_buf, utc_timestamp);
-                }
-
-                break :cache_value icon.etag_or_last_modified_or_hash;
-            };
-
-            const cache_control = req.fetch_image(&a_writer.writer, arena.allocator(), icon.icon_url, .{
-                .etag_or_last_modified = icon_cache_value,
-                .buffer_header = buffer_header,
-            }) catch {
-                return .{.err = .{ .err_type = error.FailedRequest, .icon_id = icon.icon_id, .arena_index = arena_index} };
-            };
-
-            const status_code = req.response.?.head.status;
-            if (status_code == .not_modified) {
-                return .{.skip = .{.arena_index = arena_index}};
-            }
-
-            const resp_body = a_writer.writer.buffered();
-            if (resp_body.len == 0) {
-                std.log.warn("Failed to get icon '{f}'. Response body is empty. Got HTTP status code {d}", .{icon.icon_url, req.response.?.head.status});
-                return .{.err = .{ .err_type = error.EmptyBody, .icon_id = icon.icon_id, .status_code = status_code, .arena_index = arena_index}};
-            }
-
-            const cache_value = cache_control.?.etag orelse cache_control.?.last_modified;
-            const img_data = image.process(io, arena.allocator(), resp_body, cache_control.?.image_type) catch {
-                std.log.warn("Failed to process image '{f}'", .{req.get_uri()});
-                return .{.err = .{ .err_type = error.InvalidImage, .icon_id = icon.icon_id, .status_code = status_code, .arena_index = arena_index}};
-            };
-            const icon_new = feed_types.Icon.init(req.get_uri(), img_data, cache_value);
-
-            return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
-        }
-
-        // Inlined icon in html
-        // TODO: get status code when request fails?
-        // TODO: should try improve this function
-        // Does not mean that request for html failed. Might have failed to
-        // image request
-        const icon_new = http_client.fetch_icon(io, arena.allocator(), icon.icon_url, .{}) catch {
-            return .{.err = .{ .err_type = error.FailedRequestForHtml, .icon_id = icon.icon_id, .arena_index = arena_index}};
-        };
-
-        if (mem.eql(u8, icon.etag_or_last_modified_or_hash, icon_new.etag_or_last_modified_or_hash)) {
-            return .{.skip = .{.arena_index = arena_index}};
-        }
-
-        return .{.success = .{.icon = icon_new, .curr_icon_id = icon.icon_id, .arena_index = arena_index}};
-    }
-
     fn printHelp(self: Self, verb: ?CliVerb) !void {
         var output: []const u8 =
             \\Usage: feedgaze [command] [options]
@@ -735,7 +634,6 @@ pub const Cli = struct {
                 \\  Run batch actions
                 \\
                 \\Options:
-                \\  --check-existing-icons   Will fetch and check existing icons
                 \\  --check-missing-icons    Try to fetch icons for feeds that don't have an icon
                 \\  --check-failed-icons     Try to fetch icons that have previously failed for some reason 
                 \\  -d, --database           Database location 
