@@ -1,13 +1,11 @@
 - html parsing: get date from url path?
-- added 'pub const c = @import(...)' to fridge package main.zig to get access to
-  sqlite3_snprintf. Have to see if it is needed
 - make feed updating non-blocking
 - old reddit feed gets error NoHtmlOptions
 - 'https://implaustin.hashnode.dev/' returns Forbidden
   Probably because cloudflare protection?
 - replace http.zig with dusty?
 - explore zt for html templating
-- failed feed request page show duplicates
+- failed feed request page shows duplicates
 - check image warnings
 ```
 warning: Failed to get icon 'https://insidegovuk.blog.gov.uk/wp-content/themes/gds-blogs/build/node_modules/govuk-frontend/dist/govuk/assets/rebrand/images/favicon.ico'. Response body is empty. Got HTTP status code 404
@@ -20,7 +18,7 @@ warning: Failed to parse date '756cffb5002e1cf71dbca318'. Error: error.Overflow
 
 warning: Failed to process image 'https://www.sarasoueidan.com/favicon.ico'
 
-Should be '/favicon/ico' without '/images/'
+Should be '/favicon.ico' without '/images/'
 warning: Failed to get icon 'https://antithesis.com/images/favicon.ico'. Response body is empty. Got HTTP status code 404
 ```
 

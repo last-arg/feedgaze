@@ -349,16 +349,18 @@ pub const Cli = struct {
             fixed.allocator().free(arenas);
         }
 
-        const request_buffer = try self.allocator.alloc(Result, select_count);
-        defer self.allocator.free(request_buffer);
-        var queue_io: SelectResult = .init(self.io, request_buffer);
-        defer {
-            while (queue_io.cancel()) |_| {}
-        }
-
         var buf_result: [core_count_max]QueueData = undefined;
         var queue = QueueIcon.init(&buf_result);
         defer queue.close(self.io);
+
+        var end: usize = 0;
+
+        const FnReturn = @typeInfo(@TypeOf(fetch_icon_missing_or_failed)).@"fn".return_type.?;
+        var futures: [core_count_max]std.Io.Future(FnReturn) = undefined;
+        // Make sure futures resources are cleaned up
+        defer for (futures[0..end]) |*fut| {
+            _ = fut.cancel(self.io) catch {};
+        };
 
         switch (check_type) {
             .missing => {
@@ -366,10 +368,7 @@ pub const Cli = struct {
                 defer arena.allocator().free(icons_missing);
                 progress_node.setEstimatedTotalItems(icons_missing.len);
 
-                const FnReturn = @typeInfo(@TypeOf(fetch_icon_missing_or_failed)).@"fn".return_type.?;
-                var futures: [core_count_max]std.Io.Future(FnReturn) = undefined;
-
-                const end = @min(icons_missing.len, select_count);
+                end = @min(icons_missing.len, select_count);
                 for (icons_missing[0..end], 0..) |icon, i| {
                     futures[i] = self.io.async(
                         fetch_icon_missing_or_failed,
@@ -382,10 +381,6 @@ pub const Cli = struct {
                         }
                     );
                 }
-                // Make sure futures resources are cleaned up
-                defer for (futures[0..end]) |*fut| {
-                    _ = fut.cancel(self.io) catch {};
-                };
 
                 for (icons_missing[end..], 0..) |icon, i| {
                     defer progress_node.completeOne();
@@ -421,10 +416,7 @@ pub const Cli = struct {
                 const icons_failed = try self.storage.feed_icons_failed(arena.allocator());
                 progress_node.setEstimatedTotalItems(icons_failed.len);
 
-                const FnReturn = @typeInfo(@TypeOf(fetch_icon_missing_or_failed)).@"fn".return_type.?;
-                var futures: [core_count_max]std.Io.Future(FnReturn) = undefined;
-
-                const end = @min(icons_failed.len, select_count);
+                end = @min(icons_failed.len, select_count);
                 for (icons_failed[0..end], 0..) |icon, i| {
                     futures[i] = self.io.async(
                         fetch_icon_missing_or_failed,
@@ -437,10 +429,6 @@ pub const Cli = struct {
                         }
                     );
                 }
-                // Make sure futures resources are cleaned up
-                defer for (futures[0..end]) |*fut| {
-                    _ = fut.cancel(self.io) catch {};
-                };
 
                 for (icons_failed[end..], 0..) |icon, i| {
                     defer progress_node.completeOne();
