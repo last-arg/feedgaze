@@ -7,7 +7,6 @@
   Probably because cloudflare protection?
 - replace http.zig with dusty?
 - explore zt for html templating
-- Failed to parse RSS date Fri, Oct 7 2022 10:15:00 -0400 for https://verdagon.dev/
 - failed feed request page show duplicates
 - check image warnings
 ```
