@@ -11,9 +11,6 @@ pub fn main(init: std.process.Init) !void {
     const io = init.io;
 
     {
-        const progress_node = std.Progress.start(io, .{});
-        defer progress_node.end();
-
         var buf_writer: [4 * 1024]u8 = undefined;
         var out = std.Io.File.stdout().writer(io, &buf_writer);
         var buf_reader: [4 * 1024]u8 = undefined;
@@ -24,7 +21,6 @@ pub fn main(init: std.process.Init) !void {
             .io = io,
             .out = &out.interface,
             .in = &in.interface,
-            .progress = progress_node,
             .core_count = try std.Thread.getCpuCount(),
         };
         try app_cli.run(init);

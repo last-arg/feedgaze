@@ -62,7 +62,6 @@ pub const Cli = struct {
     io: std.Io,
     out: *std.Io.Writer,
     in: *std.Io.Reader,
-    progress: std.Progress.Node,
     core_count: usize,
     const Self = @This();
 
@@ -329,8 +328,10 @@ pub const Cli = struct {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
 
-        const progress_node = self.progress.start("Checking icons", 0);
-        defer { progress_node.end(); }
+        const progress = std.Progress.start(self.io, .{});
+        defer progress.end();
+        const progress_node = progress.start("Checking icons", 0);
+        defer progress_node.end();
 
         const core_count_max: usize = 16;
         const select_count: usize = @min(self.core_count, core_count_max);
