@@ -199,7 +199,10 @@ pub const AtomDateTime = struct {
         const tz_raw = blk: {
             var start: u32 = 8;
             if (time_raw_all[start] == '.') {
-                start += 3;
+                start += 1;
+                while (std.ascii.isDigit(time_raw_all[start])) {
+                    start += 1;
+                }
             }
             break :blk time_raw_all[start..];
         };
@@ -224,7 +227,7 @@ pub const AtomDateTime = struct {
 test "AtomDateTime.parse" {
     const d1 = try AtomDateTime.parse("2003-12-13T18:30:02Z");
     try std.testing.expectEqual(@as(i64, 1071340202), d1);
-    const d2 = try AtomDateTime.parse("2003-12-13T18:30:02.25Z");
+    const d2 = try AtomDateTime.parse("2003-12-13T18:30:02.250Z");
     try std.testing.expectEqual(@as(i64, 1071340202), d2);
     const d3 = try AtomDateTime.parse("2003-12-13T18:30:02.25+01:00");
     try std.testing.expectEqual(@as(i64, 1071336602), d3);
