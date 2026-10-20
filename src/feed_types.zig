@@ -183,7 +183,7 @@ pub const AtomDateTime = struct {
             if (result) |time| {
                 break :blk time;
             } else |err| {
-                std.log.warn("Failed to parse Atom dates time part '{s}'. Error: {}", .{time_raw, err});
+                std.log.warn("Failed to parse Atom dates time part '{s}' from '{s}'. Error: {}", .{time_raw, input, err});
             }
             break :blk null;
         };
@@ -192,7 +192,7 @@ pub const AtomDateTime = struct {
             if (date.replace(.{ .hour = time.hour, .minute = time.minute, .second = time.second, })) |d| {
                 date = d;
             } else |err| {
-                std.log.warn("Failed to convert Atom date's time part '{s}'. Error: {}", .{time_raw, err});
+                std.log.warn("Failed to convert Atom date's time part '{s}' from '{s}'. Error: {}", .{time_raw, input, err});
             }
         }
 
@@ -210,11 +210,11 @@ pub const AtomDateTime = struct {
                 if (date.tzLocalize(.{.utc_offset = utc_offset})) |d| {
                     date = d;
                 } else |err| {
-                    std.log.warn("Failed to convert Atom dates timezone '{s}'. Error: {}", .{tz_raw, err});
+                    std.log.warn("Failed to convert Atom dates timezone '{s}' from '{s}'. Error: {}", .{tz_raw, input, err});
                 }
             }
         } else |err| {
-            std.log.warn("Failed to parse Atom dates timezone '{s}'. Error: {}", .{tz_raw, err});
+            std.log.warn("Failed to parse Atom dates timezone '{s}' from '{s}'. Error: {}", .{tz_raw, input, err});
         }
 
         return @intCast(date.toUnix(.second));
