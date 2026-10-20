@@ -54,6 +54,7 @@ const Global = struct {
     layout: Layout,
     is_updating: bool = false,
     icon_manage: *IconManage,
+    core_count: usize,
 };
 
 const IconFileType = image.Type;
@@ -260,6 +261,7 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
         .storage = @constCast(&storage),
         .layout = layout,
         .icon_manage = &icon_manage,
+        .core_count = try std.Thread.getCpuCount(),
     };
     const server_config: httpz.Config = .{
         .address = .localhost(opts.port),  
@@ -348,18 +350,7 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
     if (!global.is_updating) {
         global.is_updating = true;
-        var app: App = .{
-            .storage = global.storage.*,
-            .io = global.io,
-        };
-        var item_arena = std.heap.ArenaAllocator.init(req.arena);
-        defer item_arena.deinit();
-
-        const feed_updates = try global.storage.getFeedsToUpdate(req.arena, null, .{});
-        for (feed_updates) |f_update| {
-            _ = item_arena.reset(.retain_capacity);
-            _ = app.update_feed(&item_arena, f_update) catch {};
-        }
+        try App.update_feeds(req.arena, global.io, global.storage, null, .{}, global.core_count);
         global.is_updating = false;
     }
 

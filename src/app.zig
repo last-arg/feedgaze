@@ -9,7 +9,7 @@ const FeedUpdate = feed_types.FeedUpdate;
 const FeedToUpdate = feed_types.FeedToUpdate;
 const print = std.debug.print;
 const FeedParser = @import("./feed_parse.zig");
-const ParsedFeed = FeedParser.ParsedFeed;
+const ValidFeed = FeedParser.ValidFeed;
 const ContentType = FeedParser.ContentType;
 const builtin = @import("builtin");
 const args_parser = @import("zig-args");
@@ -26,6 +26,7 @@ const util = @import("util.zig");
 const is_url = util.is_url; 
 const image = @import("image.zig");
 const zdt = @import("zdt");
+const config = @import("app_config.zig");
 
 pub const Response = struct {
     feed_update: FeedUpdate,
@@ -33,6 +34,9 @@ pub const Response = struct {
     content_type: ContentType,
     location: []const u8,
 };
+
+const IndexData = struct{index_item: usize, index_future: usize};
+const QueueData = std.Io.Queue(IndexData);
 
 const CliVerb = union(enum) {
     remove: void,
@@ -112,7 +116,7 @@ pub const Cli = struct {
             },
             .update => |opts| {
                 const input = if (args.positionals.len > 0) args.positionals[0] else null;
-                _ = try self.update(input, opts);
+                try self.update(input, opts);
             },
             .run => {
                 std.log.info("Running in foreground", .{});
@@ -255,75 +259,6 @@ pub const Cli = struct {
     const Result = IconExistsUnion;
     const SelectResult = std.Io.Select(Result);
 
-    fn await_img_queue(queue: *SelectResult, storage: *Storage) !usize {
-        const result = try queue.await();
-        switch (result.result) {
-            .success => |val| {
-                try storage.icon_update(val.curr_icon_id, val.icon);
-                return val.arena_index;
-            },
-            .err => |err| {
-                switch(err.err_type) {
-                    error.EmptyBody => {
-                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
-                            try storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = "Image HTTP request returned empty body",
-                            });
-                        } else {
-                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
-                        }
-                    },
-                    error.FailedRequest => {
-                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
-                            var buf_img: [128]u8 = undefined;
-                            var w: std.Io.Writer = .fixed(&buf_img);
-                            w.writeAll("Image HTTP request failed") catch unreachable;
-                            w.print(". Status code {d}", .{err.status_code}) catch |err_type| {
-                                std.log.warn("Failed to print .last_msg. Error: {}", .{err_type});
-                            };
-
-                            try storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = w.buffered(),
-                            });
-                        } else {
-                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
-                        }
-                    },
-                    error.FailedRequestForHtml => {
-                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
-                            try storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = "Image HTTP request failed",
-                            });
-                        } else {
-                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
-                        }
-                    },
-                    error.InvalidImage => {
-                        if (try storage.feed_id_by_icon_id(err.icon_id)) |feed_id| {
-                            try storage.icon_failed_add(.{
-                                .feed_id = feed_id,
-                                .last_msg = "Invalid image",
-                            });
-                        } else {
-                            std.log.warn("Did not find feed with icon id {d}", .{err.icon_id});
-                        }
-                    },
-                }
-                return err.arena_index;
-            },
-            .skip => |val| {
-                return val.arena_index;
-            },
-        }
-        return std.math.maxInt(usize) ;
-    }
-
-    const QueueData = struct{index_icon: usize, index_future: usize};
-    const QueueIcon = std.Io.Queue(QueueData);
-
     fn check_icons(self: *Self, check_type: IconCheckType) !void {
         var arena = std.heap.ArenaAllocator.init(self.allocator);
         defer arena.deinit();
@@ -333,10 +268,9 @@ pub const Cli = struct {
         const progress_node = progress.start("Checking icons", 0);
         defer progress_node.end();
 
-        const core_count_max: usize = 16;
-        const select_count: usize = @min(self.core_count, core_count_max);
+        const select_count: usize = @min(self.core_count, config.core_count_max);
 
-        var buf: [core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
+        var buf: [config.core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
         var fixed = std.heap.FixedBufferAllocator.init(&buf);
 
         const arenas = fixed.allocator().alloc(std.heap.ArenaAllocator, select_count) catch unreachable;
@@ -350,14 +284,14 @@ pub const Cli = struct {
             fixed.allocator().free(arenas);
         }
 
-        var buf_result: [core_count_max]QueueData = undefined;
-        var queue = QueueIcon.init(&buf_result);
+        var buf_result: [config.core_count_max]IndexData = undefined;
+        var queue = QueueData.init(&buf_result);
         defer queue.close(self.io);
 
         var end: usize = 0;
 
         const FnReturn = @typeInfo(@TypeOf(fetch_icon_missing_or_failed)).@"fn".return_type.?;
-        var futures: [core_count_max]std.Io.Future(FnReturn) = undefined;
+        var futures: [config.core_count_max]std.Io.Future(FnReturn) = undefined;
         // Make sure futures resources are cleaned up
         defer for (futures[0..end]) |*fut| {
             _ = fut.cancel(self.io) catch {};
@@ -378,7 +312,7 @@ pub const Cli = struct {
                             &arenas[i],
                             &queue,
                             icon.page_url,
-                            .{.index_icon = i, .index_future = i},
+                            .{.index_item = i, .index_future = i},
                         }
                     );
                 }
@@ -387,7 +321,7 @@ pub const Cli = struct {
                     defer progress_node.completeOne();
 
                     const result = try queue.getOne(self.io);
-                    const icon_result = icons_missing[result.index_icon];
+                    const icon_result = icons_missing[result.index_item];
                     const icon_new_err = futures[result.index_future].await(self.io);
                     try add_icon_missing(&self.storage, icon_new_err, icon_result);
 
@@ -398,7 +332,7 @@ pub const Cli = struct {
                             &arenas[result.index_future],
                             &queue,
                             icon.page_url,
-                            .{.index_icon = i + end, .index_future = result.index_future},
+                            .{.index_item = i + end, .index_future = result.index_future},
                         }
                     );
                 }
@@ -407,7 +341,7 @@ pub const Cli = struct {
                     defer progress_node.completeOne();
 
                     const result = try queue.getOne(self.io);
-                    const icon_result = icons_missing[result.index_icon];
+                    const icon_result = icons_missing[result.index_item];
                     const icon_new_err = futures[result.index_future].await(self.io);
                     try add_icon_missing(&self.storage, icon_new_err, icon_result);
                 }
@@ -426,7 +360,7 @@ pub const Cli = struct {
                             &arenas[i],
                             &queue,
                             icon.page_url,
-                            .{.index_icon = i, .index_future = i},
+                            .{.index_item = i, .index_future = i},
                         }
                     );
                 }
@@ -435,7 +369,7 @@ pub const Cli = struct {
                     defer progress_node.completeOne();
 
                     const result = try queue.getOne(self.io);
-                    const icon_result = icons_failed[result.index_icon];
+                    const icon_result = icons_failed[result.index_item];
                     const icon_new_err = futures[result.index_future].await(self.io);
                     try add_icon_failed(&self.storage, icon_new_err, icon_result);
 
@@ -446,7 +380,7 @@ pub const Cli = struct {
                             &arenas[result.index_future],
                             &queue,
                             icon.page_url,
-                            .{.index_icon = i + end, .index_future = result.index_future},
+                            .{.index_item = i + end, .index_future = result.index_future},
                         }
                     );
                 }
@@ -455,7 +389,7 @@ pub const Cli = struct {
                     defer progress_node.completeOne();
 
                     const result = try queue.getOne(self.io);
-                    const icon_result = icons_failed[result.index_icon];
+                    const icon_result = icons_failed[result.index_item];
                     const icon_new_err = futures[result.index_future].await(self.io);
                     try add_icon_failed(&self.storage, icon_new_err, icon_result);
                 }
@@ -465,9 +399,9 @@ pub const Cli = struct {
         try self.storage.icons_remove_unused();
     }
 
-    fn fetch_icon_missing_or_failed(io: std.Io, arena: *std.heap.ArenaAllocator, queue: *QueueIcon, icon_page_url: std.Uri, queue_data: QueueData) !feed_types.Icon {
+    fn fetch_icon_missing_or_failed(io: std.Io, arena: *std.heap.ArenaAllocator, queue: *QueueData, icon_page_url: std.Uri, index_data: IndexData) !feed_types.Icon {
         const result = http_client.fetch_icon(io, arena.allocator(), icon_page_url, .{});
-        try queue.putOne(io, queue_data);
+        try queue.putOne(io, index_data);
         return result;
     }
 
@@ -1099,47 +1033,8 @@ pub const Cli = struct {
         return value;
     }
 
-    pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !bool {
-        var arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer arena.deinit();
-
-        const feed_updates = try self.storage.getFeedsToUpdate(arena.allocator(), input, options);
-        if (feed_updates.len == 0) {
-            std.log.info("No feeds to update", .{});
-            return false;
-        }
-
-        var item_arena = std.heap.ArenaAllocator.init(self.allocator);
-        defer item_arena.deinit();
-
-        var count_updated: u32 = 0;
-        const progress_node = self.progress.start("Updating feeds", feed_updates.len);
-        defer {
-            progress_node.end();
-            std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
-        }
-
-        var app: App = .{ .storage = self.storage, .io = self.io };
-
-        for (feed_updates) |f_update| {
-            _ = item_arena.reset(.retain_capacity);
-            const r = app.update_feed(&item_arena, f_update) catch |err| switch (err) {
-                error.NameServerFailure, error.NetworkUnreachable => return err,
-                else => {
-                    std.log.info("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
-                    continue;
-                }
-            };
-
-            switch (r) {
-                .added, .no_changes => {
-                    progress_node.completeOne();
-                    count_updated += 1;
-                },
-                .failed => {},
-            }
-        }
-        return true;
+    pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
+        try App.update_feeds(self.allocator, self.io, &self.storage, input, options, self.core_count);
     }
 
     pub fn serve(self: *Self, opts: ServeOptions) !void {
@@ -1318,54 +1213,179 @@ test "feedgaze.show" {
 }
 
 pub const App = struct {
-    io: std.Io,
-    storage: Storage, 
 
-    const UpdateResult = enum {
-        added,
-        no_changes,
-        failed,
+    const UpdateResult = union(enum) {
+        add: struct { parsed: ValidFeed, feed_updates: FeedUpdate },
+        status_code_not_200: struct { status_code: std.http.Status, retry_utc_sec: ?i64 = null },
     };
 
-    pub fn update_feed(self: *@This(), arena: *std.heap.ArenaAllocator, f_update: FeedToUpdate) !UpdateResult {
-        var req = http_client.init(self.io, arena.allocator());
+    pub fn update_feeds(allocator: Allocator, io: std.Io, storage: *Storage, input: ?[]const u8, options: UpdateOptions, core_count: usize) !void {
+        var arena = std.heap.ArenaAllocator.init(allocator);
+        defer arena.deinit();
+
+        const feed_updates = try storage.getFeedsToUpdate(arena.allocator(), input, options);
+        if (feed_updates.len == 0) {
+            std.log.info("No feeds to update", .{});
+            return;
+        }
+
+        const select_count: usize = @min(core_count, config.core_count_max, feed_updates.len);
+
+        var buf: [config.core_count_max * @sizeOf(std.heap.ArenaAllocator)]u8 = undefined;
+        var fixed = std.heap.FixedBufferAllocator.init(&buf);
+
+        const arenas = fixed.allocator().alloc(std.heap.ArenaAllocator, select_count) catch unreachable;
+        for (arenas[0..select_count]) |*arena_fixed| {
+            arena_fixed.* = std.heap.ArenaAllocator.init(allocator);
+        }
+        defer {
+            for (arenas) |arena_fixed| {
+                arena_fixed.deinit();
+            }
+            fixed.allocator().free(arenas);
+        }
+
+        var buf_result: [config.core_count_max]IndexData = undefined;
+        var queue = QueueData.init(&buf_result);
+        defer queue.close(io);
+
+        const end = select_count;
+
+        const FnReturn = @typeInfo(@TypeOf(update_feed)).@"fn".return_type.?;
+        var futures: [config.core_count_max]std.Io.Future(FnReturn) = undefined;
+        // Make sure futures resources are cleaned up
+        defer for (futures[0..end]) |*fut| {
+            _ = fut.cancel(io) catch {};
+        };
+
+        var count_updated: u32 = 0;
+
+        const progress = std.Progress.start(io, .{});
+        defer progress.end();
+        const progress_node = progress.start("Updating feeds", feed_updates.len);
+        defer {
+            progress_node.end();
+            std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
+        }
+
+        for (feed_updates[0..end], 0..) |f_update, i| {
+            futures[i] = io.async(
+                update_feed,
+                .{
+                    io,
+                    &arenas[i],
+                    &queue,
+                    storage,
+                    f_update,
+                    .{.index_item = i, .index_future = i},
+                }
+            );
+        }
+
+        for (feed_updates[end..], 0..) |f_update, i| {
+            const indexes = try queue.getOne(io);
+            const queue_update = feed_updates[indexes.index_item];
+            const result_err = futures[indexes.index_future].await(io);
+
+            count_updated += @intFromBool(try resolve_update_result(storage, result_err, queue_update));
+
+            progress_node.completeOne();
+
+            futures[indexes.index_future] = io.async(
+                update_feed,
+                .{
+                    io,
+                    &arenas[indexes.index_future],
+                    &queue,
+                    storage,
+                    f_update,
+                    .{.index_item = i + end, .index_future = indexes.index_future},
+                }
+            );
+        }
+
+        for (0..end) |_| {
+            const indexes = try queue.getOne(io);
+            const queue_update = feed_updates[indexes.index_item];
+            const result_err = futures[indexes.index_future].await(io);
+
+            _ = try resolve_update_result(storage, result_err, queue_update);
+
+            progress_node.completeOne();
+        }
+    }
+
+    fn resolve_update_result(storage: *Storage, result_err: anyerror!UpdateResult, queue_update: FeedToUpdate) !bool {
+        if (result_err) |result| switch (result) {
+            .add => |r| {
+                storage.updateFeedAndItems(r.parsed, r.feed_updates) catch |err| {
+                    try storage.request_failed_add(queue_update.feed_id, @errorName(err));
+                    std.log.err("Failed to update feed '{f}'. Error: {}", .{queue_update.feed_url, err});
+                    try storage.rate_limit_remove(queue_update.feed_id);
+                };
+
+                return true;
+            },
+            .status_code_not_200 => |val| switch (val.status_code) {
+                .not_modified => {
+                    try storage.updateLastUpdate(queue_update.feed_id);
+                    try storage.request_failed_remove(queue_update.feed_id);
+                    try storage.rate_limit_remove(queue_update.feed_id);
+                },
+                .too_many_requests => {
+                    try storage.rate_limit_add(queue_update.feed_id, val.retry_utc_sec orelse unreachable);
+                    try storage.request_failed_remove(queue_update.feed_id);
+                },
+                else => {
+                    try storage.rate_limit_remove(queue_update.feed_id);
+                    var buf_status_code: [16]u8 = undefined;
+                    const reason = val.status_code.phrase() orelse
+                        std.fmt.bufPrint(&buf_status_code, "{d}", .{val.status_code}) catch unreachable;
+                    try storage.request_failed_add(queue_update.feed_id, reason);
+                }
+            }
+        } else |err| switch (err) {
+            error.NameServerFailure, error.NetworkUnreachable => {
+                std.log.err("There seems to be no network available", .{});
+                return err;
+            },
+            else => {
+                std.log.err("Failed to update feed '{f}'. Error: {}", .{queue_update.feed_url, err});
+                try storage.rate_limit_remove(queue_update.feed_id);
+                try storage.request_failed_add(queue_update.feed_id, @errorName(err));
+            }
+        }
+        return false;
+    }
+
+    pub fn update_feed(io: std.Io, arena: *std.heap.ArenaAllocator, queue: *QueueData, storage: *Storage, f_update: FeedToUpdate, index_data: IndexData) !UpdateResult {
+        _ = arena.reset(.retain_capacity);
+
+        var req = http_client.init(io, arena.allocator());
         defer req.deinit();
 
         var buffer_header: [1028]u8 = undefined;
         const feed_uri = f_update.feed_url;
-        const resp_opt = req.fetch(arena.allocator(), feed_uri, .{
+        const resp_opt = try req.fetch(arena.allocator(), feed_uri, .{
             .etag_or_last_modified = f_update.etag_or_last_modified,
             .buffer_header = &buffer_header,
-        }) catch |err| switch (err) {
-            error.NameServerFailure, error.NetworkUnreachable => return err,
-            else => {
-                try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-                std.log.err("Failed to fetch feed '{f}'. Error: {}", .{f_update.feed_url, err});
-                return .failed;
-            }
-        };
+        });
 
         if (resp_opt == null) {
             const resp = req.response orelse unreachable;
             const status_code = resp.head.status;
-            if (status_code == .not_modified) {
-                // Resource hasn't been modified
-                try self.storage.updateLastUpdate(f_update.feed_id);
-                try self.storage.request_failed_remove(f_update.feed_id);
-                try self.storage.rate_limit_remove(f_update.feed_id);
-                return .no_changes;
-            } else if (status_code == .service_unavailable) {
-                try self.storage.rate_limit_remove(f_update.feed_id);
-                try self.storage.request_failed_add(f_update.feed_id, resp.head.reason);
-                return .failed;
-            } else if (status_code == .too_many_requests) {
-                std.log.warn("Rate limit hit with feed '{f}'", .{f_update.feed_url});
-                const now_utc_sec = std.Io.Clock.real.now(self.io).toSeconds();
-                const retry_reset = blk: {
+            // resp_opt null means status_code != 200. maybe change it?
+            std.debug.assert(status_code != .ok);
+
+            const retry_utc_sec = blk: {
+                if (status_code == .too_many_requests) {
+                    std.log.warn("Rate limit hit with feed '{f}'", .{f_update.feed_url});
+                    const now_utc_sec = std.Io.Clock.real.now(io).toSeconds();
+
                     var header_map: http_client.HeaderMap = .empty;
                     try header_map.ensureTotalCapacity(arena.allocator(), 4);
                     try http_client.fill_headers(req.response.?.head.bytes, &header_map, &.{
-                        "x-ratelimit-remaining",
+                       "x-ratelimit-remaining",
                         "x-ratelimit-reset",
                         "retry-after",
                         "x-rate-limit-reset",
@@ -1396,48 +1416,33 @@ pub const App = struct {
                                 break :blk date_utc + 1;
                             } else |_| {}
                     }
+
                     break :blk now_utc_sec + std.time.s_per_hour;
-                };
-                try self.storage.rate_limit_add(f_update.feed_id, retry_reset);
-                try self.storage.request_failed_remove(f_update.feed_id);
-                return .failed;
-            } else if (@intFromEnum(status_code) >= 400 and @intFromEnum(status_code) < 600) {
-                try self.storage.request_failed_add(f_update.feed_id, resp.head.reason);
-                std.log.err("Request to '{f}' failed with status code {d}", .{f_update.feed_url, status_code});
-                try self.storage.rate_limit_remove(f_update.feed_id);
-                return .failed;
-            }
-            return .failed;
+                }
+
+                break :blk null;
+            };
+
+            try queue.putOne(io, index_data);
+            return .{.status_code_not_200 = .{.status_code = status_code, .retry_utc_sec = retry_utc_sec }};
         }
 
         const resp = resp_opt orelse unreachable;
         const body = resp.body;
 
-        const html_options = try self.storage.html_selector_get(arena.allocator(), f_update.feed_id);
-        var parsing: FeedParser = .init(self.io, body);
+        // TODO: maybe move getting html_options outside this fn
+        const html_options = try storage.html_selector_get(arena.allocator(), f_update.feed_id);
+        var parsing: FeedParser = .init(io, body);
 
-        const parsed = parsing.parse(arena.allocator(), html_options, .{
+        const parsed = try parsing.parse(arena.allocator(), html_options, .{
             .feed_url = feed_uri,
             .feed_id = f_update.feed_id,
             .feed_to_update = f_update,
-        }) catch |err| {
-            try self.storage.rate_limit_remove(f_update.feed_id);
-            try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to parse feed '{f}'. Error: {}", .{f_update.feed_url, err});
-            return .failed;
-        };
+        });
 
-        self.storage.updateFeedAndItems(parsed, resp.feed_updates) catch |err| {
-            try self.storage.request_failed_add(f_update.feed_id, @errorName(err));
-            std.log.err("Failed to update feed '{f}'. Error: {}", .{f_update.feed_url, err});
-            try self.storage.rate_limit_remove(f_update.feed_id);
-            return .failed;
-        };
-
-        return .added;
+        try queue.putOne(io, index_data);
+        return .{ .add = .{.parsed = parsed, .feed_updates = resp.feed_updates }};
     }
-
-    
 };
 
 fn relative_time_from_seconds(buf: []u8,  seconds: i64) ![]const u8 {

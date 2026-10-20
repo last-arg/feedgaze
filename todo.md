@@ -6,6 +6,11 @@
 - replace http.zig with dusty?
 - explore zt for html templating
 - failed feed request page shows duplicates
+- date parsing errors:
+```
+warning: Failed to parse Atom dates timezone '1Z'. Error: error.InvalidCharacter
+
+```
 - check image warnings
 ```
 warning: Failed to get icon 'https://insidegovuk.blog.gov.uk/wp-content/themes/gds-blogs/build/node_modules/govuk-frontend/dist/govuk/assets/rebrand/images/favicon.ico'. Response body is empty. Got HTTP status code 404
