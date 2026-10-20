@@ -1834,15 +1834,15 @@ fn parse_atom_current_state(
             .link => {},
             .updated => {
                 const date_raw = content[loc.offset..loc.offset + loc.len];
-                if (AtomDateTime.parse(date_raw)) |new_date| {
+                if (AtomDateTime.parse(date_raw) catch RssDateTime.parse(date_raw)) |new_date| {
                     feed.updated_timestamp = new_date;
                 } else |_| {
                     if (feed.page_url) |page_urlloc| {
                         const end = page_urlloc.offset + page_urlloc.len;
                         const page_url = content[page_urlloc.offset..end];
-                        std.log.warn("Failed to parse atom date {s} for {s}", .{date_raw, page_url});
+                        std.log.warn("Failed to parse Atom date {s} for {s}", .{date_raw, page_url});
                     } else {
-                        std.log.warn("Failed to parse atom date {s}", .{date_raw});
+                        std.log.warn("Failed to parse Atom date {s}", .{date_raw});
                     }
 
                 }
