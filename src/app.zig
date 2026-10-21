@@ -115,11 +115,18 @@ pub const Cli = struct {
                 try self.show(inputs, opts);
             },
             .update => |opts| {
+                var progress = std.Progress.start(self.io, .{});
+                defer progress.end();
+
                 const input = if (args.positionals.len > 0) args.positionals[0] else null;
-                try self.update(input, opts);
+                try self.update(&progress, input, opts);
             },
             .run => {
                 std.log.info("Running in foreground", .{});
+
+                var progress = std.Progress.start(self.io, .{});
+                defer progress.end();
+
                 const loop_count_max = 5;
                 var loop_count: u16 = 0;
                 const tz_system_local = try zdt.Timezone.tzLocal(self.io, null);
@@ -147,7 +154,7 @@ pub const Cli = struct {
                         }
                     }
 
-                    if (self.update(null, .{})) |_| {
+                    if (self.update(&progress, null, .{})) |_| {
                         loop_count = 0;
                     } else |err| {
                         if (err == error.NameServerFailure or err == error.NetworkUnreachable) {
@@ -1033,8 +1040,8 @@ pub const Cli = struct {
         return value;
     }
 
-    pub fn update(self: *Self, input: ?[]const u8, options: UpdateOptions) !void {
-        try App.update_feeds(self.allocator, self.io, &self.storage, input, options, self.core_count);
+    pub fn update(self: *Self, progress: *std.Progress.Node, input: ?[]const u8, options: UpdateOptions) !void {
+        try App.update_feeds(self.allocator, self.io, &self.storage, progress, input, options, self.core_count);
     }
 
     pub fn serve(self: *Self, opts: ServeOptions) !void {
@@ -1219,7 +1226,7 @@ pub const App = struct {
         status_code_not_200: struct { status_code: std.http.Status, retry_utc_sec: ?i64 = null },
     };
 
-    pub fn update_feeds(allocator: Allocator, io: std.Io, storage: *Storage, input: ?[]const u8, options: UpdateOptions, core_count: usize) !void {
+    pub fn update_feeds(allocator: Allocator, io: std.Io, storage: *Storage, progress: *std.Progress.Node, input: ?[]const u8, options: UpdateOptions, core_count: usize) !void {
         var arena = std.heap.ArenaAllocator.init(allocator);
         defer arena.deinit();
 
@@ -1260,8 +1267,6 @@ pub const App = struct {
 
         var count_updated: u32 = 0;
 
-        const progress = std.Progress.start(io, .{});
-        defer progress.end();
         const progress_node = progress.start("Updating feeds", feed_updates.len);
         defer {
             progress_node.end();

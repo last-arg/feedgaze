@@ -54,6 +54,7 @@ const Global = struct {
     layout: Layout,
     is_updating: bool = false,
     icon_manage: *IconManage,
+    progress: std.Progress.Node,
     core_count: usize,
 };
 
@@ -256,11 +257,16 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     var icon_manage: IconManage = .init(allocator);
     defer icon_manage.deinit();
 
+    var progress = std.Progress.start(io, .{});
+    defer progress.end();
+
+
     var global: Global = .{
         .io = io,
         .storage = @constCast(&storage),
         .layout = layout,
         .icon_manage = &icon_manage,
+        .progress = progress,
         .core_count = try std.Thread.getCpuCount(),
     };
     const server_config: httpz.Config = .{
@@ -350,7 +356,8 @@ fn update_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !voi
 
     if (!global.is_updating) {
         global.is_updating = true;
-        try App.update_feeds(req.arena, global.io, global.storage, null, .{}, global.core_count);
+
+        try App.update_feeds(req.arena, global.io, global.storage, &global.progress, null, .{}, global.core_count);
         global.is_updating = false;
     }
 
