@@ -393,7 +393,7 @@ pub const Storage = struct {
     }
 
     pub fn hasFeedWithFeedUrl(self: *Self, url: []const u8) !bool {
-        const query = "select exists (SELECT 1 as val from feed where feed_url = :url OR page_url = :url)";
+        const query = "select exists (SELECT 1 as val from feed where feed_url = :url OR page_url = :url) as val";
 
         if (try one(u32, &self.sql_db, undefined, query, .{.url = sql.text(url)})) |val| {
             return val == 1;
