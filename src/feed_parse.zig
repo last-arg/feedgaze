@@ -1677,9 +1677,9 @@ fn parse_rss_current_state(
                         if (feed.page_url) |page_url_loc| {
                             const end = page_url_loc.offset + page_url_loc.len;
                             const page_url = content[page_url_loc.offset..end];
-                            std.log.warn("Failed to parse RSS date {s} for {s}", .{date_str, page_url});
+                            std.log.warn("Failed to parse RSS date '{s}' for '{s}'", .{date_str, page_url});
                         } else {
-                            std.log.warn("Failed to parse RSS date {s}", .{date_str});
+                            std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
                         }
 
                         break :blk null;
@@ -1706,7 +1706,7 @@ fn parse_rss_current_state(
                         if (feed.page_url) |page_url_loc| {
                             const end = page_url_loc.offset + page_url_loc.len;
                             const page_url = content[page_url_loc.offset..end];
-                            std.log.warn("Failed to parse RSS date {s} for {s}", .{date_str, page_url});
+                            std.log.warn("Failed to parse RSS date '{s}' for '{s}'", .{date_str, page_url});
                         } else {
                             std.log.warn("Failed to parse RSS date '{s}'", .{date_str});
                         }

@@ -7,6 +7,25 @@
 - explore zt for html templating
 - failed feed request page shows duplicates
 - check adding timeout to async code? Can I?
+- error:
+```
+thread 197014 panic: index out of bounds: index 40595, len 19221
+/mnt/hdd/code/feedgaze/src/feed_parse.zig:49:24: 0x16b6713 in slice_from_loc (main.zig)
+    return self.content[loc.offset..loc.offset + loc.len];
+                       ^
+/mnt/hdd/code/feedgaze/src/feed_parse.zig:1476:48: 0x130672f in parse (main.zig)
+            const item_id = self.slice_from_loc(loc);
+                                               ^
+/mnt/hdd/code/feedgaze/src/app.zig:1438:41: 0x1309ee0 in update_feed (main.zig)
+        const parsed = try parsing.parse(arena.allocator(), html_options, .{
+                                        ^
+/nix/store/vvg5zp3bwmbygxdcafkhl7zs1j0x9pa9-zig-0.17.0/lib/std/Io.zig:2537:13: 0x1bd3cbf in start (std.zig)
+            result_casted.* = @call(.auto, function, args_casted.*);
+            ^
+/nix/store/vvg5zp3bwmbygxdcafkhl7zs1j0x9pa9-zig-0.17.0/lib/std/Io/Threaded.zig:744:20: 0x1290d5e in start (std.zig)
+        future.func(future.contextPointer(), future.resultPointer());
+                   ^
+```
 - check image warnings
 ```
 warning: Failed to get icon 'https://insidegovuk.blog.gov.uk/wp-content/themes/gds-blogs/build/node_modules/govuk-frontend/dist/govuk/assets/rebrand/images/favicon.ico'. Response body is empty. Got HTTP status code 404
