@@ -246,23 +246,15 @@ pub fn resize_jpeg(io: std.Io, allocator: std.mem.Allocator, data: []const u8) !
 }
 
 pub fn process(io: std.Io, allocator: std.mem.Allocator, data: []const u8, img_type_opt: ?Type) ![]const u8 {
-    const img_type_from_data = Type.from_data(data) orelse blk: {
+    const img_type = Type.from_data(data) orelse blk: {
         std.log.warn("Could not figure out image file type based on file content", .{});
         if (img_type_opt) |img_type| {
             std.log.warn("Will use file type {} from HTTP header 'Content-type'", .{img_type});
+            break :blk img_type;
         }
-        break :blk null;
-    
-    };
-
-    const img_type = img_type_opt orelse img_type_from_data orelse {
         return error.UnknownImageType;
     };
 
-    if (img_type_from_data != img_type) {
-        std.log.warn("Image file type and HTTP 'Content-Type' don't match. Using file type from image content", .{});
-    }
-    
     switch(img_type) {
         .png => {
             var img = try resize_png(io, allocator, data);

@@ -17,7 +17,7 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main(init: std.process.Init) !void {
-    // try zignal();
+    try zignal(init.io, init.arena.allocator());
     // try std_http_client();
     // try run_storage_rule_add();
     // try run_rule_transform();
@@ -25,7 +25,7 @@ pub fn main(init: std.process.Init) !void {
     // try run_parse(init.io);
     // try test_allocating();
     // try storage_item_interval();
-    try storage_test(init.io);
+    // try storage_test(init.io);
     // try find_dir();
     // try http_head();
     // try zig_http();
@@ -38,12 +38,14 @@ pub fn main(init: std.process.Init) !void {
 }
 
 const z = @import("zignal");
-pub fn zignal() !void {
-    const data = @embedFile("./tmp1.png");
-    var a = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn zignal(io: std.Io, allocator: std.mem.Allocator) !void {
+    const data = @embedFile("./sara.png");
+    for (data[0..8]) |v| {
+        print("{x}\n", .{v});
+    }
 
     const image = @import("image.zig");
-    const img = try image.process(a.allocator(), data, .png);
+    const img = try image.process(io, allocator, data, .ico);
     print("|{d} -> {d}|\n", .{ data.len, img.len });
     // print("|{d}|\n", .{s.len});
     // try z.png.save(z.Rgba, a.allocator(), img, "./out.png");

@@ -1,7 +1,5 @@
 - html parsing: get date from url path?
 - old reddit feed gets error NoHtmlOptions
-- 'https://implaustin.hashnode.dev/' returns Forbidden
-  Probably because cloudflare protection?
 - replace http.zig with dusty?
 - explore zt for html templating
 - check adding timeout to async code? Can I?
@@ -33,8 +31,6 @@ warning: Failed to parse date '6255c65600e043e626c7a318'. Error: error.Overflow
 
 url: https://storage.ghost.io/c/e9/cd/e9cd41fa-38ff-4a54-98d9-175f5b5d501c/content/images/size/w256h256/2018/11/glider_big.png
 warning: Failed to parse date '756cffb5002e1cf71dbca318'. Error: error.Overflow
-
-warning: Failed to process image 'https://www.sarasoueidan.com/favicon.ico'
 
 Should be '/favicon.ico' without '/images/'
 warning: Failed to get icon 'https://antithesis.com/images/favicon.ico'. Response body is empty. Got HTTP status code 404
