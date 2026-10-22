@@ -284,11 +284,10 @@ pub const Storage = struct {
 
     pub fn request_failed_all(self: *Self, allocator: Allocator) ![]const FeedFailedRequestWithID {
         const query =
-            \\select fr1.feed_id, fr2.utc_sec, fr2.reason
-            \\from (select feed_id, max(utc_sec) max_utc_sec from feed_request_failed group by feed_id order by utc_sec DESC) fr1
-            \\left join feed_request_failed fr2 
-            \\on fr1.feed_id = fr2.feed_id
-            \\order by fr1.max_utc_sec DESC, fr2.utc_sec DESC
+            \\select feed_id, max(utc_sec) utc_sec, reason
+            \\from feed_request_failed
+            \\group by feed_id
+            \\order by utc_sec DESC
         ;
 
         return try all(&self.sql_db, FeedFailedRequestWithID, allocator, query, .{});

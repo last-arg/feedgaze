@@ -1,11 +1,9 @@
 - html parsing: get date from url path?
-- make feed updating non-blocking
 - old reddit feed gets error NoHtmlOptions
 - 'https://implaustin.hashnode.dev/' returns Forbidden
   Probably because cloudflare protection?
 - replace http.zig with dusty?
 - explore zt for html templating
-- failed feed request page shows duplicates
 - check adding timeout to async code? Can I?
 - error:
 ```
