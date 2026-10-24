@@ -22,13 +22,6 @@ thread 197014 panic: index out of bounds: index 40595, len 19221
         future.func(future.contextPointer(), future.resultPointer());
                    ^
 ```
-- check image warnings
-```
-warning: Failed to get icon 'https://insidegovuk.blog.gov.uk/wp-content/themes/gds-blogs/build/node_modules/govuk-frontend/dist/govuk/assets/rebrand/images/favicon.ico'. Response body is empty. Got HTTP status code 404
-
-Should be '/favicon.ico' without '/images/'
-warning: Failed to get icon 'https://antithesis.com/images/favicon.ico'. Response body is empty. Got HTTP status code 404
-```
 
 - website:
   - print form errors near fields where the error took place

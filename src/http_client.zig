@@ -381,7 +381,7 @@ pub fn fetch_icon(io: std.Io, allocator: Allocator, uri_input: std.Uri, opts: Fe
 
         const body = a_writer.writer.buffered();
         if (body.len == 0) {
-            std.log.warn("Icon body is empty. Request url: {s}", .{req_url});
+            std.log.warn("Html body is empty. Request url: {s}", .{req_url});
             break :blk;
         }
 

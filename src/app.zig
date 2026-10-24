@@ -841,6 +841,7 @@ pub const Cli = struct {
         }
 
         var html_opts: ?FeedParser.HtmlOptions = null;
+        var html_body: []const u8 = feed_opts.?.body;
 
         var buf_url: [1024]u8 = undefined;
         if (add_opts.feed_opts.content_type == .html) {
@@ -893,9 +894,14 @@ pub const Cli = struct {
                         .buffer_header = &buffer_header,
                     });
 
+                    const icon = add_opts.feed_opts.icon;
                     add_opts.feed_opts = feed_opts_2.?;
                     add_opts.feed_opts.feed_url = try std.Uri.parse(try client_2.get_url_slice(&buf_url));
                     add_opts.feed_opts.title = title;
+                    add_opts.feed_opts.icon = icon;
+                    if (feed_opts_2.?.content_type == .html) {
+                        html_body = feed_opts_2.?.body;
+                    }
                 }
             }
         } else {
@@ -910,7 +916,7 @@ pub const Cli = struct {
              
             const feed_uri_for_icon = add_opts.feed_opts.feed_url;
             add_opts.feed_opts.icon = http_client.fetch_icon(self.io, arena.allocator(), feed_uri_for_icon, .{
-                .html_body = if (add_opts.feed_opts.content_type == .html) add_opts.feed_opts.body else null,
+                .html_body = if (html_body.len > 0) html_body else null,
             }) catch null;
         }
 
