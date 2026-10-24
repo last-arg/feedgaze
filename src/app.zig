@@ -1270,7 +1270,11 @@ pub const App = struct {
         const progress_node = progress.start("Updating feeds", feed_updates.len);
         defer {
             progress_node.end();
-            std.log.info("Feeds updated: [{}/{}]", .{count_updated, feed_updates.len});
+            if (count_updated > 0) {
+                std.log.info("Updated {d} feed{s}", .{count_updated, if (count_updated == 1) "" else "s"});
+            } else {
+                std.log.info("No feeds were updated", .{});
+            }
         }
 
         for (feed_updates[0..end], 0..) |f_update, i| {
