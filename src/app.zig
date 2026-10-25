@@ -157,7 +157,11 @@ pub const Cli = struct {
                     if (self.update(&progress, null, .{})) |_| {
                         loop_count = 0;
                     } else |err| {
-                        if (err == error.NameServerFailure or err == error.NetworkUnreachable) {
+                        if (err == error.NameServerFailure or
+                            err == error.NetworkUnreachable or
+                            err == error.UnknownHostname or
+                            err == error.NetworkDown
+                        ) {
                             const wait_sec = std.Io.Duration.fromSeconds(3 * loop_count + 1);
                             std.log.warn("Failed to update feeds because a network problem. Will try again in {d} seconds", .{wait_sec.toSeconds()});
                             try self.io.sleep(wait_sec, .boot);
@@ -1376,6 +1380,10 @@ pub const App = struct {
     pub fn update_feed(io: std.Io, arena: *std.heap.ArenaAllocator, queue: *QueueData, storage: *Storage, f_update: FeedToUpdate, index_data: IndexData) !UpdateResult {
         _ = arena.reset(.retain_capacity);
 
+        defer queue.putOne(io, index_data) catch |err| {
+            std.log.err("Failed to add data to update queue. Error: {}", .{err});
+        };
+
         var req = http_client.init(io, arena.allocator());
         defer req.deinit();
 
@@ -1438,7 +1446,6 @@ pub const App = struct {
                 break :blk null;
             };
 
-            try queue.putOne(io, index_data);
             return .{.status_code_not_200 = .{.status_code = status_code, .retry_utc_sec = retry_utc_sec }};
         }
 
@@ -1455,7 +1462,6 @@ pub const App = struct {
             .feed_to_update = f_update,
         });
 
-        try queue.putOne(io, index_data);
         return .{ .add = .{.parsed = parsed, .feed_updates = resp.feed_updates }};
     }
 };
