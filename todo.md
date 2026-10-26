@@ -1,5 +1,4 @@
 - html parsing: get date from url path?
-- old reddit feed gets error NoHtmlOptions
 - replace http.zig with dusty?
 - explore zt for html templating
 - check adding timeout to async code? Can I?

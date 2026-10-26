@@ -17,11 +17,10 @@ pub const std_options: std.Options = .{
 };
 
 pub fn main(init: std.process.Init) !void {
-    try zignal(init.io, init.arena.allocator());
-    // try std_http_client();
+    try std_http_client(init.io, init.arena);
     // try run_storage_rule_add();
     // try run_rule_transform();
-    // try run_add_new_feed();
+    // try run_add_new_feed(init.io, init.arena);
     // try run_parse(init.io);
     // try test_allocating();
     // try storage_item_interval();
@@ -37,50 +36,28 @@ pub fn main(init: std.process.Init) !void {
     // try tmp_iter_attrs();
 }
 
-const z = @import("zignal");
-pub fn zignal(io: std.Io, allocator: std.mem.Allocator) !void {
-    const data = @embedFile("./sara.png");
-    for (data[0..8]) |v| {
-        print("{x}\n", .{v});
-    }
-
-    const image = @import("image.zig");
-    const img = try image.process(io, allocator, data, .ico);
-    print("|{d} -> {d}|\n", .{ data.len, img.len });
-    // print("|{d}|\n", .{s.len});
-    // try z.png.save(z.Rgba, a.allocator(), img, "./out.png");
-}
-
-pub fn std_http_client() !void {
-    var gen = std.heap.GeneralPurposeAllocator(.{}){};
-    var arena = std.heap.ArenaAllocator.init(gen.allocator());
-    defer arena.deinit();
-
+pub fn std_http_client(io: std.Io, arena: *std.heap.ArenaAllocator) !void {
     const c = @import("http_client.zig");
 
-    var h = c.init(arena.allocator());
+    var h = c.init(io, arena.allocator());
     // defer h.deinit();
 
     // const url = "https://lobste.rs/";
-    const url = "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
+    const url = "https://reddit.com/r/programming/.rss";
     // const url = "http://google.com";
     // const url = "http://www.openmymind.net/atom.xml";
     //
 
     const uri = try std.Uri.parse(url);
 
-    var buf_arr: std.Io.Writer.Allocating = try .initCapacity(arena.allocator(), 1024);
-    defer buf_arr.deinit();
-
     var buf_header: [8 * 1024]u8 = undefined;
-    const res = try h.fetch(&buf_arr.writer, arena.allocator(), uri, .{
+    const res = try h.fetch(arena.allocator(), uri, .{
         .buffer_header = &buf_header,
     });
-    _ = res;
     print("buffer: {s}\n", .{buf_header[0..128]});
     print("status: {}\n", .{h.response.?.head.status});
 
-    // print("body: |{s}|\n", .{buf_arr.writer.buffered()});
+    print("body: |{s}|\n", .{res.?.body[0..128]});
 
     print("header : |{f}|\n", .{h.request.?.uri});
 }
@@ -388,21 +365,17 @@ fn run_parse(io: std.Io) !void {
 // check if new feed url hits any add_rules
 // - if it does transform feed url
 // - if not use url as is
-pub fn run_add_new_feed() !void {
+pub fn run_add_new_feed(io: std.Io, arena: *std.heap.ArenaAllocator) !void {
     const Cli = @import("app.zig").Cli;
 
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
     const allocator = arena.allocator();
 
     var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
     const writer = &stdout_writer.interface;
     var stdin_buffer: [1024]u8 = undefined;
-    var stdout_reader = std.fs.File.stdin().reader(&stdin_buffer);
+    var stdout_reader = std.Io.File.stdin().reader(io, &stdin_buffer);
     const reader = &stdout_reader.interface;
-    const progress_node = std.Progress.start(.{});
-    defer progress_node.end();
 
     // var storage = try Storage.init("./tmp/feeds.db");
     var storage = try Storage.init(null);
@@ -411,17 +384,19 @@ pub fn run_add_new_feed() !void {
         .storage = storage,
         .out = writer,
         .in = reader,
-        .progress = progress_node,
+        .io = io,
+        .core_count = try std.Thread.getCpuCount(),
     };
     // const input = "https://www.newelofknowledge.com/letters";
     // const input = "https://h4x0r.org/";
     // const input = "https://lobste.rs/";
     // const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC2EQzAewrC10KCDFSS4j-zA";
-    const input = "https://www.youtube.com/feeds/videos.xml?channel_id=UC7M-Wz4zK8oikt6ATcoTwBA";
+    const input = "https://old.reddit.com/r/programming/.rss";
     print("\ninput url: {s}\n", .{input});
 
     _ = try cli.add(input);
-    const opt = try storage.get_feed_with_url(allocator, input);
+    const opt = try storage.get_feed_id_with_url(input);
+        print("item.url: {?}\n", .{opt});
     if (opt) |f| {
         _ = f; // autofix
         // const items = try storage.feed_items_with_feed_id(arena.allocator(), f.feed_id);
