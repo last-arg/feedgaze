@@ -1364,7 +1364,10 @@ pub const App = struct {
                 }
             }
         } else |err| switch (err) {
-            error.NameServerFailure, error.NetworkUnreachable => {
+            error.NameServerFailure,
+            error.NetworkUnreachable,
+            error.UnknownHostname,
+            error.NetworkDown => {
                 std.log.err("There seems to be no network available", .{});
                 return err;
             },
