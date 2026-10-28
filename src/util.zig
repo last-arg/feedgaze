@@ -50,6 +50,45 @@ pub fn timestampToString(buf: []u8, timestamp: ?i64) []const u8 {
     return w.buffered();
 }
 
+pub fn write_timestamp(ts: i64, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    const dt = Datetime.fromUnix(ts, .second, .{.tz = &zdt.Timezone.UTC }) catch return;
+    dt.toString(zdt.Formats.RFC3339, w) catch |err| {
+        std.log.warn("Failed to format date timestamp. Error: {}", .{err});
+    };
+}
+
+pub fn write_display_date(a: i64, b: i64, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    if (a < b) {
+        const dt = Datetime.fromUnix(b, .second, null) catch return;
+        dt.toString(zdt.Formats.RFC3339, w) catch |err| {
+            std.log.warn("Failed to format date timestamp. Error: {}", .{err});
+        };
+        return;
+    }
+
+    const diff = a - b;
+    const mins = @divFloor(diff, 60);
+    const hours = @divFloor(mins, 60);
+    const days = @divFloor(hours, 24);
+    const months = @divFloor(days, 30);
+    const years = @divFloor(days, 365);
+
+    if (years > 0) {
+        return try w.print("{d}Y", .{years});
+    } else if (months > 0) {
+        return try w.print("{d}M", .{months});
+    } else if (days > 0) {
+        return try w.print("{d}d", .{days});
+    } else if (hours > 0) {
+        return try w.print("{d}h", .{hours});
+    } else if (mins == 0) {
+        return try w.print("0m", .{});
+    }
+
+    // mins > 0
+    return try w.print("{d}m", .{mins});
+}
+
 pub fn get_icon_from_html(writer: *std.Io.Writer, uri: std.Uri, html_body: []const u8) !?[]const u8 {
     if (html.parse_icon(html_body)) |icon_url| {
         if (is_data(icon_url)) {
@@ -93,3 +132,46 @@ pub fn image_raw_from_data_uri(input: []const u8) ?[]const u8 {
 
     return content;
 }
+
+// Example output: "15:05:12 21.12.2024 UTC"
+const date_format_readable = "%H:%M:%S %d.%m.%Y UTC";
+const date_format_readable_len = count_date_len(date_format_readable, .{});
+
+pub fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
+    var result: [date_format_readable_len]u8 = undefined;
+    const date_for_human = Datetime.fromUnix(utc_sec, .second, null ) catch unreachable;
+
+    var w: std.Io.Writer = .fixed(&result);
+    date_for_human.toString(date_format_readable, &w) catch unreachable;
+
+    return result;
+}
+
+pub fn age_class_from_time(now_sec: i64, time: ?i64) ?[]const u8 {
+    if (time) |updated_timestamp| {
+        const age_3days_ago = now_sec - (std.time.s_per_day * 3);
+        const age_30days_ago = now_sec - (std.time.s_per_day * 30);
+                
+        // TODO: date might be in the future?
+        // Cap future date to now?
+        if (updated_timestamp > age_3days_ago) {
+            return "age-newest";
+        } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
+            return "age-less-month";
+        } else if (updated_timestamp < age_30days_ago) {
+            return "age-more-month";
+        }
+    }
+
+    return null;
+}
+
+pub fn write_url_domain(url: std.Uri, w: *std.Io.Writer) std.Io.Writer.Error!void {
+    try w.print("{f}"
+    , .{ url.fmt(.{
+        .authority = true,
+        .port = true,
+        })
+    });
+}
+

@@ -2,6 +2,7 @@ const std = @import("std");
 const std_build = std.Build;
 const Build = std.Build;
 const CompileStep = Build.Step.Compile;
+const zt = @import("zt");
 pub const CrossTarget = std.zig.CrossTarget;
 pub const OptimizeMode = std.builtin.OptimizeMode;
 
@@ -158,14 +159,23 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     step.root_module.addImport("zts", zts.module("zts"));
 
     const zignal = b.dependency("zignal", dep_args);
-    // And assuming that your b.addExecutable `exe`:
     step.root_module.addImport("zignal", zignal.module("zignal"));
-    // If you're creating a `module` using b.createModule, then:
-    step.root_module.addImport("zignal", zignal.module("zignal"));
+
+    const zt_dep = b.dependency("zt", dep_args);
+    step.root_module.addImport("zt", zt_dep.module("zt"));
+
+    const templates = zt.addTemplates(b, zt_dep, &.{
+        b.path("src/templates/pages.zt"),
+    });
+
+    step.step.dependOn(templates);
 
     step.root_module.addImport("build_zig_zon", b.createModule(.{
         .root_source_file = b.path("build.zig.zon"),
         .target = dep_args.target,
         .optimize = dep_args.optimize,
     }));
+
+
+
 }

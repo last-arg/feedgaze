@@ -22,6 +22,7 @@ const date_len_max = util.date_len_max;
 const zts = @import("zts");
 const image = @import("./image.zig");
 const comptimePrint = std.fmt.comptimePrint;
+const pages = @import("templates/pages.zig");
 
 const icon_input_max_size = 8 * 1024;
 const cookie_key = "last-item-added-timestamp";
@@ -29,12 +30,15 @@ const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
 const parts = @embedFile("./layouts/parts.html");
 
+// TODO: can probably remove after moving template to zt
+const date_readable = util.date_readable;
+
 const static_files_hash = blk: {
     var hasher = std.hash.Wyhash.init(0);
     var buf: [feed_types.Icon.u64_hex_max_length] u8 = undefined;
 
-    for (static_files) |kv| {
-        const key = std.fmt.bufPrint(&buf, "{x}", .{kv[1]}) catch unreachable;
+    for (pages.static_files_map) |file| {
+        const key = std.fmt.bufPrint(&buf, "{x}", .{file.hash}) catch unreachable;
         hasher.update(key);
     }
 
@@ -61,8 +65,9 @@ const Global = struct {
 const IconFileType = image.Type;
 
 pub const IconManage = struct {
-    storage: Cache,
+    cache: Cache,
     allocator: std.mem.Allocator,
+    storage: Storage,
 
     url_string_bytes: ArrayList(u8) = .empty,
     data_string_bytes: std.Io.Writer.Allocating,
@@ -83,10 +88,11 @@ pub const IconManage = struct {
         hash: Location,
     });
 
-    pub fn init(allocator: std.mem.Allocator) @This() {
+    pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
         return .{
-            .storage = .empty,
+            .cache = .empty,
             .allocator = allocator,
+            .storage = storage,
             .data_string_bytes = .init(allocator),
         };
     }
@@ -131,8 +137,8 @@ pub const IconManage = struct {
         try self.hash_string_bytes.appendSlice(self.allocator, hash_val);
         const hash_end = self.hash_string_bytes.items.len; 
         
-        const index = self.storage.len;
-        try self.storage.append(self.allocator, .{
+        const index = self.cache.len;
+        try self.cache.append(self.allocator, .{
             .icon_id = icon.icon_id,
             .icon_data = .{ .start = @intCast(data_start), .end = @intCast(data_end) },
             .icon_url = .{ .start = @intCast(url_start), .end = @intCast(url_end) },
@@ -152,7 +158,7 @@ pub const IconManage = struct {
     pub fn index_by_id(self: *@This(), id: types.IconRender.ID, storage_opt: ?*Storage) ?usize {
         if (id == .unassigned) return null;
 
-        for (self.storage.items(.icon_id), 0..) |icon_id, i| {
+        for (self.cache.items(.icon_id), 0..) |icon_id, i| {
             if (id == icon_id) {
                 return i;
             }
@@ -177,17 +183,26 @@ pub const IconManage = struct {
         return null;
     }
 
+    // TODO: @remove
     pub fn icon_src_by_id(self: *@This(), buf: []u8, id: types.IconRender.ID, db: ?*Storage) ?[]const u8 {
         const index = self.index_by_id(id, db) orelse return null;
-        const icon = self.storage.get(index);
+        const icon = self.cache.get(index);
         const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
         const ft = icon.file_type;
         return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{hash, ft.to_string()})
             catch null;
     }
 
+    pub fn get_icon_info(self: *@This(), id: types.IconRender.ID) ?struct {hash: []const u8, file_type: []const u8} {
+        const index = self.index_by_id(id, &self.storage) orelse return null;
+        const icon = self.cache.get(index);
+        const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
+        const ft = icon.file_type;
+        return .{.hash = hash, .file_type = ft.to_string()};
+    }
+
     pub fn index_by_hash(self: *const @This(), filename_hash: []const u8) !?usize {
-        for (self.storage.items(.hash), 0..) |hash_loc, i| {
+        for (self.cache.items(.hash), 0..) |hash_loc, i| {
             if (mem.eql(u8, hash_string_from_loc(self, hash_loc), filename_hash)) {
                 return i;
             }
@@ -201,20 +216,20 @@ pub const IconManage = struct {
     }
 
     pub fn get_data_string_by_index(self: *@This(), index: usize) []const u8 {
-        const icon_data = self.storage.items(.icon_data)[index];
+        const icon_data = self.cache.items(.icon_data)[index];
         return self.data_string_bytes.written()[icon_data.start..icon_data.end];
     }
 
     pub fn get_url_string_by_index(self: *const @This(), index: usize) []const u8 {
-        const icon_url = self.storage.items(.icon_url)[index];
+        const icon_url = self.cache.items(.icon_url)[index];
         return self.url_string_bytes.items[icon_url.start..icon_url.end];
     }
 
     pub fn get_id_from_url(self: *const @This(), url: []const u8) ?types.IconRender.ID {
-        for (self.storage.items(.icon_url), 0..) |icon_url_loc, i| {
+        for (self.cache.items(.icon_url), 0..) |icon_url_loc, i| {
             const icon_url = self.url_string_bytes.items[icon_url_loc.start..icon_url_loc.end];
             if (std.ascii.eqlIgnoreCase(url, icon_url)) {
-                return self.storage.items(.icon_id)[i];
+                return self.cache.items(.icon_id)[i];
             }
         }
 
@@ -222,30 +237,11 @@ pub const IconManage = struct {
     }
 
     pub fn deinit(self: *@This()) void {
-        self.storage.deinit(self.allocator);
+        self.cache.deinit(self.allocator);
         self.url_string_bytes.deinit(self.allocator);
         self.data_string_bytes.deinit();
         self.hash_string_bytes.deinit(self.allocator);
     }
-};
-
-fn hash_static_file(comptime path: []const u8) u64 {
-    @setEvalBranchQuota(60000);
-    const c = @embedFile(path);
-    var hasher = std.hash.Wyhash.init(0);
-    hasher.update(c);
-    return hasher.final();
-}
-
-const static_files = if (builtin.mode != .debug) .{
-    .{ "main.css", hash_static_file("server/dist/main.css") },
-    .{ "main.js", hash_static_file("server/dist/main.js") },
-    .{ "relative-time.js", hash_static_file("server/dist/relative-time.js") },
-} else .{
-    .{ "main.css", 0 },
-    .{ "main.js", 2 },
-    .{ "relative-time.js", 3 },
-    .{ "reload.js", 4 },
 };
 
 pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !void {
@@ -254,7 +250,7 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
 
     const layout = Layout.init(allocator, storage); 
 
-    var icon_manage: IconManage = .init(allocator);
+    var icon_manage: IconManage = .init(allocator, storage);
     defer icon_manage.deinit();
 
     var progress = std.Progress.start(io, .{});
@@ -1376,20 +1372,6 @@ fn get_field(form_data: *httpz.key_value.StringKeyValue, key: []const u8) !?[]co
     return null;
 }
 
-// Example output: "15:05:12 21.12.2024 UTC"
-const date_format_readable = "%H:%M:%S %d.%m.%Y UTC";
-const date_format_readable_len = util.count_date_len(date_format_readable, .{});
-
-fn date_readable(utc_sec: i64) [date_format_readable_len]u8 {
-    var result: [date_format_readable_len]u8 = undefined;
-    const date_for_human = Datetime.fromUnix(utc_sec, .second, null ) catch unreachable;
-
-    var w: std.Io.Writer = .fixed(&result);
-    date_for_human.toString(date_format_readable, &w) catch unreachable;
-
-    return result;
-}
-
 fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = global.storage;
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
@@ -1825,7 +1807,7 @@ fn icons_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     if (try global.icon_manage.index_by_hash(filename_hash)) |index| blk: {
         // Check if file type matches
-        const file_type = global.icon_manage.storage.items(.file_type)[index];
+        const file_type = global.icon_manage.cache.items(.file_type)[index];
         if (iter.next()) |file_type_raw| if (IconFileType.from_string(file_type_raw)) |ft_req| {
             if (file_type != ft_req) {
                 std.log.warn("Request icon file type and current icon type don't match. Request icon type: {s}. Current icon type: {}.", .{file_type_raw, ft_req});
@@ -1905,8 +1887,6 @@ fn latest_added_head(global: *Global, req: *httpz.Request, resp: *httpz.Response
 fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = global.storage;
 
-    var date_buf: [29]u8 = undefined;
-
     if (try db.get_latest_change()) |latest_created| {
         const countdown = db.next_update_timestamp() catch 0 orelse 0;
         const etag_out = try std.fmt.allocPrint(req.arena, "\"{x}-{x}-{x}\"", .{latest_created, countdown, static_files_hash});
@@ -1922,12 +1902,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Home - latest added feed items");
-
     const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
-
-    try w.writeAll("<main class='content-latest flow'>");
 
     const query = try req.query();
     if (query.get("msg")) |value| {
@@ -1936,34 +1911,19 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         }
     }
 
-    try w.writeAll("<header class='main-header'>");
-    try w.writeAll("<h2>Latest added</h2>");
-
-    if (try db.next_update_timestamp()) |countdown_ts| {
-        try w.writeAll("<div class=\"heading-info\">");
-            const date_readable_str = date_readable(countdown_ts);
-            const ts_str = timestampToString(&date_buf, countdown_ts);
-
-            try w.writeAll("<relative-time update=false>");
-            try w.print(parts_get("next_update_msg"), .{
-                ts_str,
-                date_readable_str,
-            });
-
-            try w.writeAll("<div class=\"update-manual\" hidden>");
-            try w.print(parts_get("last_update_msg"), .{
-                ts_str,
-                date_readable_str,
-            });
-            try w.writeAll(parts_get("form_post_update"));
-            try w.writeAll("</div>");
-            try w.writeAll("</relative-time>");
-            
-        try w.writeAll("</div>");
-    }
-    try w.writeAll("</header>");
-
+    const next_update_ts = try db.next_update_timestamp();
     const items = try db.get_items_latest_added(req.arena);
+
+    const now_date = Datetime.nowUTC(global.io);
+    const now_sec: i64 = @intCast(now_date.toUnix(.second));
+
+    var home_opts = pages.HomeContent{
+        .next_update_ts = next_update_ts,
+        .items = items,
+        .now_sec = now_sec,
+        .icon_manage = global.icon_manage,
+    };
+
     if (items.len > 0) {
         const cookie_last_item_ts = get_cookie_value(req)
             orelse std.math.maxInt(i64);
@@ -1988,82 +1948,18 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
             }
         }
 
-        const failed_requests = try db.request_failed_ids(req.arena);
-        const feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
-        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-
-        try w.writeAll("<ul class='stack list-unstyled'>");
-        for (items) |item| {
-            try w.writeAll("<li class='feed-item'>");
-            const feed = blk: {
-                for (feeds) |feed| {
-                    if (feed.feed_id == item.feed_id) {
-                        break :blk feed;
-                    }
-                }
-                unreachable;
-            };
-
-            const is_new_item = item.created_timestamp > cookie_last_item_ts;
-            const has_failed = if (mem.indexOfScalar(types.Feed.ID, failed_requests, item.feed_id)) |_| true else false;
-            try item_latest_render(global.io, w, req.arena, item, feed, global, is_new_item, has_failed);
-            try w.writeAll("</li>");
-        }
-        try w.writeAll("</ul>");
-        try w.writeAll("</relative-time>");
-    } else {
-        try w.writeAll("<p class='callout'>No feed items have been added in the previous 3 days</p>");
+        home_opts.failed_requests = try db.request_failed_ids(req.arena);
+        home_opts.feeds = try db.get_feeds_with_ids(req.arena, ids_al.items);
+        home_opts.cookie_last_item_ts = cookie_last_item_ts;
     }
-    try w.writeAll("</main>");
 
-    try Layout.write_foot(w);
-
+    try pages.HomePage.render(.{home_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 
-fn item_latest_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, feed: types.Feed, global: *const Global, is_new_item: bool, has_failed: bool) !void {
-    try item_render(io, w, allocator, item, .{.class = "truncate-2", .is_new_item = is_new_item});
-
-    const url = feed.page_url orelse feed.feed_url;
-    const title = feed.title orelse "";
-    const failed_msg = "Latest update to this feed failed";
-    try w.print(
-        \\<div class="item-extra">
-        \\<div>
-        \\<a href="/feed/{[feed_id]d}" title="{[link_title]s}">{[link_title]s}</a>
-    , .{ .feed_id = feed.feed_id, .link_title = title });
-
-    if (has_failed) {
-        try w.print(
-            \\<span class='mi-start-5xs feed-failed-icon' title="{[failed_msg]s}"></span>
-            \\<span class='visually-hidden'>{[failed_msg]s}</span>
-        , .{ .failed_msg = failed_msg });
-    }
-
-    try w.writeAll("</div>");
-
-    try w.print(
-        \\<a class="feed-external-url" href="{f}" rel="noreferrer noopener">
-    , .{ url });
-
-    var buf: [128]u8 = undefined;
-    if (feed.icon_id.is_valid()) {
-        if (global.icon_manage.icon_src_by_id(&buf, feed.icon_id, global.storage)) |path| {
-            try w.print(
-                \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-            , .{path});
-        }
-    }
-
-    try w.print(
-        \\<span>{f}</span></a>
-        \\</div>
-    , .{ url.fmt(.{
-        .authority = true,
-        .port = true,
-    }) });
-}
-
+// TODO: @remove
 fn timestamp_render(io: std.Io, w: *std.Io.Writer, timestamp: ?i64) !void {
     if (timestamp) |ts| {
         var date_display_buf: [16]u8 = undefined;
@@ -2292,46 +2188,9 @@ const Layout = struct {
         };
     }
 
-    pub fn write_static_files(writer: anytype) !void {
-        // write <link> and <script>
-        inline for (static_files) |kv| {
-            const name = kv[0];
-            const hash = kv[1];
-
-            const last_dot_index = std.mem.lastIndexOfScalar(u8, name, '.') orelse {
-                std.log.warn("Static file expect files in format '<filename>.<filetrype>'. Got '{s}'", .{name});
-                break;
-            };
-            const filetype = name[last_dot_index + 1..];
-
-            if (mem.eql(u8, filetype, "css")) {
-                try writer.writeAll("<link rel=stylesheet type=text/css href='/public/");
-            } else if (mem.eql(u8, filetype, "js")) {
-                try writer.writeAll("<script");
-                if (std.mem.eql(u8, name, "main.js")) {
-                    try writer.writeAll(" defer");
-                } else if (std.mem.eql(u8, name, "relative-time.js")) {
-                    try writer.writeAll(" async type=module");
-                }
-                try writer.writeAll(" src='/public/");
-            }
-
-            try writer.print("{x}", .{hash});
-
-            try writer.writeAll("-");
-            try writer.writeAll(name);
-
-            try writer.writeAll("'>");
-            if (mem.eql(u8, filetype, "js")) {
-                try writer.writeAll("</script>");
-            }
-        }
-    }
-
     pub fn write_head(writer: *std.Io.Writer, title: []const u8) !void {
         try writer.print(head_top, .{ .title = title });
         try writer.writeAll(head_script);
-        try write_static_files(writer);
         try writer.writeAll(head_bottom);
     }
 
@@ -2809,6 +2668,7 @@ fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !voi
     try w.print(parts_get("tag_link"), .{ .class = class, .tag = tag });
 }
 
+// TODO: @remove
 fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
     if (a < b) {
         const dt = try Datetime.fromUnix(b, .second, null);

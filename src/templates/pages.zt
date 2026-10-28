@@ -1,0 +1,274 @@
+const util = @import("../util.zig");
+const builtin = @import("builtin");
+const feed_types = @import("../feed_types.zig");
+const IconManage = @import("../server.zig").IconManage;
+
+fn hash_static_file(comptime path: []const u8) u64 {
+    @setEvalBranchQuota(60000);
+    const c = @embedFile(path);
+    var hasher = std.hash.Wyhash.init(0);
+    hasher.update(c);
+    return hasher.final();
+}
+
+pub fn file_type(filename: []const u8) enum{js,css} {
+    const last_dot_index = std.mem.lastIndexOfScalar(u8, filename, '.') orelse
+        @compileError("'filename is missing file extension. Valid file extensions: js, css'");
+
+    const filetype = filename[last_dot_index + 1..];
+    if (std.mem.eql(u8, filetype, "css")) {
+        return .css;
+    } else if (std.mem.eql(u8, filetype, "js")) {
+        return .js;
+    }
+
+    @compileError("File has to have .js or .css extension");
+}
+
+pub const static_files_map = .{
+    .{.filename = "main.css", .hash = hash_static_file("../server/dist/main.css")},
+    .{.filename = "main.js", .hash = hash_static_file("../server/dist/main.js")},
+    .{.filename = "relative-time.js", .hash = hash_static_file("../server/dist/relative-time.js")},
+};
+
+pub fn get_static_path(comptime filename: []const u8) []const u8 {
+    const hash = comptime blk: {
+        for (static_files_map) |file| {
+            if (std.mem.eql(u8, file.filename, filename)) {
+                break :blk file.hash;
+            }
+        }
+        @compileError("Invalid static file input: " ++ filename);
+    };
+
+    return std.fmt.comptimePrint("/public/{x}-{s}",.{hash, filename});
+}
+
+pub templ Layout(title: []const u8, nav: Navigation) {
+    <!DOCTYPE html>
+    <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>{title}</title>
+        <script>
+            /*! kelpui v1.6.3 | (c) Chris Ferdinandi | http://github.com/cferdinandi/kelp */
+            "use strict";
+            (() => {
+              // modules/js/dark-mode-auto.js
+              var prefersDarkMode = window.matchMedia("(prefers-color-scheme: dark)");
+              document.documentElement.classList.toggle("dark", prefersDarkMode.matches);
+              prefersDarkMode.addEventListener("change", (event) => {
+                document.documentElement.classList.toggle("dark", event.matches);
+              });
+            })();
+        </script>
+        <!-- TODO: scripts and styles -->
+        <link rel="stylesheet" type="text/css" href="{get_static_path("main.css")}" />
+        <script defer src="{get_static_path("main.js")}"></script>
+        <script async type="module" src="{get_static_path("relative-time.js")}"></script>
+      </head>
+      <body>
+        <div>
+            @Nav(nav)
+            @children
+        </div>
+      </body>
+    </html>
+}
+
+const menu_items = [_]struct{path: []const u8, name: []const u8}{
+    .{.path = "/feeds", .name = "Feeds"},
+    .{.path = "/tags", .name = "Tags"},
+    .{.path = "/feed/add", .name = "Add feed"},
+    .{.path = "/failed-requests", .name = "Failed feed requests"},
+};
+
+pub const Navigation = struct {
+    current_path: []const u8 = "/",
+    tags: []const []const u8 = &.{},
+};
+
+pub fn tag_is_checked(tag: []const u8, tags_checked: []const []const u8) bool {
+    for (tags_checked) |tag_checked| {
+        if (std.mem.eql(u8, tag, tag_checked)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+pub templ Nav(nav: Navigation) {
+    <header class='body-header'>
+      <div class='nav'>
+        <h1>
+          <a href="/" aria-current={if (std.mem.eql(u8, nav.current_path, "/")) "page" else null}>feedgaze</a>
+        </h1>
+        <nav>
+            for (menu_items) |item| {
+                <span>|</span>
+                <a href="{item.path}" aria-current={if (std.mem.eql(u8, nav.current_path, item.path)) "page" else null}>{item.name}</a>
+            }
+        </nav>
+      </div>
+      <details>
+        <summary>Filter feeds</summary>
+        <div class='filter-wrapper'>
+          <form action='/feeds' class='stack'>
+            <!-- NOTE: don't want tags-only button to be the 'default' button. This is
+            used when enter is pressed in input (text) field. -->
+            <button aria-hidden="true" style="display: none">Default form action</button>
+            <fieldset class='tags stack'>
+              <legend>Tags</legend>
+              <div class='tag-list'>
+                for (nav.tags, 0..) |tag, index| {
+                    <div class='tag'>
+                      <input type="checkbox" name="tag" id="tag-id-{index}" value="{tag}" />
+                      <label class="visually-hidden" for="tag-id-{index}">{tag}</label>
+                    </div>
+                }
+              </div>
+            </fieldset>
+            <div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>
+            <div>
+              <label class="form-heading" for="search_value">Filter feeds</label>
+              <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="" /></div>
+              <button class="form-submit muted primary">Filter all</button>
+            </div>
+          </form>
+        </div>
+      </details>
+      <hr />
+    </header>
+}
+
+
+pub const HomeContent = struct {
+   next_update_ts: ?i64 = null,
+   items: []const feed_types.FeedItemRender = &.{},
+   feeds: []const feed_types.Feed = &.{},
+   failed_requests: []const feed_types.Feed.ID = &.{},
+   cookie_last_item_ts: i64 = 0,
+   now_sec: i64,
+   icon_manage: *IconManage
+};
+
+pub templ HomePage(content: HomeContent, nav: Navigation) {
+    @Layout("Home - latest added feed items", nav) {
+        <main class='content-latest flow'>
+            <header class='main-header'>
+                <h2>Latest added</h2>
+                if (content.next_update_ts) |countdown_ts| {
+                    <div class="heading-info">
+                        {util.date_readable(countdown_ts)}
+                        <relative-time update="false">
+                            <p class="update-automatic">Next update <time datetime={zt.fmt(util.write_timestamp, .{countdown_ts})}>{util.date_readable(countdown_ts)}</time></p>
+
+                            <div class="update-manual" hidden>
+                                <p>Last update was <time datetime={zt.fmt(util.write_timestamp, .{countdown_ts})}>{util.date_readable(countdown_ts)}</time>.</p>
+                                <form method="POST" action="/update">
+                                  <p>
+                                    <button class="btn-link">Check for updates.</button>
+                                    Might take some time.
+                                  </p>
+                                </form>
+                            </div>
+                        </relative-time>
+                    </div>
+                }
+            </header>
+            if (content.items.len == 0) {
+                <p class="callout">No feed items have been added in the previous 3 days</p>
+            } else {
+                <relative-time update="false" format-style="narrow" format-numeric="always">
+                <ul class="stack list-unstyled">
+                for (content.items) |item| {
+                    <li class='feed-item'>
+                       @FeedItemLatest(item, get_feed_with_id(item.feed_id, content.feeds), content.icon_manage, LatestOptions{
+                           .is_new_item = item.created_timestamp > content.cookie_last_item_ts,
+                           .now_sec = content.now_sec,
+                           .has_request_failed = has_request_failed(item.feed_id, content.failed_requests),
+                       })
+                    </li>
+                }
+                </ul>
+                </relative-time>
+            }
+        </main>
+    }
+}
+
+fn has_request_failed(feed_id: feed_types.Feed.ID, failed_requests: []const feed_types.Feed.ID) bool {
+  if (std.mem.indexOfScalar(feed_types.Feed.ID, failed_requests, feed_id)) |_| {
+      return true;
+  }
+  return false;
+}
+
+
+const LatestOptions = struct {
+    is_new_item: bool = false,
+    has_request_failed: bool = false,
+    now_sec: i64,
+};
+
+const failed_request_msg = "Latest update to this feed failed";
+
+pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions) {
+    if (opts.is_new_item) {
+        <div class='feed-time'>
+            @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
+            <span>new</span>
+        </div>
+    } else {
+        @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
+    }
+
+    if (item.link) |link| {
+        <a href="{link}" class="item-link truncate-2" title="{item.title}" rel="noreferrer noopener">{item.title}</a>
+    } else {
+        <p class="truncate-2" title="{item.title}">{item.link}</p>
+    }
+
+    <div class="item-extra">
+        <div>
+            <a href="/feed/{@backingInt(feed.feed_id)}" title="{feed.title}">{feed.title}</a>
+
+            if (opts.has_request_failed) {
+                <span class='mi-start-5xs feed-failed-icon' title="{failed_request_msg}"></span>
+                <span class='visually-hidden'>{failed_request_msg}</span>
+            }
+        </div>
+
+        <a class="feed-external-url" href="{feed.page_url orelse feed.feed_url}" rel="noreferrer noopener">
+            if (feed.icon_id.is_valid()) {
+                if (icon_manage.get_icon_info(feed.icon_id)) |info| {
+                    <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
+                }
+            }
+
+            <span>{zt.fmt(util.write_url_domain, .{feed.page_url orelse feed.feed_url})}</span>
+        </a>
+    </div>
+}
+
+pub fn get_feed_with_id(feed_id: feed_types.Feed.ID, feeds: []const feed_types.Feed) feed_types.Feed {
+    for (feeds) |feed| {
+        if (feed.feed_id == feed_id) {
+            return feed;
+        }
+    }
+    unreachable;
+}
+
+pub templ LatestItemRelativeTime(ts_opt: ?i64, now_sec: i64) {
+    if (ts_opt) |ts| {
+        <time class="{util.age_class_from_time(now_sec, ts)}" datetime="{zt.fmt(util.write_timestamp, .{ts})}">
+            {zt.fmt(util.write_display_date, .{now_sec, ts})}
+        </time>
+    } else {
+        <span class="no-date">&#8212;</span>
+    }
+}
