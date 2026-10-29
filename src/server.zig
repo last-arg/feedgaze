@@ -376,106 +376,18 @@ fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Respon
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Failed feed requests");
-
     const tags = try global.storage.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
-
-    try w.writeAll("<h2>Failed feed requests</h2>");
-
     const failed_requests = try global.storage.request_failed_all(req.arena);
-    if (failed_requests.len > 0) {
-        var date_buf: [date_len_max]u8 = undefined;
-        var buf_icon: [1024]u8 = undefined;
-        var current_id = failed_requests[0].feed_id;
 
-        const failed_feeds = try global.storage.request_failed_feeds(req.arena);
-        var current_feed: types.Feed = feed_from_id(failed_feeds, current_id);
+    const failed_feed_opts: pages.FailedFeedsContent = .{
+        .failed_requests = failed_requests,
+        .icon_manage = global.icon_manage,
+    };
 
-        var icon_path = global.icon_manage.icon_src_by_id(&buf_icon, current_feed.icon_id, global.storage);
-
-        try render_failed_feed_start(w, &failed_requests[0], current_feed, icon_path);
-
-        for (failed_requests) |failed_request| {
-            if (current_id != failed_request.feed_id) {
-                try render_failed_feed_end(w);
-
-                current_id = failed_request.feed_id;
-                current_feed = feed_from_id(failed_feeds, current_id);
-                icon_path = global.icon_manage.icon_src_by_id(&buf_icon, current_feed.icon_id, global.storage);
-                try render_failed_feed_start(w, &failed_request, current_feed, icon_path);
-            }
-
-            try w.print(parts_get("failed_table_row")
-            , .{
-                .reason = failed_request.reason,
-                .datetime = timestampToString(&date_buf, failed_request.utc_sec),
-                .time = date_readable(failed_request.utc_sec),
-            });
-        }
-
-        try render_failed_feed_end(w);
-    } else {
-        try w.writeAll("<p>No failed feed requests</p>");
-    }
-
-    try Layout.write_foot(w);
-
+    try pages.FailedFeedsPage.render(.{failed_feed_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
-}
-
-fn feed_from_id(feeds: []const types.Feed, feed_id: types.Feed.ID) types.Feed {
-    for (feeds) |f| {
-        if (f.feed_id == feed_id) {
-            return f;
-        }
-    }
-
-    std.log.err("In request '/failed-request/': Failed find feed id {d} from failed request feed ids", .{feed_id});
-
-    unreachable;
-}
-
-fn render_failed_feed_start(w: *std.Io.Writer, failed: *const Storage.FeedFailedRequestWithID, feed: types.Feed, icon_path_opt: ?[]const u8) !void {
-    try w.writeAll("<section class='failed-feed'>");
-    try w.writeAll("<header>");
-
-    if (icon_path_opt) |icon_path| {
-        try w.print(
-            \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-        , .{icon_path});
-    }
-
-    try w.writeAll("<h3 class='truncate-1'>");
-    if (feed.page_url) |page_url| {
-        const title = feed.title orelse title_placeholder;
-        try w.print("<a href='{f}' title='{s}'>{s}</a>", .{page_url, title, title});
-    } else {
-        try w.writeAll(feed.title orelse title_placeholder);
-    }
-    try w.writeAll("</h3>");
-
-    try w.print("<a class='one-line' href='{f}'>Feed link</a>", .{feed.feed_url});
-    try w.print("<a href='/feed/{d}'>Edit</a>", .{failed.feed_id});
-    try w.writeAll("</header>");
-
-    const date_value = date_readable(failed.utc_sec);
-    var date_buf: [date_len_max]u8 = undefined;
-    const datetime_value = timestampToString(&date_buf, failed.utc_sec);
-    try w.print(parts_get("latest_error"), .{
-        .datetime = datetime_value,
-        .date_value = date_value,
-        .reason = failed.reason,
-    });
-    try w.writeAll("<details>");
-    try w.writeAll("<summary>Failed requests</summary>");
-    try w.writeAll(parts_get("failed_table_start"));
-}
-
-fn render_failed_feed_end(w: *std.Io.Writer) !void {
-    try w.writeAll(parts_get("failed_table_end"));
-    try w.writeAll("</details>");
-    try w.writeAll("</section>");
 }
 
 fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -2130,8 +2042,6 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var buf: [std.compress.flate.max_window_len]u8 = undefined;
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
-
-    try Layout.write_head(w, "Tags");
 
     const query_kv = try req.query();
     const tags = try db.tags_all(req.arena);

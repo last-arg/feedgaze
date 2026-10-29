@@ -259,34 +259,72 @@ pub const Storage = struct {
         feed_id: Feed.ID,
         utc_sec: i64,
         reason: []const u8,
+        title: ?[]const u8 = null,
+        feed_url: std.Uri,
+        page_url: ?std.Uri = null,
+        icon_id: IconRender.ID = .unassigned,
+
 
         pub const Raw = struct {
             feed_id: u64,
             utc_sec: i64,
             reason: sql.Text,
+            title: ?sql.Text = null,
+            feed_url: sql.Text,
+            page_url: ?sql.Text = null,
+            icon_id: ?u64 = null,
 
-            pub fn strings_len(raw: *const Raw) u64 {
-                return raw.reason.data.len;
+            pub fn strings_len(self: *const Raw) u64 {
+                const title_len = if (self.title) |v| v.data.len else 0;
+                const page_url_len = if (self.page_url) |v| v.data.len else 0;
+                return self.feed_url.data.len + title_len + page_url_len + self.reason.data.len;
             }
         };
 
 	pub fn from_raw(buf: []u8, raw: Raw) !FeedFailedRequestWithID {
-            var w: std.Io.Writer = .fixed(buf);
-            w.writeAll(raw.reason.data) catch unreachable;
-
-            return .{
+            var result: FeedFailedRequestWithID = .{
                 .feed_id = @fromBackingInt(raw.feed_id),
                 .utc_sec = raw.utc_sec,
-                .reason = w.buffered(),
+                .reason = undefined,
+                .title = null,
+                .feed_url = undefined,
+                .page_url = null,
+                .icon_id = if (raw.icon_id) |id| @fromBackingInt(id) else .unassigned,
             };
+
+            var w: std.Io.Writer = .fixed(buf);
+            w.writeAll(raw.reason.data) catch unreachable;
+            result.reason = w.buffered();
+
+            {
+                const start = w.buffered().len;
+                w.writeAll(raw.feed_url.data) catch unreachable;
+                result.feed_url = try std.Uri.parse(w.buffered()[start..]);
+            }
+
+            if (raw.page_url) |page_url| {
+                const start = w.buffered().len;
+                w.writeAll(page_url.data) catch unreachable;
+                result.page_url = try std.Uri.parse(w.buffered()[start..]);
+            }
+
+            if (raw.title) |title| {
+                const start = w.buffered().len;
+                w.writeAll(title.data) catch unreachable;
+                result.title = w.buffered()[start..];
+            }
+
+
+            return result;
 	}
     };
 
     pub fn request_failed_all(self: *Self, allocator: Allocator) ![]const FeedFailedRequestWithID {
         const query =
-            \\select feed_id, max(utc_sec) utc_sec, reason
-            \\from feed_request_failed
-            \\group by feed_id
+            \\select fr.feed_id, max(utc_sec) utc_sec, reason, f.title, f.feed_url, f.page_url, f.icon_id
+            \\from feed_request_failed fr
+            \\join feed f on f.feed_id = fr.feed_id 
+            \\group by fr.feed_id
             \\order by utc_sec DESC
         ;
 
