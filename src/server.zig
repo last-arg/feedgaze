@@ -2133,38 +2133,22 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try Layout.write_head(w, "Tags");
 
-    const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
-
-    try w.writeAll(parts_get("tags_page"));
-
     const query_kv = try req.query();
-    if (query_kv.get("error")) |err_value| {
-        const err_enum = UrlQueryError.from_string(err_value);
-        if (err_enum == .delete) {
-            try w.writeAll(parts_get("tags_query_delete"));
-        } else if (err_enum == .missing) {
-            try w.writeAll(parts_get("tags_query_missing"));
-        } 
-    } else if (query_kv.get("success")) |_| {
-        try w.writeAll(parts_get("tags_query_success"));
-    }
-
-    try w.writeAll(parts_get("tags_list"));
+    const tags = try db.tags_all(req.arena);
     const tag_ids = try db.tags_all_with_ids(req.arena);
-    for (tag_ids) |tag| {
-        try w.writeAll(parts_get("tag_item"));
-        const tag_name_escaped = try parse.html_escape(req.arena, tag.name);
-        try tag_link_print(w, tag_name_escaped, .link);
-        try w.print(parts_get("tag_actions"), .{ .tag_id = tag.tag_id });
-        try btn_delete(w, "Delete", .link);
-        try w.writeAll(parts_get("footer_tag_item"));
-    }
 
-    try w.writeAll(parts_get("end_tag_item"));
+    const tags_opts: pages.TagsContent = .{
+        .tag_ids = tag_ids,
+        .query_is_success = query_kv.get("success") != null,
+        .query_error = blk: {
+            const value = query_kv.get("error") orelse break :blk null;
+            break :blk UrlQueryError.from_string(value);
+        },
+    };
 
-    try Layout.write_foot(w);
-
+    try pages.TagsPage.render(.{tags_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 
@@ -2776,7 +2760,7 @@ const StreamContext = struct {
     }
 };
 
-const UrlQueryError = enum(u8) {
+pub const UrlQueryError = enum(u8) {
     delete,
     feed,
     html,

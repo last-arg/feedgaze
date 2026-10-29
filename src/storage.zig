@@ -830,7 +830,7 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{sql.text(data.name), @backingInt(data.tag_id)});
     }
         
-    const TagResult = struct{
+    pub const TagResult = struct{
         tag_id: types.SqliteId,
         name: []const u8,
 

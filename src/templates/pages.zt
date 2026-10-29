@@ -2,6 +2,8 @@ const util = @import("../util.zig");
 const builtin = @import("builtin");
 const feed_types = @import("../feed_types.zig");
 const IconManage = @import("../server.zig").IconManage;
+const UrlQueryError = @import("../server.zig").UrlQueryError;
+const TagResult = @import("../storage.zig").Storage.TagResult;
 
 fn hash_static_file(comptime path: []const u8) u64 {
     @setEvalBranchQuota(60000);
@@ -272,3 +274,42 @@ pub templ LatestItemRelativeTime(ts_opt: ?i64, now_sec: i64) {
         <span class="no-date">&#8212;</span>
     }
 }
+
+pub const TagsContent = struct {
+    tag_ids: []const TagResult = &.{},
+    query_error: ?UrlQueryError = null,
+    query_is_success: bool = false,
+};
+
+pub templ TagsPage(content: TagsContent, nav: Navigation) {
+    @Layout("Tags", nav) {
+        <main class='flow'>
+          <header class='main-header'><h2>Tags</h2></header>
+          if (content.query_is_success) {
+              <p class="callout success">Tag deleted</p>
+          } else if (content.query_error) |query_error| {
+              switch (query_error) {
+                  .delete => {<p class="callout danger">Failed to delete tag</p>},
+                  .missing => {<p class="callout warning">Tag doesn't exist</p>},
+                  else => {},
+              }
+          }
+
+          <ul class='tags-all stack list-unstyled' role='list'>
+              for (content.tag_ids) |tag| {
+                <li class='tag-item'>
+                  <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
+
+                  <div class='tag-actions cluster align-center'>
+                    <a href='/tag/{@backingInt(tag.tag_id)}/edit'>Edit</a>
+                    <form action="/tag/{@backingInt(tag.tag_id)}/delete" method="POST">
+                        <button class='btn-link padding-0 danger' name='action' value='delete'>Delete</button>
+                    </form>
+                  </div>
+                </li>
+                }
+          </ul>
+        </main>
+    }
+}
+
