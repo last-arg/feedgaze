@@ -159,7 +159,7 @@ pub const Cli = struct {
                     } else |err| {
                         if (err == error.NameServerFailure or
                             err == error.NetworkUnreachable or
-                            err == error.UnknownHostname or
+                            err == error.UnknownHostName or
                             err == error.NetworkDown
                         ) {
                             const wait_sec = std.Io.Duration.fromSeconds(3 * loop_count + 1);
@@ -1366,7 +1366,7 @@ pub const App = struct {
         } else |err| switch (err) {
             error.NameServerFailure,
             error.NetworkUnreachable,
-            error.UnknownHostname,
+            error.UnknownHostName,
             error.NetworkDown => {
                 std.log.err("There seems to be no network available", .{});
                 return err;
