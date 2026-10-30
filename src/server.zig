@@ -2701,7 +2701,24 @@ pub const UrlQueryError = enum(u8) {
         try w.writeAll(self.to_string());
     }
 
+    fn max_enum_value_len() comptime_int {
+        var max_len = 0;
+        for (@typeInfo(UrlQueryError).@"enum".field_names) |name| {
+            if (name.len > max_len) {
+                max_len = name.len;
+            }
+        }
+
+        return max_len;
+    }
+
     pub fn from_string(raw: []const u8) UrlQueryError {
-        return std.meta.stringToEnum(UrlQueryError, raw) orelse .unknown;
+        const max_len = max_enum_value_len();
+        var buf: [max_len]u8 = undefined;
+        std.mem.copyForwards(u8, &buf, raw);
+        const val = buf[0..raw.len];
+        std.mem.replaceScalar(u8, val, '-', '_');
+
+        return std.meta.stringToEnum(UrlQueryError, val) orelse .unknown;
     }
 };
