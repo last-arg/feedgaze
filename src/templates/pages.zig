@@ -192,16 +192,22 @@ pub const Nav = struct {
             try zt.writeAll(_writer, "</a>");
         }
         try zt.writeAll(_writer, "</nav></div><details><summary>Filter feeds</summary><div class=\"filter-wrapper\"><form action=\"/feeds\" class=\"stack\"><button aria-hidden=\"true\" style=\"display: none\">Default form action</button><fieldset class=\"tags stack\"><legend>Tags</legend><div class=\"tag-list\">");
-        for (nav.tags, 0..) |tag, index| { // pages.zt:129:17
+        for (nav.tags, 0..) |tag, index| { // pages.zt:129:15
             try zt.writeAll(_writer, "<div class=\"tag\"><input type=\"checkbox\" name=\"tag\" id=\"tag-id-");
-            try zt.writeEscaped(_writer, index); // pages.zt:131:57
+            try zt.writeEscaped(_writer, index); // pages.zt:131:55
             try zt.writeAll(_writer, "\" value=\"");
-            try zt.writeEscaped(_writer, tag); // pages.zt:131:77
+            try zt.writeEscaped(_writer, tag); // pages.zt:131:75
             try zt.writeAll(_writer, "\"><label class=\"visually-hidden\" for=\"tag-id-");
-            try zt.writeEscaped(_writer, index); // pages.zt:132:54
+            try zt.writeEscaped(_writer, index); // pages.zt:132:52
             try zt.writeAll(_writer, "\">");
-            try zt.writeEscaped(_writer, tag); // pages.zt:132:75
-            try zt.writeAll(_writer, "</label></div>");
+            try zt.writeEscaped(_writer, tag); // pages.zt:132:73
+            try zt.writeAll(_writer, "</label><a class=\"truncate-1\" href=\"/feeds?tag=");
+            try zt.writeEscaped(_writer, tag); // pages.zt:133:43
+            try zt.writeAll(_writer, "\" title=\"");
+            try zt.writeEscaped(_writer, tag); // pages.zt:133:67
+            try zt.writeAll(_writer, "\">");
+            try zt.writeEscaped(_writer, tag); // pages.zt:133:81
+            try zt.writeAll(_writer, "</a></div>");
         }
         try zt.writeAll(_writer, "</div></fieldset><div><button class=\"muted secondary\" name=\"tags-only\">Filter tags only</button></div><div><label class=\"form-heading\" for=\"search_value\">Filter feeds</label><div class=\"input-search-wrapper\"><input type=\"search\" name=\"search\" id=\"search_value\" value=\"\"></div><button class=\"form-submit muted primary\">Filter all</button></div></form></div></details><hr></header>");
     }
@@ -227,33 +233,33 @@ pub const Nav = struct {
 };
 
 const HomePage__children_0 = struct {
-    fn _render(content: HomeContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:161:19
+    fn _render(content: HomeContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:162:19
         _ = &content;
         _ = &nav;
         try zt.writeAll(_writer, "<main class=\"content-latest flow\"><header class=\"main-header\"><h2>Latest added</h2>");
-        if (content.next_update_ts) |countdown_ts| { // pages.zt:166:17
+        if (content.next_update_ts) |countdown_ts| { // pages.zt:167:17
             try zt.writeAll(_writer, "<div class=\"heading-info\"><relative-time update=\"false\"><p class=\"update-automatic\">Next update <time");
-            try zt.writeAttr(_writer, "datetime", zt.fmt(util.write_timestamp, .{countdown_ts})); // pages.zt:169:75
+            try zt.writeAttr(_writer, "datetime", zt.fmt(util.write_timestamp, .{countdown_ts})); // pages.zt:170:75
             try zt.writeAll(_writer, ">");
-            try zt.writeEscaped(_writer, util.date_readable(countdown_ts)); // pages.zt:169:132
+            try zt.writeEscaped(_writer, util.date_readable(countdown_ts)); // pages.zt:170:132
             try zt.writeAll(_writer, "</time></p><div class=\"update-manual\" hidden><p>Last update was <time");
-            try zt.writeAttr(_writer, "datetime", zt.fmt(util.write_timestamp, .{countdown_ts})); // pages.zt:172:58
+            try zt.writeAttr(_writer, "datetime", zt.fmt(util.write_timestamp, .{countdown_ts})); // pages.zt:173:58
             try zt.writeAll(_writer, ">");
-            try zt.writeEscaped(_writer, util.date_readable(countdown_ts)); // pages.zt:172:115
+            try zt.writeEscaped(_writer, util.date_readable(countdown_ts)); // pages.zt:173:115
             try zt.writeAll(_writer, "</time>.</p><form method=\"POST\" action=\"/update\"><p><button class=\"btn-link\">Check for updates.</button>\n                                    Might take some time.\n                                  </p></form></div></relative-time></div>");
         }
         try zt.writeAll(_writer, "</header>");
-        if (content.items.len == 0) { // pages.zt:185:13
+        if (content.items.len == 0) { // pages.zt:186:13
             try zt.writeAll(_writer, "<p class=\"callout\">No feed items have been added in the previous 3 days</p>");
         } else {
             try zt.writeAll(_writer, "<relative-time update=\"false\" format-style=\"narrow\" format-numeric=\"always\"><ul class=\"stack list-unstyled\">");
-            for (content.items) |item| { // pages.zt:190:17
+            for (content.items) |item| { // pages.zt:191:17
                 try zt.writeAll(_writer, "<li class=\"feed-item\">");
                 try zt.renderComponent(FeedItemLatest, .{ item, get_feed_with_id(item.feed_id, content.feeds), content.icon_manage, LatestOptions{
                     .is_new_item = item.created_timestamp > content.cookie_last_item_ts,
                     .now_sec = content.now_sec,
                     .has_request_failed = has_request_failed(item.feed_id, content.failed_requests),
-                } }, _writer); // pages.zt:192:24
+                } }, _writer); // pages.zt:193:24
                 try zt.writeAll(_writer, "</li>");
             }
             try zt.writeAll(_writer, "</ul></relative-time>");
@@ -261,7 +267,7 @@ const HomePage__children_0 = struct {
         try zt.writeAll(_writer, "</main>");
     }
 
-    fn _signature(_: HomeContent, _: Navigation) void {} // pages.zt:161:19
+    fn _signature(_: HomeContent, _: Navigation) void {} // pages.zt:162:19
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -282,13 +288,13 @@ const HomePage__children_0 = struct {
 };
 
 pub const HomePage = struct {
-    fn _render(content: HomeContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:161:19
+    fn _render(content: HomeContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:162:19
         _ = &content;
         _ = &nav;
-        try zt.renderComponent(Layout, .{ "Home - latest added feed items", nav, __children_0 }, _writer); // pages.zt:162:5
+        try zt.renderComponent(Layout, .{ "Home - latest added feed items", nav, __children_0 }, _writer); // pages.zt:163:5
     }
 
-    fn _signature(_: HomeContent, _: Navigation) void {} // pages.zt:161:19
+    fn _signature(_: HomeContent, _: Navigation) void {} // pages.zt:162:19
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -310,64 +316,64 @@ pub const HomePage = struct {
 };
 
 pub const FeedItemLatest = struct {
-    fn _render(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:222:25
+    fn _render(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:223:25
         _ = &item;
         _ = &feed;
         _ = &icon_manage;
         _ = &opts;
-        if (opts.is_new_item) { // pages.zt:223:5
+        if (opts.is_new_item) { // pages.zt:224:5
             try zt.writeAll(_writer, "<div class=\"feed-time\">");
-            try zt.renderComponent(LatestItemRelativeTime, .{ item.updated_timestamp, opts.now_sec }, _writer); // pages.zt:225:13
+            try zt.renderComponent(LatestItemRelativeTime, .{ item.updated_timestamp, opts.now_sec }, _writer); // pages.zt:226:13
             try zt.writeAll(_writer, "<span>new</span></div>");
         } else {
-            try zt.renderComponent(LatestItemRelativeTime, .{ item.updated_timestamp, opts.now_sec }, _writer); // pages.zt:229:9
+            try zt.renderComponent(LatestItemRelativeTime, .{ item.updated_timestamp, opts.now_sec }, _writer); // pages.zt:230:9
         }
-        if (item.link) |link| { // pages.zt:232:5
+        if (item.link) |link| { // pages.zt:233:5
             try zt.writeAll(_writer, "<a href=\"");
-            try zt.writeUrlPart(_writer, "", link, ""); // pages.zt:233:12
+            try zt.writeUrlPart(_writer, "", link, ""); // pages.zt:234:12
             try zt.writeAll(_writer, "\" class=\"item-link truncate-2\" title=\"");
-            try zt.writeEscaped(_writer, item.title); // pages.zt:233:55
+            try zt.writeEscaped(_writer, item.title); // pages.zt:234:55
             try zt.writeAll(_writer, "\" rel=\"noreferrer noopener\">");
-            try zt.writeEscaped(_writer, item.title); // pages.zt:233:102
+            try zt.writeEscaped(_writer, item.title); // pages.zt:234:102
             try zt.writeAll(_writer, "</a>");
         } else {
             try zt.writeAll(_writer, "<p class=\"truncate-2\" title=\"");
-            try zt.writeEscaped(_writer, item.title); // pages.zt:235:31
+            try zt.writeEscaped(_writer, item.title); // pages.zt:236:31
             try zt.writeAll(_writer, "\">");
-            try zt.writeEscaped(_writer, item.link); // pages.zt:235:52
+            try zt.writeEscaped(_writer, item.link); // pages.zt:236:52
             try zt.writeAll(_writer, "</p>");
         }
         try zt.writeAll(_writer, "<div class=\"item-extra\"><div><a href=\"/feed/");
-        try zt.writeEscaped(_writer, @backingInt(feed.feed_id)); // pages.zt:240:16
+        try zt.writeEscaped(_writer, @backingInt(feed.feed_id)); // pages.zt:241:16
         try zt.writeAll(_writer, "\" title=\"");
-        try zt.writeEscaped(_writer, feed.title); // pages.zt:240:57
+        try zt.writeEscaped(_writer, feed.title); // pages.zt:241:57
         try zt.writeAll(_writer, "\">");
-        try zt.writeEscaped(_writer, feed.title); // pages.zt:240:78
+        try zt.writeEscaped(_writer, feed.title); // pages.zt:241:78
         try zt.writeAll(_writer, "</a>");
-        if (opts.has_request_failed) { // pages.zt:242:13
+        if (opts.has_request_failed) { // pages.zt:243:13
             try zt.writeAll(_writer, "<span class=\"mi-start-5xs feed-failed-icon\" title=\"");
-            try zt.writeEscaped(_writer, failed_request_msg); // pages.zt:243:61
+            try zt.writeEscaped(_writer, failed_request_msg); // pages.zt:244:61
             try zt.writeAll(_writer, "\"></span><span class=\"visually-hidden\">");
-            try zt.writeEscaped(_writer, failed_request_msg); // pages.zt:244:47
+            try zt.writeEscaped(_writer, failed_request_msg); // pages.zt:245:47
             try zt.writeAll(_writer, "</span>");
         }
         try zt.writeAll(_writer, "</div><a class=\"feed-external-url\" href=\"");
-        try zt.writeUrlPart(_writer, "", feed.page_url orelse feed.feed_url, ""); // pages.zt:249:38
+        try zt.writeUrlPart(_writer, "", feed.page_url orelse feed.feed_url, ""); // pages.zt:250:38
         try zt.writeAll(_writer, "\" rel=\"noreferrer noopener\">");
-        if (feed.icon_id.is_valid()) { // pages.zt:250:13
-            if (icon_manage.get_icon_info(feed.icon_id)) |info| { // pages.zt:251:17
+        if (feed.icon_id.is_valid()) { // pages.zt:251:13
+            if (icon_manage.get_icon_info(feed.icon_id)) |info| { // pages.zt:252:17
                 try zt.writeAll(_writer, "<img class=\"feed-icon\" src=\"/icons/");
-                try zt.writeEscaped(_writer, info.hash); // pages.zt:252:44
-                try zt.writeEscaped(_writer, info.file_type); // pages.zt:252:44
+                try zt.writeEscaped(_writer, info.hash); // pages.zt:253:44
+                try zt.writeEscaped(_writer, info.file_type); // pages.zt:253:44
                 try zt.writeAll(_writer, "\" alt=\"\" aria-hidden=\"true\">");
             }
         }
         try zt.writeAll(_writer, "<span>");
-        try zt.writeEscaped(_writer, zt.fmt(util.write_url_domain, .{feed.page_url orelse feed.feed_url})); // pages.zt:259:19
+        try zt.writeEscaped(_writer, zt.fmt(util.write_url_domain, .{feed.page_url orelse feed.feed_url})); // pages.zt:260:19
         try zt.writeAll(_writer, "</span></a></div>");
     }
 
-    fn _signature(_: feed_types.FeedItemRender, _: feed_types.Feed, _: *IconManage, _: LatestOptions) void {} // pages.zt:222:25
+    fn _signature(_: feed_types.FeedItemRender, _: feed_types.Feed, _: *IconManage, _: LatestOptions) void {} // pages.zt:223:25
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -388,23 +394,23 @@ pub const FeedItemLatest = struct {
 };
 
 pub const LatestItemRelativeTime = struct {
-    fn _render(ts_opt: ?i64, now_sec: i64, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:273:33
+    fn _render(ts_opt: ?i64, now_sec: i64, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:274:33
         _ = &ts_opt;
         _ = &now_sec;
-        if (ts_opt) |ts| { // pages.zt:274:5
+        if (ts_opt) |ts| { // pages.zt:275:5
             try zt.writeAll(_writer, "<time class=\"");
-            try zt.writeEscaped(_writer, util.age_class_from_time(now_sec, ts)); // pages.zt:275:15
+            try zt.writeEscaped(_writer, util.age_class_from_time(now_sec, ts)); // pages.zt:276:15
             try zt.writeAll(_writer, "\" datetime=\"");
-            try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{ts})); // pages.zt:275:63
+            try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{ts})); // pages.zt:276:63
             try zt.writeAll(_writer, "\">");
-            try zt.writeEscaped(_writer, zt.fmt(util.write_display_date, .{ now_sec, ts })); // pages.zt:276:13
+            try zt.writeEscaped(_writer, zt.fmt(util.write_display_date, .{ now_sec, ts })); // pages.zt:277:13
             try zt.writeAll(_writer, "</time>");
         } else {
             try zt.writeAll(_writer, "<span class=\"no-date\">&#8212;</span>");
         }
     }
 
-    fn _signature(_: ?i64, _: i64) void {} // pages.zt:273:33
+    fn _signature(_: ?i64, _: i64) void {} // pages.zt:274:33
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -425,40 +431,40 @@ pub const LatestItemRelativeTime = struct {
 };
 
 const TagsPage__children_0 = struct {
-    fn _render(content: TagsContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:289:19
+    fn _render(content: TagsContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:290:19
         _ = &content;
         _ = &nav;
         try zt.writeAll(_writer, "<main class=\"flow\"><header class=\"main-header\"><h2>Tags</h2></header>");
-        if (content.query_is_success) { // pages.zt:293:11
+        if (content.query_is_success) { // pages.zt:294:11
             try zt.writeAll(_writer, "<p class=\"callout success\">Tag deleted</p>");
-        } else if (content.query_error) |query_error| { // pages.zt:295:18
-            switch (query_error) { // pages.zt:296:15
-                .delete => { // pages.zt:297:19
+        } else if (content.query_error) |query_error| { // pages.zt:296:18
+            switch (query_error) { // pages.zt:297:15
+                .delete => { // pages.zt:298:19
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Failed to delete tag</p>");
                 },
-                .missing => { // pages.zt:298:19
+                .missing => { // pages.zt:299:19
                     try zt.writeAll(_writer, "<p class=\"callout warning\">Tag doesn't exist</p>");
                 },
-                else => { // pages.zt:299:19
+                else => { // pages.zt:300:19
                 },
             }
         }
         try zt.writeAll(_writer, "<ul class=\"tags-all stack list-unstyled\" role=\"list\">");
-        for (content.tag_ids) |tag| { // pages.zt:306:15
+        for (content.tag_ids) |tag| { // pages.zt:307:15
             try zt.writeAll(_writer, "<li class=\"tag-item\"><a class=\"truncate-1\" href=\"/feeds?tag=");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:308:41
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:309:41
             try zt.writeAll(_writer, "\" title=\"");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:308:70
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:309:70
             try zt.writeAll(_writer, "\">");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:308:89
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:309:89
             try zt.writeAll(_writer, "</a><div class=\"tag-actions cluster align-center\"><a href=\"/tag/{@backingInt(tag.tag_id)}/edit\">Edit</a><form action=\"/tag/");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:312:27
+            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:313:27
             try zt.writeAll(_writer, "/delete\" method=\"POST\"><button class=\"btn-link padding-0 danger\" name=\"action\" value=\"delete\">Delete</button></form></div></li>");
         }
         try zt.writeAll(_writer, "</ul></main>");
     }
 
-    fn _signature(_: TagsContent, _: Navigation) void {} // pages.zt:289:19
+    fn _signature(_: TagsContent, _: Navigation) void {} // pages.zt:290:19
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -479,13 +485,13 @@ const TagsPage__children_0 = struct {
 };
 
 pub const TagsPage = struct {
-    fn _render(content: TagsContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:289:19
+    fn _render(content: TagsContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:290:19
         _ = &content;
         _ = &nav;
-        try zt.renderComponent(Layout, .{ "Tags", nav, __children_0 }, _writer); // pages.zt:290:5
+        try zt.renderComponent(Layout, .{ "Tags", nav, __children_0 }, _writer); // pages.zt:291:5
     }
 
-    fn _signature(_: TagsContent, _: Navigation) void {} // pages.zt:289:19
+    fn _signature(_: TagsContent, _: Navigation) void {} // pages.zt:290:19
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -507,47 +513,47 @@ pub const TagsPage = struct {
 };
 
 const FailedFeedsPage__children_0 = struct {
-    fn _render(content: FailedFeedsContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:330:26
+    fn _render(content: FailedFeedsContent, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:331:26
         _ = &content;
         _ = &nav;
         try zt.writeAll(_writer, "<h2>Failed feed requests</h2>");
-        if (content.failed_requests.len == 0) { // pages.zt:333:9
+        if (content.failed_requests.len == 0) { // pages.zt:334:9
             try zt.writeAll(_writer, "<p>No failed feed requests</p>");
         } else {
-            for (content.failed_requests) |failed_request| { // pages.zt:336:13
+            for (content.failed_requests) |failed_request| { // pages.zt:337:13
                 try zt.writeAll(_writer, "<section class=\"failed-feed\"><header>");
-                if (failed_request.icon_id.is_valid()) { // pages.zt:339:25
-                    if (content.icon_manage.get_icon_info(failed_request.icon_id)) |info| { // pages.zt:340:29
+                if (failed_request.icon_id.is_valid()) { // pages.zt:340:25
+                    if (content.icon_manage.get_icon_info(failed_request.icon_id)) |info| { // pages.zt:341:29
                         try zt.writeAll(_writer, "<img class=\"feed-icon\" src=\"/icons/");
-                        try zt.writeEscaped(_writer, info.hash); // pages.zt:341:56
-                        try zt.writeEscaped(_writer, info.file_type); // pages.zt:341:56
+                        try zt.writeEscaped(_writer, info.hash); // pages.zt:342:56
+                        try zt.writeEscaped(_writer, info.file_type); // pages.zt:342:56
                         try zt.writeAll(_writer, "\" alt=\"\" aria-hidden=\"true\">");
                     }
                 }
                 try zt.writeAll(_writer, "<h3 class=\"truncate-1\">");
-                if (failed_request.page_url) |page_url| { // pages.zt:349:25
+                if (failed_request.page_url) |page_url| { // pages.zt:350:25
                     try zt.writeAll(_writer, "<a href=\"");
-                    try zt.writeUrlPart(_writer, "", page_url, ""); // pages.zt:350:32
+                    try zt.writeUrlPart(_writer, "", page_url, ""); // pages.zt:351:32
                     try zt.writeAll(_writer, "\" title=\"");
-                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:350:50
+                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:351:50
                     try zt.writeAll(_writer, "\">");
-                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:351:33
+                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:352:33
                     try zt.writeAll(_writer, "</a>");
                 } else {
-                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:354:29
+                    try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:355:29
                 }
                 try zt.writeAll(_writer, "</h3><a class=\"one-line\" href=\"{failed_request.feed_url}\">Feed link</a><a href=\"/feed/{@backingInt(failed_request.feed_id)}\">Edit</a></header><p>Latest error <time datetime=\"");
-                try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{failed_request.utc_sec})); // pages.zt:361:43
+                try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{failed_request.utc_sec})); // pages.zt:362:43
                 try zt.writeAll(_writer, "\">\n                        (");
-                try zt.writeEscaped(_writer, util.date_readable(failed_request.utc_sec)); // pages.zt:362:26
+                try zt.writeEscaped(_writer, util.date_readable(failed_request.utc_sec)); // pages.zt:363:26
                 try zt.writeAll(_writer, ")</time>: ");
-                try zt.writeEscaped(_writer, failed_request.reason); // pages.zt:362:80
+                try zt.writeEscaped(_writer, failed_request.reason); // pages.zt:363:80
                 try zt.writeAll(_writer, "</p></section>");
             }
         }
     }
 
-    fn _signature(_: FailedFeedsContent, _: Navigation) void {} // pages.zt:330:26
+    fn _signature(_: FailedFeedsContent, _: Navigation) void {} // pages.zt:331:26
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -568,13 +574,13 @@ const FailedFeedsPage__children_0 = struct {
 };
 
 pub const FailedFeedsPage = struct {
-    fn _render(content: FailedFeedsContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:330:26
+    fn _render(content: FailedFeedsContent, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:331:26
         _ = &content;
         _ = &nav;
-        try zt.renderComponent(Layout, .{ "Failed feed requests", nav, __children_0 }, _writer); // pages.zt:331:5
+        try zt.renderComponent(Layout, .{ "Failed feed requests", nav, __children_0 }, _writer); // pages.zt:332:5
     }
 
-    fn _signature(_: FailedFeedsContent, _: Navigation) void {} // pages.zt:330:26
+    fn _signature(_: FailedFeedsContent, _: Navigation) void {} // pages.zt:331:26
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -596,50 +602,50 @@ pub const FailedFeedsPage = struct {
 };
 
 const FeedAddPage__children_0 = struct {
-    fn _render(opts: FeedAddOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:378:22
+    fn _render(opts: FeedAddOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:379:22
         _ = &opts;
         _ = &nav;
         try zt.writeAll(_writer, "<main class=\"flow\"><header class=\"main-header\"><h2>Add feed</h2></header>");
-        if (opts.query_success) |success_err| { // pages.zt:382:13
-            if (success_err) |feed_id| { // pages.zt:383:17
+        if (opts.query_success) |success_err| { // pages.zt:383:13
+            if (success_err) |feed_id| { // pages.zt:384:17
                 try zt.writeAll(_writer, "<p class=\"callout success\">Feed added.\n                        <a href=\"/feed/");
-                try zt.writeEscaped(_writer, feed_id); // pages.zt:385:28
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:386:28
                 try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
-            } else |err| { // pages.zt:387:19
+            } else |err| { // pages.zt:388:19
                 try zt.writeAll(_writer, "<p>Please provide valid feed ID. Error: ");
-                try zt.writeEscaped(_writer, err); // pages.zt:388:61
+                try zt.writeEscaped(_writer, err); // pages.zt:389:61
                 try zt.writeAll(_writer, "</p>");
             }
-        } else if (opts.query_feed_exists) |feed_exists_err| { // pages.zt:390:20
-            if (feed_exists_err) |feed_id| { // pages.zt:391:17
+        } else if (opts.query_feed_exists) |feed_exists_err| { // pages.zt:391:20
+            if (feed_exists_err) |feed_id| { // pages.zt:392:17
                 try zt.writeAll(_writer, "<p>Feed already exists.\n                        <a href=\"/feed/");
-                try zt.writeEscaped(_writer, feed_id); // pages.zt:393:28
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:394:28
                 try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
-            } else |err| { // pages.zt:395:19
+            } else |err| { // pages.zt:396:19
                 try zt.writeAll(_writer, "<p>Please provide valid feed ID. Error: ");
-                try zt.writeEscaped(_writer, err); // pages.zt:396:61
+                try zt.writeEscaped(_writer, err); // pages.zt:397:61
                 try zt.writeAll(_writer, "</p>");
             }
-        } else if (opts.query_error) |err_enum| { // pages.zt:398:20
-            switch (err_enum) { // pages.zt:399:18
-                .invalid_url => { // pages.zt:400:22
+        } else if (opts.query_error) |err_enum| { // pages.zt:399:20
+            switch (err_enum) { // pages.zt:400:18
+                .invalid_url => { // pages.zt:401:22
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Enter valid feed/page link</p>");
                 },
-                .url_missing => { // pages.zt:401:22
+                .url_missing => { // pages.zt:402:22
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Fill in feed/page link</p>");
                 },
-                else => { // pages.zt:402:22
+                else => { // pages.zt:403:22
                 },
             }
         }
         try zt.writeAll(_writer, "<form action=\"/feed/add\" method=\"POST\" class=\"flow\" style=\"--flow-space: var(--size-4xl)\"><div><div><label for=\"input-url\">Feed/Page link</label></div><input type=\"text\" class=\"char-len-l\" id=\"input-url\" name=\"input-url\" value=\"");
-        try zt.writeEscaped(_writer, opts.input_url); // pages.zt:411:91
+        try zt.writeEscaped(_writer, opts.input_url); // pages.zt:412:91
         try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"input-tags\">Tags (optional)</label><em>Tags are comma separated</em></div><input type=\"text\" class=\"char-len-m\" id=\"input-tags\" name=\"input-tags\" value=\"");
-        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:419:93
+        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:420:93
         try zt.writeAll(_writer, "\"></div><button class=\"primary muted\">Add new feed</button></form></main>");
     }
 
-    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:378:22
+    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:379:22
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -660,13 +666,13 @@ const FeedAddPage__children_0 = struct {
 };
 
 pub const FeedAddPage = struct {
-    fn _render(opts: FeedAddOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:378:22
+    fn _render(opts: FeedAddOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:379:22
         _ = &opts;
         _ = &nav;
-        try zt.renderComponent(Layout, .{ "Add feed", nav, __children_0 }, _writer); // pages.zt:379:5
+        try zt.renderComponent(Layout, .{ "Add feed", nav, __children_0 }, _writer); // pages.zt:380:5
     }
 
-    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:378:22
+    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:379:22
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -688,60 +694,60 @@ pub const FeedAddPage = struct {
 };
 
 const FeedPickPage__children_0 = struct {
-    fn _render(opts: FeedPickOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:440:23
+    fn _render(opts: FeedPickOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:441:23
         _ = &opts;
         _ = &nav;
         try zt.writeAll(_writer, "<main class=\"flow\"><header class=\"main-header\"><h2>Pick feed</h2></header>");
-        if (opts.query_feed_exists) |result_err| { // pages.zt:444:13
-            if (result_err) |feed_id| { // pages.zt:445:17
+        if (opts.query_feed_exists) |result_err| { // pages.zt:445:13
+            if (result_err) |feed_id| { // pages.zt:446:17
                 try zt.writeAll(_writer, "<p class=\"callout\">Feed already exists.\n                        <a href=\"/feed/");
-                try zt.writeEscaped(_writer, feed_id); // pages.zt:447:28
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:448:28
                 try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
-            } else |err| { // pages.zt:449:19
+            } else |err| { // pages.zt:450:19
                 try zt.writeAll(_writer, "<p class=\"callout danger\">Invalid feed ID. Error: ");
-                try zt.writeEscaped(_writer, err); // pages.zt:450:71
+                try zt.writeEscaped(_writer, err); // pages.zt:451:71
                 try zt.writeAll(_writer, "</p>");
             }
-        } else if (opts.query_error) |query_error| { // pages.zt:452:20
-            switch (query_error) { // pages.zt:453:17
-                .invalid_url => { // pages.zt:454:21
+        } else if (opts.query_error) |query_error| { // pages.zt:453:20
+            switch (query_error) { // pages.zt:454:17
+                .invalid_url => { // pages.zt:455:21
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Enter valid url.</p>");
                 },
-                .url_missing => { // pages.zt:455:21
+                .url_missing => { // pages.zt:456:21
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Pick feed option.</p>");
                 },
-                .empty_selector => { // pages.zt:456:21
+                .empty_selector => { // pages.zt:457:21
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Fill in 'Feed item selector'.</p>");
                 },
-                .pick_url => { // pages.zt:457:21
+                .pick_url => { // pages.zt:458:21
                     try zt.writeAll(_writer, "<p class=\"callout danger\">Pick one of the feed options.</p>");
                 },
-                else => { // pages.zt:458:21
+                else => { // pages.zt:459:21
                 },
             }
         }
         try zt.writeAll(_writer, "<form action=\"/feed/pick\" method=\"POST\" class=\"flow\" style=\"--flow-space: var(--size-4xl)\"><div><label>Feed/Page link</label><input class=\"char-len-l\" type=\"text\" readonly name=\"input-url\"");
-        try zt.writeAttr(_writer, "value", opts.input_url); // pages.zt:467:85
+        try zt.writeAttr(_writer, "value", opts.input_url); // pages.zt:468:85
         try zt.writeAll(_writer, "></div><fieldset><legend>Pick feed to add</legend><ul class=\"list-unstyled margin-end-0\">");
-        try zt.writeEscaped(_writer, try render_picks(opts.query, opts.query_picked_index, opts.writer)); // pages.zt:474:25
+        try zt.writeEscaped(_writer, try render_picks(opts.query, opts.query_picked_index, opts.writer)); // pages.zt:475:25
         try zt.writeAll(_writer, "<li><label for=\"url-html\"><input type=\"radio\" id=\"url-html\" name=\"url-picked\" value=\"html\"");
-        try zt.writeBoolAttr(_writer, "checked", opts.is_html_checked); // pages.zt:477:98
+        try zt.writeBoolAttr(_writer, "checked", opts.is_html_checked); // pages.zt:478:98
         try zt.writeAll(_writer, ">\n                                Html as feed\n                            </label></li></ul><div><noscript><p class=\"callout\">\n                                Fill these fields if you picked \"Html as feed\".\n                            </p></noscript><div class=\"html-feed-inputs flow\"><div><label for=\"feed-container\">Html item selector</label><input type=\"text\" id=\"feed-container\" name=\"selector-container\" value=\"");
-        try zt.writeEscaped(_writer, opts.html_opts.selector_container); // pages.zt:491:98
+        try zt.writeEscaped(_writer, opts.html_opts.selector_container); // pages.zt:492:98
         try zt.writeAll(_writer, "\"></div><p class=\"callout\">Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p><div><div class=\"label-wrapper\"><label for=\"feed-link\">Html link selector (optional)</label><em>Fallback is &lt;a&gt; href value</em></div><input type=\"text\" id=\"feed-link\" name=\"selector-link\" value=\"");
-        try zt.writeEscaped(_writer, opts.html_opts.selector_link); // pages.zt:501:88
+        try zt.writeEscaped(_writer, opts.html_opts.selector_link); // pages.zt:502:88
         try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-heading\">Html heading selector (optional)</label><em>Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</em></div><input type=\"text\" id=\"feed-heading\" name=\"selector-heading\" value=\"");
-        try zt.writeEscaped(_writer, opts.html_opts.selector_heading); // pages.zt:509:94
+        try zt.writeEscaped(_writer, opts.html_opts.selector_heading); // pages.zt:510:94
         try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-date\">Html date selector (optional)</label><em>Fallback is &lt;time&gt.</em></div><input type=\"text\" id=\"feed-date\" name=\"selector-date\" value=\"");
-        try zt.writeEscaped(_writer, opts.html_opts.selector_date); // pages.zt:517:88
+        try zt.writeEscaped(_writer, opts.html_opts.selector_date); // pages.zt:518:88
         try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-date-format\">Html date format (optional)</label><em>Fallback is date format that &lt;time&gt; uses.</em></div><input type=\"text\" id=\"feed-date-format\" name=\"feed-date-format\" value=\"");
-        try zt.writeEscaped(_writer, opts.html_opts.date_format); // pages.zt:525:98
+        try zt.writeEscaped(_writer, opts.html_opts.date_format); // pages.zt:526:98
         try zt.writeAll(_writer, "\"></div></div></div></fieldset><div><div class=\"label-wrapper\"><label for=\"input-tags\">Tags (optional)</label><em>Tags are comma separated</em></div><input class=\"char-len-m\" id=\"input-tags\" name=\"input-tags\" value=\"");
-        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:537:81
+        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:538:81
         try zt.writeAll(_writer, "\"></div><div class=\"form-actions\"><button class=\"primary muted\">Add new feed</button><a href=\"/feed/add\">Cancel</a></div></form></main>");
     }
 
-    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:440:23
+    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:441:23
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -762,13 +768,13 @@ const FeedPickPage__children_0 = struct {
 };
 
 pub const FeedPickPage = struct {
-    fn _render(opts: FeedPickOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:440:23
+    fn _render(opts: FeedPickOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:441:23
         _ = &opts;
         _ = &nav;
-        try zt.renderComponent(Layout, .{ "Pick feed", nav, __children_0 }, _writer); // pages.zt:441:5
+        try zt.renderComponent(Layout, .{ "Pick feed", nav, __children_0 }, _writer); // pages.zt:442:5
     }
 
-    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:440:23
+    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:441:23
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 
@@ -790,26 +796,26 @@ pub const FeedPickPage = struct {
 };
 
 pub const PickItem = struct {
-    fn _render(value: []const u8, index: u32, is_checked: bool, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:559:19
+    fn _render(value: []const u8, index: u32, is_checked: bool, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:560:19
         _ = &value;
         _ = &index;
         _ = &is_checked;
         try zt.writeAll(_writer, "<li><input type=\"hidden\" name=\"url\" value=\"");
-        try zt.writeEscaped(_writer, value); // pages.zt:561:41
+        try zt.writeEscaped(_writer, value); // pages.zt:562:41
         try zt.writeAll(_writer, "\"><label for=\"url-");
-        try zt.writeEscaped(_writer, index); // pages.zt:562:16
+        try zt.writeEscaped(_writer, index); // pages.zt:563:16
         try zt.writeAll(_writer, "\"><input type=\"radio\" id=\"url-");
-        try zt.writeEscaped(_writer, index); // pages.zt:563:33
+        try zt.writeEscaped(_writer, index); // pages.zt:564:33
         try zt.writeAll(_writer, "\" name=\"url-picked\" value=\"");
-        try zt.writeEscaped(_writer, value); // pages.zt:563:68
+        try zt.writeEscaped(_writer, value); // pages.zt:564:68
         try zt.writeAll(_writer, "\"");
-        try zt.writeBoolAttr(_writer, "checked", is_checked); // pages.zt:563:84
+        try zt.writeBoolAttr(_writer, "checked", is_checked); // pages.zt:564:84
         try zt.writeAll(_writer, ">");
-        try zt.writeEscaped(_writer, value); // pages.zt:564:13
+        try zt.writeEscaped(_writer, value); // pages.zt:565:13
         try zt.writeAll(_writer, "</label></li>");
     }
 
-    fn _signature(_: []const u8, _: u32, _: bool) void {} // pages.zt:559:19
+    fn _signature(_: []const u8, _: u32, _: bool) void {} // pages.zt:560:19
 
     pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
 

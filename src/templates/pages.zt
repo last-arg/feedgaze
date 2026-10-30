@@ -126,12 +126,13 @@ pub templ Nav(nav: Navigation) {
             <fieldset class='tags stack'>
               <legend>Tags</legend>
               <div class='tag-list'>
-                for (nav.tags, 0..) |tag, index| {
-                    <div class='tag'>
-                      <input type="checkbox" name="tag" id="tag-id-{index}" value="{tag}" />
-                      <label class="visually-hidden" for="tag-id-{index}">{tag}</label>
-                    </div>
-                }
+              for (nav.tags, 0..) |tag, index| {
+                  <div class='tag'>
+                    <input type="checkbox" name="tag" id="tag-id-{index}" value="{tag}" />
+                    <label class="visually-hidden" for="tag-id-{index}">{tag}</label>
+                    <a class="truncate-1" href="/feeds?tag={tag}" title="{tag}">{tag}</a>
+                  </div>
+              }
               </div>
             </fieldset>
             <div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>
