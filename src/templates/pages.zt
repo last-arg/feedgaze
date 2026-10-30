@@ -409,8 +409,145 @@ pub templ FeedAddPage(opts: FeedAddOpts, nav: Navigation) {
 
                 <button class="primary muted">Add new feed</button>
             </form>
-
         </main>
     }
 }
 
+pub const FeedPickOpts = struct {
+    query_feed_exists: ?std.fmt.ParseIntError!u64 = null,
+    query_error: ?UrlQueryError = null,
+    input_url: []const u8 = "",
+    input_tags: []const u8 = "",
+    query_picked_index: u32 = 0,
+    query: *@import("httpz").key_value.StringKeyValue,
+    writer: *std.Io.Writer,
+    is_html_checked: bool = false,
+    html_opts: @import("../feed_parse.zig").HtmlOptions,
+};
+
+pub templ FeedPickPage(opts: FeedPickOpts, nav: Navigation) {
+    @Layout("Pick feed", nav) {
+        <main class="flow">
+            <header class='main-header'><h2>Pick feed</h2></header>
+            if (opts.query_feed_exists) |result_err| {
+                if (result_err) |feed_id| {
+                    <p class="callout">Feed already exists.
+                        <a href="/feed/{feed_id}">Got to feed page</a>.
+                    </p>
+                } else |err| {
+                    <p class='callout danger'>Invalid feed ID. Error: {err}</p>
+                }
+            } else if (opts.query_error) |query_error| {
+                switch (query_error) {
+                    .invalid_url => {<p class="callout danger">Enter valid url.</p>},
+                    .url_missing => {<p class="callout danger">Pick feed option.</p>},
+                    .empty_selector => {<p class="callout danger">Fill in 'Feed item selector'.</p>},
+                    .pick_url => {<p class="callout danger">Pick one of the feed options.</p>},
+                    else => {}
+                }
+            }
+
+            <form action="/feed/pick" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
+                <div>
+                    <label>Feed/Page link</label>
+                    <input class='char-len-l' type='text' readonly name='input-url' value={opts.input_url} />
+                </div>
+
+                <fieldset>
+                    <legend>Pick feed to add</legend>
+
+                    <ul class='list-unstyled margin-end-0'>
+                        {try render_picks(opts.query, opts.query_picked_index, opts.writer)}
+                        <li>
+                            <label for="url-html">
+                                <input type="radio" id="url-html" name="url-picked" value="html" checked?={opts.is_html_checked} />
+                                Html as feed
+                            </label>
+                        </li>
+                    </ul>
+                    <div>
+                        <noscript>
+                            <p class="callout">
+                                Fill these fields if you picked "Html as feed".
+                            </p>
+                        </noscript>
+                        <div class='html-feed-inputs flow'>
+                            <div>
+                                <label for="feed-container">Html item selector</label>
+                                <input type="text" id="feed-container" name="selector-container" value="{opts.html_opts.selector_container}" />
+                            </div>
+
+                            <p class="callout">Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
+
+                            <div>
+                                <div class="label-wrapper">
+                                    <label for="feed-link">Html link selector (optional)</label>
+                                    <em>Fallback is &lt;a&gt; href value</em>
+                                </div>
+                                <input type="text" id="feed-link" name="selector-link" value="{opts.html_opts.selector_link}" />
+                            </div>
+
+                            <div>
+                                <div class="label-wrapper">
+                                    <label for="feed-heading">Html heading selector (optional)</label>
+                                    <em>Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</em>
+                                </div>
+                                <input type="text" id="feed-heading" name="selector-heading" value="{opts.html_opts.selector_heading}" />
+                            </div>
+
+                            <div>
+                                <div class="label-wrapper">
+                                    <label for="feed-date">Html date selector (optional)</label>
+                                    <em>Fallback is &lt;time&gt.</em>
+                                </div>
+                                <input type="text" id="feed-date" name="selector-date" value="{opts.html_opts.selector_date}" />
+                            </div>
+
+                            <div>
+                                <div class="label-wrapper">
+                                    <label for="feed-date-format">Html date format (optional)</label>
+                                    <em>Fallback is date format that &lt;time&gt; uses.</em>
+                                </div>
+                                <input type="text" id="feed-date-format" name="feed-date-format" value="{opts.html_opts.date_format}" />
+                            </div>
+
+                        </div>
+                    </div>
+                </fieldset>
+
+                <div>
+                    <div class="label-wrapper">
+                        <label for="input-tags">Tags (optional)</label>
+                        <em>Tags are comma separated</em>
+                    </div>
+                    <input class="char-len-m" id="input-tags" name="input-tags" value="{opts.input_tags}" />
+                </div>
+
+                <div class="form-actions">
+                    <button class="primary muted">Add new feed</button>
+                    <a href="/feed/add">Cancel</a>
+                </div>
+            </form>
+        </main>
+    }
+}
+
+pub fn render_picks(query: *@import("httpz").key_value.StringKeyValue, picked_index: u32, w: *std.Io.Writer) !void {
+    var index: u32 = 0;
+    for (query.keys, query.values) |key, value| {
+        if (std.mem.eql(u8, "url", key)) {
+            try PickItem.render(.{value, index, index == picked_index}, w);
+            index += 1;
+        }
+    }
+}
+
+pub templ PickItem(value: []const u8, index: u32, is_checked: bool) {
+    <li>
+        <input type="hidden" name="url" value="{value}" />
+        <label for="url-{index}">
+            <input type="radio" id="url-{index}" name="url-picked" value="{value}" checked?={is_checked} />
+            {value}
+        </label>
+    </li>
+}

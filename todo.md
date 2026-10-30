@@ -3,7 +3,7 @@
 - explore zt for html templating
     - /feeds
     - /feed/<id>
-    - /feed/pick
+- fix nav filter tag list
 - check adding timeout to async code? Can I?
 - error:
 ```

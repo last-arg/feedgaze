@@ -116,6 +116,28 @@ pub const FeedAddOpts = struct {
     input_tags: []const u8 = "",
 };
 
+pub const FeedPickOpts = struct {
+    query_feed_exists: ?std.fmt.ParseIntError!u64 = null,
+    query_error: ?UrlQueryError = null,
+    input_url: []const u8 = "",
+    input_tags: []const u8 = "",
+    query_picked_index: u32 = 0,
+    query: *@import("httpz").key_value.StringKeyValue,
+    writer: *std.Io.Writer,
+    is_html_checked: bool = false,
+    html_opts: @import("../feed_parse.zig").HtmlOptions,
+};
+
+pub fn render_picks(query: *@import("httpz").key_value.StringKeyValue, picked_index: u32, w: *std.Io.Writer) !void {
+    var index: u32 = 0;
+    for (query.keys, query.values) |key, value| {
+        if (std.mem.eql(u8, "url", key)) {
+            try PickItem.render(.{ value, index, index == picked_index }, w);
+            index += 1;
+        }
+    }
+}
+
 pub const Layout = struct {
     fn _render(title: []const u8, nav: Navigation, children: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:50:17
         _ = &title;
@@ -651,6 +673,148 @@ pub const FeedAddPage = struct {
     pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
         const __children_0 = FeedAddPage__children_0.bind(&args);
         return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+const FeedPickPage__children_0 = struct {
+    fn _render(opts: FeedPickOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:440:23
+        _ = &opts;
+        _ = &nav;
+        try zt.writeAll(_writer, "<main class=\"flow\"><header class=\"main-header\"><h2>Pick feed</h2></header>");
+        if (opts.query_feed_exists) |result_err| { // pages.zt:444:13
+            if (result_err) |feed_id| { // pages.zt:445:17
+                try zt.writeAll(_writer, "<p class=\"callout\">Feed already exists.\n                        <a href=\"/feed/");
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:447:28
+                try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
+            } else |err| { // pages.zt:449:19
+                try zt.writeAll(_writer, "<p class=\"callout danger\">Invalid feed ID. Error: ");
+                try zt.writeEscaped(_writer, err); // pages.zt:450:71
+                try zt.writeAll(_writer, "</p>");
+            }
+        } else if (opts.query_error) |query_error| { // pages.zt:452:20
+            switch (query_error) { // pages.zt:453:17
+                .invalid_url => { // pages.zt:454:21
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Enter valid url.</p>");
+                },
+                .url_missing => { // pages.zt:455:21
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Pick feed option.</p>");
+                },
+                .empty_selector => { // pages.zt:456:21
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Fill in 'Feed item selector'.</p>");
+                },
+                .pick_url => { // pages.zt:457:21
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Pick one of the feed options.</p>");
+                },
+                else => { // pages.zt:458:21
+                },
+            }
+        }
+        try zt.writeAll(_writer, "<form action=\"/feed/pick\" method=\"POST\" class=\"flow\" style=\"--flow-space: var(--size-4xl)\"><div><label>Feed/Page link</label><input class=\"char-len-l\" type=\"text\" readonly name=\"input-url\"");
+        try zt.writeAttr(_writer, "value", opts.input_url); // pages.zt:467:85
+        try zt.writeAll(_writer, "></div><fieldset><legend>Pick feed to add</legend><ul class=\"list-unstyled margin-end-0\">");
+        try zt.writeEscaped(_writer, try render_picks(opts.query, opts.query_picked_index, opts.writer)); // pages.zt:474:25
+        try zt.writeAll(_writer, "<li><label for=\"url-html\"><input type=\"radio\" id=\"url-html\" name=\"url-picked\" value=\"html\"");
+        try zt.writeBoolAttr(_writer, "checked", opts.is_html_checked); // pages.zt:477:98
+        try zt.writeAll(_writer, ">\n                                Html as feed\n                            </label></li></ul><div><noscript><p class=\"callout\">\n                                Fill these fields if you picked \"Html as feed\".\n                            </p></noscript><div class=\"html-feed-inputs flow\"><div><label for=\"feed-container\">Html item selector</label><input type=\"text\" id=\"feed-container\" name=\"selector-container\" value=\"");
+        try zt.writeEscaped(_writer, opts.html_opts.selector_container); // pages.zt:491:98
+        try zt.writeAll(_writer, "\"></div><p class=\"callout\">Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p><div><div class=\"label-wrapper\"><label for=\"feed-link\">Html link selector (optional)</label><em>Fallback is &lt;a&gt; href value</em></div><input type=\"text\" id=\"feed-link\" name=\"selector-link\" value=\"");
+        try zt.writeEscaped(_writer, opts.html_opts.selector_link); // pages.zt:501:88
+        try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-heading\">Html heading selector (optional)</label><em>Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</em></div><input type=\"text\" id=\"feed-heading\" name=\"selector-heading\" value=\"");
+        try zt.writeEscaped(_writer, opts.html_opts.selector_heading); // pages.zt:509:94
+        try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-date\">Html date selector (optional)</label><em>Fallback is &lt;time&gt.</em></div><input type=\"text\" id=\"feed-date\" name=\"selector-date\" value=\"");
+        try zt.writeEscaped(_writer, opts.html_opts.selector_date); // pages.zt:517:88
+        try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"feed-date-format\">Html date format (optional)</label><em>Fallback is date format that &lt;time&gt; uses.</em></div><input type=\"text\" id=\"feed-date-format\" name=\"feed-date-format\" value=\"");
+        try zt.writeEscaped(_writer, opts.html_opts.date_format); // pages.zt:525:98
+        try zt.writeAll(_writer, "\"></div></div></div></fieldset><div><div class=\"label-wrapper\"><label for=\"input-tags\">Tags (optional)</label><em>Tags are comma separated</em></div><input class=\"char-len-m\" id=\"input-tags\" name=\"input-tags\" value=\"");
+        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:537:81
+        try zt.writeAll(_writer, "\"></div><div class=\"form-actions\"><button class=\"primary muted\">Add new feed</button><a href=\"/feed/add\">Cancel</a></div></form></main>");
+    }
+
+    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:440:23
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return @call(.always_inline, _render, args ++ .{_writer});
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+pub const FeedPickPage = struct {
+    fn _render(opts: FeedPickOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:440:23
+        _ = &opts;
+        _ = &nav;
+        try zt.renderComponent(Layout, .{ "Pick feed", nav, __children_0 }, _writer); // pages.zt:441:5
+    }
+
+    fn _signature(_: FeedPickOpts, _: Navigation) void {} // pages.zt:440:23
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const __children_0 = FeedPickPage__children_0.bind(&args);
+        return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+pub const PickItem = struct {
+    fn _render(value: []const u8, index: u32, is_checked: bool, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:559:19
+        _ = &value;
+        _ = &index;
+        _ = &is_checked;
+        try zt.writeAll(_writer, "<li><input type=\"hidden\" name=\"url\" value=\"");
+        try zt.writeEscaped(_writer, value); // pages.zt:561:41
+        try zt.writeAll(_writer, "\"><label for=\"url-");
+        try zt.writeEscaped(_writer, index); // pages.zt:562:16
+        try zt.writeAll(_writer, "\"><input type=\"radio\" id=\"url-");
+        try zt.writeEscaped(_writer, index); // pages.zt:563:33
+        try zt.writeAll(_writer, "\" name=\"url-picked\" value=\"");
+        try zt.writeEscaped(_writer, value); // pages.zt:563:68
+        try zt.writeAll(_writer, "\"");
+        try zt.writeBoolAttr(_writer, "checked", is_checked); // pages.zt:563:84
+        try zt.writeAll(_writer, ">");
+        try zt.writeEscaped(_writer, value); // pages.zt:564:13
+        try zt.writeAll(_writer, "</label></li>");
+    }
+
+    fn _signature(_: []const u8, _: u32, _: bool) void {} // pages.zt:559:19
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return @call(.always_inline, _render, args ++ .{_writer});
     }
 
     pub fn bind(args: *const Args) zt.Component {

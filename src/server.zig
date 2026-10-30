@@ -644,187 +644,51 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Pick feed");
-
     const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
 
-    try w.writeAll("<main class='flow'>");
-    try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
+    const query_picked_index = if (query.get("pick-index")) |raw|
+        std.fmt.parseInt(u32, raw, 10) catch 0
+        else 0;
+
+    var feed_pick_opts: pages.FeedPickOpts = .{
+        .input_tags = query.get("input-tags") orelse "",
+        .input_url = url,
+        .query = query,
+        .writer = w,
+        .query_picked_index = query_picked_index,
+        .is_html_checked = blk: {
+            var count: u32 = 0;
+            for (query.keys) |key| {
+                count += @intFromBool(std.mem.eql(u8, "url", key));
+            }
+            break :blk count == query_picked_index;
+        },
+        .html_opts = .{
+            .selector_container = selector_value(query, "selector-container"),
+            .selector_link = selector_value(query, "selector-link"),
+            .selector_heading = selector_value(query, "selector-heading"),
+            .selector_date = selector_value(query, "selector-date"),
+            .date_format = selector_value(query, "feed-date-format"),
+        },
+    };
 
     if (query.get("feed-exists")) |raw_value| {
-        const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
-        if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
-            try w.print(
-                \\<p class="callout">Feed already exists.
-                \\<a href="/feed/{d}">Got to feed page</a>.
-                \\</p>
-            , .{feed_id});
-        } else |err| {
-            std.log.warn("Failed to get parse feed id '{s}'. Error: {}", .{value, err});
-            try w.writeAll("<p class='callout danger'>Enter valid feed ID.</p>");
-        }
+        feed_pick_opts.query_feed_exists = std.fmt.parseUnsigned(u64, raw_value, 10);
     } else if (query.get("error")) |value| {
-        switch (UrlQueryError.from_string(value)) {
-            .invalid_url => try w.writeAll("<p class='callout danger'>Enter valid url.</p>"),
-            .url_missing => try w.writeAll("<p class='callout danger>Pick feed option.</p>"),
-            .empty_selector => try w.writeAll("<p class='callout danger>Fill in 'Feed item selector'.</p>"),
-            .pick_url => try w.writeAll("<p class='callout danger>Pick one of the feed options.</p>"),
-            else => {
-                std.log.warn("Unexpected error '{s}' happened", .{value});
-            }
-        }
+        feed_pick_opts.query_error = UrlQueryError.from_string(value);
     }
 
-    try w.writeAll(
-        \\<form action="/feed/pick" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
-    );
-    try w.writeAll(
-        \\<div>
-        \\<label>Feed/Page link
-        \\</label>
-    );
-    const url_escaped = try parse.html_escape(req.arena, url);
-    try w.print("<input class='char-len-l' type='text' readonly name='input-url' value='{s}'>", .{url_escaped});
-    try w.writeAll("</div>");
-
-    try w.writeAll("<fieldset>");
-    try w.writeAll("<legend>Pick feed to add</legend>");
-
-    const pick_index = blk: {
-        if (query.get("pick-index")) |raw| {
-            break :blk std.fmt.parseInt(u32, raw, 10) catch 0;
-        }
-        break :blk 0;
-    };
-
-    try w.writeAll("<ul class='list-unstyled margin-end-0'>");
-    var iter = query.iterator();
-    var index: usize = 0;
-    while (iter.next()) |kv| {
-        if (mem.eql(u8, "url", kv.key)) {
-            try w.writeAll("<li>");
-            const value_escaped = try parse.html_escape(req.arena, kv.value);
-            // const checked = if (pick_index == index) "checked" else "";
-            const checked = "";
-            try w.print(
-                \\<input type="hidden" name="url" value="{[value]s}"> 
-                \\<label for="url-{[index]d}">
-                \\<input type="radio" id="url-{[index]d}" name="url-picked" value="{[value]s}" {[checked]s}> 
-                \\{[value]s}
-                \\</label>
-            , .{.index = index, .value = value_escaped, .checked = checked});
-            try w.writeAll("</li>");
-            index += 1;
-        }
-    }
-
-    try w.writeAll("<li>");
-    try w.print(
-        \\<label for="url-html">
-        \\<input type="radio" id="url-html" name="url-picked" value="html" {s}> 
-        \\Html as feed
-        \\</label>
-    , .{if (pick_index == index) "checked" else ""});
-    try w.writeAll("</li>");
-    try w.writeAll("</ul>");
-
-    try w.writeAll(
-        \\<div>
-        \\<noscript>
-        \\<p class="callout">
-        \\Fill these fields if you picked "Html as feed".
-        \\</p>
-        \\</noscript>
-        \\<div class='html-feed-inputs flow'>
-    );
-    try w.print(
-        \\<div>
-        \\<label for="feed-container">Html item selector</label>
-        \\<input type="text" id="feed-container" name="selector-container" value="{s}"> 
-        \\</div>
-    , .{try selector_value(req.arena, query, "selector-container")});
-    try w.writeAll(
-        \\<p class="callout">Rest of the fields are optional. And selector fields root (starting point) is feed item selector.</p>
-    );
-    try w.print(
-        \\<div>
-        \\<div class="label-wrapper">
-        \\<label for="feed-link">Html link selector (optional)</label>
-        \\<em>Fallback is &lt;a&gt; href value</em>
-        \\</div>
-        \\<input type="text" id="feed-link" name="selector-link" value="{s}"> 
-        \\</div>
-    , .{try selector_value(req.arena, query, "selector-link")});
-    try w.print(
-        \\<div>
-        \\<div class="label-wrapper">
-        \\<label for="feed-heading">Html heading selector (optional)</label>
-        \\<em>Fallback are headings (&lt;h1&gt;-&lt;h6&gt;). After that whole item container's text will be used.</em>
-        \\</div>
-        \\<input type="text" id="feed-heading" name="selector-heading" value="{s}"> 
-        \\</div>
-    , .{try selector_value(req.arena, query, "selector-heading")});
-    try w.print(
-        \\<div>
-        \\<div class="label-wrapper">
-        \\<label for="feed-date">Html date selector (optional)</label>
-        \\<em>Fallback is &lt;time&gt.</em>
-        \\</div>
-        \\<input type="text" id="feed-date" name="selector-date" value="{s}"> 
-        \\</div>
-    , .{try selector_value(req.arena, query, "selector-date")});
-    try w.print(
-        \\<div>
-        \\<div class="label-wrapper">
-        \\<label for="feed-date-format">Html date format (optional)</label>
-        \\<em>Fallback is date format that &lt;time&gt; uses.</em>
-        \\</div>
-        \\<input type="text" id="feed-date-format" name="feed-date-format" value="{s}"> 
-        \\</div>
-    , .{try selector_value(req.arena, query, "feed-date-format")});
-    try w.writeAll(
-        \\</div>
-    );
-    try w.writeAll("</div>");
-    try w.writeAll("</fieldset>");
-
-    const tags_str: []const u8 = blk: {
-        if (query.get("input-tags")) |tags_raw| {
-            break :blk try parse.html_escape(req.arena, tags_raw);
-        }
-        break :blk "";
-    };
-
-    try w.print(
-        \\<div>
-        \\<div class="label-wrapper">
-        \\<label for="input-tags">Tags (optional)</label>
-        \\<em>Tags are comma separated</em>
-        \\</div>
-        \\<input class="char-len-m" id="input-tags" name="input-tags" value="{s}">
-        \\</div>
-    , .{tags_str});
-
-    try w.writeAll(
-        \\<div class="form-actions">
-        \\<button class="primary muted">Add new feed</button>
-        \\<a href="/feed/add">Cancel</a>
-        \\</div>
-        \\</form>
-    );
-
-    try w.writeAll("</main>");
-    try Layout.write_foot(w);
-
+    try pages.FeedPickPage.render(.{feed_pick_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 
-fn selector_value(allocator: mem.Allocator, query: *httpz.key_value.StringKeyValue, key: []const u8) ![]const u8 {
+fn selector_value(query: *httpz.key_value.StringKeyValue, key: []const u8) []const u8 {
     if (query.get(key)) |raw| {
         const value = mem.trim(u8, raw, &std.ascii.whitespace);
         if (value.len > 0) {
-            return try parse.html_escape(allocator, value);
+            return value;
         }
     }
     return "";
