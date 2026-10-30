@@ -356,3 +356,61 @@ pub templ FailedFeedsPage(content: FailedFeedsContent, nav: Navigation) {
         }
     }
 }
+
+pub const FeedAddOpts = struct {
+    query_success: ?std.fmt.ParseIntError!u64 = null,
+    query_feed_exists: ?std.fmt.ParseIntError!u64 = null,
+    query_error: ?UrlQueryError = null,
+    input_url: []const u8 = "",
+    input_tags: []const u8 = "",
+};
+
+pub templ FeedAddPage(opts: FeedAddOpts, nav: Navigation) {
+    @Layout("Add feed", nav) {
+        <main class="flow">
+            <header class='main-header'><h2>Add feed</h2></header>
+            if (opts.query_success) |success_err| {
+                if (success_err) |feed_id| {
+                    <p class="callout success">Feed added.
+                        <a href="/feed/{feed_id}">Got to feed page</a>.
+                    </p>
+                } else |err| {
+                    <p>Please provide valid feed ID. Error: {err}</p>
+                }
+            } else if (opts.query_feed_exists) |feed_exists_err| {
+                if (feed_exists_err) |feed_id| {
+                    <p>Feed already exists.
+                        <a href="/feed/{feed_id}">Got to feed page</a>.
+                    </p>
+                } else |err| {
+                    <p>Please provide valid feed ID. Error: {err}</p>
+                }
+            } else if (opts.query_error) |err_enum| {
+                 switch (err_enum) {
+                     .invalid_url => {<p class='callout danger'>Enter valid feed/page link</p>},
+                     .url_missing => {<p class='callout danger'>Fill in feed/page link</p>},
+                     else => {},
+                 }
+            }
+
+            <form action="/feed/add" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
+                <div>
+                    <div><label for="input-url">Feed/Page link</label></div>
+                    <input type="text" class="char-len-l" id="input-url" name="input-url" value="{opts.input_url}" />
+                </div>
+
+                <div>
+                    <div class='label-wrapper'>
+                        <label for="input-tags">Tags (optional)</label>
+                        <em>Tags are comma separated</em>
+                    </div>
+                    <input type="text" class="char-len-m" id="input-tags" name="input-tags" value="{opts.input_tags}" />
+                </div>
+
+                <button class="primary muted">Add new feed</button>
+            </form>
+
+        </main>
+    }
+}
+

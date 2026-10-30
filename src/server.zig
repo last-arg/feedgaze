@@ -1022,88 +1022,27 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Add feed");
-
     const tags = try db.tags_all(req.arena);
     defer req.arena.free(tags);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
-
-    try w.writeAll("<main class='flow'>");
-
-    try w.writeAll("<header class='main-header'><h2>Add feed</h2></header>");
 
     var query = try req.query();
+
+    var feed_add_opts: pages.FeedAddOpts = .{
+        .input_url = query.get("input-url") orelse "",
+        .input_tags = query.get("input-tags") orelse "",
+    };
+
     if (query.get("success")) |id_raw| {
-        if (std.fmt.parseUnsigned(usize, id_raw, 10)) |feed_id| {
-            try w.print(
-                \\<p class="callout success">Feed added.
-                \\<a href="/feed/{d}">Got to feed page</a>.
-                \\</p>
-            , .{feed_id});
-        } else |_| {
-            try w.writeAll("<p>Failed to get added feed id.</p>");
-        }
+        feed_add_opts.query_success = std.fmt.parseUnsigned(u64, id_raw, 10);
     } else if (query.get("feed-exists")) |raw_value| {
-        const value = std.mem.trim(u8, raw_value, &std.ascii.whitespace);
-        if (std.fmt.parseUnsigned(usize, value, 10)) |feed_id| {
-            try w.print(
-                \\<p>Feed already exists.
-                \\<a href="/feed/{d}">Got to feed page</a>.
-                \\</p>
-            , .{feed_id});
-        } else |_| {
-            try w.writeAll("<p>Failed to get id for feed that already exists.</p>");
-        }
+        feed_add_opts.query_feed_exists = std.fmt.parseUnsigned(u64, raw_value, 10);
     } else if (query.get("error")) |value| {
-        const err_enum = UrlQueryError.from_string(value);
-        if (err_enum == .invalid_url) {
-            try w.writeAll("<p class='callout danger'>Enter valid feed/page link</p>");
-        } else if (err_enum == .url_missing) {
-            try w.writeAll("<p class='callout danger'>Fill in feed/page link</p>");
-        }
+        feed_add_opts.query_error = UrlQueryError.from_string(value);
     }
 
-    const url = blk: {
-        if (query.get("input-url")) |url_raw| {
-            break :blk url_raw;
-        }
-        break :blk "";
-    };
-
-    const url_escaped = try parse.html_escape(req.arena, url);
-    try w.print(
-        \\<form action="/feed/add" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
-        \\<div>
-        \\<div><label for="input-url">Feed/Page link</label></div>
-        \\<input type=text class="char-len-l" id="input-url" name="input-url" value="{s}">
-        \\</div>
-    , .{url_escaped});
-
-    const tags_str: []const u8 = blk: {
-        if (query.get("input-tags")) |tags_raw| {
-            break :blk try parse.html_escape(req.arena, tags_raw);
-        }
-        break :blk "";
-    };
-
-    try w.print(
-        \\<div>
-        \\<div class='label-wrapper'>
-        \\<label for="input-tags">Tags (optional)</label>
-        \\<em>Tags are comma separated</em>
-        \\</div>
-        \\<input type=text class="char-len-m" id="input-tags" name="input-tags" value="{s}">
-        \\</div>
-    , .{tags_str});
-
-    try w.writeAll(
-        \\<button class="primary muted">Add new feed</button>
-        \\</form>
-    );
-
-    try w.writeAll("</main>");
-    try Layout.write_foot(w);
-
+    try pages.FeedAddPage.render(.{feed_add_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 

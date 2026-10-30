@@ -108,6 +108,14 @@ pub const FailedFeedsContent = struct {
 
 const title_placeholder = "[no-title]";
 
+pub const FeedAddOpts = struct {
+    query_success: ?std.fmt.ParseIntError!u64 = null,
+    query_feed_exists: ?std.fmt.ParseIntError!u64 = null,
+    query_error: ?UrlQueryError = null,
+    input_url: []const u8 = "",
+    input_tags: []const u8 = "",
+};
+
 pub const Layout = struct {
     fn _render(title: []const u8, nav: Navigation, children: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:50:17
         _ = &title;
@@ -550,6 +558,98 @@ pub const FailedFeedsPage = struct {
 
     pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
         const __children_0 = FailedFeedsPage__children_0.bind(&args);
+        return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+const FeedAddPage__children_0 = struct {
+    fn _render(opts: FeedAddOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:378:22
+        _ = &opts;
+        _ = &nav;
+        try zt.writeAll(_writer, "<main class=\"flow\"><header class=\"main-header\"><h2>Add feed</h2></header>");
+        if (opts.query_success) |success_err| { // pages.zt:382:13
+            if (success_err) |feed_id| { // pages.zt:383:17
+                try zt.writeAll(_writer, "<p class=\"callout success\">Feed added.\n                        <a href=\"/feed/");
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:385:28
+                try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
+            } else |err| { // pages.zt:387:19
+                try zt.writeAll(_writer, "<p>Please provide valid feed ID. Error: ");
+                try zt.writeEscaped(_writer, err); // pages.zt:388:61
+                try zt.writeAll(_writer, "</p>");
+            }
+        } else if (opts.query_feed_exists) |feed_exists_err| { // pages.zt:390:20
+            if (feed_exists_err) |feed_id| { // pages.zt:391:17
+                try zt.writeAll(_writer, "<p>Feed already exists.\n                        <a href=\"/feed/");
+                try zt.writeEscaped(_writer, feed_id); // pages.zt:393:28
+                try zt.writeAll(_writer, "\">Got to feed page</a>.\n                    </p>");
+            } else |err| { // pages.zt:395:19
+                try zt.writeAll(_writer, "<p>Please provide valid feed ID. Error: ");
+                try zt.writeEscaped(_writer, err); // pages.zt:396:61
+                try zt.writeAll(_writer, "</p>");
+            }
+        } else if (opts.query_error) |err_enum| { // pages.zt:398:20
+            switch (err_enum) { // pages.zt:399:18
+                .invalid_url => { // pages.zt:400:22
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Enter valid feed/page link</p>");
+                },
+                .url_missing => { // pages.zt:401:22
+                    try zt.writeAll(_writer, "<p class=\"callout danger\">Fill in feed/page link</p>");
+                },
+                else => { // pages.zt:402:22
+                },
+            }
+        }
+        try zt.writeAll(_writer, "<form action=\"/feed/add\" method=\"POST\" class=\"flow\" style=\"--flow-space: var(--size-4xl)\"><div><div><label for=\"input-url\">Feed/Page link</label></div><input type=\"text\" class=\"char-len-l\" id=\"input-url\" name=\"input-url\" value=\"");
+        try zt.writeEscaped(_writer, opts.input_url); // pages.zt:411:91
+        try zt.writeAll(_writer, "\"></div><div><div class=\"label-wrapper\"><label for=\"input-tags\">Tags (optional)</label><em>Tags are comma separated</em></div><input type=\"text\" class=\"char-len-m\" id=\"input-tags\" name=\"input-tags\" value=\"");
+        try zt.writeEscaped(_writer, opts.input_tags); // pages.zt:419:93
+        try zt.writeAll(_writer, "\"></div><button class=\"primary muted\">Add new feed</button></form></main>");
+    }
+
+    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:378:22
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return @call(.always_inline, _render, args ++ .{_writer});
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+pub const FeedAddPage = struct {
+    fn _render(opts: FeedAddOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:378:22
+        _ = &opts;
+        _ = &nav;
+        try zt.renderComponent(Layout, .{ "Add feed", nav, __children_0 }, _writer); // pages.zt:379:5
+    }
+
+    fn _signature(_: FeedAddOpts, _: Navigation) void {} // pages.zt:378:22
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const __children_0 = FeedAddPage__children_0.bind(&args);
         return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
     }
 

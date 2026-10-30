@@ -3,7 +3,7 @@
 - explore zt for html templating
     - /feeds
     - /feed/<id>
-    - /feed/add
+    - /feed/pick
 - check adding timeout to async code? Can I?
 - error:
 ```
