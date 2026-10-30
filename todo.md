@@ -1,6 +1,9 @@
 - html parsing: get date from url path?
 - replace http.zig with dusty?
 - explore zt for html templating
+    - /feeds
+    - /feed/<id>
+    - /feed/add
 - check adding timeout to async code? Can I?
 - error:
 ```

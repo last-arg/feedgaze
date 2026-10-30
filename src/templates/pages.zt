@@ -165,7 +165,6 @@ pub templ HomePage(content: HomeContent, nav: Navigation) {
                 <h2>Latest added</h2>
                 if (content.next_update_ts) |countdown_ts| {
                     <div class="heading-info">
-                        {util.date_readable(countdown_ts)}
                         <relative-time update="false">
                             <p class="update-automatic">Next update <time datetime={zt.fmt(util.write_timestamp, .{countdown_ts})}>{util.date_readable(countdown_ts)}</time></p>
 
