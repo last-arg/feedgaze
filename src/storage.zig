@@ -59,28 +59,32 @@ pub const Storage = struct {
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
     fn setupDb(db: *const sql.Database) !void {
+        initPragmas(db) catch |err| {
+            std.log.err("Failed to set database options (pragmas). Error: {}", .{err});
+        };
 
+        try setupTables(db);
+        try initData(db);
+    }
+
+    fn initPragmas(db: *const sql.Database) !void {
         // NOTE: permanent pragmas:
         // - application_id
         // - journal_mode (when enabling or disabling WAL mode)
         // - schema_version
         // - user_version
         // - wal_checkpoint
-        {
-            errdefer std.log.err("Failed to set database options (pragmas)", .{});
-            try db.exec("PRAGMA journal_mode = WAL", .{});
-            try db.exec("PRAGMA busy_timeout = 5000", .{});
-            try db.exec("PRAGMA foreign_keys = 1", .{});
-            try db.exec("PRAGMA synchronous = normal", .{});
-            try db.exec("PRAGMA temp_store = 2", .{});
-            try db.exec("PRAGMA mmap_size = 30000000000", .{});
-            try db.exec("PRAGMA cache_size = -32000", .{});
-            try db.exec("PRAGMA cache_size = -32000", .{});
-        }
 
-        try setupTables(db);
-        try initData(db);
+        try db.exec("PRAGMA journal_mode = WAL", .{});
+        try db.exec("PRAGMA busy_timeout = 5000", .{});
+        try db.exec("PRAGMA foreign_keys = 1", .{});
+        try db.exec("PRAGMA synchronous = normal", .{});
+        try db.exec("PRAGMA temp_store = 2", .{});
+        try db.exec("PRAGMA mmap_size = 30000000000", .{});
+        try db.exec("PRAGMA cache_size = -32000", .{});
+        try db.exec("PRAGMA cache_size = -32000", .{});
     }
+
 
     fn setupTables(db: *const sql.Database) !void {
         errdefer std.log.err("Failed to create database tables", .{});
