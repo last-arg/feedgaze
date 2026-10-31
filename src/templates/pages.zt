@@ -301,7 +301,7 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
                   <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
 
                   <div class='tag-actions cluster align-center'>
-                    <a href='/tag/{@backingInt(tag.tag_id)}/edit'>Edit</a>
+                    <a href="/tag/{@backingInt(tag.tag_id)}/edit">Edit</a>
                     <form action="/tag/{@backingInt(tag.tag_id)}/delete" method="POST">
                         <button class='btn-link padding-0 danger' name='action' value='delete'>Delete</button>
                     </form>
@@ -721,3 +721,38 @@ fn feed_items_slice(feed_id: feed_types.Feed.ID, items: []const feed_types.FeedI
 
     return null;
 }
+
+pub const TagEditOpts = struct {
+    title: []const u8,
+    tag: TagResult,
+    query_error: ?UrlQueryError = null,
+    query_is_success: bool = false,
+};
+
+pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
+    @Layout(opts.title, nav) {
+        <main class='flow'>
+          <h2>{opts.title}</h2>
+          if (opts.query_is_success) {
+              <div><p class="callout success">Changes saved</p></div>
+          } else if (opts.query_error == .invalid_form) {
+              <div><p class="callout danger">Invalid form</p></div>
+          }
+
+          <form class='flow' method='post'>
+            <div>
+              <div>
+                <label for='tag-name'>Tag name</label>
+              </div>
+              <input class='char-len-s' type='text' id='tag-name' name='tag-name' value={opts.tag.name} />
+            </div>
+            <input type='hidden' name='tag-id' value={@backingInt(opts.tag.tag_id)} />
+            <div>
+                <button class='muted primary' name='action' value='save'>Save changes</button>
+            </div>
+            <button class='outline danger' name='action' value='delete'>Delete tag</button>
+          </form>
+        </main>
+    }
+}
+

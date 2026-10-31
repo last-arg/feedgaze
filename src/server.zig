@@ -1796,34 +1796,24 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var buf_tag: [512]u8 = undefined;
     var write_tag: std.Io.Writer = .fixed(&buf_tag);
     try write_tag.print("Edit tag: {s}", .{tag.name});
-    try Layout.write_head(w, write_tag.buffered());
 
-    const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
+    var tag_edit_opts: pages.TagEditOpts = .{
+        .title = write_tag.buffered(),
+        .tag = tag,
+    };
+
+    const tags = try global.storage.tags_all_with_ids(req.arena);
     
-    try w.print(parts_get("tag_edit_page"), .{tag.name});
-
     const query_kv = try req.query();
     if (query_kv.get("success")) |_| {
-        try w.writeAll(parts_get("tag_edit_success"));
+        tag_edit_opts.query_is_success = true;
     } else if (query_kv.get("error")) |val| {
-        const err_enum = UrlQueryError.from_string(val);
-
-        if (err_enum == .invalid_form) {
-            try w.writeAll(parts_get("tags_query_invalid_form"));
-        }
+        tag_edit_opts.query_error = UrlQueryError.from_string(val);
     }
 
-    try w.print(parts_get("tag_edit_form"), .{ .tag_name = tag.name, .tag_id = tag.tag_id });
-
-    try w.writeAll("<div>");
-    try btn_primary(w, "Save changes");
-    try w.writeAll("</div>");
-    try btn_delete(w, "Delete tag", .button);
-
-    try w.writeAll(parts_get("include_buttons"));
-    try Layout.write_foot(w);
-
+    try pages.TagEditPage.render(.{tag_edit_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 

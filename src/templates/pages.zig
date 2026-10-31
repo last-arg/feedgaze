@@ -203,6 +203,13 @@ fn feed_items_slice(feed_id: feed_types.Feed.ID, items: []const feed_types.FeedI
     return null;
 }
 
+pub const TagEditOpts = struct {
+    title: []const u8,
+    tag: TagResult,
+    query_error: ?UrlQueryError = null,
+    query_is_success: bool = false,
+};
+
 pub const Layout = struct {
     fn _render(title: []const u8, nav: Navigation, children: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:50:17
         _ = &title;
@@ -518,7 +525,9 @@ const TagsPage__children_0 = struct {
             try zt.writeEscaped(_writer, tag.name); // pages.zt:308:70
             try zt.writeAll(_writer, "\">");
             try zt.writeEscaped(_writer, tag.name); // pages.zt:308:89
-            try zt.writeAll(_writer, "</a><div class=\"tag-actions cluster align-center\"><a href=\"/tag/{@backingInt(tag.tag_id)}/edit\">Edit</a><form action=\"/tag/");
+            try zt.writeAll(_writer, "</a><div class=\"tag-actions cluster align-center\"><a href=\"/tag/");
+            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:311:24
+            try zt.writeAll(_writer, "/edit\">Edit</a><form action=\"/tag/");
             try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:312:27
             try zt.writeAll(_writer, "/delete\" method=\"POST\"><button class=\"btn-link padding-0 danger\" name=\"action\" value=\"delete\">Delete</button></form></div></li>");
         }
@@ -1057,6 +1066,73 @@ pub const ItemLink = struct {
 
     pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
         return @call(.always_inline, _render, args ++ .{_writer});
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+const TagEditPage__children_0 = struct {
+    fn _render(opts: TagEditOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:756:22
+        _ = &opts;
+        _ = &nav;
+        try zt.writeAll(_writer, "<main class=\"flow\"><h2>");
+        try zt.writeEscaped(_writer, opts.title); // pages.zt:759:15
+        try zt.writeAll(_writer, "</h2>");
+        if (opts.query_is_success) { // pages.zt:760:11
+            try zt.writeAll(_writer, "<div><p class=\"callout success\">Changes saved</p></div>");
+        } else if (opts.query_error == .invalid_form) { // pages.zt:762:18
+            try zt.writeAll(_writer, "<div><p class=\"callout danger\">Invalid form</p></div>");
+        }
+        try zt.writeAll(_writer, "<form class=\"flow\" method=\"post\"><div><div><label for=\"tag-name\">Tag name</label></div><input class=\"char-len-s\" type=\"text\" id=\"tag-name\" name=\"tag-name\"");
+        try zt.writeAttr(_writer, "value", opts.tag.name); // pages.zt:773:83
+        try zt.writeAll(_writer, "></div><input type=\"hidden\" name=\"tag-id\"");
+        try zt.writeAttr(_writer, "value", @backingInt(opts.tag.tag_id)); // pages.zt:775:48
+        try zt.writeAll(_writer, "><div><button class=\"muted primary\" name=\"action\" value=\"save\">Save changes</button></div><button class=\"outline danger\" name=\"action\" value=\"delete\">Delete tag</button></form></main>");
+    }
+
+    fn _signature(_: TagEditOpts, _: Navigation) void {} // pages.zt:756:22
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return @call(.always_inline, _render, args ++ .{_writer});
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+pub const TagEditPage = struct {
+    fn _render(opts: TagEditOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:756:22
+        _ = &opts;
+        _ = &nav;
+        try zt.renderComponent(Layout, .{ opts.title, nav, __children_0 }, _writer); // pages.zt:757:5
+    }
+
+    fn _signature(_: TagEditOpts, _: Navigation) void {} // pages.zt:756:22
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const __children_0 = TagEditPage__children_0.bind(&args);
+        return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
     }
 
     pub fn bind(args: *const Args) zt.Component {
