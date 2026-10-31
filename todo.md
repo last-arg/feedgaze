@@ -2,6 +2,7 @@
 - replace http.zig with dusty?
 - explore zt for html templating
     - /feeds
+        - fix nav filter
     - /feed/<id>
 - check adding timeout to async code? Can I?
 - error:

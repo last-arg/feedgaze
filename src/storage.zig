@@ -828,25 +828,47 @@ pub const Storage = struct {
         try self.sql_db.exec(del_query, .{ @backingInt(feed_id), self.options.max_item_count });
     }
 
+    pub fn feed_items_with_feed_ids(self: *Self, allocator: Allocator, feed_ids: []const Feed.ID) ![]const FeedItemRender {
+        const query_start =
+            \\select feed_id, title, link, updated_timestamp, created_timestamp
+            \\from item
+            \\where feed_id in (
+        ;
+        const query_end =
+            \\)
+            \\order by feed_id, position
+        ;
+
+        var aw: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
+        errdefer aw.deinit();
+        var query_writer = &aw.writer;
+
+        query_writer.writeAll(query_start) catch unreachable;
+
+        try query_writer.print("{d}",.{@backingInt(feed_ids[0])});
+
+        for (feed_ids[1..]) |id| {
+            try query_writer.print(",{d}",.{@backingInt(id)});
+        }
+
+        try query_writer.writeAll(query_end);
+
+        return try all(&self.sql_db, FeedItemRender, allocator, query_writer.buffered(), .{});
+    }
+
     pub fn feed_items_with_feed_id(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const FeedItemRender {
         const query = std.fmt.comptimePrint(
             \\select feed_id, title, link, updated_timestamp, created_timestamp
-            \\from item where feed_id = ? order by updated_timestamp DESC, position ASC
+            \\from item where feed_id = ? order by position ASC
             \\LIMIT {d}
         , .{app_config.max_items});
 
-        const items = try self.fetch_feed_item_render(allocator, query, .{@backingInt(feed_id)}, .{});
-        return items;
+        return all(&self.sql_db, FeedItemRender, allocator, query, .{@backingInt(feed_id)});
     }
 
     const FeedItemRenderOptions = struct {
         capacity: usize = app_config.max_items,
     };
-
-    fn fetch_feed_item_render(self: *@This(), allocator: Allocator, query: []const u8, args: anytype, opts: FeedItemRenderOptions,) ![]const FeedItemRender {
-        _ = opts;
-        return all(&self.sql_db, FeedItemRender, allocator, query, args);
-    }
 
     pub fn tags_all(self: *Self, allocator: Allocator) ![]const []const u8 {
         const query = "SELECT name as val FROM tag ORDER BY name ASC;";
@@ -949,6 +971,59 @@ pub const Storage = struct {
             assert(tag.len > 0);
             try self.sql_db.exec(query, .{sql.text(tag)});
         }
+    }
+
+    pub const FeedTag = struct {
+        tag_id: types.SqliteId,
+        feed_id: types.Feed.ID,
+
+        pub const Raw = struct {
+            tag_id: u64,
+            feed_id: u64,
+
+            pub fn strings_len(_: *const Raw) u64 {
+                return 0;
+            }
+
+        };
+
+        pub fn from_raw(buf: []u8, raw: Raw) !FeedTag {
+            _ = buf;
+            return .{
+                .tag_id = @fromBackingInt(raw.tag_id),
+                .feed_id = @fromBackingInt(raw.feed_id),
+            };
+        }
+    };
+
+    pub fn feeds_tags(self: *Self, allocator: Allocator, feed_ids: []types.Feed.ID) ![]const FeedTag {
+        assert(feed_ids.len > 0);
+
+        const query_start =
+        \\select tag_id, feed_id from feed_tag
+        \\where feed_id in (
+        ;
+
+        const query_end =
+        \\)
+        \\order by feed_id
+        ;
+
+        var aw: std.Io.Writer.Allocating = try .initCapacity(allocator, 1024);
+        errdefer aw.deinit();
+        var query_writer = &aw.writer;
+
+        query_writer.writeAll(query_start) catch unreachable;
+
+        try query_writer.print("{d}",.{@backingInt(feed_ids[0])});
+
+        for (feed_ids[1..]) |id| {
+            try query_writer.print(",{d}",.{@backingInt(id)});
+        }
+
+        try query_writer.writeAll(query_end);
+
+        return all(&self.sql_db, FeedTag, allocator, query_writer.buffered(), .{});
     }
 
     pub fn tags_feed_add(self: *Self, feed_id: Feed.ID, tag_ids: []types.SqliteId) !void {
@@ -1417,7 +1492,7 @@ pub const Storage = struct {
         , .{limit})
         ;
 
-        return try self.fetch_feed_item_render(allocator, query, .{}, .{.capacity = limit});
+        return all(&self.sql_db, FeedItemRender, allocator, query, .{});
     }
 
     pub fn get_latest_change(self: *Self) !?i64 {

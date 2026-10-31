@@ -376,7 +376,7 @@ fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Respon
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    const tags = try global.storage.tags_all(req.arena);
+    const tags = try global.storage.tags_all_with_ids(req.arena);
     const failed_requests = try global.storage.request_failed_all(req.arena);
 
     const failed_feed_opts: pages.FailedFeedsContent = .{
@@ -623,8 +623,6 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 }
 
 fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
-    const db = global.storage;
-
     var query = try req.query();
 
     const url_raw = query.get("input-url") orelse {
@@ -644,7 +642,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try global.storage.tags_all_with_ids(req.arena);
 
     const query_picked_index = if (query.get("pick-index")) |raw|
         std.fmt.parseInt(u32, raw, 10) catch 0
@@ -886,7 +884,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try global.storage.tags_all_with_ids(req.arena);
     defer req.arena.free(tags);
 
     var query = try req.query();
@@ -1617,7 +1615,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    const tags = try db.tags_all(req.arena);
+    const tags = try global.storage.tags_all_with_ids(req.arena);
 
     const query = try req.query();
     if (query.get("msg")) |value| {
@@ -1847,11 +1845,9 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     const query_kv = try req.query();
-    const tags = try db.tags_all(req.arena);
-    const tag_ids = try db.tags_all_with_ids(req.arena);
+    const tags = try global.storage.tags_all_with_ids(req.arena);
 
     const tags_opts: pages.TagsContent = .{
-        .tag_ids = tag_ids,
         .query_is_success = query_kv.get("success") != null,
         .query_error = blk: {
             const value = query_kv.get("error") orelse break :blk null;
@@ -1999,8 +1995,6 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    try Layout.write_head(w, "Feeds");
-
     const query = try req.query();
     const search_value = query.get("search");
 
@@ -2018,12 +2012,12 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
     const has_untagged = query.get("untagged") != null;
 
-    const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{ 
-        .search = search_value orelse "", 
-        .tags_checked = tags_active.items, 
-        .has_untagged = has_untagged,
-    });
+    const tags = try db.tags_all_with_ids(req.arena);
+    // try global.layout.body_head_render(w, req.url.path, tags, .{ 
+    //     .search = search_value orelse "", 
+    //     .tags_checked = tags_active.items, 
+    //     .has_untagged = has_untagged,
+    // });
 
     const before: types.Feed.ID = before: {
         if (query.get("before")) |value| {
@@ -2076,23 +2070,36 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         });
     };
 
-    try w.writeAll("<main class='flow'>");
+    const now_date = Datetime.nowUTC(global.io);
+    const now_sec: i64 = @intCast(now_date.toUnix(.second));
 
-    try w.writeAll(
-        \\<header class="main-header">
-        \\  <h2>Feeds</h2>
-        \\  <div class="main-actions cluster">
-        \\  <button class="outline js-expand-all">Expand all</button>
-        \\  <button class="outline js-collapse-all">Collapse all</button>
-        \\  </div>
-        \\</header>
-    );
+    const feed_ids = blk: {
+        var ids_arr: std.ArrayList(feed_types.Feed.ID) = try .initCapacity(req.arena, feeds.len);
+        for (feeds) |feed| {
+            ids_arr.appendAssumeCapacity(feed.feed_id);
+        }
+         break :blk ids_arr.items;
+    };
+    defer req.arena.free(feed_ids);
+
+    const feeds_tags = try global.storage.feeds_tags(req.arena, feed_ids);
+    const items = try db.feed_items_with_feed_ids(req.arena, feed_ids);
+
+    var feeds_opts: pages.FeedsOpts = .{
+        .feeds = feeds,
+        .items = items,
+        .failed_requests = failed_requests,
+        .now_sec = now_sec,
+        .icon_manage = global.icon_manage,
+        .feeds_tags = feeds_tags,
+    };
+
     if (feeds.len > 0) {
-        try feeds_and_items_print(w, req.arena, db, feeds, global, failed_requests);
+        // try feeds_and_items_print(w, req.arena, db, feeds, global, failed_requests);
+
         if (feeds.len == config.query_feed_limit) {
-            // var new_url_arr = try std.ArrayList(u8).initCapacity(req.arena, 128);
-            var new_url_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 128);
-            defer new_url_arr.deinit();
+            const new_url_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 128);
+            // defer new_url_arr.deinit();
             var w_arr = new_url_arr.writer;
 
             w_arr.writeAll("/feeds?") catch unreachable;
@@ -2103,12 +2110,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 try w_arr.writeAll(key);
                 try w_arr.writeByte('=');
                 try w_arr.writeAll(value);
-                try w_arr.writeByte('&');
             }
-            const current_path_len = w_arr.buffered().len;
-
-            try w.writeAll("<footer class='main-footer'>");
-            try w.writeAll("<hr>");
 
             const has_prev = try db.feeds_search_has_previous(req.arena, .{ 
                 .search = feed_search_value, 
@@ -2117,129 +2119,21 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 .after = .unassigned, 
                 .has_untagged = has_untagged,
             });
-            if (has_prev) {
-                const href_prev = blk: {
-                    try w_arr.writeAll("before");
-                    try w_arr.writeByte('=');
-                    const id_first = feeds[0].feed_id;
-                    try w_arr.print("{d}", .{id_first});
+            const prev_id = if (has_prev) feeds[0].feed_id else null;
+            const next_id = feeds[feeds.len - 1].feed_id;
 
-                    break :blk w_arr.buffered();
-                };
-
-                try w.print("<a href=\"{s}\">Previous</a>", .{href_prev});
-            }
-
-            // This is a little bit naughty
-            // reusing memory that was used by 'href_prev'
-            new_url_arr.writer.end = current_path_len;
-            const href_next = blk: {
-                try w_arr.writeAll("after");
-                try w_arr.writeByte('=');
-                const id_last = feeds[feeds.len - 1].feed_id;
-                try w_arr.print("{d}", .{id_last});
-
-                break :blk w_arr.buffered();
+            feeds_opts.footer = .{
+                .base = w_arr.buffered(),
+                .prev = prev_id,
+                .next = next_id,
             };
-            try w.print("<a href=\"{s}\">Next</a>", .{href_next});
-
-            try w.writeAll("</footer>");
         }
-    } else {
-        try w.writeAll(
-            \\<p class='callout'>No feeds to show</p>
-        );
     }
-    try w.writeAll("</main>");
 
-    try Layout.write_foot(w);
-
+    try pages.FeedsPage.render(.{feeds_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
-}
-
-fn feeds_and_items_print(w: anytype, allocator: std.mem.Allocator,  db: *Storage, feeds: []const types.Feed, global: *Global, failed_requests_ids: []const types.SqliteId) !void {
-    try w.writeAll("<div class='flow'>");
-    var buf: [128]u8 = undefined;
-    for (feeds) |feed| {
-        try w.writeAll("<article class='feed'>");
-        try w.writeAll("<header>");
-
-        try w.writeAll("<div class='feed-header-top'>");
-        if (feed.icon_id.is_valid()) {
-            if (global.icon_manage.icon_src_by_id(&buf, feed.icon_id, global.storage)) |path| {
-                try w.print(
-                    \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-                , .{path});
-            }
-        }
-        try feed_render(global.io, w, feed);
-
-        try w.writeAll("</div>");
-
-        if (mem.indexOfScalar(types.Feed.ID, failed_requests_ids, feed.feed_id)) |_| {
-            try w.writeAll(
-            \\<p class="feed-failed-msg feed-failed-icon">Last update failed</p>
-            );
-        }
-
-        const tags = try db.feed_tags(allocator, feed.feed_id);
-        if (tags.len > 0) {
-            try w.writeAll("<div class='feed-tags'>");
-            try w.writeAll("<ul class='list-unstyled' aria-label='Feed tags'>");
-            for (tags) |tag| {
-                try w.writeAll("<li>");
-                try tag_link_print(w, tag, .badge);
-                try w.writeAll("</li>");
-            }
-            try w.writeAll("</ul>");
-            try w.writeAll("</div>");
-        }
-        try w.writeAll("</header>");
-        
-        const items = try db.feed_items_with_feed_id(allocator, feed.feed_id);
-        if (items.len == 0) {
-            try w.writeAll("<p class='callout size-xs'>Feed has no items.</p>");
-           try w.writeAll("</article>");
-            continue;
-        }
-
-        const now_date = Datetime.nowUTC(global.io);
-        const date_in_sec: i64 = @intCast(now_date.toUnix(.second));
-
-        var hide_index_start = items.len;
-        const age_1day_ago = date_in_sec - std.time.s_per_day;
-
-        for (items[1..], 1..) |item, i| {
-            if (item.created_timestamp < age_1day_ago) {
-                hide_index_start = i - 1;
-                break;
-            }
-        }
-
-        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-        try w.writeAll("<ul class='stack list-unstyled'>");
-        for (items, 0..) |item, i| {
-            const hidden = if (hide_index_start > 0 and hide_index_start == i) "hide-after" else "";
-            try w.print("<li class='feed-item {s}'>", .{hidden});
-
-            try item_render(global.io, w, allocator, item, .{.class = "truncate-2"});
-            try w.writeAll("</li>");
-        }
-        try w.writeAll("</ul>");
-        try w.writeAll("</relative-time>");
-        const aria_expanded = if (hide_index_start != items.len) "false" else "true";
-        try w.print(
-            \\<footer class="feed-footer">
-            \\  <button class="outline js-feed-item-toggle" aria-expanded="{s}">
-            \\    <span class="toggle-expand">Expand</span>
-            \\    <span class="toggle-collapse">Collapse</span>
-            \\  </button>
-            \\</footer>
-        , .{aria_expanded});
-
-        try w.writeAll("</article>");
-    }
-    try w.writeAll("</div>");
 }
 
 fn age_class_from_time(io: std.Io, time: ?i64) []const u8 {
@@ -2285,42 +2179,6 @@ fn item_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item
     } else {
         try w.print(parts_get("feed_item_no_link"), .{ .title = item_title, .class = opts.class });
     }
-}
-
-fn feed_render(io: std.Io, w: *std.Io.Writer, feed: types.Feed) !void {
-    const title = blk: {
-        if (feed.title) |title| {
-            if (title.len > 0) {
-                break :blk title;
-            }
-        }
-        break :blk title_placeholder;
-    };
-
-    if (feed.page_url) |page_url| {
-        try w.print(parts_get("feed_link"), .{ .page_url = page_url, .title = title });
-    } else {
-        try w.print(parts_get("feed_no_link"), .{ .title = title });
-    }
-
-    const now_date = Datetime.nowUTC(io);
-    const now_sec: i64 = @intCast(now_date.toUnix(.second));
-    var date_display_buf: [16]u8 = undefined;
-    var date_buf: [date_len_max]u8 = undefined;
-
-    const age_class = age_class_from_time(io, feed.updated_timestamp);
-    const date_display_val = if (feed.updated_timestamp) |ts| try date_display(&date_display_buf, now_sec, ts) else "";
-
-    try w.print(parts_get("date"), .{
-        .age_class = age_class,
-        .date = timestampToString(&date_buf, feed.updated_timestamp),
-        .date_display = date_display_val,
-    });
-
-    const edit_fmt = 
-    \\<a class="feed-edit" href="/feed/{d}">Edit feed</a>
-    ;
-    try w.print(edit_fmt, .{ feed.feed_id });
 }
 
 const HeadOptions = struct {

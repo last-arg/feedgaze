@@ -90,7 +90,7 @@ const menu_items = [_]struct{path: []const u8, name: []const u8}{
 
 pub const Navigation = struct {
     current_path: []const u8 = "/",
-    tags: []const []const u8 = &.{},
+    tags: []const TagResult = &.{},
 };
 
 pub fn tag_is_checked(tag: []const u8, tags_checked: []const []const u8) bool {
@@ -128,9 +128,9 @@ pub templ Nav(nav: Navigation) {
               <div class='tag-list'>
               for (nav.tags, 0..) |tag, index| {
                   <div class='tag'>
-                    <input type="checkbox" name="tag" id="tag-id-{index}" value="{tag}" />
-                    <label class="visually-hidden" for="tag-id-{index}">{tag}</label>
-                    <a class="truncate-1" href="/feeds?tag={tag}" title="{tag}">{tag}</a>
+                    <input type="checkbox" name="tag.name" id="tag-id-{index}" value="{tag.name}" />
+                    <label class="visually-hidden" for="tag-id-{index}">{tag.name}</label>
+                    <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
                   </div>
               }
               </div>
@@ -229,11 +229,7 @@ pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed,
         @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
     }
 
-    if (item.link) |link| {
-        <a href="{link}" class="item-link truncate-2" title="{item.title}" rel="noreferrer noopener">{item.title}</a>
-    } else {
-        <p class="truncate-2" title="{item.title}">{item.link}</p>
-    }
+    @ItemLink(item)
 
     <div class="item-extra">
         <div>
@@ -277,7 +273,6 @@ pub templ LatestItemRelativeTime(ts_opt: ?i64, now_sec: i64) {
 }
 
 pub const TagsContent = struct {
-    tag_ids: []const TagResult = &.{},
     query_error: ?UrlQueryError = null,
     query_is_success: bool = false,
 };
@@ -297,7 +292,7 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
           }
 
           <ul class='tags-all stack list-unstyled' role='list'>
-              for (content.tag_ids) |tag| {
+              for (nav.tags) |tag| {
                 <li class='tag-item'>
                   <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
 
@@ -551,4 +546,174 @@ pub templ PickItem(value: []const u8, index: u32, is_checked: bool) {
             {value}
         </label>
     </li>
+}
+
+pub const FeedsOpts = struct {
+    feeds: []const feed_types.Feed,
+    items: []const feed_types.FeedItemRender,
+    failed_requests: []const feed_types.Feed.ID = &.{},
+    now_sec: i64 = 0,
+    icon_manage: *IconManage,
+    feeds_tags: []const Storage.FeedTag = &.{},
+    footer: ?struct{
+        base: []const u8,
+        prev: ?feed_types.Feed.ID,
+        next: feed_types.Feed.ID,
+    } = null,
+};
+
+pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
+    @Layout("Feeds", nav) {
+        <main class='flow'>
+            <header class="main-header">
+              <h2>Feeds</h2>
+              <div class="main-actions cluster">
+                  <button class="outline js-expand-all">Expand all</button>
+                  <button class="outline js-collapse-all">Collapse all</button>
+              </div>
+            </header>
+
+            if (opts.feeds.len > 0) {
+                <div class='flow'>
+                for (opts.feeds) |feed| {
+                    <article class='feed'>
+                        <header>
+                            <div class='feed-header-top'>
+                            if (feed.icon_id.is_valid()) {
+                                if (opts.icon_manage.get_icon_info(feed.icon_id)) |info| {
+                                    <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
+                                }
+                            }
+
+                            if (feed.page_url) |page_url| {
+                                <a class="feed-title truncate-1" href="{page_url}" rel="noreferrer noopener" title="{feed.title orelse title_placeholder}">{feed.title orelse title_placeholder}</a>
+                            } else {
+                                <p class="feed-title truncate-1">{feed.title orelse title_placeholder}</p>
+                            }
+
+                                @LatestItemRelativeTime(feed.updated_timestamp, opts.now_sec)
+                                <a class="feed-edit" href="/feed/{@backingInt(feed.feed_id)}">Edit feed</a>
+                            </div>
+
+                            if (std.mem.indexOfScalar(feed_types.Feed.ID, opts.failed_requests, feed.feed_id)) |_| {
+                                <p class="feed-failed-msg feed-failed-icon">Last update failed</p>
+                            }
+
+                            if (feed_tags_slice(feed.feed_id, opts.feeds_tags)) |feed_tags| {
+                                <div class='feed-tags'>
+                                    <ul class='list-unstyled' aria-label='Feed tags'>
+                                    for (feed_tags) |feed_tag| {
+                                        if (get_tag_name(feed_tag.tag_id, nav.tags)) |tag_name| {
+                                            <li>
+                                                <a class='badge' href="/feeds?tag={tag_name}" title="{tag_name}">{tag_name}</a>
+                                            </li>
+                                        }
+                                    }
+                                    </ul>
+                                </div>
+                            }
+                        </header>
+
+                        if (feed_items_slice(feed.feed_id, opts.items)) |items| {
+                            <relative-time update="false" format-style="narrow" format-numeric="always">
+                                <ul class='stack list-unstyled'>
+                                for (items) |item| {
+                                    <li class='feed-item'>
+                                        @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
+                                        @ItemLink(item)
+                                    </li>
+                                }
+                                </ul>
+                            </relative-time>
+                        } else {
+                            <p class='callout size-xs'>Feed has no items.</p>
+                        }
+
+                        <footer class="feed-footer">
+                          <button class="outline js-feed-item-toggle" aria-expanded="true">
+                            <span class="toggle-expand">Expand</span>
+                            <span class="toggle-collapse">Collapse</span>
+                          </button>
+                        </footer>
+                    </article>
+                }
+
+                if (opts.footer) |f| {
+                    <footer class='main-footer'>
+                        <hr />
+                        if (f.prev) |prev| {
+                            <a href="{f.base}&before={@backingInt(prev)}">Previous</a>
+                        }
+                        <a href="{f.base}&after={@backingInt(f.next)}">Next</a>
+                    </footer>
+                }
+
+                </div>
+            } else {
+                <p class='callout'>No feeds to show</p>
+            }
+
+        </main>
+    }
+}
+
+pub templ ItemLink(item: feed_types.FeedItemRender) {
+    if (item.link) |link| {
+        <a href="{link}" class="item-link truncate-2" title="{item.title}" rel="noreferrer noopener">{item.title}</a>
+    } else {
+        <p class="truncate-2" title="{item.title}">{item.title}</p>
+    }
+}
+
+fn feed_tags_slice(feed_id: feed_types.Feed.ID, feeds_tags: []const Storage.FeedTag) ?[]const Storage.FeedTag {
+    var start: ?usize = null;
+    for (feeds_tags, 0..) |feed_tag, i| {
+        if (feed_tag.feed_id == feed_id) {
+            start = i;
+            break;
+        }
+    }
+
+    if (start) |s| {
+        const slice = feeds_tags[s..];
+        for (slice[1..], 1..) |feed_tag, i| {
+            if (feed_tag.feed_id != feed_id) {
+                return slice[0..i];
+            }
+        }
+        return slice[0..];
+    }
+
+    return null;
+}
+
+fn get_tag_name(tag_id: feed_types.SqliteId, tags: []const TagResult) ?[]const u8 {
+    for (tags) |tag| {
+        if (tag_id == tag.tag_id) {
+            return tag.name;
+        }
+    }
+    return null;
+}
+
+fn feed_items_slice(feed_id: feed_types.Feed.ID, items: []const feed_types.FeedItemRender) ?[]const feed_types.FeedItemRender {
+    var start: ?usize = null;
+    for (items, 0..) |item, i| {
+        if (item.feed_id == feed_id) {
+            start = i;
+            break;
+        }
+    }
+
+    if (start) |s| {
+        const slice = items[s..];
+        for (slice[1..], 1..) |item, i| {
+            if (item.feed_id != feed_id) {
+                return slice[0..i];
+            }
+        }
+        return slice[0..];
+    }
+
+    return null;
 }
