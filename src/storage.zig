@@ -1045,14 +1045,14 @@ pub const Storage = struct {
     pub const After = Feed.ID;
     pub const Before = Feed.ID;
     const FeedSearchArgs = struct {
-        tags: [][]const u8 = &.{},
+        tags: []types.SqliteId = &.{},
         search: ?[]const u8 = null,
         after: After = .unassigned,
         before: Before = .unassigned,
         has_untagged: bool = false,
     };
 
-    fn search_query_where(self: *Self, allocator: Allocator, args: FeedSearchArgs) ![]const u8 {
+    fn search_query_where(allocator: Allocator, args: FeedSearchArgs) ![]const u8 {
         assert(
             (args.before == .unassigned and args.after == .unassigned) or
             (args.before != .unassigned and args.after == .unassigned) or
@@ -1089,30 +1089,7 @@ pub const Storage = struct {
             }
         }
 
-        const ids_tag = blk: {
-            if (args.tags.len > 0) {
-                const query_start = "SELECT tag_id FROM tag where name in (?";
-                const query_pos = ",?";
-                const query_end = ")";
-                const query_len = query_start.len + query_end.len + (args.tags.len - 1) * query_pos.len;
-                var query: std.ArrayList(u8) = try .initCapacity(allocator, query_len);
-                defer query.deinit(allocator);
-
-                query.appendSliceAssumeCapacity(query_start);
-
-                for (1..args.tags.len) |_| {
-                    query.appendSliceAssumeCapacity(query_pos);
-                }
-
-                query.appendSliceAssumeCapacity(query_end);
-
-                break :blk try all(&self.sql_db, u64, allocator, query.items, .{});
-            }
-            break :blk &.{};
-        };
-        defer if (ids_tag.len > 0) allocator.free(ids_tag);
-
-        if (ids_tag.len > 0 or args.has_untagged) {
+        if (args.tags.len > 0 or args.has_untagged) {
             if (has_prev_cond) {
                 try where_writer.writeAll(" AND ");
             } else {
@@ -1120,11 +1097,11 @@ pub const Storage = struct {
             }
 
             try where_writer.writeAll("(");
-            if (ids_tag.len > 0) {
+            if (args.tags.len > 0) {
                 try where_writer.writeAll("feed_id in (");
                 try where_writer.writeAll("SELECT distinct(feed_id) FROM feed_tag WHERE tag_id IN (");
-                try where_writer.print("{d}", .{ids_tag[0]});
-                for (ids_tag[1..]) |id| {
+                try where_writer.print("{d}", .{args.tags[0]});
+                for (args.tags[1..]) |id| {
                     try where_writer.print(",{d}", .{id});
                 }
                 try where_writer.writeAll(")");
@@ -1132,7 +1109,7 @@ pub const Storage = struct {
             }
 
             if (args.has_untagged) {
-                if (ids_tag.len > 0) {
+                if (args.tags.len > 0) {
                     try where_writer.writeAll(" OR ");
                 }
                 const query_untagged = "feed_id NOT IN (SELECT distinct(feed_id) FROM feed_tag)";
@@ -1144,8 +1121,7 @@ pub const Storage = struct {
         }
         
         if (args.search) |value| {
-            const value_trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-            if (value_trimmed.len > 0) {
+            if (value.len > 0) {
                 const search_fmt =
                     \\(
                     \\  feed.title LIKE '%' || {[search_value]s} || '%' OR
@@ -1160,7 +1136,7 @@ pub const Storage = struct {
                     try where_writer.writeAll("WHERE ");
                 }
 
-                const value_cstr = try std.mem.printSentinel(&buf_cstr, "{s}", .{value_trimmed}, 0);
+                const value_cstr = try std.mem.printSentinel(&buf_cstr, "{s}", .{value}, 0);
                 const c_str = sql.c.sqlite3_snprintf(buf.len, @ptrCast(&buf), "%Q", value_cstr.ptr);
                 const search = mem.sliceTo(c_str, 0);
 
@@ -1179,7 +1155,7 @@ pub const Storage = struct {
             (args.before == .unassigned and args.after != .unassigned)
         );
 
-        const query_where = try self.search_query_where(allocator, args);
+        const query_where = try search_query_where(allocator, args);
         defer allocator.free(query_where);
         const query_fmt = 
         \\SELECT feed_id, title, feed_url, page_url, icon_id, updated_timestamp FROM feed {s}
@@ -1195,7 +1171,7 @@ pub const Storage = struct {
     pub fn feeds_search_has_previous(self: *Self, allocator: Allocator, args: FeedSearchArgs) !bool {
         assert(args.before != .unassigned);
 
-        const query_where = try self.search_query_where(allocator, args);
+        const query_where = try search_query_where(allocator, args);
         defer allocator.free(query_where);
         const query_fmt = 
         \\select exists(SELECT 1 FROM feed {s}

@@ -1922,7 +1922,6 @@ const Layout = struct {
     fn write_sidebar_form_new(w: *std.Io.Writer, tags: []const []const u8, opts: HeadOptions) !void {
         try w.writeAll(parts_get("filter_feeds"));
 
-        try untagged_label_render(w, opts.has_untagged);
         for (tags, 0..) |tag, i| {
             try tag_label_render(w, tag, i + 1, opts.tags_checked);
         }
@@ -1996,28 +1995,25 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
     const query = try req.query();
-    const search_value = query.get("search");
+    const search_value = if (query.get("search")) |val| mem.trim(u8, val, &std.ascii.whitespace) else null;
 
-    var tags_active = try std.ArrayList([]const u8).initCapacity(req.arena, query.len);
+    var tags_active = try std.ArrayList(feed_types.SqliteId).initCapacity(req.arena, query.len);
     defer tags_active.deinit(req.arena);
 
+    const tags = try db.tags_all_with_ids(req.arena);
+
     for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
-        if (mem.eql(u8, "tag", key)) {
-            const trimmed = mem.trim(u8, value, &std.ascii.whitespace);
-            if (trimmed.len > 0) {
-                tags_active.appendAssumeCapacity(trimmed);
+        if (!mem.eql(u8, "tag", key)) continue;
+
+        for (tags) |tag| {
+            if (mem.eql(u8, value, tag.name)) {
+                tags_active.appendAssumeCapacity(tag.tag_id);
+                break;
             }
         }
     }
 
     const has_untagged = query.get("untagged") != null;
-
-    const tags = try db.tags_all_with_ids(req.arena);
-    // try global.layout.body_head_render(w, req.url.path, tags, .{ 
-    //     .search = search_value orelse "", 
-    //     .tags_checked = tags_active.items, 
-    //     .has_untagged = has_untagged,
-    // });
 
     const before: types.Feed.ID = before: {
         if (query.get("before")) |value| {
@@ -2031,21 +2027,6 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         break :before .unassigned;
     };
 
-    const is_tags_only = query.get("tags-only") != null;
-    const feed_search_value = trimmed: {
-        if (!is_tags_only) {
-            if (search_value) |term| {
-                const val = std.mem.trim(u8, term, &std.ascii.whitespace);
-                if (val.len > 0) {
-                    break :trimmed val;
-                }
-            }
-        }
-        break :trimmed null;
-    };
-
-    const failed_requests = try db.request_failed_ids(req.arena);
-    
     const feeds = blk: {
         const after: types.Feed.ID = after: {
             if (before == .unassigned) {
@@ -2070,9 +2051,6 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         });
     };
 
-    const now_date = Datetime.nowUTC(global.io);
-    const now_sec: i64 = @intCast(now_date.toUnix(.second));
-
     const feed_ids = blk: {
         var ids_arr: std.ArrayList(feed_types.Feed.ID) = try .initCapacity(req.arena, feeds.len);
         for (feeds) |feed| {
@@ -2082,19 +2060,18 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     };
     defer req.arena.free(feed_ids);
 
-    const feeds_tags = try global.storage.feeds_tags(req.arena, feed_ids);
-    const items = try db.feed_items_with_feed_ids(req.arena, feed_ids);
-
     var feeds_opts: pages.FeedsOpts = .{
         .feeds = feeds,
-        .items = items,
-        .failed_requests = failed_requests,
-        .now_sec = now_sec,
         .icon_manage = global.icon_manage,
-        .feeds_tags = feeds_tags,
     };
 
     if (feeds.len > 0) {
+        feeds_opts.feeds_tags = try global.storage.feeds_tags(req.arena, feed_ids);
+        feeds_opts.items = try db.feed_items_with_feed_ids(req.arena, feed_ids);
+        feeds_opts.failed_requests = try db.request_failed_ids(req.arena);
+        const now_date = Datetime.nowUTC(global.io);
+        feeds_opts.now_sec = @intCast(now_date.toUnix(.second));
+
         // try feeds_and_items_print(w, req.arena, db, feeds, global, failed_requests);
 
         if (feeds.len == config.query_feed_limit) {
@@ -2112,8 +2089,9 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
                 try w_arr.writeAll(value);
             }
 
-            const has_prev = try db.feeds_search_has_previous(req.arena, .{ 
-                .search = feed_search_value, 
+            const is_tags_only = query.get("tags-only") != null;
+            const has_prev = try db.feeds_search_has_previous(req.arena, .{
+                .search = if (is_tags_only) search_value else null,
                 .tags = tags_active.items, 
                 .before = feeds[0].feed_id,
                 .after = .unassigned, 
@@ -2131,7 +2109,10 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
     }
 
     try pages.FeedsPage.render(.{feeds_opts, .{
-        .tags = tags
+        .tags = tags,
+        .search_value = search_value orelse "",
+        .has_untagged = has_untagged,
+        .tags_active = tags_active.items,
     }}, w);
     try w.flush();
 }
@@ -2186,11 +2167,6 @@ const HeadOptions = struct {
     tags_checked: [][]const u8 = &.{},
     has_untagged: bool = false,
 };
-
-fn untagged_label_render(w: anytype, has_untagged: bool) !void {
-    const is_checked: []const u8 = if (has_untagged) "checked" else "";
-    try w.print(parts_get("untagged"), .{ .value = untagged, .is_checked = is_checked });
-}
 
 fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
     try w.writeAll("<div class='tag'>");

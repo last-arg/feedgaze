@@ -91,18 +91,16 @@ const menu_items = [_]struct{path: []const u8, name: []const u8}{
 pub const Navigation = struct {
     current_path: []const u8 = "/",
     tags: []const TagResult = &.{},
+    search_value: []const u8 = "",
+    has_untagged: bool = false,
+    tags_active: []const feed_types.SqliteId = &.{},
 };
 
-pub fn tag_is_checked(tag: []const u8, tags_checked: []const []const u8) bool {
-    for (tags_checked) |tag_checked| {
-        if (std.mem.eql(u8, tag, tag_checked)) {
-            return true;
-        }
-    }
-
-    return false;
+pub fn is_tag_checked(tag_id: feed_types.SqliteId, tags_checked: []const feed_types.SqliteId) bool {
+    return std.mem.findScalar(feed_types.SqliteId, tags_checked, tag_id) != null;
 }
 
+const untagged = "[untagged]";
 pub templ Nav(nav: Navigation) {
     <header class='body-header'>
       <div class='nav'>
@@ -126,10 +124,16 @@ pub templ Nav(nav: Navigation) {
             <fieldset class='tags stack'>
               <legend>Tags</legend>
               <div class='tag-list'>
-              for (nav.tags, 0..) |tag, index| {
+                <div class='tag'>
+                  <input type="checkbox" name="untagged" id="untagged" checked?={nav.has_untagged} />
+                  <label class="visually-hidden" for="untagged">{untagged}</label>
+                  <a class='truncate-1' href='/feeds?untagged=' title='untagged'>{untagged}</a>
+                </div>
+
+              for (nav.tags) |tag| {
                   <div class='tag'>
-                    <input type="checkbox" name="tag.name" id="tag-id-{index}" value="{tag.name}" />
-                    <label class="visually-hidden" for="tag-id-{index}">{tag.name}</label>
+                    <input type="checkbox" name="tag.name" id="tag-id-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
+                    <label class="visually-hidden" for="tag-id-{@backingInt(tag.tag_id)}">{tag.name}</label>
                     <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
                   </div>
               }
@@ -138,7 +142,7 @@ pub templ Nav(nav: Navigation) {
             <div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>
             <div>
               <label class="form-heading" for="search_value">Filter feeds</label>
-              <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value="" /></div>
+              <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value={nav.search_value} /></div>
               <button class="form-submit muted primary">Filter all</button>
             </div>
           </form>
@@ -550,7 +554,7 @@ pub templ PickItem(value: []const u8, index: u32, is_checked: bool) {
 
 pub const FeedsOpts = struct {
     feeds: []const feed_types.Feed,
-    items: []const feed_types.FeedItemRender,
+    items: []const feed_types.FeedItemRender = &.{},
     failed_requests: []const feed_types.Feed.ID = &.{},
     now_sec: i64 = 0,
     icon_manage: *IconManage,
