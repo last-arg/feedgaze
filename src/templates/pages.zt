@@ -168,7 +168,7 @@ pub const HomeContent = struct {
 pub templ HomePage(content: HomeContent, nav: Navigation) {
     @Layout("Home - latest added feed items", nav) {
         <main class='content-latest flow'>
-            if (opts.display_feed_delete_msg) {
+            if (content.display_feed_delete_msg) {
                 <div class='message'>
                   <p>Feed deleted</p>
                   <a href='/'>Close message</a>
@@ -670,11 +670,16 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
     }
 }
 
+const no_title = "[no-text-content]";
 pub templ ItemLink(item: feed_types.FeedItemRender) {
     if (item.link) |link| {
-        <a href="{link}" class="item-link truncate-2" title="{item.title}" rel="noreferrer noopener">{item.title}</a>
+        <a href="{link}" class="item-link truncate-2" title={if (item.title.len > 0) item.title else no_title} rel="noreferrer noopener">
+            {if (item.title.len > 0) item.title else no_title}
+        </a>
     } else {
-        <p class="truncate-2" title="{item.title}">{item.title}</p>
+        <p class="truncate-2" title={if (item.title.len > 0) item.title else no_title}>
+            {if (item.title.len > 0) item.title else no_title}
+        </p>
     }
 }
 
