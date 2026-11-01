@@ -222,7 +222,7 @@ pub const Storage = struct {
         return res.toOwnedSlice();
     }
 
-    const FeedFailedRequest = struct {
+    pub const FeedFailedRequest = struct {
         utc_sec: i64,
         reason: []const u8,
 
@@ -935,14 +935,12 @@ pub const Storage = struct {
         try self.sql_db.exec(query, .{@backingInt(tag_id)});
     }
 
-    pub fn feed_tags(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const []const u8 {
+    pub fn feed_tags(self: *Self, allocator: Allocator, feed_id: Feed.ID) ![]const types.SqliteId {
         assert(feed_id != .unassigned);
         const query = 
-        \\select name as val from tag where tag_id in (
-        \\  select distinct(tag_id) from feed_tag where feed_id = ?
-        \\)
+            \\select tag_id as val from feed_tag where feed_id = ?
         ;
-        return try all(&self.sql_db, []const u8, allocator, query, .{@backingInt(feed_id)});
+        return try all(&self.sql_db, types.SqliteId, allocator, query, .{@backingInt(feed_id)});
     }
         
     pub fn tags_add(self: *Self, tags: [][]const u8) !void {
@@ -1859,6 +1857,7 @@ fn all(db: *const sql.Database, comptime T: type, allocator: Allocator, raw_quer
 
     const info = @typeInfo(T);
     const is_struct = info == .@"struct";
+    const is_enum = info == .@"enum";
     const is_slice_u8 = switch(info) {
         .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8) true else false,
         else => false,
@@ -1870,6 +1869,8 @@ fn all(db: *const sql.Database, comptime T: type, allocator: Allocator, raw_quer
                 break :blk T.Raw;
             }
             break :blk T;
+        } else if (is_enum) {
+            break :blk struct {val: info.@"enum".tag_type};
         }
         break :blk struct {val: if (is_slice_u8) sql.Text else T};
     };
@@ -1888,9 +1889,10 @@ fn all(db: *const sql.Database, comptime T: type, allocator: Allocator, raw_quer
                     break :blk try T.from_raw(buf_strings, row);
                 }
                 break :blk row;
-            }
-            if (is_slice_u8) {
+            } else if (is_slice_u8) {
                 break :blk try allocator.dupe(u8, row.val.data);
+            } else if (is_enum) {
+                break :blk @as(T, @fromBackingInt(row.val));
             }
             break :blk row.val;
         };

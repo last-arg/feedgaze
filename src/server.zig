@@ -24,7 +24,7 @@ const image = @import("./image.zig");
 const comptimePrint = std.fmt.comptimePrint;
 const pages = @import("templates/pages.zig");
 
-const icon_input_max_size = 8 * 1024;
+pub const icon_input_max_size = 8 * 1024;
 const cookie_key = "last-item-added-timestamp";
 const title_placeholder = "[no-title]";
 const untagged = "[untagged]";
@@ -155,7 +155,7 @@ pub const IconManage = struct {
         return IconFileType.from_string(filetype_raw);
     }
 
-    pub fn index_by_id(self: *@This(), id: types.IconRender.ID, storage_opt: ?*Storage) ?usize {
+    pub fn index_by_id(self: *@This(), id: types.IconRender.ID) ?usize {
         if (id == .unassigned) return null;
 
         for (self.cache.items(.icon_id), 0..) |icon_id, i| {
@@ -164,37 +164,25 @@ pub const IconManage = struct {
             }
         }
 
-        if (storage_opt) |storage|  {
-            const icon_opt = storage.icon_by_id(self.allocator, id) catch |err| {
-                std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
+        const icon_opt = self.storage.icon_by_id(self.allocator, id) catch |err| {
+            std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
+            return null;
+        };
+
+        if (icon_opt) |icon| {
+            const index = self.add(icon) catch |err| {
+                std.log.warn("Failed to add icon to server cache. Error: {}", .{err});
                 return null;
             };
 
-            if (icon_opt) |icon| {
-                const index = self.add(icon) catch |err| {
-                    std.log.warn("Failed to add icon to server cache. Error: {}", .{err});
-                    return null;
-                };
-
-                return index;
-            }
+            return index;
         }
 
         return null;
     }
 
-    // TODO: @remove
-    pub fn icon_src_by_id(self: *@This(), buf: []u8, id: types.IconRender.ID, db: ?*Storage) ?[]const u8 {
-        const index = self.index_by_id(id, db) orelse return null;
-        const icon = self.cache.get(index);
-        const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
-        const ft = icon.file_type;
-        return std.fmt.bufPrint(buf, "/icons/{s}{s}", .{hash, ft.to_string()})
-            catch null;
-    }
-
     pub fn get_icon_info(self: *@This(), id: types.IconRender.ID) ?struct {hash: []const u8, file_type: []const u8} {
-        const index = self.index_by_id(id, &self.storage) orelse return null;
+        const index = self.index_by_id(id) orelse return null;
         const icon = self.cache.get(index);
         const hash = self.hash_string_bytes.items[icon.hash.start..icon.hash.end];
         const ft = icon.file_type;
@@ -692,6 +680,7 @@ fn selector_value(query: *httpz.key_value.StringKeyValue, key: []const u8) []con
     return "";
 }
 
+// TODO: on error redirect back to previous page?
 fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const db = global.storage;
 
@@ -842,7 +831,7 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     const feed_id = feed.feed_id;
 
- if (tags_input) |raw| {
+    if (tags_input) |raw| {
         // TODO: fix due to zig changes
         errdefer {
             // std.log.err("Failed to add tags for new feed '{f}'. Error: {}", .{add_opts.feed_opts.feed_url, err});
@@ -1090,6 +1079,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const id_raw = req.params.get("id") orelse return error.FailedToParseIdParam;
     const feed_id_u64 = std.fmt.parseUnsigned(u64, id_raw, 10) catch return error.InvalidIdParam;
     const feed_id: types.Feed.ID = @enumFromInt(feed_id_u64);
+    // TODO: maybe can also get 'last_update' and 'next_update' with one query?
     const feed = db.feed_with_id(req.arena, feed_id) catch {
         return error.DatabaseFailure;
     } orelse {
@@ -1108,306 +1098,51 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         }
     }
 
-    const tags_all = db.tags_all(req.arena) catch blk: {
-        std.log.warn("Request '/feed/{d}' failed to get all tags", .{feed.feed_id});
-        break :blk &.{};
-    };
+    const tags = try global.storage.tags_all_with_ids(req.arena);
 
-    const feed_tags = db.feed_tags(req.arena, feed.feed_id) catch blk: {
-        std.log.warn("Request '/feed/{d}' failed to get feed tags", .{feed.feed_id});
-        break :blk &.{};
-    };
-
-    const items = db.feed_items_with_feed_id(req.arena, feed.feed_id) catch blk: {
-        std.log.warn("Request '/feed/{d}' failed to get feed items", .{feed.feed_id});
-        break :blk &.{};
-    };
+    const feed_tags = try db.feed_tags(req.arena, feed.feed_id);
+    const items = try db.feed_items_with_feed_id(req.arena, feed.feed_id);
 
     var buf: [std.compress.flate.max_window_len]u8 = undefined;
     var compress_opt = try compress_init(req, resp, &buf);
     var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
 
-    const title = feed.title orelse "";
-    if (title.len > 0) {
-        var buf_tag: [1024]u8 = undefined;
-        var write_tag: std.Io.Writer = .fixed(&buf_tag);
-        try write_tag.print("Feed - {s}", .{title});
-        try Layout.write_head(w, write_tag.buffered());
-    } else {
-        try Layout.write_head(w, "Feed");
-    }
-
-    const tags = try db.tags_all(req.arena);
-    try global.layout.body_head_render(w, req.url.path, tags, .{});
-
-    try w.writeAll("<main class='flow'>");
-    try w.writeAll("<h2>");
-    if (feed.icon_id.is_valid()) {
-        var buf_icon: [128]u8 = undefined;
-        if (global.icon_manage.icon_src_by_id(&buf_icon, feed.icon_id, global.storage)) |path| {
-            try w.print(
-                \\<img class="feed-icon" src="{s}" alt="" aria-hidden="true">
-            , .{path});
-        }
-    }
-    if (title.len > 0) {
-        try w.writeAll(title);
-    } else {
-        try w.print("{f}", .{feed.page_url orelse feed.feed_url});
-    }
-    try w.writeAll("</h2>");
-
-    try w.writeAll("<div class='feed-info flow'>");
-    try w.writeAll("<p>Page link: ");
-    if (feed.page_url) |page_url| {
-        try w.print(
-        \\<a href="{f}" class="inline-block" rel="noreferrer noopener">{f}</a>
-        , .{page_url, page_url});
-    } else {
-        try w.writeAll("no url");
-    }
-    try w.writeAll("</p>");
-
-    try w.print(
-        \\<p>Feed link: <a href="{f}" rel="noreferrer noopener">{f}</a></p>
-    , .{ feed.feed_url, feed.feed_url });
-
-    var date_buf: [date_len_max]u8 = undefined;
-
-    if (try db.feed_last_update(feed.feed_id)) |last_update| {
-        try w.print(
-            \\<p>Last update was
-            \\<em>
-            \\<relative-time update="false">
-            \\<time datetime={s}>{s}</time>
-            \\</relative-time>
-            \\</em>
-            \\</p>
-        , .{
-            timestampToString(&date_buf, last_update),
-            date_readable(last_update),
-        });
-    }
-
-    if (try db.next_update_feed(feed.feed_id)) |utc_sec| {
-        const date_for_machine = timestampToString(&date_buf, utc_sec);
-        try w.print(
-            \\<p>Next update
-            \\<em>
-            \\<relative-time update="false">
-            \\<time datetime={s}>{s}</time>
-            \\</relative-time>
-            \\</em>
-            \\</p>
-        , .{
-            date_for_machine,
-            date_readable(utc_sec),
-        });
-        // TODO: add update link/button if can update now 
-    } else {
-        // TODO: if too many failed requests automatic updating will be disabled 
-        // TODO: add link/button to run update right now
-        try w.writeAll(
-            \\<p class='callout warning'>This feed's updating is disabled. Failed to fetch feed too many times.</p>
-        );
-    }
-
-    // Feed request(s) failed
-    const failed_requests = try db.request_failed_slice(req.arena, feed.feed_id);
-    if (failed_requests.len >= 1) {
-        try w.writeAll(parts_get("failed_table_start"));
-
-        for (failed_requests) |failed_request| {
-            try w.print(parts_get("failed_table_row")
-            , .{
-                .reason = failed_request.reason,
-                .datetime = timestampToString(&date_buf, failed_request.utc_sec),
-                .time = date_readable(failed_request.utc_sec),
-            });
-        }
-
-        try w.writeAll(parts_get("failed_table_end"));
-    }
-
-
     const query_kv = try req.query();
-    if (query_kv.get("success")) |_| {
-        try w.writeAll("<p class='callout success'>Feed changes saved</p>");
-    }
+
+    var buf_tag: [128]u8 = undefined;
+    var write_title: std.Io.Writer = .fixed(&buf_tag);
+    write_title.writeAll("Feed - ") catch unreachable;
+    try write_title.writeAll(if (feed.title) |val| val else "[no-title]");
+
+    const now_date = Datetime.nowUTC(global.io);
+    const now_sec: i64 = @intCast(now_date.toUnix(.second));
+
+    var feed_opts: pages.FeedOpts = .{
+        .icon_manage = global.icon_manage,
+        .feed = feed,
+        .feed_tags = feed_tags,
+        .feed_items = items,
+        .head_title = write_title.buffered(),
+        .last_update = try db.feed_last_update(feed.feed_id),
+        .next_update = try db.next_update_feed(feed.feed_id),
+        .now_sec = now_sec,
+        .failed_requests = try db.request_failed_slice(req.arena, feed.feed_id),
+        .query_success = query_kv.get("success") != null,
+    };
 
     if (query_kv.get("error")) |error_value| {
-        try w.writeAll("<p class='callout danger'>");
-
-        const err_enum = UrlQueryError.from_string(error_value);
-        switch(err_enum) {
-            .delete => try w.writeAll("Failed to delete feed"),
-            .feed => try w.writeAll("Failed to update feed"),
-            .html => try w.writeAll("Failed to update feed html fields"),
-            .item_selector => try w.writeAll("Fill in 'Feed item selector' field"),
-            .icon_too_large => try w.writeAll(
-                std.fmt.comptimePrint(
-                    "'Icon url' size is too big. Allowed max size {d}",
-                    .{icon_input_max_size}
-                )
-            ),
-            .unknown => {
-                try w.writeAll("Failed to save feed changes");
-                std.log.warn("Unknown error happened when trying to save feed. Error: {s}", .{error_value});
-            },
-            else => {
-                std.log.warn("Error {s} should not have happened when saving feed", .{error_value});
-            }
-        }
-           
-        try w.writeAll("</p>");
+        feed_opts.query_error = UrlQueryError.from_string(error_value);
     }
-    
-    try w.writeAll("<h3>Edit feed</h3>");
-    try w.writeAll("<form class='flow' method='POST'>");
-
-    const inputs_fmt = 
-    \\<div>
-    \\  <div><label for="title">Feed title</label></div>
-    \\  <input class="char-len-l" type="text" id="title" name="title" value="{[title]s}">
-    \\</div>
-    \\<div>
-    \\  <div><label for="page_url">Page link</label></div>
-    \\  <input type="text" id="page_url" name="page_url" value="{[page_url]f}">
-    \\</div>
-    \\<div>
-    \\  <div><label for="icon_url">Icon link</label></div>
-    \\  <input type="text" id="icon_url" name="icon_url" value="{[icon_url]s}">
-    \\</div>
-    ;
 
     const page_url = feed.page_url orelse std.Uri{.scheme = ""};
 
-    const icon_url = blk: {
-        if (feed.icon_id.is_valid()) {
-            if (global.icon_manage.index_by_id(feed.icon_id, global.storage)) |index| {
-                const icon_url_raw = global.icon_manage.get_url_string_by_index(index);
-                const icon_url = try std.Uri.parse(icon_url_raw);
-                // NOTE: Is inline icon
-                if (std.meta.eql(icon_url, page_url)) {
-                    const icon_raw = global.icon_manage.get_data_string_by_index(index);
-                    const icon_encoded = try html.encode(req.arena, icon_raw);
-                    break :blk icon_encoded;
-                }
-
-                break :blk icon_url_raw;
-            }
-        }
-        break :blk "";
-    };
-
-    try w.print(inputs_fmt, .{
-        .title = try parse.html_escape(req.arena, title), 
-        .page_url = page_url,
-        .icon_url = icon_url,
-    });
-
     if (std.meta.eql(page_url, feed.feed_url)) {
-        if (try db.html_selector_get(req.arena, feed.feed_id)) |html_opts| {
-            const selector_template = 
-                \\<div>
-                \\<div><label for="html-{[name]s}-selector">{[label]s}</label></div>
-                \\<input class='char-len-s' type="text" value="{[value]s}" name="html-{[name]s}-selector" id="html-{[name]s}-selector">
-                \\</div>
-            ;
-
-            try w.writeAll("<fieldset class='flow'>");
-            try w.writeAll("<legend>Html 'feed' options</legend>");
-            try w.print(
-                selector_template,
-                .{ 
-                    .label = "Feed item selector",
-                    .name = "item",
-                    .value = try parse.html_escape(req.arena, html_opts.selector_container),
-                }
-            );
-            try w.print(
-                selector_template,
-                .{ 
-                    .label = "Feed item link selector",
-                    .name = "link",
-                    .value = try parse.html_escape(req.arena, html_opts.selector_link orelse ""),
-                }
-            );
-            try w.print(
-                selector_template,
-                .{ 
-                    .label = "Feed item title selector",
-                    .name = "title",
-                    .value = try parse.html_escape(req.arena, html_opts.selector_heading orelse ""),
-                }
-            );
-            try w.print(
-                selector_template,
-                .{ 
-                    .label = "Feed item date selector",
-                    .name = "date",
-                    .value = try parse.html_escape(req.arena, html_opts.selector_date orelse ""),
-                }
-            );
-
-            try w.print(
-                \\<div>
-                \\<div><label for="html-date-format">Date format</label></div>
-                \\<input class="char-len-s" type="text" value="{s}" name="html-date-format" id="html-date-format">
-                \\</div>
-            , .{try parse.html_escape(req.arena, html_opts.date_format orelse "")});
-
-            try w.writeAll("</fieldset>");
-        }
+        feed_opts.html_opts = try db.html_selector_get(req.arena, feed.feed_id);
     }
     
-    try w.writeAll(parts_get("fieldset_tags"));
-    for (tags_all, 0..) |tag, i| {
-        const is_checked = blk: {
-            for (feed_tags) |f_tag| {
-                if (mem.eql(u8, tag, f_tag)) {
-                    break :blk "checked";
-                }
-            }
-            break :blk "";
-        };
-        const tag_escaped = try parse.html_escape(req.arena, tag);
-        try w.print(parts_get("fieldset_tag"), .{
-            .tag = tag_escaped,
-            .tag_index = i,
-            .is_checked = is_checked,
-            .prefix = "tag-edit-",
-        });
-    }
-    try w.writeAll(parts_get("end_fieldset_tag"));
-    try w.writeAll(parts_get("form_input"));
-
-    try w.writeAll("<div>");
-    try btn_primary(w, "Save feed changes");
-    try w.writeAll("</div>");
-    try btn_delete(w, "Delete feed", .button);
-    try w.writeAll("</form>");
-
-    try w.writeAll("</div>");
-
-    try w.writeAll("<h3>Feed items</h3>");
-    if (items.len > 0) {
-        try w.writeAll("<relative-time update=false format-style=narrow format-numeric=always>");
-        try w.writeAll("<ul class='stack list-unstyled'>");
-        for (items) |item| {
-            try w.writeAll("<li class='feed-item'>");
-            try item_render(global.io, w, req.arena, item, .{});
-            try w.writeAll("</li>");
-        }
-        try w.writeAll("</ul>");
-        try w.writeAll("</relative-time>");
-    } else {
-        try w.writeAll("<p class='callout'>No feeds items in this feed.</p>");
-    }
-
-    try w.writeAll("</main>");
-    try Layout.write_foot(w);
-
+    try pages.FeedPage.render(.{feed_opts, .{
+        .tags = tags
+    }}, w);
     try w.flush();
 }
 
@@ -2126,30 +1861,6 @@ fn age_class_from_time(io: std.Io, time: ?i64) []const u8 {
         }
     }
     return "";
-}
-
-const ItemRenderOptions = struct {
-    class: []const u8 = "",
-    is_new_item: bool = false,
-};
-
-fn item_render(io: std.Io, w: *std.Io.Writer, allocator: std.mem.Allocator, item: FeedItemRender, opts: ItemRenderOptions) !void {
-    if (opts.is_new_item) {
-        try w.writeAll("<div class='feed-time'>");
-    }
-    try timestamp_render(io, w, item.updated_timestamp);
-    if (opts.is_new_item) {
-        try w.writeAll("<span>new</span>");
-        try w.writeAll("</div>");
-    }
-
-    const item_title = if (item.title.len > 0) try parse.html_escape(allocator, item.title) else title_placeholder;
-
-    if (item.link) |link| {
-        try w.print(parts_get("feed_item_link"), .{ .title = item_title, .link = link, .class = opts.class });
-    } else {
-        try w.print(parts_get("feed_item_no_link"), .{ .title = item_title, .class = opts.class });
-    }
 }
 
 const HeadOptions = struct {

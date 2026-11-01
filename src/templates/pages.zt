@@ -1,9 +1,10 @@
 const util = @import("../util.zig");
 const builtin = @import("builtin");
 const feed_types = @import("../feed_types.zig");
-const IconManage = @import("../server.zig").IconManage;
+const Server = @import("../server.zig");
+const IconManage = Server.IconManage;
 const Storage = @import("../storage.zig").Storage;
-const UrlQueryError = @import("../server.zig").UrlQueryError;
+const UrlQueryError = Server.UrlQueryError;
 const TagResult = Storage.TagResult;
 
 fn hash_static_file(comptime path: []const u8) u64 {
@@ -313,7 +314,7 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
     }
 }
 
-pub const FailedFeedsContent = struct{
+pub const FailedFeedsContent = struct {
     failed_requests: []const Storage.FeedFailedRequestWithID,
     icon_manage: *IconManage,
 };
@@ -754,5 +755,216 @@ pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
           </form>
         </main>
     }
+}
+
+pub const FeedOpts = struct {
+    head_title: []const u8 = "",
+    icon_manage: *IconManage,
+    feed: feed_types.Feed,
+    feed_items: []const feed_types.FeedItemRender,
+    feed_tags: []const feed_types.SqliteId = &.{},
+    last_update: ?i64,
+    next_update: ?i64,
+    now_sec: i64,
+    failed_requests: []const Storage.FeedFailedRequest,
+    query_success: bool = false,
+    query_error: ?UrlQueryError = null,
+    html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
+};
+
+pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
+    @Layout(opts.head_title, nav) {
+        <main class='flow'>
+            <h2>
+                if (opts.feed.icon_id.is_valid()) {
+                    if (opts.icon_manage.get_icon_info(opts.feed.icon_id)) |info| {
+                        <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
+                    }
+                }
+
+                if (opts.feed.title) |title| {
+                    {title}
+                } else {
+                    {title_placeholder}
+                }
+            </h2>
+
+            <div class='feed-info flow'>
+                <p>
+                    if (opts.feed.page_url) |page_url| {
+                        Page link: <a href={page_url} class="inline-block" rel="noreferrer noopener">{page_url}</a>
+                    } else {
+                        Page link: [no-url]
+                    }
+                </p>
+                <p>Feed link: <a href={opts.feed.feed_url} rel="noreferrer noopener">{opts.feed.feed_url}</a></p>
+
+                if (opts.last_update) |last_update| {
+                    <p>Last update was
+                        <em><relative-time update="false">
+                            <time datetime={zt.fmt(util.write_timestamp, .{last_update})}>{util.date_readable(last_update)}</time>
+                        </relative-time></em>
+                    </p>
+                }
+
+                if (opts.next_update) |next_update| {
+                    <p>Next update
+                        <em><relative-time update="false">
+                            <time datetime={zt.fmt(util.write_timestamp, .{next_update})}>{util.date_readable(next_update)}</time>
+                        </relative-time></em>
+                    </p>
+                } else {
+                    <!--
+                    TODO: add link/button to run update right now.
+                    TODO: Add the button even if updating isn't disabled?
+                    -->
+                    <p class='callout warning'>This feed's updating is disabled. Failed to fetch feed too many times.</p>
+                }
+
+                if (opts.failed_requests.len > 0) {
+                    <table class="table-striped">
+                        <caption>Failed request(s)</caption>
+                        <tr>
+                            <th>Date</th>
+                            <th>Error</th>
+                        </tr>
+
+                    for (opts.failed_requests) |failed| {
+                          <tr>
+                              <td>
+                                  <time datetime={zt.fmt(util.write_timestamp, .{failed.utc_sec})}>{util.date_readable(failed.utc_sec)}</time>
+                              </td>
+                              <td>{failed.reason}</td>
+                          </tr>
+                    }
+                    </table>
+                }
+
+                if (opts.query_success) {
+                    <p class='callout success'>Feed changes saved</p>
+                }
+
+                if (opts.query_error) |err_enum| {
+                    <p class='callout danger'>
+                    switch (err_enum) {
+                        .delete => {Failed to delete feed},
+                        .feed => {Failed to update feed},
+                        .html => {Failed to update feed html fields},
+                        .item_selector => {Fill in 'Feed item selector' field},
+                        .icon_too_large => {'Icon url' size is too big. Allowed max size {Server.icon_input_max_size}},
+                        .unknown => {Failed to save feed changes},
+                        else => {},
+                    }
+                    </p>
+                }
+
+                <h3>Edit feed</h3>
+                <form class='flow' method='POST'>
+                    <div>
+                      <div><label for="title">Feed title</label></div>
+                      <input class="char-len-l" type="text" id="title" name="title" value={opts.feed.title orelse ""} />
+                    </div>
+                    <div>
+                      <div><label for="page_url">Page link</label></div>
+                      <input type="text" id="page_url" name="page_url" value={opts.feed.page_url} />
+                    </div>
+                    <div>
+                      <div><label for="icon_url">Icon link</label></div>
+                      <input type="text" id="icon_url" name="icon_url" value={get_icon_input_value(opts.feed.icon_id, opts.feed.page_url, opts.icon_manage)} />
+                    </div>
+
+                    if (opts.html_opts) |html_opts| {
+                        <fieldset class='flow'>
+                            <legend>Html 'feed' options</legend>
+                            <div>
+                                <div><label for="html-item-selector">Feed item selector</label></div>
+                                <input class='char-len-s' type="text" value={html_opts.selector_container} name="html-item-selector" id="html-item-selector" />
+                            </div>
+
+                            <div>
+                                <div><label for="html-link-selector">Feed item link selector</label></div>
+                                <input class='char-len-s' type="text" value={html_opts.selector_link} name="html-link-selector" id="html-link-selector" />
+                            </div>
+
+                            <div>
+                                <div><label for="html-title-selector">Feed item link selector</label></div>
+                                <input class='char-len-s' type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
+                            </div>
+
+                            <div>
+                                <div><label for="html-date-selector">Feed item link selector</label></div>
+                                <input class='char-len-s' type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
+                            </div>
+
+                            <div>
+                                <div><label for="html-date-format">Date format</label></div>
+                                <input class="char-len-s" type="text" value={html_opts.date_format} name="html-date-format" id="html-date-format" />
+                            </div>
+                        </fieldset>
+                   }
+
+                    <fieldset>
+                      <legend>Tags</legend>
+                      <div class='feed-tag-list'>
+                        for (nav.tags) |tag| {
+                            <label for="tag-edit-{@backingInt(tag.tag_id)}">
+                                <input type="checkbox" name="tag" id="tag-edit-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, opts.feed_tags)} />
+                                <span class='truncate-1' title="{tag.name}">{tag.name}</span>
+                            </label>
+                        }
+                      </div>
+                    </fieldset>
+
+                    <div class="form-input">
+                      <div>
+                        <label for="new_tags">New tags</label>
+                        <em>Tags are comma separated</em>
+                      </div>
+                      <input type="text" id="new_tags" name="new_tags" />
+                    </div>
+
+                    <div>
+                        <button class='muted primary' name='action' value='save'>Save feed changes</button>
+                    </div>
+                    <div>
+                        <button class='outline danger' name='action' value='delete'>Delete feed</button>
+                    </div>
+                </form>
+            </div>
+
+            <h3>Feed items</h3>
+            if (opts.feed_items.len == 0) {
+                <p class='callout'>No feeds items in this feed.</p>
+            } else {
+                <relative-time update="false" format-style="narrow" format-numeric="always">
+                    <ul class='stack list-unstyled'>
+                    for (opts.feed_items) |item| {
+                        <li class='feed-item'>
+                            @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
+                            @ItemLink(item)
+                        </li>
+                    }
+                    </ul>
+                </relative-time>
+            }
+        </main>
+    }
+}
+
+fn get_icon_input_value(icon_id: feed_types.IconRender.ID, page_url: ?std.Uri, icon_manage: *IconManage) []const u8 {
+    if (icon_id.is_valid()) {
+        if (icon_manage.index_by_id(icon_id)) |index| {
+            const icon_url_raw = icon_manage.get_url_string_by_index(index);
+            // NOTE: Is inline icon
+            if (page_url != null and std.meta.eql(std.Uri.parse(icon_url_raw) catch unreachable, page_url.?)) {
+                const icon_raw = icon_manage.get_data_string_by_index(index);
+                return icon_raw;
+            }
+
+           return icon_url_raw;
+        }
+    }
+
+    return "";
 }
 

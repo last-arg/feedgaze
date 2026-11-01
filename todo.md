@@ -1,10 +1,10 @@
 - html parsing: get date from url path?
 - replace http.zig with dusty?
-- explore zt for html templating
-    - /feed/<id>
+- clean up stuff after changing templating to zt
 - zt use 'fn format' or 'fn formatHtml'
     - especially enums that need to be turned into numbers
 - check adding timeout to async code? Can I?
+- handle feed_pick_post fetch errors
 - error:
 ```
 thread 197014 panic: index out of bounds: index 40595, len 19221
