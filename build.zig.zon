@@ -21,10 +21,6 @@
             .url = "git+https://github.com/kristoff-it/superhtml#f0deee80ae422938d5cdc43a5598c417670db38b",
             .hash = "superhtml-0.7.0-Y7MdPGykJgDenn3V9JQFolYt1ZQF8QPlHTdjD4wFS6yq",
         },
-        .zts = .{
-            .url = "https://github.com/zigster64/zts/archive/refs/heads/main.tar.gz",
-            .hash = "zts-0.14.1-_M80OQ2-AgAXH9hbZpc1fkAHtI2fnRxKJudZt1Dpb8gY",
-        },
         .zignal = .{
             .url = "git+https://github.com/arrufat/zignal#24fd0b6bf25b30c1cf0ffc5d9e2706e4d031dfc5",
             .hash = "zignal-0.11.0-dev-OrZ3s10cOADutdAItIcGJni6X1gdXtxNH9YacgHl20Pw",

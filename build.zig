@@ -155,9 +155,6 @@ fn commonModules(b: *Build, step: *CompileStep, dep_args: anytype) void {
     const superhtml = b.dependency("superhtml", .{});
     step.root_module.addImport("superhtml", superhtml.module("superhtml"));
 
-    const zts = b.dependency("zts", dep_args);
-    step.root_module.addImport("zts", zts.module("zts"));
-
     const zignal = b.dependency("zignal", dep_args);
     step.root_module.addImport("zignal", zignal.module("zignal"));
 

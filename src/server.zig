@@ -5,8 +5,7 @@ const Storage = s.Storage;
 const print = std.debug.print;
 const mem = std.mem;
 const types = @import("./feed_types.zig");
-const zdt = @import("zdt");
-const Datetime = zdt.Datetime;
+const Datetime = @import("zdt").Datetime;
 const FeedItemRender = types.FeedItemRender;
 const config = @import("app_config.zig");
 const html = @import("./html.zig");
@@ -17,21 +16,12 @@ const builtin = @import("builtin");
 const util = @import("util.zig");
 const AddRule = @import("add_rule.zig");
 const http_client = @import("./http_client.zig");
-const timestampToString = util.timestampToString;
-const date_len_max = util.date_len_max;
-const zts = @import("zts");
 const image = @import("./image.zig");
 const comptimePrint = std.fmt.comptimePrint;
 const pages = @import("templates/pages.zig");
 
 pub const icon_input_max_size = 8 * 1024;
 const cookie_key = "last-item-added-timestamp";
-const title_placeholder = "[no-title]";
-const untagged = "[untagged]";
-const parts = @embedFile("./layouts/parts.html");
-
-// TODO: can probably remove after moving template to zt
-const date_readable = util.date_readable;
 
 const static_files_hash = blk: {
     var hasher = std.hash.Wyhash.init(0);
@@ -55,7 +45,6 @@ pub fn main() !void {
 const Global = struct {
     io: std.Io,
     storage: *Storage, 
-    layout: Layout,
     is_updating: bool = false,
     icon_manage: *IconManage,
     progress: std.Progress.Node,
@@ -236,8 +225,6 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    const layout = Layout.init(allocator, storage); 
-
     var icon_manage: IconManage = .init(allocator, storage);
     defer icon_manage.deinit();
 
@@ -248,7 +235,6 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     var global: Global = .{
         .io = io,
         .storage = @constCast(&storage),
-        .layout = layout,
         .icon_manage = &icon_manage,
         .progress = progress,
         .core_count = try std.Thread.getCpuCount(),
@@ -1160,21 +1146,6 @@ fn get_file(io: std.Io, allocator: std.mem.Allocator, comptime path: []const u8)
     }
 }
 
-fn btn_primary(w: anytype, text: []const u8) !void {
-    try w.print(parts_get("button_primary"), .{text});
-}
-
-fn btn_delete(w: anytype, text: []const u8, btn_type: enum {button, link}) !void {
-    switch (btn_type) {
-        .button => {
-            try w.print(parts_get("button_danger"), .{text});
-        },
-        .link => {
-            try w.print(parts_get("button_danger_link"), .{text});
-        },
-    }
-}
-
 fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     var src: ?[]const u8 = null;
     const prefix_dir = if (builtin.mode == .debug) "server" else "server/dist";
@@ -1353,11 +1324,6 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
     const tags = try global.storage.tags_all_with_ids(req.arena);
 
     const query = try req.query();
-    if (query.get("msg")) |value| {
-        if (mem.eql(u8, "delete", value)) {
-            try w.writeAll(parts_get("feed_delete_msg"));
-        }
-    }
 
     const next_update_ts = try db.next_update_timestamp();
     const items = try db.get_items_latest_added(req.arena);
@@ -1371,6 +1337,10 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         .now_sec = now_sec,
         .icon_manage = global.icon_manage,
     };
+
+    if (query.get("msg")) |value| {
+        home_opts.display_feed_delete_msg = mem.eql(u8, "delete", value);
+    }
 
     if (items.len > 0) {
         const cookie_last_item_ts = get_cookie_value(req)
@@ -1405,26 +1375,6 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
         .tags = tags
     }}, w);
     try w.flush();
-}
-
-// TODO: @remove
-fn timestamp_render(io: std.Io, w: *std.Io.Writer, timestamp: ?i64) !void {
-    if (timestamp) |ts| {
-        var date_display_buf: [16]u8 = undefined;
-        var date_buf: [date_len_max]u8 = undefined;
-
-        const now_date = Datetime.nowUTC(io);
-        const now_sec: i64 = @intCast(now_date.toUnix(.second));
-        const date_display_value = try date_display(&date_display_buf, now_sec, ts);
-        const age_class = age_class_from_time(io, ts);
-        try w.print(parts_get("date"), .{
-            .date = timestampToString(&date_buf, ts),
-            .date_display = date_display_value,
-            .age_class = age_class,
-        });
-    } else {
-        try w.print(parts_get("no_date"), .{});
-    }
 }
 
 fn tag_delete(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
@@ -1586,105 +1536,6 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     try w.flush();
 }
 
-const Layout = struct {
-    const base = @embedFile("./layouts/base.html");
-    const head_top = zts.s(base, null); 
-    const head_script = zts.s(base, "script");
-    const head_bottom = zts.s(base, "end_script");
-    const foot = zts.s(base, "foot");
-
-    tags_last_modified: i64 = 0,
-    sidebar_form_html: std.Io.Writer.Allocating, 
-    storage: Storage,
-    allocator: std.mem.Allocator,
-
-    pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
-        return .{
-            .sidebar_form_html = .init(allocator),
-            .storage = storage,
-            .allocator = allocator,
-        };
-    }
-
-    pub fn write_head(writer: *std.Io.Writer, title: []const u8) !void {
-        try writer.print(head_top, .{ .title = title });
-        try writer.writeAll(head_script);
-        try writer.writeAll(head_bottom);
-    }
-
-    pub fn write_foot(writer: anytype) !void {
-        try writer.writeAll(foot);
-    }
-
-    pub fn cache_sidebar_form(self: *@This()) !bool {
-        if (try self.storage.get_tags_change()) |last_modified| {
-            if (last_modified != self.tags_last_modified) {
-                const tags = try self.storage.tags_all(self.allocator);
-                defer self.allocator.free(tags);
-                self.sidebar_form_html.shrinkRetainingCapacity(0);
-                try write_sidebar_form_new(
-                    &self.sidebar_form_html.writer, tags, .{}
-                );
-                self.tags_last_modified = last_modified; 
-            }
-            return true;
-        }
-        return false;
-    }
-
-    fn write_sidebar_form(self: *@This(), w: anytype, tags: []const []const u8, opts: HeadOptions) !void {
-        const use_cached = opts.search.len == 0 and opts.tags_checked.len == 0 and !opts.has_untagged;
-        if (use_cached) {
-            if (try self.cache_sidebar_form()) {
-                try w.writeAll(self.sidebar_form_html.writer.buffered());
-                return;
-            }
-        }
-
-        try write_sidebar_form_new(w, tags, opts);
-    }
-
-    fn write_sidebar_form_new(w: *std.Io.Writer, tags: []const []const u8, opts: HeadOptions) !void {
-        try w.writeAll(parts_get("filter_feeds"));
-
-        for (tags, 0..) |tag, i| {
-            try tag_label_render(w, tag, i + 1, opts.tags_checked);
-        }
-
-        try w.print(parts_get("include_tags"), .{ .value = opts.search });
-    }
-
-    pub fn body_head_render(self: *@This(), w: anytype, request_url_path: []const u8, tags: []const []const u8, opts: HeadOptions) !void {
-        try w.print(parts_get("body_header"), .{
-            .attrs = if (mem.eql(u8, request_url_path, "/")) "aria-current='page'" else "",
-        });
-
-        const menu_items = [_]struct{path: []const u8, name: []const u8}{
-            .{.path = "/feeds", .name = "Feeds"},
-            .{.path = "/tags", .name = "Tags"},
-            .{.path = "/feed/add", .name = "Add feed"},
-            .{.path = "/failed-requests", .name = "Failed feed requests"},
-        };
-
-        for (menu_items) |item| {
-            const attrs = if (mem.eql(u8, request_url_path, item.path)) "aria-current='page'" else "";
-            try w.print(parts_get("nav_link"), .{
-                .href = item.path,
-                .attrs = attrs,
-                .text = item.name,
-            });
-        }
-
-        try w.writeAll(parts_get("end_nav_link"));
-        try self.write_sidebar_form(w, tags, opts);
-        try w.writeAll(parts_get("include_filter_feeds"));
-    }
-};
-
-fn parts_get(comptime name: []const u8) []const u8 {
-    return mem.trim(u8, zts.s(parts, name), &std.ascii.whitespace);
-}
-
 const CacheOptions = struct {
     cache_control: []const u8 = "no-cache",
 };
@@ -1840,97 +1691,6 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .tags_active = tags_active.items,
     }}, w);
     try w.flush();
-}
-
-fn age_class_from_time(io: std.Io, time: ?i64) []const u8 {
-    const now_date = Datetime.nowUTC(io);
-    const date_in_sec: i64 = @intCast(now_date.toUnix(.second));
-
-    const age_3days_ago = date_in_sec - (std.time.s_per_day * 3);
-    const age_30days_ago = date_in_sec - (std.time.s_per_day * 30);
-            
-    if (time) |updated_timestamp| {
-        // TODO: date might be in the future?
-        // Cap future date to now?
-        if (updated_timestamp > age_3days_ago) {
-            return "age-newest";
-        } else if (updated_timestamp <= age_3days_ago and updated_timestamp >= age_30days_ago) {
-            return "age-less-month";
-        } else if (updated_timestamp < age_30days_ago) {
-            return "age-more-month";
-        }
-    }
-    return "";
-}
-
-const HeadOptions = struct {
-    search: []const u8 = "",
-    tags_checked: [][]const u8 = &.{},
-    has_untagged: bool = false,
-};
-
-fn tag_label_render(w: anytype, tag: []const u8, index: usize, tags_checked: [][]const u8) !void {
-    try w.writeAll("<div class='tag'>");
-    var is_checked: []const u8 = "";
-    for (tags_checked) |tag_checked| {
-        if (mem.eql(u8, tag, tag_checked)) {
-            is_checked = "checked";
-            break;
-        }
-    }
-
-    try w.print(parts_get("tag_input"), .{
-        .tag = tag,
-        .tag_index = index,
-        .is_checked = is_checked,
-        .prefix = "tag-id-",
-        .label_class = "visually-hidden",
-    });
-
-    try tag_link_print(w, tag, .link);
-    try w.writeAll("</div>");
-}
-
-fn tag_link_print(w: anytype, tag: []const u8, tag_type: enum{link, badge}) !void {
-    const class = switch(tag_type) {
-        .link => "truncate-1",
-        .badge => "badge"
-    };
-
-    try w.print(parts_get("tag_link"), .{ .class = class, .tag = tag });
-}
-
-// TODO: @remove
-fn date_display(buf: []u8, a: i64, b: i64) ![]const u8 {
-    if (a < b) {
-        const dt = try Datetime.fromUnix(b, .second, null);
-        var w: std.Io.Writer = .fixed(buf);
-        // fallback date format: 01 Jan 2014
-        try dt.toString("%d %:b %Y", &w);
-        return w.buffered();
-    }
-
-    const diff = a - b;
-    const mins = @divFloor(diff, 60);
-    const hours = @divFloor(mins, 60);
-    const days = @divFloor(hours, 24);
-    const months = @divFloor(days, 30);
-    const years = @divFloor(days, 365);
-
-    if (years > 0) {
-        return try std.fmt.bufPrint(buf, "{d}Y", .{years});
-    } else if (months > 0) {
-        return try std.fmt.bufPrint(buf, "{d}M", .{months});
-    } else if (days > 0) {
-        return try std.fmt.bufPrint(buf, "{d}d", .{days});
-    } else if (hours > 0) {
-        return try std.fmt.bufPrint(buf, "{d}h", .{hours});
-    } else if (mins == 0) {
-        return try std.fmt.bufPrint(buf, "0m", .{});
-    }
-
-    // mins > 0
-    return try std.fmt.bufPrint(buf, "{d}m", .{mins});
 }
 
 fn get_cookie_value(req: *httpz.Request) ?i64 {

@@ -155,18 +155,24 @@ pub templ Nav(nav: Navigation) {
 
 
 pub const HomeContent = struct {
-   next_update_ts: ?i64 = null,
-   items: []const feed_types.FeedItemRender = &.{},
-   feeds: []const feed_types.Feed = &.{},
-   failed_requests: []const feed_types.Feed.ID = &.{},
-   cookie_last_item_ts: i64 = 0,
-   now_sec: i64,
-   icon_manage: *IconManage
+    next_update_ts: ?i64 = null,
+    items: []const feed_types.FeedItemRender = &.{},
+    feeds: []const feed_types.Feed = &.{},
+    failed_requests: []const feed_types.Feed.ID = &.{},
+    cookie_last_item_ts: i64 = 0,
+    now_sec: i64,
+    icon_manage: *IconManage,
+    display_feed_delete_msg: bool = false,
 };
 
 pub templ HomePage(content: HomeContent, nav: Navigation) {
     @Layout("Home - latest added feed items", nav) {
         <main class='content-latest flow'>
+            <div class='message'>
+              <p>Feed deleted</p>
+              <a href='/'>Close message</a>
+            </div>
+
             <header class='main-header'>
                 <h2>Latest added</h2>
                 if (content.next_update_ts) |countdown_ts| {
