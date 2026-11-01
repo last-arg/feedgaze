@@ -837,15 +837,18 @@ pub const Cli = struct {
         const feed_uri = try std.Uri.parse(url);
         const feed_opts = try client.fetch(arena.allocator(), feed_uri, .{
             .buffer_header = &buffer_header,
-        });
+        }) orelse {
+            std.log.err("Failed to fetch feed '{f}'. Status: {}", .{feed_uri, client.response.?.head.status});
+            return error.InvalidHttpHeaderStatus;
+        };
 
-        var add_opts: Storage.AddOptions = .{ .feed_opts = feed_opts.? };
+        var add_opts: Storage.AddOptions = .{ .feed_opts = feed_opts };
         if (add_opts.feed_opts.content_type == .html) {
             add_opts.feed_opts.content_type = FeedParser.getContentType(add_opts.feed_opts.body) orelse .html;
         }
 
         var html_opts: ?FeedParser.HtmlOptions = null;
-        var html_body: []const u8 = feed_opts.?.body;
+        var html_body: []const u8 = feed_opts.body;
 
         var buf_url: [1024]u8 = undefined;
         if (add_opts.feed_opts.content_type == .html) {
@@ -896,15 +899,18 @@ pub const Cli = struct {
                     const feed_uri_2 = try std.Uri.parse(fetch_url_2);
                     const feed_opts_2 = try client_2.fetch(arena.allocator(), feed_uri_2, .{
                         .buffer_header = &buffer_header,
-                    });
+                    }) orelse {
+                        std.log.err("Failed to fetch feed '{f}'. Status: {}", .{feed_uri_2, client_2.response.?.head.status});
+                        return error.InvalidHttpHeaderStatus;
+                    };
 
                     const icon = add_opts.feed_opts.icon;
-                    add_opts.feed_opts = feed_opts_2.?;
+                    add_opts.feed_opts = feed_opts_2;
                     add_opts.feed_opts.feed_url = try std.Uri.parse(try client_2.get_url_slice(&buf_url));
                     add_opts.feed_opts.title = title;
                     add_opts.feed_opts.icon = icon;
-                    if (feed_opts_2.?.content_type == .html) {
-                        html_body = feed_opts_2.?.body;
+                    if (feed_opts_2.content_type == .html) {
+                        html_body = feed_opts_2.body;
                     }
                 }
             }
