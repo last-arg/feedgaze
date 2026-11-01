@@ -65,10 +65,11 @@ zig build install --prefix ~/.local -Doptimize=ReleaseSafe
 Run server after rebuild with watchexec
 ```
 # In first shell
-$ zig build --watch
+$ zig build -fincremental --watch --error-style minimal_clear
 # In second shell
-$ watchexec -r -F zig-out/bin/feedgaze zig build run -- -d <database_path> serve -p 3888
+$ watchexec -r -F ./zig-out/bin/feedgaze './zig-out/bin/feedgaze -d <database_path> serve -p 3888'
 ```
+NOTE: don't forget to hard refresh because caching
 
 ## Inspiration
 [fraidycat](https://fraidyc.at/) - [github](https://github.com/kickscondor/fraidycat)
