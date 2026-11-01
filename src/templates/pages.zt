@@ -168,10 +168,12 @@ pub const HomeContent = struct {
 pub templ HomePage(content: HomeContent, nav: Navigation) {
     @Layout("Home - latest added feed items", nav) {
         <main class='content-latest flow'>
-            <div class='message'>
-              <p>Feed deleted</p>
-              <a href='/'>Close message</a>
-            </div>
+            if (opts.display_feed_delete_msg) {
+                <div class='message'>
+                  <p>Feed deleted</p>
+                  <a href='/'>Close message</a>
+                </div>
+            }
 
             <header class='main-header'>
                 <h2>Latest added</h2>
