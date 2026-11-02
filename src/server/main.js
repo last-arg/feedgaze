@@ -3,7 +3,6 @@ document.addEventListener("DOMContentLoaded", startup);
 let has_partial_open = true;
 
 function startup() {
-
     // NOTE: only for root (/) page
     const heading_info = document.querySelector(".heading-info");
     if (heading_info) {

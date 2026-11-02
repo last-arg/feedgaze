@@ -1724,26 +1724,18 @@ fn get_cookie_value(req: *httpz.Request) ?i64 {
 }
 
 fn sse_stream(global: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
-    try resp.startEventStream(try StreamContext.init(global.io), StreamContext.handle);
+    try resp.startEventStream(StreamContext{.io = global.io}, StreamContext.handle);
 }
 
 const StreamContext = struct {
     io: std.Io,
 
-    var buf: [32]u8 = undefined;
-
-    var stats: [files.len]std.Io.File.Stat = undefined;
     const files = [_][]const u8{
         "./src/server/main.css",
         "./src/server/style.css",
         "./src/server/main.js",
         "./src/server/relative-time.js",
     };
-
-    pub fn init(io: std.Io) !StreamContext {
-        stats = try file_stats(io);
-        return .{ .io = io };
-    }
 
     fn file_stats(io: std.Io) ![files.len]std.Io.File.Stat {
         const cwd = std.Io.Dir.cwd();
@@ -1755,23 +1747,41 @@ const StreamContext = struct {
         return result;
     }
 
+    fn hash_file_stats(input_stats: [files.len]std.Io.File.Stat) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+
+        for (input_stats) |stat| {
+            const key = std.mem.toBytes(stat);
+            hasher.update(&key);
+        }
+
+        return hasher.final();
+    }
+
+
     fn handle(ctx: StreamContext, stream: std.Io.net.Stream) void {
         std.log.info("Start SSE stream", .{});
+        var buf: [32]u8 = undefined;
         var writer = stream.writer(ctx.io, &buf);
+        defer stream.close(ctx.io);
         const w = &writer.interface;
+
+        var stats = file_stats(ctx.io) catch @panic("failed to get files stats");
+        var hash = hash_file_stats(stats);
+
         while (true) {
-            const new_stats = file_stats(ctx.io) catch return;
-            if (!std.meta.eql(stats, new_stats)) {
+            ctx.io.sleep(.fromSeconds(1), .boot) catch @panic("Io.sleep was cancelled");
+            stats = file_stats(ctx.io) catch return;
+            const hash_new = hash_file_stats(stats);
+            if (hash != hash_new) {
+                hash = hash_new;
                 w.writeAll("event: reload\n") catch return;
-                w.writeAll("data: reload\n") catch return;
+                w.print("data: {d}\n", .{hash}) catch return;
                 w.writeByte('\n') catch return;
                 w.flush() catch return;
-                stats = new_stats;
-                stream.close(ctx.io);
                 std.log.info("reload browser page", .{});
                 return;
             }
-            ctx.io.sleep(.fromSeconds(1), .boot) catch @panic("Io.sleep was cancelled");
         }
     }
 };

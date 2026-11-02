@@ -48,6 +48,7 @@ pub fn get_static_path(comptime filename: []const u8) []const u8 {
     return std.fmt.comptimePrint("/public/{x}-{s}",.{hash, filename});
 }
 
+const reload_js = @embedFile("../server/reload.js");
 pub templ Layout(title: []const u8, nav: Navigation) {
     <!DOCTYPE html>
     <html lang="en">
@@ -56,6 +57,9 @@ pub templ Layout(title: []const u8, nav: Navigation) {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <meta http-equiv="X-UA-Compatible" content="ie=edge" />
         <title>{title}</title>
+        if (builtin.mode == .debug) {
+            {!"<script async>" ++ reload_js ++ "</script>"}
+        }
         <script>
             /*! kelpui v1.6.3 | (c) Chris Ferdinandi | http://github.com/cferdinandi/kelp */
             "use strict";
@@ -69,9 +73,9 @@ pub templ Layout(title: []const u8, nav: Navigation) {
             })();
         </script>
         <!-- TODO: scripts and styles -->
-        <link rel="stylesheet" type="text/css" href="{get_static_path("main.css")}" />
-        <script defer src="{get_static_path("main.js")}"></script>
-        <script async type="module" src="{get_static_path("relative-time.js")}"></script>
+        <link rel="stylesheet" type="text/css" href={get_static_path("main.css")} />
+        <script defer src={get_static_path("main.js")}></script>
+        <script async type="module" src={get_static_path("relative-time.js")}></script>
       </head>
       <body>
         <div>

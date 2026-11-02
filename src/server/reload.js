@@ -15,10 +15,10 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   evtSource.addEventListener("reload", (event) => {
-    console.log("reload page")
-    evtSource.close();
-    location.reload();
-  });
+    console.log("reload page");
+    // Hard refresh only works in Firefox
+    location.reload(true);
+  }, {once: true});
 
   window.onbeforeunload = function () {
     evtSource.close();
