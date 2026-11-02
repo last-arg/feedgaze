@@ -29,10 +29,11 @@ pub fn file_type(filename: []const u8) enum{js,css} {
     @compileError("File has to have .js or .css extension");
 }
 
+const path_server = if (builtin.mode == .debug) "../server/" else "../server/dist/";
 pub const static_files_map = .{
-    .{.filename = "main.css", .hash = hash_static_file("../server/dist/main.css")},
-    .{.filename = "main.js", .hash = hash_static_file("../server/dist/main.js")},
-    .{.filename = "relative-time.js", .hash = hash_static_file("../server/dist/relative-time.js")},
+    .{.filename = "main.css", .hash = hash_static_file(path_server ++ "main.css")},
+    .{.filename = "main.js", .hash = hash_static_file(path_server ++ "main.js")},
+    .{.filename = "relative-time.js", .hash = hash_static_file(path_server ++ "relative-time.js")},
 };
 
 pub fn get_static_path(comptime filename: []const u8) []const u8 {
