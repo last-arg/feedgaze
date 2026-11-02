@@ -133,7 +133,7 @@ pub templ Nav(nav: Navigation) {
 
               for (nav.tags) |tag| {
                   <div class='tag'>
-                    <input type="checkbox" name="tag.name" id="tag-id-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
+                    <input type="checkbox" name="tag" id="tag-id-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
                     <label class="visually-hidden" for="tag-id-{@backingInt(tag.tag_id)}">{tag.name}</label>
                     <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
                   </div>

@@ -1657,12 +1657,20 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
 
             w_arr.writeAll("/feeds?") catch unreachable;
             for (query.keys[0..query.len], query.values[0..query.len]) |key, value| {
-                if (mem.eql(u8, "after", key)) {
-                    continue;
+                if (mem.eql(u8, "tag", key) or
+                    mem.eql(u8, "untagged", key) or
+                    mem.eql(u8, "search", key)
+                ) {
+                    try w_arr.writeAll(key);
+                    try w_arr.writeByte('=');
+                    try w_arr.writeAll(value);
+                    try w_arr.writeByte('&');
                 }
-                try w_arr.writeAll(key);
-                try w_arr.writeByte('=');
-                try w_arr.writeAll(value);
+            }
+
+            const str = w_arr.buffered();
+            if (str[str.len - 1] == '&') {
+                w_arr.end -= 1;
             }
 
             const is_tags_only = query.get("tags-only") != null;
