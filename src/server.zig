@@ -249,7 +249,6 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     };
     var server = try httpz.Server(*Global).init(io, allocator, server_config, &global);
     defer {
-        server.stop();
         server.deinit();
     }
     var router = try server.router(.{});
@@ -288,7 +287,16 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
 
     std.log.info("Server started at 'http://localhost:{d}'", .{opts.port});
     // start the server in the current thread, blocking.
-    try server.listen(); 
+    var listen_result = server.listen();
+    var count: i64 = 0;
+    while (listen_result == error.AddressInUse) {
+        const seconds = 1 + count;
+        io.sleep(.fromSeconds(seconds), .boot) catch @panic("Io.sleep failed");
+        std.log.warn("Address in use. Will try again in {d} second(s)", .{seconds});
+        listen_result = server.listen();
+        count += 1;
+    }
+    server.stop();
 }
 
 fn write_pick_urls(writer: *std.Io.Writer, form_data: *httpz.key_value.StringKeyValue) !void {
@@ -1727,61 +1735,25 @@ fn sse_stream(global: *Global, _: *httpz.Request, resp: *httpz.Response) !void {
     try resp.startEventStream(StreamContext{.io = global.io}, StreamContext.handle);
 }
 
+var sse_reload_done_debug = false;
 const StreamContext = struct {
     io: std.Io,
 
-    const files = [_][]const u8{
-        "./src/server/main.css",
-        "./src/server/style.css",
-        "./src/server/main.js",
-        "./src/server/relative-time.js",
-    };
-
-    fn file_stats(io: std.Io) ![files.len]std.Io.File.Stat {
-        const cwd = std.Io.Dir.cwd();
-        var result: [files.len]std.Io.File.Stat = undefined;
-        for (files, 0..) |f, i| {
-            result[i] = try cwd.statFile(io, f, .{});
-        }
-
-        return result;
-    }
-
-    fn hash_file_stats(input_stats: [files.len]std.Io.File.Stat) u64 {
-        var hasher = std.hash.Wyhash.init(0);
-
-        for (input_stats) |stat| {
-            const key = std.mem.toBytes(stat);
-            hasher.update(&key);
-        }
-
-        return hasher.final();
-    }
-
-
     fn handle(ctx: StreamContext, stream: std.Io.net.Stream) void {
-        std.log.info("Start SSE stream", .{});
-        var buf: [32]u8 = undefined;
-        var writer = stream.writer(ctx.io, &buf);
-        defer stream.close(ctx.io);
-        const w = &writer.interface;
+        if (!sse_reload_done_debug) {
+            std.log.info("Start SSE stream", .{});
+            var buf: [32]u8 = undefined;
+            var writer = stream.writer(ctx.io, &buf);
+            defer stream.close(ctx.io);
+            defer stream.shutdown(ctx.io, .both) catch @panic("sse shutdown failed");
+            const w = &writer.interface;
 
-        var stats = file_stats(ctx.io) catch @panic("failed to get files stats");
-        var hash = hash_file_stats(stats);
-
-        while (true) {
-            ctx.io.sleep(.fromSeconds(1), .boot) catch @panic("Io.sleep was cancelled");
-            stats = file_stats(ctx.io) catch return;
-            const hash_new = hash_file_stats(stats);
-            if (hash != hash_new) {
-                hash = hash_new;
-                w.writeAll("event: reload\n") catch return;
-                w.print("data: {d}\n", .{hash}) catch return;
-                w.writeByte('\n') catch return;
-                w.flush() catch return;
-                std.log.info("reload browser page", .{});
-                return;
-            }
+            w.writeAll("event: reload\n") catch return;
+            w.writeAll("data: reload\n") catch return;
+            w.writeByte('\n') catch return;
+            w.flush() catch return;
+            std.log.info("reload browser page", .{});
+            sse_reload_done_debug = true;
         }
     }
 };

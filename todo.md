@@ -1,6 +1,5 @@
 - html parsing: get date from url path?
 - replace http.zig with dusty?
-- clean up stuff after changing templating to zt
 - zt use 'fn format' or 'fn formatHtml'
     - especially enums that need to be turned into numbers
 - check adding timeout to async code? Can I?

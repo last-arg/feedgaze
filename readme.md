@@ -67,7 +67,7 @@ Run server after rebuild with watchexec
 # In first shell
 $ zig build -fincremental --watch --error-style minimal_clear
 # In second shell
-$ watchexec -r -F ./zig-out/bin/feedgaze './zig-out/bin/feedgaze -d <database_path> serve -p 3888'
+$ watchexec -w ./zig-out --no-vcs-ignore -r './zig-out/bin/feedgaze -d <database_path> serve -p 3888'
 ```
 NOTE: don't forget to hard refresh because caching
 
