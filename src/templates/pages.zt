@@ -108,8 +108,8 @@ pub fn is_tag_checked(tag_id: feed_types.SqliteId, tags_checked: []const feed_ty
 
 const untagged = "[untagged]";
 pub templ Nav(nav: Navigation) {
-    <header class='body-header'>
-      <div class='nav'>
+    <header class="body-header">
+      <div class="nav">
         <h1>
           <a href="/" aria-current={if (std.mem.eql(u8, nav.current_path, "/")) "page" else null}>feedgaze</a>
         </h1>
@@ -122,22 +122,22 @@ pub templ Nav(nav: Navigation) {
       </div>
       <details>
         <summary>Filter feeds</summary>
-        <div class='filter-wrapper'>
-          <form action='/feeds' class='stack'>
+        <div class="filter-wrapper">
+          <form action="/feeds" class="stack">
             <!-- NOTE: don't want tags-only button to be the 'default' button. This is
             used when enter is pressed in input (text) field. -->
             <button aria-hidden="true" style="display: none">Default form action</button>
-            <fieldset class='tags stack'>
+            <fieldset class="tags stack">
               <legend>Tags</legend>
-              <div class='tag-list'>
-                <div class='tag'>
+              <div class="tag-list">
+                <div class="tag">
                   <input type="checkbox" name="untagged" id="untagged" checked?={nav.has_untagged} />
                   <label class="visually-hidden" for="untagged">{untagged}</label>
-                  <a class='truncate-1' href='/feeds?untagged=' title='untagged'>{untagged}</a>
+                  <a class="truncate-1" href="/feeds?untagged=" title="untagged">{untagged}</a>
                 </div>
 
               for (nav.tags) |tag| {
-                  <div class='tag'>
+                  <div class="tag">
                     <input type="checkbox" name="tag" id="tag-id-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
                     <label class="visually-hidden" for="tag-id-{@backingInt(tag.tag_id)}">{tag.name}</label>
                     <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
@@ -145,7 +145,7 @@ pub templ Nav(nav: Navigation) {
               }
               </div>
             </fieldset>
-            <div><button class='muted secondary' name='tags-only'>Filter tags only</button></div>
+            <div><button class="muted secondary" name="tags-only">Filter tags only</button></div>
             <div>
               <label class="form-heading" for="search_value">Filter feeds</label>
               <div class="input-search-wrapper"><input type="search" name="search" id="search_value" value={nav.search_value} /></div>
@@ -172,15 +172,15 @@ pub const HomeContent = struct {
 
 pub templ HomePage(content: HomeContent, nav: Navigation) {
     @Layout("Home - latest added feed items", nav) {
-        <main class='content-latest flow'>
+        <main class="content-latest flow">
             if (content.display_feed_delete_msg) {
-                <div class='message'>
+                <div class="message">
                   <p>Feed deleted</p>
-                  <a href='/'>Close message</a>
+                  <a href="/">Close message</a>
                 </div>
             }
 
-            <header class='main-header'>
+            <header class="main-header">
                 <h2>Latest added</h2>
                 if (content.next_update_ts) |countdown_ts| {
                     <div class="heading-info">
@@ -206,7 +206,7 @@ pub templ HomePage(content: HomeContent, nav: Navigation) {
                 <relative-time update="false" format-style="narrow" format-numeric="always">
                 <ul class="stack list-unstyled">
                 for (content.items) |item| {
-                    <li class='feed-item'>
+                    <li class="feed-item">
                        @FeedItemLatest(item, get_feed_with_id(item.feed_id, content.feeds), content.icon_manage, LatestOptions{
                            .is_new_item = item.created_timestamp > content.cookie_last_item_ts,
                            .now_sec = content.now_sec,
@@ -239,7 +239,7 @@ const failed_request_msg = "Latest update to this feed failed";
 
 pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions) {
     if (opts.is_new_item) {
-        <div class='feed-time'>
+        <div class="feed-time">
             @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
             <span>new</span>
         </div>
@@ -254,8 +254,8 @@ pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed,
             <a href="/feed/{@backingInt(feed.feed_id)}" title="{feed.title}">{feed.title}</a>
 
             if (opts.has_request_failed) {
-                <span class='mi-start-5xs feed-failed-icon' title="{failed_request_msg}"></span>
-                <span class='visually-hidden'>{failed_request_msg}</span>
+                <span class="mi-start-5xs feed-failed-icon" title="{failed_request_msg}"></span>
+                <span class="visually-hidden">{failed_request_msg}</span>
             }
         </div>
 
@@ -297,8 +297,8 @@ pub const TagsContent = struct {
 
 pub templ TagsPage(content: TagsContent, nav: Navigation) {
     @Layout("Tags", nav) {
-        <main class='flow'>
-          <header class='main-header'><h2>Tags</h2></header>
+        <main class="flow">
+          <header class="main-header"><h2>Tags</h2></header>
           if (content.query_is_success) {
               <p class="callout success">Tag deleted</p>
           } else if (content.query_error) |query_error| {
@@ -309,15 +309,15 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
               }
           }
 
-          <ul class='tags-all stack list-unstyled' role='list'>
+          <ul class="tags-all stack list-unstyled" role="list">
               for (nav.tags) |tag| {
-                <li class='tag-item'>
+                <li class="tag-item">
                   <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
 
-                  <div class='tag-actions cluster align-center'>
+                  <div class="tag-actions cluster align-center">
                     <a href="/tag/{@backingInt(tag.tag_id)}/edit">Edit</a>
                     <form action="/tag/{@backingInt(tag.tag_id)}/delete" method="POST">
-                        <button class='btn-link padding-0 danger' name='action' value='delete'>Delete</button>
+                        <button class="btn-link padding-0 danger" name="action" value="delete">Delete</button>
                     </form>
                   </div>
                 </li>
@@ -341,7 +341,7 @@ pub templ FailedFeedsPage(content: FailedFeedsContent, nav: Navigation) {
             <p>No failed feed requests</p>
         } else {
             for (content.failed_requests) |failed_request| {
-                <section class='failed-feed'>
+                <section class="failed-feed">
                     <header>
                         if (failed_request.icon_id.is_valid()) {
                             if (content.icon_manage.get_icon_info(failed_request.icon_id)) |info| {
@@ -358,8 +358,8 @@ pub templ FailedFeedsPage(content: FailedFeedsContent, nav: Navigation) {
                             {failed_request.title orelse title_placeholder}
                         }
                         </h3>
-                        <a class='one-line' href='{failed_request.feed_url}'>Feed link</a>
-                        <a href='/feed/{@backingInt(failed_request.feed_id)}'>Edit</a>
+                        <a class="one-line" href="{failed_request.feed_url}">Feed link</a>
+                        <a href="/feed/{@backingInt(failed_request.feed_id)}">Edit</a>
                     </header>
 
                     <p>Latest error <time datetime="{zt.fmt(util.write_timestamp, .{failed_request.utc_sec})}">
@@ -382,7 +382,7 @@ pub const FeedAddOpts = struct {
 pub templ FeedAddPage(opts: FeedAddOpts, nav: Navigation) {
     @Layout("Add feed", nav) {
         <main class="flow">
-            <header class='main-header'><h2>Add feed</h2></header>
+            <header class="main-header"><h2>Add feed</h2></header>
             if (opts.query_success) |success_err| {
                 if (success_err) |feed_id| {
                     <p class="callout success">Feed added.
@@ -401,8 +401,8 @@ pub templ FeedAddPage(opts: FeedAddOpts, nav: Navigation) {
                 }
             } else if (opts.query_error) |err_enum| {
                  switch (err_enum) {
-                     .invalid_url => {<p class='callout danger'>Enter valid feed/page link</p>},
-                     .url_missing => {<p class='callout danger'>Fill in feed/page link</p>},
+                     .invalid_url => {<p class="callout danger">Enter valid feed/page link</p>},
+                     .url_missing => {<p class="callout danger">Fill in feed/page link</p>},
                      else => {},
                  }
             }
@@ -414,7 +414,7 @@ pub templ FeedAddPage(opts: FeedAddOpts, nav: Navigation) {
                 </div>
 
                 <div>
-                    <div class='label-wrapper'>
+                    <div class="label-wrapper">
                         <label for="input-tags">Tags (optional)</label>
                         <em>Tags are comma separated</em>
                     </div>
@@ -442,14 +442,14 @@ pub const FeedPickOpts = struct {
 pub templ FeedPickPage(opts: FeedPickOpts, nav: Navigation) {
     @Layout("Pick feed", nav) {
         <main class="flow">
-            <header class='main-header'><h2>Pick feed</h2></header>
+            <header class="main-header"><h2>Pick feed</h2></header>
             if (opts.query_feed_exists) |result_err| {
                 if (result_err) |feed_id| {
                     <p class="callout">Feed already exists.
                         <a href="/feed/{feed_id}">Got to feed page</a>.
                     </p>
                 } else |err| {
-                    <p class='callout danger'>Invalid feed ID. Error: {err}</p>
+                    <p class="callout danger">Invalid feed ID. Error: {err}</p>
                 }
             } else if (opts.query_error) |query_error| {
                 switch (query_error) {
@@ -464,13 +464,13 @@ pub templ FeedPickPage(opts: FeedPickOpts, nav: Navigation) {
             <form action="/feed/pick" method="POST" class="flow" style="--flow-space: var(--size-4xl)">
                 <div>
                     <label>Feed/Page link</label>
-                    <input class='char-len-l' type='text' readonly name='input-url' value={opts.input_url} />
+                    <input class="char-len-l" type="text" readonly name="input-url" value={opts.input_url} />
                 </div>
 
                 <fieldset>
                     <legend>Pick feed to add</legend>
 
-                    <ul class='list-unstyled margin-end-0'>
+                    <ul class="list-unstyled margin-end-0">
                         {try render_picks(opts.query, opts.query_picked_index, opts.writer)}
                         <li>
                             <label for="url-html">
@@ -485,7 +485,7 @@ pub templ FeedPickPage(opts: FeedPickOpts, nav: Navigation) {
                                 Fill these fields if you picked "Html as feed".
                             </p>
                         </noscript>
-                        <div class='html-feed-inputs flow'>
+                        <div class="html-feed-inputs flow">
                             <div>
                                 <label for="feed-container">Html item selector</label>
                                 <input type="text" id="feed-container" name="selector-container" value="{opts.html_opts.selector_container}" />
@@ -582,7 +582,7 @@ pub const FeedsOpts = struct {
 
 pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
     @Layout("Feeds", nav) {
-        <main class='flow'>
+        <main class="flow">
             <header class="main-header">
               <h2>Feeds</h2>
               <div class="main-actions cluster">
@@ -592,11 +592,11 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
             </header>
 
             if (opts.feeds.len > 0) {
-                <div class='flow'>
+                <div class="flow">
                 for (opts.feeds) |feed| {
-                    <article class='feed'>
+                    <article class="feed">
                         <header>
-                            <div class='feed-header-top'>
+                            <div class="feed-header-top">
                             if (feed.icon_id.is_valid()) {
                                 if (opts.icon_manage.get_icon_info(feed.icon_id)) |info| {
                                     <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
@@ -618,12 +618,12 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                             }
 
                             if (feed_tags_slice(feed.feed_id, opts.feeds_tags)) |feed_tags| {
-                                <div class='feed-tags'>
-                                    <ul class='list-unstyled' aria-label='Feed tags'>
+                                <div class="feed-tags">
+                                    <ul class="list-unstyled" aria-label="Feed tags">
                                     for (feed_tags) |feed_tag| {
                                         if (get_tag_name(feed_tag.tag_id, nav.tags)) |tag_name| {
                                             <li>
-                                                <a class='badge' href="/feeds?tag={tag_name}" title="{tag_name}">{tag_name}</a>
+                                                <a class="badge" href="/feeds?tag={tag_name}" title="{tag_name}">{tag_name}</a>
                                             </li>
                                         }
                                     }
@@ -634,9 +634,9 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
 
                         if (feed_items_slice(feed.feed_id, opts.items)) |items| {
                             <relative-time update="false" format-style="narrow" format-numeric="always">
-                                <ul class='stack list-unstyled'>
+                                <ul class="stack list-unstyled">
                                 for (items) |item| {
-                                    <li class='feed-item'>
+                                    <li class="feed-item">
                                         @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
                                         @ItemLink(item)
                                     </li>
@@ -644,7 +644,7 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                                 </ul>
                             </relative-time>
                         } else {
-                            <p class='callout size-xs'>Feed has no items.</p>
+                            <p class="callout size-xs">Feed has no items.</p>
                         }
 
                         <footer class="feed-footer">
@@ -657,7 +657,7 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                 }
 
                 if (opts.footer) |f| {
-                    <footer class='main-footer'>
+                    <footer class="main-footer">
                         <hr />
                         if (f.prev) |prev| {
                             <a href="{f.base}&before={@backingInt(prev)}">Previous</a>
@@ -668,7 +668,7 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
 
                 </div>
             } else {
-                <p class='callout'>No feeds to show</p>
+                <p class="callout">No feeds to show</p>
             }
 
         </main>
@@ -750,7 +750,7 @@ pub const TagEditOpts = struct {
 
 pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
     @Layout(opts.title, nav) {
-        <main class='flow'>
+        <main class="flow">
           <h2>{opts.title}</h2>
           if (opts.query_is_success) {
               <div><p class="callout success">Changes saved</p></div>
@@ -758,18 +758,18 @@ pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
               <div><p class="callout danger">Invalid form</p></div>
           }
 
-          <form class='flow' method='post'>
+          <form class="flow" method="post">
             <div>
               <div>
-                <label for='tag-name'>Tag name</label>
+                <label for="tag-name">Tag name</label>
               </div>
-              <input class='char-len-s' type='text' id='tag-name' name='tag-name' value={opts.tag.name} />
+              <input class="char-len-s" type="text" id="tag-name" name="tag-name" value={opts.tag.name} />
             </div>
-            <input type='hidden' name='tag-id' value={@backingInt(opts.tag.tag_id)} />
+            <input type="hidden" name="tag-id" value={@backingInt(opts.tag.tag_id)} />
             <div>
-                <button class='muted primary' name='action' value='save'>Save changes</button>
+                <button class="muted primary" name="action" value="save">Save changes</button>
             </div>
-            <button class='outline danger' name='action' value='delete'>Delete tag</button>
+            <button class="outline danger" name="action" value="delete">Delete tag</button>
           </form>
         </main>
     }
@@ -792,7 +792,7 @@ pub const FeedOpts = struct {
 
 pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
     @Layout(opts.head_title, nav) {
-        <main class='flow'>
+        <main class="flow">
             <h2>
                 if (opts.feed.icon_id.is_valid()) {
                     if (opts.icon_manage.get_icon_info(opts.feed.icon_id)) |info| {
@@ -807,7 +807,7 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                 }
             </h2>
 
-            <div class='feed-info flow'>
+            <div class="feed-info flow">
                 <p>
                     if (opts.feed.page_url) |page_url| {
                         Page link: <a href={page_url} class="inline-block" rel="noreferrer noopener">{page_url}</a>
@@ -836,7 +836,7 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                     TODO: add link/button to run update right now.
                     TODO: Add the button even if updating isn't disabled?
                     -->
-                    <p class='callout warning'>This feed's updating is disabled. Failed to fetch feed too many times.</p>
+                    <p class="callout warning">This feed's updating is disabled. Failed to fetch feed too many times.</p>
                 }
 
                 if (opts.failed_requests.len > 0) {
@@ -859,11 +859,11 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                 }
 
                 if (opts.query_success) {
-                    <p class='callout success'>Feed changes saved</p>
+                    <p class="callout success">Feed changes saved</p>
                 }
 
                 if (opts.query_error) |err_enum| {
-                    <p class='callout danger'>
+                    <p class="callout danger">
                     switch (err_enum) {
                         .delete => {Failed to delete feed},
                         .feed => {Failed to update feed},
@@ -877,7 +877,7 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                 }
 
                 <h3>Edit feed</h3>
-                <form class='flow' method='POST'>
+                <form class="flow" method="POST">
                     <div>
                       <div><label for="title">Feed title</label></div>
                       <input class="char-len-l" type="text" id="title" name="title" value={opts.feed.title orelse ""} />
@@ -892,26 +892,26 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                     </div>
 
                     if (opts.html_opts) |html_opts| {
-                        <fieldset class='flow'>
+                        <fieldset class="flow">
                             <legend>Html 'feed' options</legend>
                             <div>
                                 <div><label for="html-item-selector">Feed item selector</label></div>
-                                <input class='char-len-s' type="text" value={html_opts.selector_container} name="html-item-selector" id="html-item-selector" />
+                                <input class="char-len-s" type="text" value={html_opts.selector_container} name="html-item-selector" id="html-item-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-link-selector">Feed item link selector</label></div>
-                                <input class='char-len-s' type="text" value={html_opts.selector_link} name="html-link-selector" id="html-link-selector" />
+                                <input class="char-len-s" type="text" value={html_opts.selector_link} name="html-link-selector" id="html-link-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-title-selector">Feed item link selector</label></div>
-                                <input class='char-len-s' type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
+                                <input class="char-len-s" type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-date-selector">Feed item link selector</label></div>
-                                <input class='char-len-s' type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
+                                <input class="char-len-s" type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
                             </div>
 
                             <div>
@@ -923,11 +923,11 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
 
                     <fieldset>
                       <legend>Tags</legend>
-                      <div class='feed-tag-list'>
+                      <div class="feed-tag-list">
                         for (nav.tags) |tag| {
                             <label for="tag-edit-{@backingInt(tag.tag_id)}">
                                 <input type="checkbox" name="tag" id="tag-edit-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, opts.feed_tags)} />
-                                <span class='truncate-1' title="{tag.name}">{tag.name}</span>
+                                <span class="truncate-1" title="{tag.name}">{tag.name}</span>
                             </label>
                         }
                       </div>
@@ -942,22 +942,22 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                     </div>
 
                     <div>
-                        <button class='muted primary' name='action' value='save'>Save feed changes</button>
+                        <button class="muted primary" name="action" value="save">Save feed changes</button>
                     </div>
                     <div>
-                        <button class='outline danger' name='action' value='delete'>Delete feed</button>
+                        <button class="outline danger" name="action" value="delete">Delete feed</button>
                     </div>
                 </form>
             </div>
 
             <h3>Feed items</h3>
             if (opts.feed_items.len == 0) {
-                <p class='callout'>No feeds items in this feed.</p>
+                <p class="callout">No feeds items in this feed.</p>
             } else {
                 <relative-time update="false" format-style="narrow" format-numeric="always">
-                    <ul class='stack list-unstyled'>
+                    <ul class="stack list-unstyled">
                     for (opts.feed_items) |item| {
-                        <li class='feed-item'>
+                        <li class="feed-item">
                             @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
                             @ItemLink(item)
                         </li>
