@@ -667,7 +667,11 @@ const FailedFeedsPage__children_0 = struct {
                 } else {
                     try zt.writeEscaped(_writer, failed_request.title orelse title_placeholder); // pages.zt:371:29
                 }
-                try zt.writeAll(_writer, "</h3><a class=\"one-line\" href=\"{failed_request.feed_url}\">Feed link</a><a href=\"/feed/{@backingInt(failed_request.feed_id)}\">Edit</a></header><p>Latest error <time datetime=\"");
+                try zt.writeAll(_writer, "</h3><a class=\"one-line\" href=\"");
+                try zt.writeUrlPart(_writer, "", failed_request.feed_url, ""); // pages.zt:374:45
+                try zt.writeAll(_writer, "\">Feed link</a><a href=\"/feed/");
+                try zt.writeEscaped(_writer, @backingInt(failed_request.feed_id)); // pages.zt:375:28
+                try zt.writeAll(_writer, "\">Edit</a></header><p>Latest error <time datetime=\"");
                 try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{failed_request.utc_sec})); // pages.zt:378:43
                 try zt.writeAll(_writer, "\">\n                        (");
                 try zt.writeEscaped(_writer, util.date_readable(failed_request.utc_sec)); // pages.zt:379:26

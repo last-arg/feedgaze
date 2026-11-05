@@ -89,7 +89,7 @@ pub const Cli = struct {
         while (storage_init_count < 3) : (storage_init_count += 1) {
             self.storage = Storage.init(db_path) catch |err| {
                 if (err == @import("sqlite").Error.SQLITE_BUSY) {
-                    std.log.info("Sqlite database seems busy. Trying again in {} seconds", .{wait_time_sec});
+                    std.log.info("Sqlite database is busy. Trying again in {} seconds", .{wait_time_sec});
                     try self.io.sleep(.fromSeconds(wait_time_sec), .boot);
                     continue;
                 }

@@ -59,10 +59,6 @@ pub const Storage = struct {
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
     fn setupDb(db: *const sql.Database) !void {
-        initPragmas(db) catch |err| {
-            std.log.err("Failed to set database options (pragmas). Error: {}", .{err});
-        };
-
         try setupTables(db);
         try initData(db);
     }
