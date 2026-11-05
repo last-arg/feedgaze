@@ -1334,7 +1334,7 @@ pub const App = struct {
             const queue_update = feed_updates[indexes.index_item];
             const result_err = futures[indexes.index_future].await(io);
 
-            _ = try resolve_update_result(storage, result_err, queue_update);
+            count_updated += @intFromBool(try resolve_update_result(storage, result_err, queue_update));
 
             progress_node.completeOne();
         }
