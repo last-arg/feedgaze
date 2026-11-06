@@ -158,21 +158,6 @@ main h2 {
   display: none;
 }
 
-.no-date,
-.feed-item time {
-  --time-bg: var(--color-text-normal);
-  box-sizing: content-box;
-  font: var(--font-monospace);
-  font-size: var(--size-2xs);
-  min-width: 3.8ch;
-  background: var(--time-bg);
-  color: var(--color-background);
-  padding-inline: var(--size-5xs);
-  text-align: end;
-  flex-shrink: 0;
-  border-radius: 2px;
-}
-
 .feed-time time {
   border-bottom-left-radius: 0;
   border-bottom-right-radius: 0;
@@ -193,6 +178,25 @@ main h2 {
   border-bottom-left-radius: 2px;
   border-bottom-right-radius: 2px;
   text-align: center;
+}
+
+span.no-date,
+.feed-item time {
+  --time-bg: var(--color-text-normal);
+  box-sizing: content-box;
+  font: var(--font-monospace);
+  font-size: var(--size-2xs);
+  min-width: 3.8ch;
+  background: var(--time-bg);
+  color: var(--color-background);
+  padding-inline: var(--size-5xs);
+  text-align: end;
+  flex-shrink: 0;
+  border-radius: 2px;
+}
+
+span.no-date {
+  text-align: end;
 }
 
 .feed-footer button {

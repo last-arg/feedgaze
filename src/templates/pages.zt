@@ -238,14 +238,12 @@ const LatestOptions = struct {
 const failed_request_msg = "Latest update to this feed failed";
 
 pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions) {
-    if (opts.is_new_item) {
-        <div class="feed-time">
-            @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
-            <span>new</span>
-        </div>
-    } else {
+    <div class="feed-time">
         @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
-    }
+        if (opts.is_new_item) {
+            <span>new</span>
+        }
+    </div>
 
     @ItemLink(item)
 
