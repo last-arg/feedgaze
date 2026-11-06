@@ -397,6 +397,16 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         form_data.get("input-url") orelse "", 
         &std.ascii.whitespace,
     );
+
+    errdefer {
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.unknown, std.fmt.alt(url_comp, .formatEscaped)}) catch {};
+        write_pick_urls(&w_arr, form_data) catch {};
+        write_selectors(&w_arr, form_data) catch {};
+
+        resp.header("Location", w_arr.buffered());
+    }
+
     if (url_input.len == 0) {
         try w_arr.print("/feed/add?error={f}", .{ UrlQueryError.url_missing });
         if (tags_input) |val| {
@@ -526,10 +536,31 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     var client = http_client.init(global.io, req.arena);
     defer client.deinit();
     const feed_uri = try std.Uri.parse(feed_url);
-    const feed_options = try client.fetch(req.arena, feed_uri, .{
+    const feed_options = client.fetch(req.arena, feed_uri, .{
         .buffer_header = &buffer_header,
-    }) orelse {
+    }) catch |err| {
+        std.log.warn("Request to '{s}' failed. Error: {}", .{feed_url, err});
+
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.fetch_failed, std.fmt.alt(url_comp, .formatEscaped)}) catch {};
+        write_pick_urls(&w_arr, form_data) catch {};
+        write_selectors(&w_arr, form_data) catch {};
+
+        resp.header("Location", w_arr.buffered());
+        return;
+    } orelse {
         std.log.warn("Request to '{s}' returned with status code {}", .{feed_url, client.response.?.head.status});
+
+        const url_comp: std.Uri.Component = .{ .raw = url_input };
+        w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.fetch_status_not_ok, std.fmt.alt(url_comp, .formatEscaped)}) catch {};
+        if (client.response) |fetch_resp| {
+            w_arr.print("&fetch_status={d}", .{@backingInt(fetch_resp.head.status) }) catch {};
+        }
+        write_pick_urls(&w_arr, form_data) catch {};
+        write_selectors(&w_arr, form_data) catch {};
+
+        resp.header("Location", w_arr.buffered());
+
         return;
     };
 
@@ -1770,6 +1801,8 @@ pub const UrlQueryError = enum(u8) {
     invalid_form,
     missing,
     unknown,
+    fetch_failed,
+    fetch_status_not_ok,
     icon_too_large,
 
     pub fn to_string(val: UrlQueryError) []const u8 {

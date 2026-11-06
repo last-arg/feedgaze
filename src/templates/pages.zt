@@ -455,6 +455,15 @@ pub templ FeedPickPage(opts: FeedPickOpts, nav: Navigation) {
                     .url_missing => {<p class="callout danger">Pick feed option.</p>},
                     .empty_selector => {<p class="callout danger">Fill in 'Feed item selector'.</p>},
                     .pick_url => {<p class="callout danger">Pick one of the feed options.</p>},
+                    .fetch_failed => {<p class="callout danger">Failed to fetch feed.</p>},
+                    .fetch_status_not_ok => {
+                        <p class="callout danger">
+                            <span>Failed to fetch feed because returned status code wasn't 200 (OK).</span>
+                            if (opts.query.get("fetch_status")) |status| {
+                                Returned status code: {status}
+                            }
+                        </p>
+                    },
                     else => {}
                 }
             }
