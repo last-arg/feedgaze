@@ -765,7 +765,6 @@ pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
 
 pub const FeedOpts = struct {
     head_title: []const u8 = "",
-    icon_manage: *IconManage,
     feed: feed_types.Feed,
     feed_items: []const feed_types.FeedItemRender,
     feed_tags: []const feed_types.SqliteId = &.{},
@@ -776,6 +775,7 @@ pub const FeedOpts = struct {
     query_success: bool = false,
     query_error: ?UrlQueryError = null,
     html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
+    input_icon_url_or_data: []const u8 = "",
 };
 
 const IconIdClass = struct {
@@ -885,8 +885,8 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                       <input type="text" id="page_url" name="page_url" value={opts.feed.page_url} />
                     </div>
                     <div>
-                      <div><label for="icon_url">Icon link</label></div>
-                      <input type="text" id="icon_url" name="icon_url" value={get_icon_input_value(opts.feed.icon_id, opts.feed.page_url, opts.icon_manage)} />
+                      <div><label for="icon_url">Icon link or data</label></div>
+                      <input type="text" id="icon_url" name="icon_url" value={opts.input_icon_url_or_data} />
                     </div>
 
                     if (opts.html_opts) |html_opts| {
@@ -966,21 +966,3 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
         </main>
     }
 }
-
-fn get_icon_input_value(icon_id: feed_types.IconRender.ID, page_url: ?std.Uri, icon_manage: *IconManage) []const u8 {
-    if (icon_id.is_valid()) {
-        if (icon_manage.index_by_id(icon_id)) |index| {
-            const icon_url_raw = icon_manage.get_url_string_by_index(index);
-            // NOTE: Is inline icon
-            if (page_url != null and std.meta.eql(std.Uri.parse(icon_url_raw) catch unreachable, page_url.?)) {
-                const icon_raw = icon_manage.get_data_string_by_index(index);
-                return icon_raw;
-            }
-
-           return icon_url_raw;
-        }
-    }
-
-    return "";
-}
-

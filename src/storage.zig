@@ -1574,6 +1574,15 @@ pub const Storage = struct {
         return null;
     }
 
+    pub fn icon_url_from_id(self: *const Self, allocator: Allocator, icon_id: IconRender.ID) !?[]const u8 {
+        const query =
+        \\SELECT icon_url as val FROM icon WHERE icon_id = ?
+        ;
+
+        return try one([]const u8, &self.sql_db, allocator, query, .{@backingInt(icon_id)});
+    }
+
+
     pub const IconMissing = struct {
         feed_id: Feed.ID,
         page_url: std.Uri,
@@ -1818,6 +1827,10 @@ fn one(comptime T: type, db: *const sql.Database, allocator: Allocator, raw_quer
 
     const info = @typeInfo(T);
     const is_struct = info == .@"struct";
+    const is_slice_u8 = switch(info) {
+        .pointer => |ptr| if (ptr.size == .slice and ptr.child == u8) true else false,
+        else => false,
+    };
     if (is_struct) {
         if (!@hasDecl(T, "Raw")) {
             @compileError(std.fmt.comptimePrint(
@@ -1838,7 +1851,7 @@ fn one(comptime T: type, db: *const sql.Database, allocator: Allocator, raw_quer
             );
         }
     }
-    const R = if (is_struct) T.Raw else struct {val: T};
+    const R = if (is_struct) T.Raw else struct {val: if (is_slice_u8) sql.Text else T};
 
     var stmt = try db.prepare(Params, R, raw_query);
     defer stmt.finalize();
@@ -1854,6 +1867,8 @@ fn one(comptime T: type, db: *const sql.Database, allocator: Allocator, raw_quer
         if (is_struct) {
             const buf_strings = try allocator.alloc(u8, row.strings_len());
             return try T.from_raw(buf_strings, row);
+        } else if (is_slice_u8) {
+            return try allocator.dupe(u8, row.val.data);
         }
         return row.val;
     }

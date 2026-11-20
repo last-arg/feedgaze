@@ -75,6 +75,10 @@ pub const IconManage = struct {
         end: u32, // exclusive
     };
 
+    // TODO: if i can get rid of index_by_id() then are going to need only:
+    // - icon_data
+    // - hash
+    // - file_type
     const Cache = std.MultiArrayList(struct{
         icon_id: types.IconRender.ID,
         icon_data: Location,
@@ -139,32 +143,6 @@ pub const IconManage = struct {
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
         });
         return index;
-    }
-
-    pub fn index_by_id(self: *@This(), id: types.IconRender.ID) ?usize {
-        if (id == .unassigned) return null;
-
-        for (self.cache.items(.icon_id), 0..) |icon_id, i| {
-            if (id == icon_id) {
-                return i;
-            }
-        }
-
-        const icon_opt = self.storage.icon_by_id(self.allocator, id) catch |err| {
-            std.log.warn("Failed to get icon ID for feed with ID {}. Error: {}", .{id, err});
-            return null;
-        };
-
-        if (icon_opt) |icon| {
-            const index = self.add(icon) catch |err| {
-                std.log.warn("Failed to add icon to server cache. Error: {}", .{err});
-                return null;
-            };
-
-            return index;
-        }
-
-        return null;
     }
 
     pub fn index_by_hash(self: *@This(), allocator: mem.Allocator, filename_hash: []const u8) !?usize {
@@ -1171,6 +1149,10 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const feed_tags = try db.feed_tags(req.arena, feed.feed_id);
     const items = try db.feed_items_with_feed_id(req.arena, feed.feed_id);
+    const icon_url = if (feed.icon_id.is_valid())
+        try db.icon_url_from_id(req.arena, feed.feed_id) orelse ""
+        else "";
+
 
     var buf: [std.compress.flate.max_window_len]u8 = undefined;
     var compress_opt = try compress_init(req, resp, &buf);
@@ -1187,7 +1169,6 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const now_sec: i64 = @intCast(now_date.toUnix(.second));
 
     var feed_opts: pages.FeedOpts = .{
-        .icon_manage = global.icon_manage,
         .feed = feed,
         .feed_tags = feed_tags,
         .feed_items = items,
@@ -1197,6 +1178,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
         .now_sec = now_sec,
         .failed_requests = try db.request_failed_slice(req.arena, feed.feed_id),
         .query_success = query_kv.get("success") != null,
+        .input_icon_url_or_data = icon_url,
     };
 
     if (query_kv.get("error")) |error_value| {

@@ -225,7 +225,6 @@ pub const TagEditOpts = struct {
 
 pub const FeedOpts = struct {
     head_title: []const u8 = "",
-    icon_manage: *IconManage,
     feed: feed_types.Feed,
     feed_items: []const feed_types.FeedItemRender,
     feed_tags: []const feed_types.SqliteId = &.{},
@@ -236,6 +235,7 @@ pub const FeedOpts = struct {
     query_success: bool = false,
     query_error: ?UrlQueryError = null,
     html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
+    input_icon_url_or_data: []const u8 = "",
 };
 
 const IconIdClass = struct {
@@ -252,23 +252,6 @@ const IconIdClass = struct {
         try writer.print("icon-id-{d}", .{@backingInt(self.value)});
     }
 };
-
-fn get_icon_input_value(icon_id: feed_types.IconRender.ID, page_url: ?std.Uri, icon_manage: *IconManage) []const u8 {
-    if (icon_id.is_valid()) {
-        if (icon_manage.index_by_id(icon_id)) |index| {
-            const icon_url_raw = icon_manage.get_url_string_by_index(index);
-            // NOTE: Is inline icon
-            if (page_url != null and std.meta.eql(std.Uri.parse(icon_url_raw) catch unreachable, page_url.?)) {
-                const icon_raw = icon_manage.get_data_string_by_index(index);
-                return icon_raw;
-            }
-
-            return icon_url_raw;
-        }
-    }
-
-    return "";
-}
 
 pub const Layout = struct {
     fn _render(title: []const u8, nav: Navigation, children: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:53:17
@@ -1308,8 +1291,8 @@ const FeedPage__children_0 = struct {
         try zt.writeAttr(_writer, "value", opts.feed.title orelse ""); // pages.zt:911:85
         try zt.writeAll(_writer, "></div><div><div><label for=\"page_url\">Page link</label></div><input type=\"text\" id=\"page_url\" name=\"page_url\"");
         try zt.writeAttr(_writer, "value", opts.feed.page_url); // pages.zt:915:72
-        try zt.writeAll(_writer, "></div><div><div><label for=\"icon_url\">Icon link</label></div><input type=\"text\" id=\"icon_url\" name=\"icon_url\"");
-        try zt.writeAttr(_writer, "value", get_icon_input_value(opts.feed.icon_id, opts.feed.page_url, opts.icon_manage)); // pages.zt:919:72
+        try zt.writeAll(_writer, "></div><div><div><label for=\"icon_url\">Icon link or data</label></div><input type=\"text\" id=\"icon_url\" name=\"icon_url\"");
+        try zt.writeAttr(_writer, "value", opts.input_icon_url_or_data); // pages.zt:919:72
         try zt.writeAll(_writer, "></div>");
         if (opts.html_opts) |html_opts| { // pages.zt:922:21
             try zt.writeAll(_writer, "<fieldset class=\"flow\"><legend>Html 'feed' options</legend><div><div><label for=\"html-item-selector\">Feed item selector</label></div><input class=\"char-len-s\" type=\"text\"");
