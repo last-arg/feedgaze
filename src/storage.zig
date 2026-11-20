@@ -1555,7 +1555,7 @@ pub const Storage = struct {
         return try res.toOwnedSlice();
     }
 
-    pub fn icon_all(self: *Self, allocator: Allocator) ![]const IconRender {
+    pub fn icon_all(self: *const Self, allocator: Allocator) ![]const IconRender {
         const query =
         \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
         \\FROM icon
@@ -1681,6 +1681,19 @@ pub const Storage = struct {
         ;
 
         if (try one(types.IconRender, &self.sql_db, allocator, query, .{@backingInt(id)})) |icon| {
+            return icon;
+        }
+
+        return null;
+    }
+
+    pub fn icon_from_hash(self: *const Self, allocator: Allocator, hash: []const u8) !?types.IconRender {
+        const query =
+        \\SELECT icon_id, icon_url, icon_data, etag_or_last_modified_or_hash
+        \\FROM icon WHERE etag_or_last_modified_or_hash like '%' || ? || '%'
+        ;
+
+        if (try one(types.IconRender, &self.sql_db, allocator, query, .{sql.text(hash)})) |icon| {
             return icon;
         }
 

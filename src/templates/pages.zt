@@ -73,8 +73,8 @@ pub templ Layout(title: []const u8, nav: Navigation) {
               });
             })();
         </script>
-        <!-- TODO: scripts and styles -->
         <link rel="stylesheet" type="text/css" href={get_static_path("main.css")} />
+        <link rel="stylesheet" type="text/css" href="/public/{nav.css_icons_hash}-icons.css" />
         <script defer src={get_static_path("main.js")}></script>
         <script async type="module" src={get_static_path("relative-time.js")}></script>
       </head>
@@ -100,6 +100,7 @@ pub const Navigation = struct {
     search_value: []const u8 = "",
     has_untagged: bool = false,
     tags_active: []const feed_types.SqliteId = &.{},
+    css_icons_hash: u64 = 0,
 };
 
 pub fn is_tag_checked(tag_id: feed_types.SqliteId, tags_checked: []const feed_types.SqliteId) bool {
@@ -166,7 +167,6 @@ pub const HomeContent = struct {
     failed_requests: []const feed_types.Feed.ID = &.{},
     cookie_last_item_ts: i64 = 0,
     now_sec: i64,
-    icon_manage: *IconManage,
     display_feed_delete_msg: bool = false,
 };
 
@@ -207,7 +207,7 @@ pub templ HomePage(content: HomeContent, nav: Navigation) {
                 <ul class="stack list-unstyled">
                 for (content.items) |item| {
                     <li class="feed-item">
-                       @FeedItemLatest(item, get_feed_with_id(item.feed_id, content.feeds), content.icon_manage, LatestOptions{
+                       @FeedItemLatest(item, get_feed_with_id(item.feed_id, content.feeds), LatestOptions{
                            .is_new_item = item.created_timestamp > content.cookie_last_item_ts,
                            .now_sec = content.now_sec,
                            .has_request_failed = has_request_failed(item.feed_id, content.failed_requests),
@@ -237,7 +237,7 @@ const LatestOptions = struct {
 
 const failed_request_msg = "Latest update to this feed failed";
 
-pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed, icon_manage: *IconManage, opts: LatestOptions) {
+pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed, opts: LatestOptions) {
     <div class="feed-time">
         @LatestItemRelativeTime(item.updated_timestamp, opts.now_sec)
         if (opts.is_new_item) {
@@ -257,13 +257,7 @@ pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed,
             }
         </div>
 
-        <a class="feed-external-url" href="{feed.page_url orelse feed.feed_url}" rel="noreferrer noopener">
-            if (feed.icon_id.is_valid()) {
-                if (icon_manage.get_icon_info(feed.icon_id)) |info| {
-                    <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
-                }
-            }
-
+        <a class="feed-external-url {IconIdClass.init(feed.icon_id)}" href="{feed.page_url orelse feed.feed_url}" rel="noreferrer noopener">
             <span>{zt.fmt(util.write_url_domain, .{feed.page_url orelse feed.feed_url})}</span>
         </a>
     </div>
@@ -327,7 +321,6 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
 
 pub const FailedFeedsContent = struct {
     failed_requests: []const Storage.FeedFailedRequestWithID,
-    icon_manage: *IconManage,
 };
 
 const title_placeholder = "[no-title]";
@@ -340,13 +333,7 @@ pub templ FailedFeedsPage(content: FailedFeedsContent, nav: Navigation) {
         } else {
             for (content.failed_requests) |failed_request| {
                 <section class="failed-feed">
-                    <header>
-                        if (failed_request.icon_id.is_valid()) {
-                            if (content.icon_manage.get_icon_info(failed_request.icon_id)) |info| {
-                                <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
-                            }
-                        }
-
+                    <header class={IconIdClass.init(failed_request.icon_id)}>
                         <h3 class="truncate-1">
                         if (failed_request.page_url) |page_url| {
                             <a href="{page_url}" title="{failed_request.title orelse title_placeholder}">
@@ -578,7 +565,6 @@ pub const FeedsOpts = struct {
     items: []const feed_types.FeedItemRender = &.{},
     failed_requests: []const feed_types.Feed.ID = &.{},
     now_sec: i64 = 0,
-    icon_manage: *IconManage,
     feeds_tags: []const Storage.FeedTag = &.{},
     footer: ?struct{
         base: []const u8,
@@ -603,12 +589,7 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                 for (opts.feeds) |feed| {
                     <article class="feed">
                         <header>
-                            <div class="feed-header-top">
-                            if (feed.icon_id.is_valid()) {
-                                if (opts.icon_manage.get_icon_info(feed.icon_id)) |info| {
-                                    <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
-                                }
-                            }
+                            <div class="feed-header-top {IconIdClass.init(feed.icon_id)}">
 
                             if (feed.page_url) |page_url| {
                                 <a class="feed-title truncate-1" href="{page_url}" rel="noreferrer noopener" title="{feed.title orelse title_placeholder}">{feed.title orelse title_placeholder}</a>
@@ -797,16 +778,26 @@ pub const FeedOpts = struct {
     html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
 };
 
+const IconIdClass = struct {
+    value: feed_types.IconRender.ID,
+
+    pub fn init(icon_id: feed_types.IconRender.ID) ?IconIdClass {
+        if (icon_id.is_valid()) {
+            return .{.value = icon_id};
+        }
+        return null;
+    }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("icon-id-{d}", .{@backingInt(self.value)});
+    }
+};
+
+
 pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
     @Layout(opts.head_title, nav) {
         <main class="flow">
-            <h2>
-                if (opts.feed.icon_id.is_valid()) {
-                    if (opts.icon_manage.get_icon_info(opts.feed.icon_id)) |info| {
-                        <img class="feed-icon" src="/icons/{info.hash}{info.file_type}" alt="" aria-hidden="true" />
-                    }
-                }
-
+            <h2 class={IconIdClass.init(opts.feed.icon_id)}>
                 if (opts.feed.title) |title| {
                     {title}
                 } else {

@@ -1,4 +1,7 @@
 - html parsing: get date from url path?
+- remove last icon_manage from html template?
+- feed page does not display html fields?
+- check if html into feed date parsing works corretly? (https://lamplightdev.com/blog/)
 - replace http.zig with dusty?
 - zt use 'fn format' or 'fn formatHtml'
     - especially enums that need to be turned into numbers
