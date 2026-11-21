@@ -1574,6 +1574,28 @@ pub const Storage = struct {
         return null;
     }
 
+    pub fn icon_id_from_url(self: *const Self, url: []const u8) !?IconRender.ID {
+        const query =
+        \\SELECT icon_id as val FROM icon WHERE icon_url = ?
+        ;
+
+        if (try one(u64, &self.sql_db, undefined, query, .{sql.text(url)})) |icon_id| {
+            return @fromBackingInt(icon_id);
+        }
+        return null;
+    }
+
+    pub fn icon_id_from_data(self: *const Self, data: []const u8) !?IconRender.ID {
+        const query =
+        \\SELECT icon_id as val FROM icon WHERE icon_data = ?
+        ;
+
+        if (try one(u64, &self.sql_db, undefined, query, .{sql.text(data)})) |icon_id| {
+            return @fromBackingInt(icon_id);
+        }
+        return null;
+    }
+
     pub fn icon_url_from_id(self: *const Self, allocator: Allocator, icon_id: IconRender.ID) !?[]const u8 {
         const query =
         \\SELECT icon_url as val FROM icon WHERE icon_id = ?

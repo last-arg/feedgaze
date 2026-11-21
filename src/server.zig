@@ -64,7 +64,6 @@ pub const IconManage = struct {
     allocator: std.mem.Allocator,
     storage: Storage,
 
-    url_string_bytes: ArrayList(u8) = .empty,
     data_string_bytes: std.Io.Writer.Allocating,
     hash_string_bytes: ArrayList(u8) = .empty,
 
@@ -75,14 +74,8 @@ pub const IconManage = struct {
         end: u32, // exclusive
     };
 
-    // TODO: if i can get rid of index_by_id() then are going to need only:
-    // - icon_data
-    // - hash
-    // - file_type
     const Cache = std.MultiArrayList(struct{
-        icon_id: types.IconRender.ID,
         icon_data: Location,
-        icon_url: Location,
         file_type: IconFileType,
         hash: Location,
     });
@@ -96,25 +89,21 @@ pub const IconManage = struct {
         };
     }
 
-    pub fn add(self: *@This(), icon: types.IconRender) !usize {
+    const AddItem = struct {
+        icon_data: []const u8,
+        etag_or_last_modified_or_hash: []const u8,
+    };
+
+    pub fn add(self: *@This(), icon: AddItem) !usize {
         const data, const file_type = blk: {
-            if (image.Type.from_data(icon.icon_data)
-                orelse file_type_from_uri(icon.icon_url)
-            ) |file_type| {
+            if (image.Type.from_data(icon.icon_data)) |file_type| {
                 break :blk .{icon.icon_data, file_type};
             } else {
-                std.log.warn("Unknown icon from '{f}'", .{icon.icon_url});
-                return error.UnknownIcon;
+                return error.UnknownIconFileType;
             }
         };
 
         const hash_val = hash_into_pathname(@constCast(icon.etag_or_last_modified_or_hash));
-
-        const url_start = self.url_string_bytes.items.len; 
-        var buf: [1024]u8 = undefined;
-        const icon_url = try std.fmt.bufPrint(&buf, "{f}", .{icon.icon_url});
-        try self.url_string_bytes.appendSlice(self.allocator, icon_url);
-        const url_end = self.url_string_bytes.items.len; 
 
         const data_start = self.data_string_bytes.written().len; 
         if (file_type == .svg) {
@@ -136,12 +125,12 @@ pub const IconManage = struct {
         
         const index = self.cache.len;
         try self.cache.append(self.allocator, .{
-            .icon_id = icon.icon_id,
             .icon_data = .{ .start = @intCast(data_start), .end = @intCast(data_end) },
-            .icon_url = .{ .start = @intCast(url_start), .end = @intCast(url_end) },
             .file_type = file_type,
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
         });
+        // TODO: need regenerate new css content.
+        // Or could just append new css to the end of css
         return index;
     }
 
@@ -152,8 +141,13 @@ pub const IconManage = struct {
             }
         }
 
+        // TODO: icon_from_hash() doesn't have to return IconRender.
+        // Just need: icon_data and etag_or_last_modified_or_hash
         if (try self.storage.icon_from_hash(allocator, filename_hash)) |icon| {
-            return try self.add(icon);
+            return try self.add(.{
+                .icon_data = icon.icon_data,
+                .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
+            });
         }
 
         return null;
@@ -168,20 +162,8 @@ pub const IconManage = struct {
         return self.data_string_bytes.written()[icon_data.start..icon_data.end];
     }
 
-    pub fn get_id_from_url(self: *const @This(), url: []const u8) ?types.IconRender.ID {
-        for (self.cache.items(.icon_url), 0..) |icon_url_loc, i| {
-            const icon_url = self.url_string_bytes.items[icon_url_loc.start..icon_url_loc.end];
-            if (std.ascii.eqlIgnoreCase(url, icon_url)) {
-                return self.cache.items(.icon_id)[i];
-            }
-        }
-
-        return null;
-    }
-
     pub fn deinit(self: *@This()) void {
         self.cache.deinit(self.allocator);
-        self.url_string_bytes.deinit(self.allocator);
         self.data_string_bytes.deinit();
         self.hash_string_bytes.deinit(self.allocator);
     }
@@ -612,8 +594,6 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
-            .icon_id = feed.icon_id,
-            .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
         }) catch |err| {
@@ -861,8 +841,6 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
-            .icon_id = feed.icon_id,
-            .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
         }) catch |err| {
@@ -1010,7 +988,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         }
 
         if (util.is_url(icon_url_trimmed)) {
-            if (global.icon_manage.get_id_from_url(icon_url_trimmed)) |icon_id| {
+            if (try global.storage.icon_id_from_url(icon_url_trimmed)) |icon_id| {
                 break :blk icon_id;
             }
 
@@ -1032,16 +1010,14 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const icon = feed_types.Icon.init(req_http.get_uri(), resp_body, cache_value);
             const icon_id = try db.icon_upsert(icon);
             _ = try global.icon_manage.add(.{
-                .icon_id = icon_id,
                 .icon_data = icon.data,
-                .icon_url = icon.url,
                 .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
             });
             break :blk icon_id;
         } else if (util.is_inline_svg(icon_url_trimmed)) {
             // Only inline svg allowed for icon
             const data = std.Uri.percentDecodeInPlace(@constCast(icon_url_trimmed));
-            if (global.icon_manage.get_id_from_url(icon_url_trimmed)) |icon_id| {
+            if (try global.storage.icon_id_from_data(data)) |icon_id| {
                 break :blk icon_id;
             }
 
@@ -1049,9 +1025,7 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const icon = feed_types.Icon.init(page_uri, data, null);
             const icon_id = try db.icon_upsert(icon);
             _ = try global.icon_manage.add(.{
-                .icon_id = icon_id,
                 .icon_data = icon.data,
-                .icon_url = icon.url,
                 .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
             });
 
