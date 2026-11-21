@@ -168,11 +168,6 @@ pub const IconManage = struct {
         return self.data_string_bytes.written()[icon_data.start..icon_data.end];
     }
 
-    pub fn get_url_string_by_index(self: *const @This(), index: usize) []const u8 {
-        const icon_url = self.cache.items(.icon_url)[index];
-        return self.url_string_bytes.items[icon_url.start..icon_url.end];
-    }
-
     pub fn get_id_from_url(self: *const @This(), url: []const u8) ?types.IconRender.ID {
         for (self.cache.items(.icon_url), 0..) |icon_url_loc, i| {
             const icon_url = self.url_string_bytes.items[icon_url_loc.start..icon_url_loc.end];
@@ -1150,7 +1145,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     const feed_tags = try db.feed_tags(req.arena, feed.feed_id);
     const items = try db.feed_items_with_feed_id(req.arena, feed.feed_id);
     const icon_url = if (feed.icon_id.is_valid())
-        try db.icon_url_from_id(req.arena, feed.feed_id) orelse ""
+        try db.icon_url_from_id(req.arena, feed.icon_id) orelse ""
         else "";
 
 

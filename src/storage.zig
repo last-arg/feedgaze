@@ -73,7 +73,7 @@ pub const Storage = struct {
 
         try db.exec("PRAGMA journal_mode = WAL", .{});
         try db.exec("PRAGMA busy_timeout = 5000", .{});
-        try db.exec("PRAGMA foreign_keys = 1", .{});
+        try db.exec("PRAGMA foreign_keys = ON", .{});
         try db.exec("PRAGMA synchronous = normal", .{});
         try db.exec("PRAGMA temp_store = 2", .{});
         try db.exec("PRAGMA mmap_size = 30000000000", .{});
@@ -521,7 +521,7 @@ pub const Storage = struct {
 
     pub fn deleteFeed(self: *Self, feed_id: Feed.ID) !void {
         assert(feed_id != .unassigned);
-        try self.sql_db.exec("DELETE FROM feed WHERE feed_id = :feed_id", .{.feed_id = @intFromEnum(feed_id)});
+        try self.sql_db.exec("DELETE FROM feed WHERE feed_id = ?", .{@backingInt(feed_id)});
     }
 
     pub fn update_feed_timestamp(self: *Self, feed: Feed) !void {
@@ -1581,7 +1581,6 @@ pub const Storage = struct {
 
         return try one([]const u8, &self.sql_db, allocator, query, .{@backingInt(icon_id)});
     }
-
 
     pub const IconMissing = struct {
         feed_id: Feed.ID,
