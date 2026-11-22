@@ -49,12 +49,6 @@ const Global = struct {
     icon_manage: *IconManage,
     progress: std.Progress.Node,
     core_count: usize,
-    icon_css: IconCss = .{},
-
-    pub const IconCss = struct {
-        data: []const u8 = "",
-        hash: u64 = 0,
-    };
 };
 
 const IconFileType = image.Type;
@@ -65,9 +59,14 @@ pub const IconManage = struct {
     storage: Storage,
 
     data_string_bytes: std.Io.Writer.Allocating,
-    hash_string_bytes: ArrayList(u8) = .empty,
+    hash_string_bytes: std.ArrayList(u8) = .empty,
 
-    const ArrayList = std.ArrayList;
+    icon_css: IconCss,
+
+    pub const IconCss = struct {
+        writer: std.Io.Writer.Allocating,
+        hash: u64 = 0,
+    };
 
     const Location = struct {
         start: u32, // inclusive
@@ -80,21 +79,62 @@ pub const IconManage = struct {
         hash: Location,
     });
 
-    pub fn init(allocator: std.mem.Allocator, storage: Storage) @This() {
+    pub fn init(allocator: mem.Allocator, storage: Storage) !@This() {
+        var css_writer: std.Io.Writer.Allocating = .init(allocator);
+        errdefer css_writer.deinit();
+
+        const all_icons = try storage.icon_all(allocator);
+        defer allocator.free(all_icons);
+
+        try init_css_data(&css_writer.writer, all_icons);
+
+
         return .{
             .cache = .empty,
             .allocator = allocator,
             .storage = storage,
             .data_string_bytes = .init(allocator),
+            .icon_css = .{
+                .writer = css_writer,
+                .hash = hash_css(css_writer.writer.buffered()) ,
+            }
         };
     }
 
-    const AddItem = struct {
-        icon_data: []const u8,
-        etag_or_last_modified_or_hash: []const u8,
-    };
+    // Generate CSS
+    fn init_css_data(w: *std.Io.Writer, all_icons: []const feed_types.IconRender) !void {
+        for (all_icons) |icon| {
+            try append_css_data(w, icon);
+        }
+    }
 
-    pub fn add(self: *@This(), icon: AddItem) !usize {
+    fn append_css_data(w: *std.Io.Writer, icon: feed_types.IconRender) !void {
+        const file_type = image.Type.from_data(icon.icon_data)
+            orelse file_type_from_uri(icon.icon_url) orelse
+        {
+            std.log.warn("Unknown icon from '{f}'. Icon id: {d}", .{icon.icon_url, icon.icon_id});
+            return;
+        };
+        
+        if (file_type == .svg and util.is_data(icon.icon_data)) {
+            try w.print(
+                \\.icon-id-{d}:before{{background-image:url("{s}")}}
+            , .{icon.icon_id, icon.icon_data});
+        } else {
+            const pathname = hash_into_pathname(@constCast(icon.etag_or_last_modified_or_hash));
+            try w.print(
+                \\.icon-id-{d}:before{{background-image:url("/icons/{s}{}")}}
+            , .{icon.icon_id, pathname, file_type});
+        }
+    }
+
+    fn hash_css(data: []const u8) u64 {
+        var hasher = std.hash.Wyhash.init(0);
+        hasher.update(data);
+        return hasher.final();
+    }
+
+    pub fn add(self: *@This(), icon: feed_types.IconRender) !usize {
         const data, const file_type = blk: {
             if (image.Type.from_data(icon.icon_data)) |file_type| {
                 break :blk .{icon.icon_data, file_type};
@@ -129,8 +169,10 @@ pub const IconManage = struct {
             .file_type = file_type,
             .hash = .{ .start = @intCast(hash_start), .end = @intCast(hash_end) },
         });
-        // TODO: need regenerate new css content.
-        // Or could just append new css to the end of css
+
+        try append_css_data(&self.icon_css.writer.writer, icon);
+        self.icon_css.hash = hash_css(self.icon_css.writer.writer.buffered()) ;
+
         return index;
     }
 
@@ -144,10 +186,7 @@ pub const IconManage = struct {
         // TODO: icon_from_hash() doesn't have to return IconRender.
         // Just need: icon_data and etag_or_last_modified_or_hash
         if (try self.storage.icon_from_hash(allocator, filename_hash)) |icon| {
-            return try self.add(.{
-                .icon_data = icon.icon_data,
-                .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
-            });
+            return try self.add(icon);
         }
 
         return null;
@@ -187,46 +226,13 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
     var gpa = std.heap.DebugAllocator(.{}){};
     const allocator = gpa.allocator();
 
-    var icon_manage: IconManage = .init(allocator, storage);
+    var icon_manage: IconManage = try .init(allocator, storage);
     defer icon_manage.deinit();
 
     var progress = std.Progress.start(io, .{});
     defer progress.end();
 
-    const icon_css: Global.IconCss = blk: {
-        const all_icons = try storage.icon_all(allocator);
-        defer allocator.free(all_icons);
 
-        var css_writer: std.Io.Writer.Allocating = try .initCapacity(allocator, 60 * all_icons.len);
-        defer css_writer.deinit();
-
-        // Generate CSS
-        for (all_icons) |icon| {
-            const file_type = image.Type.from_data(icon.icon_data)
-                orelse file_type_from_uri(icon.icon_url) orelse
-            {
-                std.log.warn("Unknown icon from '{f}'. Icon id: {d}", .{icon.icon_url, icon.icon_id});
-                continue;
-            };
-            
-            if (file_type == .svg and util.is_data(icon.icon_data)) {
-                try css_writer.writer.print(
-                    \\.icon-id-{d}:before{{background-image:url("{s}")}}
-                , .{icon.icon_id, icon.icon_data});
-            } else {
-                const pathname = hash_into_pathname(@constCast(icon.etag_or_last_modified_or_hash));
-                try css_writer.writer.print(
-                    \\.icon-id-{d}:before{{background-image:url("/icons/{s}{}")}}
-                , .{icon.icon_id, pathname, file_type});
-            }
-        }
-
-        const data = try css_writer.toOwnedSlice();
-        var hasher = std.hash.Wyhash.init(0);
-        hasher.update(data);
-
-        break :blk .{.data = data, .hash = hasher.final() };
-    };
 
     var global: Global = .{
         .io = io,
@@ -234,7 +240,6 @@ pub fn start_server(io: std.Io, storage: Storage, opts: types.ServeOptions) !voi
         .icon_manage = &icon_manage,
         .progress = progress,
         .core_count = try std.Thread.getCpuCount(),
-        .icon_css = icon_css,
     };
     const server_config: httpz.Config = .{
         .address = .localhost(opts.port),  
@@ -364,7 +369,7 @@ fn failed_requests_get(global: *Global, req: *httpz.Request, resp: *httpz.Respon
 
     try pages.FailedFeedsPage.render(.{failed_feed_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -594,6 +599,8 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
     if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
+            .icon_id = feed.icon_id,
+            .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
         }) catch |err| {
@@ -686,7 +693,7 @@ fn feed_pick_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
 
     try pages.FeedPickPage.render(.{feed_pick_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -841,6 +848,8 @@ fn feed_add_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !v
     if (feed.icon_id.is_valid()) {
         const icon = add_opts.feed_opts.icon.?;
         _ = global.icon_manage.add(.{
+            .icon_id = feed.icon_id,
+            .icon_url = icon.url,
             .icon_data = icon.data,
             .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
         }) catch |err| {
@@ -912,7 +921,7 @@ fn feed_add_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !vo
 
     try pages.FeedAddPage.render(.{feed_add_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -1010,6 +1019,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const icon = feed_types.Icon.init(req_http.get_uri(), resp_body, cache_value);
             const icon_id = try db.icon_upsert(icon);
             _ = try global.icon_manage.add(.{
+                .icon_id = icon_id,
+                .icon_url = icon.url,
                 .icon_data = icon.data,
                 .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
             });
@@ -1025,6 +1036,8 @@ fn feed_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
             const icon = feed_types.Icon.init(page_uri, data, null);
             const icon_id = try db.icon_upsert(icon);
             _ = try global.icon_manage.add(.{
+                .icon_id = icon_id,
+                .icon_url = icon.url,
                 .icon_data = icon.data,
                 .etag_or_last_modified_or_hash = icon.etag_or_last_modified_or_hash,
             });
@@ -1162,7 +1175,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
     
     try pages.FeedPage.render(.{feed_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -1195,7 +1208,7 @@ fn public_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void
         src = try get_file(global.io, req.arena, prefix_dir ++ "/main.css");
         resp.content_type = .CSS;
     } else if (mem.endsWith(u8, req.url.path, "icons.css")) {
-        src = global.icon_css.data;
+        src = global.icon_manage.icon_css.writer.writer.buffered();
         resp.content_type = .CSS;
     }
 
@@ -1399,7 +1412,7 @@ fn latest_added_get(global: *Global, req: *httpz.Request, resp: *httpz.Response)
 
     try pages.HomePage.render(.{home_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -1525,7 +1538,7 @@ fn tag_edit(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try pages.TagEditPage.render(.{tag_edit_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -1560,7 +1573,7 @@ fn tags_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     try pages.TagsPage.render(.{tags_opts, .{
         .tags = tags,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
@@ -1725,7 +1738,7 @@ fn feeds_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void 
         .search_value = search_value orelse "",
         .has_untagged = has_untagged,
         .tags_active = tags_active.items,
-        .css_icons_hash = global.icon_css.hash,
+        .css_icons_hash = global.icon_manage.icon_css.hash,
     }}, w);
     try w.flush();
 }
