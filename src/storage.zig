@@ -59,6 +59,7 @@ pub const Storage = struct {
 
     // Sqlite config for servers: https://kerkour.com/sqlite-for-servers
     fn setupDb(db: *const sql.Database) !void {
+        try initPragmas(db);
         try setupTables(db);
         try initData(db);
     }
