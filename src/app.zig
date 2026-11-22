@@ -1075,15 +1075,14 @@ pub const Cli = struct {
 
         for (feeds) |feed| {
             while (true) {
-                defer self.out.flush() catch {
-                    std.log.warn("Failed to flush subcommand 'remove' text", .{});
-                };
-                try self.out.print("Delete feed '{f}' (Y/N)? ", .{feed.feed_url});
+                try self.out.print("Delete feed '{f}' (y/N)? ", .{feed.feed_url});
                 try self.out.flush();
-                const raw_value = try self.in.takeDelimiterExclusive('\n');
+                const raw_value = try self.in.takeDelimiterInclusive('\n');
                 const value = mem.trim(u8, raw_value, &std.ascii.whitespace);
-           
-                if (value.len == 1) {
+
+                if (value.len == 0) {
+                    break;
+                } else if (value.len == 1) {
                     if (value[0] == 'y' or value[0] == 'Y') {
                         try self.storage.deleteFeed(feed.feed_id);
                         try self.out.print("Removed feed '{f}'\n", .{feed.feed_url});
@@ -1092,8 +1091,10 @@ pub const Cli = struct {
                         break;
                     }
                 }
-                try self.out.print("Invalid user input. Retry\n", .{});
+
+                try self.out.print("Invalid user input '{s}'. Retry\n", .{value});
             }
+            try self.out.flush();
         }
     }
 

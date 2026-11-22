@@ -1,5 +1,5 @@
 - html parsing: get date from url path?
-- figure out if I need to do something if icon is modified, added, removed?
+- feed deleting doesn't delete other items/rows with feed_id foreign key
 - feed page does not display html fields?
 - check if html into feed date parsing works corretly? (https://lamplightdev.com/blog/)
 - replace http.zig with dusty?
