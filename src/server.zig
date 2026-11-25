@@ -1774,18 +1774,21 @@ const StreamContext = struct {
     io: std.Io,
 
     fn handle(ctx: StreamContext, stream: std.Io.net.Stream) void {
-        if (!sse_reload_done_debug) {
-            std.log.info("Start SSE stream", .{});
-            var buf: [32]u8 = undefined;
-            var writer = stream.writer(ctx.io, &buf);
-            defer stream.close(ctx.io);
-            defer stream.shutdown(ctx.io, .both) catch @panic("sse shutdown failed");
-            const w = &writer.interface;
+        std.log.info("Start SSE stream", .{});
+        var buf: [32]u8 = undefined;
+        var writer = stream.writer(ctx.io, &buf);
+        const w = &writer.interface;
+        w.writeAll("retry: 500\n\n") catch @panic("write: retry");
+        w.flush() catch @panic("panic flush");
 
-            w.writeAll("event: reload\n") catch return;
-            w.writeAll("data: reload\n") catch return;
-            w.writeByte('\n') catch return;
-            w.flush() catch return;
+        if (!sse_reload_done_debug) {
+            // defer stream.close(ctx.io);
+            // defer stream.shutdown(ctx.io, .both) catch @panic("sse shutdown failed");
+
+            w.writeAll("event: reload\n") catch @panic("write: event reload");
+            w.writeAll("data: reload\n") catch @panic("write: data reload");
+            w.writeByte('\n') catch @panic("panic writeByte()");
+            w.flush() catch @panic("panic flush");
             std.log.info("reload browser page", .{});
             sse_reload_done_debug = true;
         }

@@ -19,8 +19,4 @@ document.addEventListener("DOMContentLoaded", function() {
     // Hard refresh only works in Firefox
     location.reload(true);
   }, {once: true});
-
-  window.onbeforeunload = function () {
-    evtSource.close();
-  };
 });
