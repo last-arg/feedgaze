@@ -139,8 +139,8 @@ pub templ Nav(nav: Navigation) {
 
               for (nav.tags) |tag| {
                   <div class="tag">
-                    <input type="checkbox" name="tag" id="tag-id-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
-                    <label class="visually-hidden" for="tag-id-{@backingInt(tag.tag_id)}">{tag.name}</label>
+                    <input type="checkbox" name="tag" id="tag-id-{tag.tag_id}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, nav.tags_active)} />
+                    <label class="visually-hidden" for="tag-id-{tag.tag_id}">{tag.name}</label>
                     <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
                   </div>
               }
@@ -249,7 +249,7 @@ pub templ FeedItemLatest(item: feed_types.FeedItemRender, feed: feed_types.Feed,
 
     <div class="item-extra">
         <div>
-            <a href="/feed/{@backingInt(feed.feed_id)}" title="{feed.title}">{feed.title}</a>
+            <a href="/feed/{feed.feed_id}" title="{feed.title}">{feed.title}</a>
 
             if (opts.has_request_failed) {
                 <span class="mi-start-5xs feed-failed-icon" title="{failed_request_msg}"></span>
@@ -307,8 +307,8 @@ pub templ TagsPage(content: TagsContent, nav: Navigation) {
                   <a class="truncate-1" href="/feeds?tag={tag.name}" title="{tag.name}">{tag.name}</a>
 
                   <div class="tag-actions cluster align-center">
-                    <a href="/tag/{@backingInt(tag.tag_id)}/edit">Edit</a>
-                    <form action="/tag/{@backingInt(tag.tag_id)}/delete" method="POST">
+                    <a href="/tag/{tag.tag_id}/edit">Edit</a>
+                    <form action="/tag/{tag.tag_id}/delete" method="POST">
                         <button class="btn-link padding-0 danger" name="action" value="delete">Delete</button>
                     </form>
                   </div>
@@ -344,7 +344,7 @@ pub templ FailedFeedsPage(content: FailedFeedsContent, nav: Navigation) {
                         }
                         </h3>
                         <a class="one-line" href="{failed_request.feed_url}">Feed link</a>
-                        <a href="/feed/{@backingInt(failed_request.feed_id)}">Edit</a>
+                        <a href="/feed/{failed_request.feed_id}">Edit</a>
                     </header>
 
                     <p>Latest error <time datetime="{zt.fmt(util.write_timestamp, .{failed_request.utc_sec})}">
@@ -598,7 +598,7 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                             }
 
                                 @LatestItemRelativeTime(feed.updated_timestamp, opts.now_sec)
-                                <a class="feed-edit" href="/feed/{@backingInt(feed.feed_id)}">Edit feed</a>
+                                <a class="feed-edit" href="/feed/{feed.feed_id}">Edit feed</a>
                             </div>
 
                             if (std.mem.indexOfScalar(feed_types.Feed.ID, opts.failed_requests, feed.feed_id)) |_| {
@@ -648,9 +648,9 @@ pub templ FeedsPage(opts: FeedsOpts, nav: Navigation) {
                     <footer class="main-footer">
                         <hr />
                         if (f.prev) |prev| {
-                            <a href="{f.base}&before={@backingInt(prev)}">Previous</a>
+                            <a href="{f.base}&before={prev}">Previous</a>
                         }
-                        <a href="{f.base}&after={@backingInt(f.next)}">Next</a>
+                        <a href="{f.base}&after={f.next}">Next</a>
                     </footer>
                 }
 
@@ -753,7 +753,7 @@ pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
               </div>
               <input class="char-len-s" type="text" id="tag-name" name="tag-name" value={opts.tag.name} />
             </div>
-            <input type="hidden" name="tag-id" value={@backingInt(opts.tag.tag_id)} />
+            <input type="hidden" name="tag-id" value={opts.tag.tag_id} />
             <div>
                 <button class="muted primary" name="action" value="save">Save changes</button>
             </div>
@@ -789,7 +789,7 @@ const IconIdClass = struct {
     }
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("icon-id-{d}", .{@backingInt(self.value)});
+        try writer.print("icon-id-{d}", .{self.value});
     }
 };
 
@@ -923,8 +923,8 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                       <legend>Tags</legend>
                       <div class="feed-tag-list">
                         for (nav.tags) |tag| {
-                            <label for="tag-edit-{@backingInt(tag.tag_id)}">
-                                <input type="checkbox" name="tag" id="tag-edit-{@backingInt(tag.tag_id)}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, opts.feed_tags)} />
+                            <label for="tag-edit-{tag.tag_id}">
+                                <input type="checkbox" name="tag" id="tag-edit-{tag.tag_id}" value="{tag.name}" checked?={is_tag_checked(tag.tag_id, opts.feed_tags)} />
                                 <span class="truncate-1" title="{tag.name}">{tag.name}</span>
                             </label>
                         }

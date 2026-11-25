@@ -249,7 +249,7 @@ const IconIdClass = struct {
     }
 
     pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("icon-id-{d}", .{@backingInt(self.value)});
+        try writer.print("icon-id-{d}", .{self.value});
     }
 };
 
@@ -321,15 +321,15 @@ pub const Nav = struct {
         try zt.writeAll(_writer, "</a></div>");
         for (nav.tags) |tag| { // pages.zt:141:15
             try zt.writeAll(_writer, "<div class=\"tag\"><input type=\"checkbox\" name=\"tag\" id=\"tag-id-");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:143:55
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:143:55
             try zt.writeAll(_writer, "\" value=\"");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:143:93
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:143:80
             try zt.writeAll(_writer, "\"");
-            try zt.writeBoolAttr(_writer, "checked", is_tag_checked(tag.tag_id, nav.tags_active)); // pages.zt:143:112
+            try zt.writeBoolAttr(_writer, "checked", is_tag_checked(tag.tag_id, nav.tags_active)); // pages.zt:143:99
             try zt.writeAll(_writer, "><label class=\"visually-hidden\" for=\"tag-id-");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:144:52
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:144:52
             try zt.writeAll(_writer, "\">");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:144:91
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:144:78
             try zt.writeAll(_writer, "</label><a class=\"truncate-1\" href=\"/feeds?tag=");
             try zt.writeEscaped(_writer, tag.name); // pages.zt:145:43
             try zt.writeAll(_writer, "\" title=\"");
@@ -463,11 +463,11 @@ pub const FeedItemLatest = struct {
         try zt.writeAll(_writer, "</div>");
         try zt.renderComponent(ItemLink, .{item}, _writer); // pages.zt:253:5
         try zt.writeAll(_writer, "<div class=\"item-extra\"><div><a href=\"/feed/");
-        try zt.writeEscaped(_writer, @backingInt(feed.feed_id)); // pages.zt:257:16
+        try zt.writeEscaped(_writer, feed.feed_id); // pages.zt:257:16
         try zt.writeAll(_writer, "\" title=\"");
-        try zt.writeEscaped(_writer, feed.title); // pages.zt:257:57
+        try zt.writeEscaped(_writer, feed.title); // pages.zt:257:44
         try zt.writeAll(_writer, "\">");
-        try zt.writeEscaped(_writer, feed.title); // pages.zt:257:78
+        try zt.writeEscaped(_writer, feed.title); // pages.zt:257:65
         try zt.writeAll(_writer, "</a>");
         if (opts.has_request_failed) { // pages.zt:259:13
             try zt.writeAll(_writer, "<span class=\"mi-start-5xs feed-failed-icon\" title=\"");
@@ -570,9 +570,9 @@ const TagsPage__children_0 = struct {
             try zt.writeAll(_writer, "\">");
             try zt.writeEscaped(_writer, tag.name); // pages.zt:315:89
             try zt.writeAll(_writer, "</a><div class=\"tag-actions cluster align-center\"><a href=\"/tag/");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:318:24
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:318:24
             try zt.writeAll(_writer, "/edit\">Edit</a><form action=\"/tag/");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:319:27
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:319:27
             try zt.writeAll(_writer, "/delete\" method=\"POST\"><button class=\"btn-link padding-0 danger\" name=\"action\" value=\"delete\">Delete</button></form></div></li>");
         }
         try zt.writeAll(_writer, "</ul></main>");
@@ -652,7 +652,7 @@ const FailedFeedsPage__children_0 = struct {
                 try zt.writeAll(_writer, "</h3><a class=\"one-line\" href=\"");
                 try zt.writeUrlPart(_writer, "", failed_request.feed_url, ""); // pages.zt:354:45
                 try zt.writeAll(_writer, "\">Feed link</a><a href=\"/feed/");
-                try zt.writeEscaped(_writer, @backingInt(failed_request.feed_id)); // pages.zt:355:28
+                try zt.writeEscaped(_writer, failed_request.feed_id); // pages.zt:355:28
                 try zt.writeAll(_writer, "\">Edit</a></header><p>Latest error <time datetime=\"");
                 try zt.writeEscaped(_writer, zt.fmt(util.write_timestamp, .{failed_request.utc_sec})); // pages.zt:358:43
                 try zt.writeAll(_writer, "\">\n                        (");
@@ -983,7 +983,7 @@ const FeedsPage__children_0 = struct {
                 }
                 try zt.renderComponent(LatestItemRelativeTime, .{ feed.updated_timestamp, opts.now_sec }, _writer); // pages.zt:613:33
                 try zt.writeAll(_writer, "<a class=\"feed-edit\" href=\"/feed/");
-                try zt.writeEscaped(_writer, @backingInt(feed.feed_id)); // pages.zt:614:54
+                try zt.writeEscaped(_writer, feed.feed_id); // pages.zt:614:54
                 try zt.writeAll(_writer, "\">Edit feed</a></div>");
                 if (std.mem.indexOfScalar(feed_types.Feed.ID, opts.failed_requests, feed.feed_id)) |_| { // pages.zt:617:29
                     try zt.writeAll(_writer, "<p class=\"feed-failed-msg feed-failed-icon\">Last update failed</p>");
@@ -1023,12 +1023,12 @@ const FeedsPage__children_0 = struct {
                 if (f.prev) |prev| { // pages.zt:667:25
                     try zt.writeAll(_writer, "<a href=\"");
                     try zt.writeUrlPart(_writer, "", f.base, "&before="); // pages.zt:668:32
-                    try zt.writeUrlPart(_writer, "&before=", @backingInt(prev), ""); // pages.zt:668:32
+                    try zt.writeUrlPart(_writer, "&before=", prev, ""); // pages.zt:668:32
                     try zt.writeAll(_writer, "\">Previous</a>");
                 }
                 try zt.writeAll(_writer, "<a href=\"");
                 try zt.writeUrlPart(_writer, "", f.base, "&after="); // pages.zt:671:28
-                try zt.writeUrlPart(_writer, "&after=", @backingInt(f.next), ""); // pages.zt:671:28
+                try zt.writeUrlPart(_writer, "&after=", f.next, ""); // pages.zt:671:28
                 try zt.writeAll(_writer, "\">Next</a></footer>");
             }
             try zt.writeAll(_writer, "</div>");
@@ -1149,7 +1149,7 @@ const TagEditPage__children_0 = struct {
         try zt.writeAll(_writer, "<form class=\"flow\" method=\"post\"><div><div><label for=\"tag-name\">Tag name</label></div><input class=\"char-len-s\" type=\"text\" id=\"tag-name\" name=\"tag-name\"");
         try zt.writeAttr(_writer, "value", opts.tag.name); // pages.zt:776:83
         try zt.writeAll(_writer, "></div><input type=\"hidden\" name=\"tag-id\"");
-        try zt.writeAttr(_writer, "value", @backingInt(opts.tag.tag_id)); // pages.zt:778:48
+        try zt.writeAttr(_writer, "value", opts.tag.tag_id); // pages.zt:778:48
         try zt.writeAll(_writer, "><div><button class=\"muted primary\" name=\"action\" value=\"save\">Save changes</button></div><button class=\"outline danger\" name=\"action\" value=\"delete\">Delete tag</button></form></main>");
     }
 
@@ -1310,13 +1310,13 @@ const FeedPage__children_0 = struct {
         try zt.writeAll(_writer, "<fieldset><legend>Tags</legend><div class=\"feed-tag-list\">");
         for (nav.tags) |tag| { // pages.zt:957:25
             try zt.writeAll(_writer, "<label for=\"tag-edit-");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:958:36
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:958:36
             try zt.writeAll(_writer, "\"><input type=\"checkbox\" name=\"tag\" id=\"tag-edit-");
-            try zt.writeEscaped(_writer, @backingInt(tag.tag_id)); // pages.zt:959:67
+            try zt.writeEscaped(_writer, tag.tag_id); // pages.zt:959:67
             try zt.writeAll(_writer, "\" value=\"");
-            try zt.writeEscaped(_writer, tag.name); // pages.zt:959:107
+            try zt.writeEscaped(_writer, tag.name); // pages.zt:959:94
             try zt.writeAll(_writer, "\"");
-            try zt.writeBoolAttr(_writer, "checked", is_tag_checked(tag.tag_id, opts.feed_tags)); // pages.zt:959:126
+            try zt.writeBoolAttr(_writer, "checked", is_tag_checked(tag.tag_id, opts.feed_tags)); // pages.zt:959:113
             try zt.writeAll(_writer, "><span class=\"truncate-1\" title=\"");
             try zt.writeEscaped(_writer, tag.name); // pages.zt:960:58
             try zt.writeAll(_writer, "\">");

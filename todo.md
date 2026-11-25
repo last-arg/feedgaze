@@ -2,8 +2,6 @@
 - feed page does not display html fields?
 - check if html into feed date parsing works corretly? (https://lamplightdev.com/blog/)
 - replace http.zig with dusty?
-- zt use 'fn format' or 'fn formatHtml'
-    - especially enums that need to be turned into numbers
 - check adding timeout to async code? Can I?
 - handle errors for all the POST requests
     - feed_add_post

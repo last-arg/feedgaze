@@ -381,6 +381,10 @@ pub const SqliteId = enum(u64) {
     unassigned = 0,
     _,
 
+    pub fn format(self: SqliteId, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{d}", .{@backingInt(self)});
+    }
+
     pub fn is_valid(id: @This()) bool {
         return id != .unassigned;
     }
