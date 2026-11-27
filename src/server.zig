@@ -49,6 +49,26 @@ const Global = struct {
     icon_manage: *IconManage,
     progress: std.Progress.Node,
     core_count: usize,
+
+    pub fn uncaughtError(global: *Global, req: *httpz.Request, resp: *httpz.Response, err: anyerror) void {
+        std.log.info("Server: '{s}' {}", .{req.url.path, err});
+        resp.status = 500;
+
+        const tags = global.storage.tags_all_with_ids(req.arena) catch @panic("Failed to get all tags");
+        const error_opts = pages.ErrorOpts{
+            .err = err,
+        };
+
+        var buf: [std.compress.flate.max_window_len]u8 = undefined;
+        var compress_opt = compress_init(req, resp, &buf) catch @panic("Failed to initalize compression");
+        var w: *std.Io.Writer = if (compress_opt) |*c| &c.writer else resp.writer();
+
+        pages.ErrorPage.render(.{error_opts, .{
+            .tags = tags,
+            .css_icons_hash = global.icon_manage.icon_css.hash,
+        }}, w) catch @panic("Failed to render error page");
+        w.flush() catch @panic("Failed to flush rendered page");
+    }
 };
 
 const IconFileType = image.Type;
@@ -380,16 +400,6 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
 
     const form_data = try req.formData();
 
-    const tags_input = blk: {
-        if (form_data.get("input-tags")) |val| {
-            const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
-            if (trimmed.len > 0) {
-                break :blk trimmed;
-            }
-        }
-        break :blk null;
-    };
-
     var location_arr: std.Io.Writer.Allocating = try .initCapacity(req.arena, 64);
     errdefer location_arr.deinit();
     var w_arr = location_arr.writer;
@@ -400,14 +410,15 @@ fn feed_pick_post(global: *Global, req: *httpz.Request, resp: *httpz.Response) !
         &std.ascii.whitespace,
     );
 
-    errdefer {
-        const url_comp: std.Uri.Component = .{ .raw = url_input };
-        w_arr.print("/feed/pick?error={f}&input-url={f}", .{UrlQueryError.unknown, std.fmt.alt(url_comp, .formatEscaped)}) catch {};
-        write_pick_urls(&w_arr, form_data) catch {};
-        write_selectors(&w_arr, form_data) catch {};
-
-        resp.header("Location", w_arr.buffered());
-    }
+    const tags_input = blk: {
+        if (form_data.get("input-tags")) |val| {
+            const trimmed = mem.trim(u8, val, &std.ascii.whitespace);
+            if (trimmed.len > 0) {
+                break :blk trimmed;
+            }
+        }
+        break :blk null;
+    };
 
     if (url_input.len == 0) {
         try w_arr.print("/feed/add?error={f}", .{ UrlQueryError.url_missing });

@@ -253,6 +253,10 @@ pub const FeedOpts = struct {
     input_icon_url_or_data: []const u8 = "",
 };
 
+pub const ErrorOpts = struct {
+    err: anyerror,
+};
+
 pub const Layout = struct {
     fn _render(title: []const u8, nav: Navigation, children: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:53:17
         _ = &title;
@@ -1372,6 +1376,63 @@ pub const FeedPage = struct {
 
     pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
         const __children_0 = FeedPage__children_0.bind(&args);
+        return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+const ErrorPage__children_0 = struct {
+    fn _render(opts: ErrorOpts, nav: Navigation, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:1005:20
+        _ = &opts;
+        _ = &nav;
+        try zt.writeAll(_writer, "<main><p>Something went wrong on our side.</p><p>Server error: ");
+        try zt.writeEscaped(_writer, @errorName(opts.err)); // pages.zt:1009:30
+        try zt.writeAll(_writer, "</p></main>");
+    }
+
+    fn _signature(_: ErrorOpts, _: Navigation) void {} // pages.zt:1005:20
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        return @call(.always_inline, _render, args ++ .{_writer});
+    }
+
+    pub fn bind(args: *const Args) zt.Component {
+        return .{
+            .ptr = @ptrCast(args),
+            .renderFn = struct {
+                fn f(ptr: *const anyopaque, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+                    return render(@as(*const Args, @ptrCast(@alignCast(ptr))).*, _writer);
+                }
+            }.f,
+        };
+    }
+};
+
+pub const ErrorPage = struct {
+    fn _render(opts: ErrorOpts, nav: Navigation, __children_0: zt.Component, _writer: *std.Io.Writer) std.Io.Writer.Error!void { // pages.zt:1005:20
+        _ = &opts;
+        _ = &nav;
+        try zt.renderComponent(Layout, .{ "Server error 500", nav, __children_0 }, _writer); // pages.zt:1006:5
+    }
+
+    fn _signature(_: ErrorOpts, _: Navigation) void {} // pages.zt:1005:20
+
+    pub const Args = std.meta.ArgsTuple(@TypeOf(_signature));
+
+    pub fn render(args: Args, _writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        const __children_0 = ErrorPage__children_0.bind(&args);
         return @call(.always_inline, _render, args ++ .{ __children_0, _writer });
     }
 

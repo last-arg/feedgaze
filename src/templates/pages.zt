@@ -965,3 +965,17 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
         </main>
     }
 }
+
+pub const ErrorOpts = struct {
+    err: anyerror,
+};
+
+pub templ ErrorPage(opts: ErrorOpts, nav: Navigation) {
+    @Layout("Server error 500", nav) {
+        <main>
+            <p>Something went wrong on our side.</p>
+            <p>Server error: {@errorName(opts.err)}</p>
+        </main>
+    }
+}
+
