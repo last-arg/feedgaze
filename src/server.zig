@@ -1169,7 +1169,7 @@ fn feed_get(global: *Global, req: *httpz.Request, resp: *httpz.Response) !void {
 
     const page_url = feed.page_url orelse std.Uri{.scheme = ""};
 
-    if (std.meta.eql(page_url, feed.feed_url)) {
+    if (util.uri_eql(page_url, feed.feed_url)) {
         feed_opts.html_opts = try db.html_selector_get(req.arena, feed.feed_id);
     }
     

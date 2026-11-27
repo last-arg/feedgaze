@@ -1295,15 +1295,15 @@ const FeedPage__children_0 = struct {
         try zt.writeAttr(_writer, "value", opts.input_icon_url_or_data); // pages.zt:918:72
         try zt.writeAll(_writer, "></div>");
         if (opts.html_opts) |html_opts| { // pages.zt:921:21
-            try zt.writeAll(_writer, "<fieldset class=\"flow\"><legend>Html 'feed' options</legend><div><div><label for=\"html-item-selector\">Feed item selector</label></div><input class=\"char-len-s\" type=\"text\"");
+            try zt.writeAll(_writer, "<fieldset class=\"flow\"><legend>Html 'feed' options</legend><div><div><label for=\"html-item-selector\">Feed item selector</label></div><input class=\"char-len-m\" type=\"text\"");
             try zt.writeAttr(_writer, "value", html_opts.selector_container); // pages.zt:926:71
-            try zt.writeAll(_writer, " name=\"html-item-selector\" id=\"html-item-selector\"></div><div><div><label for=\"html-link-selector\">Feed item link selector</label></div><input class=\"char-len-s\" type=\"text\"");
+            try zt.writeAll(_writer, " name=\"html-item-selector\" id=\"html-item-selector\"></div><div><div><label for=\"html-link-selector\">Feed item link selector</label></div><input class=\"char-len-m\" type=\"text\"");
             try zt.writeAttr(_writer, "value", html_opts.selector_link); // pages.zt:931:71
-            try zt.writeAll(_writer, " name=\"html-link-selector\" id=\"html-link-selector\"></div><div><div><label for=\"html-title-selector\">Feed item title selector</label></div><input class=\"char-len-s\" type=\"text\"");
+            try zt.writeAll(_writer, " name=\"html-link-selector\" id=\"html-link-selector\"></div><div><div><label for=\"html-title-selector\">Feed item title selector</label></div><input class=\"char-len-m\" type=\"text\"");
             try zt.writeAttr(_writer, "value", html_opts.selector_heading); // pages.zt:936:71
-            try zt.writeAll(_writer, " name=\"html-title-selector\" id=\"html-title-selector\"></div><div><div><label for=\"html-date-selector\">Feed item date selector</label></div><input class=\"char-len-s\" type=\"text\"");
+            try zt.writeAll(_writer, " name=\"html-title-selector\" id=\"html-title-selector\"></div><div><div><label for=\"html-date-selector\">Feed item date selector</label></div><input class=\"char-len-m\" type=\"text\"");
             try zt.writeAttr(_writer, "value", html_opts.selector_date); // pages.zt:941:71
-            try zt.writeAll(_writer, " name=\"html-date-selector\" id=\"html-date-selector\"></div><div><div><label for=\"html-date-format\">Date format</label></div><input class=\"char-len-s\" type=\"text\"");
+            try zt.writeAll(_writer, " name=\"html-date-selector\" id=\"html-date-selector\"></div><div><div><label for=\"html-date-format\">Date format</label></div><input class=\"char-len-m\" type=\"text\"");
             try zt.writeAttr(_writer, "value", html_opts.date_format); // pages.zt:946:71
             try zt.writeAll(_writer, " name=\"html-date-format\" id=\"html-date-format\"></div></fieldset>");
         }

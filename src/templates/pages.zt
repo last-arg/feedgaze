@@ -893,27 +893,27 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                             <legend>Html 'feed' options</legend>
                             <div>
                                 <div><label for="html-item-selector">Feed item selector</label></div>
-                                <input class="char-len-s" type="text" value={html_opts.selector_container} name="html-item-selector" id="html-item-selector" />
+                                <input class="char-len-m" type="text" value={html_opts.selector_container} name="html-item-selector" id="html-item-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-link-selector">Feed item link selector</label></div>
-                                <input class="char-len-s" type="text" value={html_opts.selector_link} name="html-link-selector" id="html-link-selector" />
+                                <input class="char-len-m" type="text" value={html_opts.selector_link} name="html-link-selector" id="html-link-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-title-selector">Feed item title selector</label></div>
-                                <input class="char-len-s" type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
+                                <input class="char-len-m" type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-date-selector">Feed item date selector</label></div>
-                                <input class="char-len-s" type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
+                                <input class="char-len-m" type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
                             </div>
 
                             <div>
                                 <div><label for="html-date-format">Date format</label></div>
-                                <input class="char-len-s" type="text" value={html_opts.date_format} name="html-date-format" id="html-date-format" />
+                                <input class="char-len-m" type="text" value={html_opts.date_format} name="html-date-format" id="html-date-format" />
                             </div>
                         </fieldset>
                    }

@@ -22,6 +22,19 @@ pub fn uri_component_val(uri_comp: std.Uri.Component) []const u8 {
     };
 }
 
+pub fn uri_eql(a: std.Uri, b: std.Uri) bool {
+    const empty_component: std.Uri.Component = .{.raw = ""};
+    const host_a = uri_component_val(a.host orelse empty_component);
+    const host_b = uri_component_val(b.host orelse empty_component);
+    const scheme_a = a.scheme;
+    const scheme_b = b.scheme;
+    const path_a = uri_component_val(a.path);
+    const path_b = uri_component_val(b.path);
+    return std.mem.eql(u8, host_a, host_b) and
+        std.mem.eql(u8, scheme_a, scheme_b) and
+        std.mem.eql(u8, path_a, path_b);
+}
+
 pub fn is_inline_svg(data: []const u8) bool {
     std.debug.assert(!std.ascii.isWhitespace(data[0]));
     return std.mem.startsWith(u8, data, "<svg");
