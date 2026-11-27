@@ -512,7 +512,6 @@ pub const Storage = struct {
         errdefer res.deinit();
 
         while (try stmt.step()) |row| {
-            // TODO: @allocation improve
             const buf_text = try allocator.alloc(u8, row.strings_len());
             try res.append(try FeedToUpdate.from_raw(buf_text, row));
         }
