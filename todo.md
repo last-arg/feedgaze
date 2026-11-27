@@ -1,8 +1,7 @@
 - html parsing: get date from url path?
-- feed page does not display html fields?
-- check if html into feed date parsing works corretly? (https://lamplightdev.com/blog/)
 - replace http.zig with dusty?
 - check adding timeout to async code? Can I?
+- use xit-db. Keep sqlite backend.
 - handle errors for all the POST requests
     - feed_add_post
     - update_post
