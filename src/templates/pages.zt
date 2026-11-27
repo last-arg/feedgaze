@@ -763,21 +763,6 @@ pub templ TagEditPage(opts: TagEditOpts, nav: Navigation) {
     }
 }
 
-pub const FeedOpts = struct {
-    head_title: []const u8 = "",
-    feed: feed_types.Feed,
-    feed_items: []const feed_types.FeedItemRender,
-    feed_tags: []const feed_types.SqliteId = &.{},
-    last_update: ?i64,
-    next_update: ?i64,
-    now_sec: i64,
-    failed_requests: []const Storage.FeedFailedRequest,
-    query_success: bool = false,
-    query_error: ?UrlQueryError = null,
-    html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
-    input_icon_url_or_data: []const u8 = "",
-};
-
 const IconIdClass = struct {
     value: feed_types.IconRender.ID,
 
@@ -793,6 +778,20 @@ const IconIdClass = struct {
     }
 };
 
+pub const FeedOpts = struct {
+    head_title: []const u8 = "",
+    feed: feed_types.Feed,
+    feed_items: []const feed_types.FeedItemRender,
+    feed_tags: []const feed_types.SqliteId = &.{},
+    last_update: ?i64,
+    next_update: ?i64,
+    now_sec: i64,
+    failed_requests: []const Storage.FeedFailedRequest,
+    query_success: bool = false,
+    query_error: ?UrlQueryError = null,
+    html_opts: ?@import("../feed_parse.zig").HtmlOptions = null,
+    input_icon_url_or_data: []const u8 = "",
+};
 
 pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
     @Layout(opts.head_title, nav) {
@@ -903,12 +902,12 @@ pub templ FeedPage(opts: FeedOpts, nav: Navigation) {
                             </div>
 
                             <div>
-                                <div><label for="html-title-selector">Feed item link selector</label></div>
+                                <div><label for="html-title-selector">Feed item title selector</label></div>
                                 <input class="char-len-s" type="text" value={html_opts.selector_heading} name="html-title-selector" id="html-title-selector" />
                             </div>
 
                             <div>
-                                <div><label for="html-date-selector">Feed item link selector</label></div>
+                                <div><label for="html-date-selector">Feed item date selector</label></div>
                                 <input class="char-len-s" type="text" value={html_opts.selector_date} name="html-date-selector" id="html-date-selector" />
                             </div>
 
